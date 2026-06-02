@@ -17,7 +17,6 @@
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 
-<!-- Toast 通知 -->
 <div id="toast" class="toast hidden"></div>
 
 <!-- Token 設定 Modal -->
@@ -29,8 +28,7 @@
             </div>
             <h2 class="text-xl font-bold text-gray-800">GitHub 連線設定</h2>
         </div>
-        <p class="text-sm text-gray-500 mb-6">請輸入你的 GitHub Personal Access Token，僅儲存在你的瀏覽器中，不會上傳至任何伺服器。</p>
-
+        <p class="text-sm text-gray-500 mb-6">請輸入 GitHub Personal Access Token，僅儲存在你的瀏覽器中，不會上傳至任何伺服器。</p>
         <div class="space-y-4">
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-gray-700">Personal Access Token</label>
@@ -42,7 +40,6 @@
                     </button>
                 </div>
             </div>
-
             <div class="bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
                 <p class="font-medium">如何取得 Token：</p>
                 <p>1. 前往 GitHub → Settings → Developer settings</p>
@@ -50,14 +47,9 @@
                 <p>3. Generate new token → 勾選 <strong>repo</strong> → 複製</p>
             </div>
         </div>
-
         <div class="flex gap-3 mt-6">
-            <button id="cancel-token-btn" onclick="cancelTokenSetup()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors hidden">
-                取消
-            </button>
-            <button onclick="saveToken()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">
-                儲存並連線
-            </button>
+            <button id="cancel-token-btn" onclick="cancelTokenSetup()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors hidden">取消</button>
+            <button onclick="saveToken()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">儲存並連線</button>
         </div>
     </div>
 </div>
@@ -78,7 +70,7 @@
             </div>
             <div class="flex items-center gap-2">
                 <div class="flex items-center gap-2 text-sm text-gray-400">
-                    <i data-lucide="cloud" class="w-4 h-4" id="cloud-icon"></i>
+                    <i data-lucide="cloud" class="w-4 h-4"></i>
                     <span id="sync-status">連線中...</span>
                 </div>
                 <button onclick="loadFromGitHub()" title="重新整理" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
@@ -93,11 +85,21 @@
         <!-- Booking Form -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
-            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
+
+                <!-- 預約日期（新增） -->
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">預約日期</label>
+                    <input type="date" id="date-input"
+                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+
+                <!-- 預約時間（星期幾） -->
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">預約時間</label>
                     <select id="day-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
+
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">申請業務</label>
                     <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
@@ -115,7 +117,8 @@
                     <label class="text-sm font-medium text-gray-700">指派工程師</label>
                     <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
-                <div class="lg:col-span-6 flex justify-end mt-2">
+
+                <div class="lg:col-span-7 flex justify-end mt-2">
                     <button type="submit" id="submit-btn"
                         class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
                         <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
@@ -140,7 +143,7 @@
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-gray-100 text-gray-600 text-sm">
-                            <th class="p-3 border-b font-medium w-24">建立日期</th>
+                            <th class="p-3 border-b font-medium w-28">預約日期</th>
                             <th class="p-3 border-b font-medium w-24">預約時間</th>
                             <th class="p-3 border-b font-medium w-24">申請業務</th>
                             <th class="p-3 border-b font-medium w-28">設備</th>
@@ -159,17 +162,11 @@
 </div>
 
 <script>
-// =============================================
-// 固定設定（不含 token）
-// =============================================
 const GITHUB_OWNER = 'jiliao2024092';
 const GITHUB_REPO  = 'swtc-3DP';
 const GITHUB_FILE  = 'bookings.json';
-const TOKEN_KEY    = 'gh_3dp_token'; // localStorage key
+const TOKEN_KEY    = 'gh_3dp_token';
 
-// =============================================
-// 選項資料
-// =============================================
 const DAYS      = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
@@ -180,12 +177,8 @@ let bookings = [];
 let fileSHA  = '';
 let isSaving = false;
 
-// =============================================
-// Token 管理
-// =============================================
-function getToken() {
-    return localStorage.getItem(TOKEN_KEY) || '';
-}
+// ── Token 管理 ──────────────────────────────
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 
 function showTokenModal(canCancel = false) {
     document.getElementById('token-modal').classList.remove('hidden');
@@ -193,21 +186,13 @@ function showTokenModal(canCancel = false) {
     document.getElementById('modal-token').value = getToken();
     lucide.createIcons();
 }
-
-function cancelTokenSetup() {
-    document.getElementById('token-modal').classList.add('hidden');
-}
+function cancelTokenSetup() { document.getElementById('token-modal').classList.add('hidden'); }
 
 function toggleTokenVisibility() {
     const input = document.getElementById('modal-token');
     const icon  = document.getElementById('eye-icon');
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.setAttribute('data-lucide', 'eye-off');
-    } else {
-        input.type = 'password';
-        icon.setAttribute('data-lucide', 'eye');
-    }
+    if (input.type === 'password') { input.type = 'text'; icon.setAttribute('data-lucide','eye-off'); }
+    else { input.type = 'password'; icon.setAttribute('data-lucide','eye'); }
     lucide.createIcons();
 }
 
@@ -215,25 +200,17 @@ function saveToken() {
     const token = document.getElementById('modal-token').value.trim();
     if (!token) { showToast('請輸入 Token', 'error'); return; }
     if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
-        showToast('Token 格式不正確，應以 ghp_ 開頭', 'error');
-        return;
+        showToast('Token 格式不正確，應以 ghp_ 開頭', 'error'); return;
     }
     localStorage.setItem(TOKEN_KEY, token);
     document.getElementById('token-modal').classList.add('hidden');
     loadFromGitHub();
 }
 
-// =============================================
-// GitHub API
-// =============================================
+// ── GitHub API ──────────────────────────────
 function githubHeaders() {
-    return {
-        'Authorization': `token ${getToken()}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/vnd.github+json'
-    };
+    return { 'Authorization': `token ${getToken()}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' };
 }
-
 function githubFileURL() {
     return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
 }
@@ -243,73 +220,37 @@ async function loadFromGitHub() {
     setSyncStatus('loading');
     try {
         const res = await fetch(githubFileURL(), { headers: githubHeaders() });
-        if (res.status === 401) {
-            setSyncStatus('error');
-            showToast('Token 無效或已過期，請重新設定', 'error');
-            setTimeout(() => showTokenModal(false), 1500);
-            return;
-        }
+        if (res.status === 401) { setSyncStatus('error'); showToast('Token 無效或已過期，請重新設定','error'); setTimeout(()=>showTokenModal(false),1500); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         fileSHA  = data.sha;
-        bookings = JSON.parse(atob(data.content.replace(/\n/g, '')));
+        bookings = JSON.parse(atob(data.content.replace(/\n/g,'')));
         renderTable();
         setSyncStatus('ok');
-    } catch (err) {
-        setSyncStatus('error');
-        showToast('載入失敗：' + err.message, 'error');
-    }
+    } catch(err) { setSyncStatus('error'); showToast('載入失敗：'+err.message,'error'); }
 }
 
 async function saveToGitHub(commitMsg) {
     if (isSaving) return;
-    isSaving = true;
-    setSyncStatus('saving');
+    isSaving = true; setSyncStatus('saving');
     try {
-        const body = {
-            message: commitMsg || '更新預約資料',
-            content: btoa(unescape(encodeURIComponent(JSON.stringify(bookings, null, 2)))),
-            sha: fileSHA
-        };
-        const res = await fetch(githubFileURL(), {
-            method: 'PUT',
-            headers: githubHeaders(),
-            body: JSON.stringify(body)
-        });
-        if (res.status === 401) {
-            showToast('Token 無效，請重新設定', 'error');
-            showTokenModal(true);
-            return;
-        }
-        if (!res.ok) {
-            const e = await res.json();
-            throw new Error(e.message || `HTTP ${res.status}`);
-        }
+        const body = { message: commitMsg||'更新預約資料', content: btoa(unescape(encodeURIComponent(JSON.stringify(bookings,null,2)))), sha: fileSHA };
+        const res = await fetch(githubFileURL(), { method:'PUT', headers: githubHeaders(), body: JSON.stringify(body) });
+        if (res.status === 401) { showToast('Token 無效，請重新設定','error'); showTokenModal(true); return; }
+        if (!res.ok) { const e = await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
         const data = await res.json();
         fileSHA = data.content.sha;
-        setSyncStatus('ok');
-        showToast('✓ 已儲存至 GitHub', 'success');
-    } catch (err) {
-        setSyncStatus('error');
-        showToast('儲存失敗：' + err.message, 'error');
-    } finally {
-        isSaving = false;
-    }
+        setSyncStatus('ok'); showToast('✓ 已儲存至 GitHub','success');
+    } catch(err) { setSyncStatus('error'); showToast('儲存失敗：'+err.message,'error'); }
+    finally { isSaving = false; }
 }
 
-// =============================================
-// UI 工具
-// =============================================
+// ── UI 工具 ──────────────────────────────────
 function setSyncStatus(state) {
-    const text    = document.getElementById('sync-status');
+    const text = document.getElementById('sync-status');
     const loading = document.getElementById('loading-state');
-    const states  = {
-        loading: ['載入中...', true],
-        saving:  ['儲存中...', false],
-        ok:      ['已同步 GitHub', false],
-        error:   ['連線失敗', false]
-    };
-    const [label, showLoad] = states[state] || ['--', false];
+    const map = { loading:['載入中...',true], saving:['儲存中...',false], ok:['已同步 GitHub',false], error:['連線失敗',false] };
+    const [label, showLoad] = map[state]||['--',false];
     text.textContent = label;
     loading.classList.toggle('hidden', !showLoad);
 }
@@ -317,33 +258,29 @@ function setSyncStatus(state) {
 function showToast(msg, type) {
     const toast = document.getElementById('toast');
     toast.textContent = msg;
-    toast.className = `toast ${type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}`;
+    toast.className = `toast ${type==='error'?'bg-red-600 text-white':'bg-green-600 text-white'}`;
     toast.classList.remove('hidden');
     clearTimeout(toast._timer);
-    toast._timer = setTimeout(() => toast.classList.add('hidden'), 3500);
+    toast._timer = setTimeout(()=>toast.classList.add('hidden'), 3500);
 }
 
 function getStatusColor(status) {
-    return {
-        '待確認':   'bg-yellow-100 text-yellow-800 border-yellow-200',
-        '執行中':   'bg-blue-100 text-blue-800 border-blue-200',
-        '已完成':   'bg-green-100 text-green-800 border-green-200',
-        '異常/取消':'bg-red-100 text-red-800 border-red-200'
-    }[status] || 'bg-gray-100 text-gray-800';
+    return {'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
 }
 
 function populateSelect(id, options) {
     const sel = document.getElementById(id);
-    options.forEach(o => {
-        const opt = document.createElement('option');
-        opt.value = opt.textContent = o;
-        sel.appendChild(opt);
-    });
+    options.forEach(o => { const opt=document.createElement('option'); opt.value=opt.textContent=o; sel.appendChild(opt); });
 }
 
-// =============================================
-// 表格渲染
-// =============================================
+// 將 YYYY-MM-DD 轉為 M/D（方便閱讀）
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const [y, m, d] = dateStr.split('-');
+    return `${parseInt(m)}/${parseInt(d)}`;
+}
+
+// ── 表格渲染 ─────────────────────────────────
 function renderTable() {
     const tbody = document.getElementById('table-body');
     document.getElementById('total-count').textContent = `共 ${bookings.length} 筆資料`;
@@ -354,16 +291,29 @@ function renderTable() {
         return;
     }
 
-    bookings.forEach(b => {
-        const tr  = document.createElement('tr');
+    // 依預約日期排序（近的在前，無日期的排最後）
+    const sorted = [...bookings].sort((a, b) => {
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date);
+    });
+
+    sorted.forEach(b => {
+        const tr = document.createElement('tr');
         tr.className = 'hover:bg-gray-50 transition-colors';
-        const opts = STATUSES.map(s =>
-            `<option value="${s}" ${b.status === s ? 'selected' : ''}>${s}</option>`
-        ).join('');
+        const opts = STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
+
+        // 判斷日期是否已過期
+        const today = new Date().toISOString().slice(0,10);
+        const isOverdue = b.date && b.date < today && b.status !== '已完成' && b.status !== '異常/取消';
 
         tr.innerHTML = `
-            <td class="p-3 text-gray-500">${b.timestamp}</td>
-            <td class="p-3 font-medium">${b.day}</td>
+            <td class="p-3 font-medium ${isOverdue?'text-red-500':'text-gray-800'}">
+                ${b.date ? `<span title="${b.date}">${formatDate(b.date)}</span>` : '<span class="text-gray-400">-</span>'}
+                ${isOverdue ? '<span class="ml-1 text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>' : ''}
+            </td>
+            <td class="p-3">${b.day}</td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
             <td class="p-3">${b.printer}</td>
             <td class="p-3 text-gray-600">${b.purpose}</td>
@@ -386,42 +336,43 @@ function renderTable() {
     lucide.createIcons();
 }
 
-// =============================================
-// CRUD 操作
-// =============================================
+// ── CRUD ─────────────────────────────────────
 document.getElementById('booking-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const purpose = document.getElementById('purpose-input').value.trim();
-    if (!purpose) { showToast('請填寫列印目的！', 'error'); return; }
+    const date    = document.getElementById('date-input').value;
+    if (!purpose) { showToast('請填寫列印目的！','error'); return; }
+    if (!date)    { showToast('請選擇預約日期！','error'); return; }
 
     const btn = document.getElementById('submit-btn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> 儲存中...';
 
     const newBooking = {
-        id:        Date.now(),
-        day:       document.getElementById('day-select').value,
-        sales:     document.getElementById('sales-select').value,
-        printer:   document.getElementById('printer-select').value,
+        id:       Date.now(),
+        date:     date,
+        day:      document.getElementById('day-select').value,
+        sales:    document.getElementById('sales-select').value,
+        printer:  document.getElementById('printer-select').value,
         purpose,
-        engineer:  document.getElementById('engineer-select').value,
-        status:    '待確認',
-        timestamp: new Date().toLocaleDateString('zh-TW')
+        engineer: document.getElementById('engineer-select').value,
+        status:   '待確認'
     };
 
     bookings.unshift(newBooking);
     renderTable();
-    await saveToGitHub(`新增預約：${newBooking.sales} - ${newBooking.printer}`);
+    await saveToGitHub(`新增預約：${newBooking.sales} ${newBooking.date} - ${newBooking.printer}`);
 
     document.getElementById('purpose-input').value = '';
+    document.getElementById('date-input').value    = '';
     btn.disabled = false;
     btn.innerHTML = '<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
     lucide.createIcons();
 });
 
 window.updateStatus = async function(id, newStatus) {
-    const idx = bookings.findIndex(b => b.id === id);
-    if (idx === -1) return;
+    const idx = bookings.findIndex(b=>b.id===id);
+    if (idx===-1) return;
     bookings[idx].status = newStatus;
     renderTable();
     await saveToGitHub(`更新狀態：#${id} → ${newStatus}`);
@@ -429,26 +380,19 @@ window.updateStatus = async function(id, newStatus) {
 
 window.deleteBooking = async function(id) {
     if (!confirm('確定要刪除這筆預約紀錄嗎？')) return;
-    bookings = bookings.filter(b => b.id !== id);
+    bookings = bookings.filter(b=>b.id!==id);
     renderTable();
     await saveToGitHub(`刪除預約 #${id}`);
 };
 
-// =============================================
-// 初始化
-// =============================================
+// ── 初始化 ───────────────────────────────────
 window.onload = function() {
     populateSelect('day-select',      DAYS);
     populateSelect('sales-select',    SALES);
     populateSelect('printer-select',  PRINTERS);
     populateSelect('engineer-select', ENGINEERS);
     lucide.createIcons();
-
-    if (!getToken()) {
-        showTokenModal(false);
-    } else {
-        loadFromGitHub();
-    }
+    if (!getToken()) { showTokenModal(false); } else { loadFromGitHub(); }
 };
 </script>
 </body>
