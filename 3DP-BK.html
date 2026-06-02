@@ -54,6 +54,30 @@
     </div>
 </div>
 
+<!-- 密碼驗證 Modal -->
+<div id="password-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm mx-4">
+        <div class="flex items-center gap-3 mb-2">
+            <div class="bg-amber-100 p-2.5 rounded-lg text-amber-600">
+                <i data-lucide="shield-check" class="w-6 h-6"></i>
+            </div>
+            <h2 class="text-xl font-bold text-gray-800">安全權限驗證</h2>
+        </div>
+        <p class="text-sm text-gray-500 mb-6">執行刪除操作需要輸入管理密碼：</p>
+        <div class="space-y-4">
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">管理密碼</label>
+                <input id="modal-password" type="password" placeholder="請輸入 3 位數密碼"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm">
+            </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">取消</button>
+            <button onclick="verifyPasswordAction()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">驗證並執行</button>
+        </div>
+    </div>
+</div>
+
 <div class="p-4 md:p-8">
     <div class="max-w-7xl mx-auto space-y-6">
 
@@ -87,7 +111,7 @@
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
             <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
 
-                <!-- 預約日期（新增） -->
+                <!-- 預約日期 -->
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">預約日期</label>
                     <input type="date" id="date-input"
@@ -173,9 +197,16 @@ const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
 const PRINTERS  = ['Form4','Form4L','MarkTwo','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 
+// 安全驗證密碼設定
+const ADMIN_PASSWORD = '100';
+
 let bookings = [];
 let fileSHA  = '';
 let isSaving = false;
+
+// 待處理的安全操作暫存
+let pendingAction = null; // 僅用於 'delete'
+let pendingData = null;   // 欲刪除的 id
 
 // ── Token 管理 ──────────────────────────────
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
@@ -205,6 +236,44 @@ function saveToken() {
     localStorage.setItem(TOKEN_KEY, token);
     document.getElementById('token-modal').classList.add('hidden');
     loadFromGitHub();
+}
+
+// ── 密碼安全驗證管理 ─────────────────────────
+function showPasswordModal(action, data) {
+    pendingAction = action;
+    pendingData = data;
+    document.getElementById('modal-password').value = '';
+    document.getElementById('password-modal').classList.remove('hidden');
+    document.getElementById('modal-password').focus();
+    lucide.createIcons();
+}
+
+function closePasswordModal() {
+    pendingAction = null;
+    pendingData = null;
+    document.getElementById('password-modal').classList.add('hidden');
+}
+
+async function verifyPasswordAction() {
+    const pwdInput = document.getElementById('modal-password');
+    const enteredPassword = pwdInput.value.trim();
+
+    if (enteredPassword !== ADMIN_PASSWORD) {
+        showToast('驗證失敗：密碼錯誤！', 'error');
+        pwdInput.focus();
+        return;
+    }
+
+    // 驗證通過，執行相應操作
+    const action = pendingAction;
+    const data = pendingData;
+    
+    // 立即關閉視窗與清除暫存
+    closePasswordModal();
+
+    if (action === 'delete') {
+        await executeDeleteBooking(data);
+    }
 }
 
 // ── GitHub API ──────────────────────────────
@@ -325,7 +394,7 @@ function renderTable() {
                 </select>
             </td>
             <td class="p-3 text-center">
-                <button onclick="deleteBooking(${b.id})" title="刪除"
+                <button onclick="triggerDeleteBooking(${b.id})" title="刪除"
                     class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
@@ -344,11 +413,7 @@ document.getElementById('booking-form').addEventListener('submit', async functio
     if (!purpose) { showToast('請填寫列印目的！','error'); return; }
     if (!date)    { showToast('請選擇預約日期！','error'); return; }
 
-    const btn = document.getElementById('submit-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> 儲存中...';
-
-    const newBooking = {
+    const newBookingData = {
         id:       Date.now(),
         date:     date,
         day:      document.getElementById('day-select').value,
@@ -359,6 +424,16 @@ document.getElementById('booking-form').addEventListener('submit', async functio
         status:   '待確認'
     };
 
+    // 直接執行新增預約
+    await executeAddBooking(newBookingData);
+});
+
+// 執行：新增預約
+async function executeAddBooking(newBooking) {
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 儲存中...';
+
     bookings.unshift(newBooking);
     renderTable();
     await saveToGitHub(`新增預約：${newBooking.sales} ${newBooking.date} - ${newBooking.printer}`);
@@ -368,8 +443,9 @@ document.getElementById('booking-form').addEventListener('submit', async functio
     btn.disabled = false;
     btn.innerHTML = '<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
     lucide.createIcons();
-});
+}
 
+// 變更任務狀態（無需密碼）
 window.updateStatus = async function(id, newStatus) {
     const idx = bookings.findIndex(b=>b.id===id);
     if (idx===-1) return;
@@ -378,19 +454,32 @@ window.updateStatus = async function(id, newStatus) {
     await saveToGitHub(`更新狀態：#${id} → ${newStatus}`);
 };
 
-window.deleteBooking = async function(id) {
-    if (!confirm('確定要刪除這筆預約紀錄嗎？')) return;
+// 觸發刪除（開啟密碼框，仍需密碼）
+window.triggerDeleteBooking = function(id) {
+    showPasswordModal('delete', id);
+};
+
+// 執行：刪除預約
+async function executeDeleteBooking(id) {
     bookings = bookings.filter(b=>b.id!==id);
     renderTable();
     await saveToGitHub(`刪除預約 #${id}`);
-};
+}
 
-// ── 初始化 ───────────────────────────────────
+// ── 初始化與監聽 ──────────────────────────────
 window.onload = function() {
     populateSelect('day-select',      REASON);
     populateSelect('sales-select',    SALES);
     populateSelect('printer-select',  PRINTERS);
     populateSelect('engineer-select', ENGINEERS);
+    
+    // 綁定密碼輸入框 Enter 鍵快捷送出
+    document.getElementById('modal-password').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            verifyPasswordAction();
+        }
+    });
+
     lucide.createIcons();
     if (!getToken()) { showTokenModal(false); } else { loadFromGitHub(); }
 };
