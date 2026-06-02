@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolidWizard Internal | 實威國際內部入口網</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 引入 Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        // 設定 Tailwind 自訂主題，融入科技與專業感
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            // 使用深邃的藍灰色系作為主視覺
+                            900: '#0f172a', // Slate 900
+                            800: '#1e293b', // Slate 800
+                            accent: '#3b82f6', // Blue 500 (點綴色)
+                            500: '#64748b', // Slate 500 (次要文字)
+                            100: '#f1f5f9'  // Slate 100 (背景)
+                        }
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'fade-in': 'fadeIn 1s ease-out forwards',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隱藏捲動條但保留功能 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #ffffff;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        
+        /* 玻璃材質特效 */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-brand-100 text-brand-900 font-sans antialiased selection:bg-brand-accent selection:text-white min-h-screen flex flex-col relative overflow-hidden">
+
+    <!-- 動態背景裝飾 -->
+    <div class="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div class="absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full bg-blue-100/40 blur-3xl mix-blend-multiply animate-float" style="animation-duration: 15s;"></div>
+        <div class="absolute top-[40%] -right-[10%] w-[50vw] h-[50vw] rounded-full bg-indigo-100/40 blur-3xl mix-blend-multiply animate-float" style="animation-duration: 20s; animation-delay: -5s;"></div>
+    </div>
+
+    <!-- 頂部導覽列 -->
+    <header class="relative z-20 w-full px-6 md:px-12 py-6 flex justify-between items-center animate-fade-in">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-brand-900 rounded-lg flex items-center justify-center text-white shadow-lg">
+                <i data-lucide="box" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-brand-900">SolidWizard</h1>
+                <p class="text-xs text-brand-500 font-medium tracking-wider uppercase">Internal Portal</p>
+            </div>
+        </div>
+        
+        <div class="hidden md:flex items-center gap-2 text-sm font-medium text-brand-500 bg-white/50 px-4 py-2 rounded-full border border-gray-200/50 backdrop-blur-sm">
+            <i data-lucide="clock" class="w-4 h-4"></i>
+            <span id="current-time">00:00:00</span>
+        </div>
+    </header>
+
+    <!-- 主要內容區塊 -->
+    <main class="relative z-10 flex-grow flex flex-col items-center justify-center px-6 py-12 md:py-0 w-full max-w-7xl mx-auto">
+        
+        <!-- 歡迎標語 -->
+        <div class="text-center mb-16 animate-fade-in" style="animation-delay: 200ms;">
+            <h2 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4">
+                實威國際內部資源網
+            </h2>
+            <p class="text-lg text-brand-500 max-w-2xl mx-auto">
+                快速存取設備規格資料，或進行3D列印機與設備的使用預約。請選擇您要前往的服務模組。
+            </p>
+        </div>
+
+        <!-- 兩大功能卡片區 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl animate-fade-in" style="animation-delay: 400ms;">
+            
+            <!-- 模組一：設備資料查詢 -->
+            <a href="#equipment-data" class="group relative block p-1 rounded-3xl transition-transform duration-300 hover:-translate-y-2 focus:outline-none focus:ring-4 focus:ring-brand-accent/30">
+                <div class="absolute inset-0 bg-gradient-to-br from-blue-100 to-indigo-50 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div class="glass-panel relative h-full rounded-[22px] p-8 md:p-10 flex flex-col items-start shadow-sm border border-white/60 hover:shadow-xl hover:shadow-blue-900/5 transition-all duration-300">
+                    <div class="w-16 h-16 bg-blue-50 text-brand-accent rounded-2xl flex items-center justify-center mb-8 shadow-inner group-hover:scale-110 transition-transform duration-500">
+                        <i data-lucide="library" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-brand-900 mb-3">設備資料庫</h3>
+                    <p class="text-brand-500 leading-relaxed mb-8 flex-grow">
+                        查詢各型號3D列印機、掃描器等硬體設備的詳細規格、操作手冊與技術支援文件。
+                    </p>
+                    <div class="flex items-center text-sm font-bold text-brand-accent mt-auto group-hover:gap-3 transition-all duration-300">
+                        進入資料庫
+                        <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
+                    </div>
+                </div>
+            </a>
+
+            <!-- 模組二：設備預約表單 -->
+            <a href="booking.html" class="group relative block p-1 rounded-3xl transition-transform duration-300 hover:-translate-y-2 focus:outline-none focus:ring-4 focus:ring-brand-900/20">
+                <div class="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-50 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div class="glass-panel relative h-full rounded-[22px] p-8 md:p-10 flex flex-col items-start shadow-sm border border-white/60 hover:shadow-xl hover:shadow-gray-900/5 transition-all duration-300">
+                    <div class="w-16 h-16 bg-brand-900 text-white rounded-2xl flex items-center justify-center mb-8 shadow-md group-hover:scale-110 transition-transform duration-500">
+                        <i data-lucide="calendar-check" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-2xl font-bold text-brand-900 mb-3">設備預約系統</h3>
+                    <p class="text-brand-500 leading-relaxed mb-8 flex-grow">
+                        業務部與工程部專用。線上預約3D列印機使用時段、填寫任務需求，並追蹤執行進度。
+                    </p>
+                    <div class="flex items-center text-sm font-bold text-brand-900 mt-auto group-hover:gap-3 transition-all duration-300">
+                        前往預約
+                        <i data-lucide="arrow-right" class="w-4 h-4 ml-1"></i>
+                    </div>
+                </div>
+            </a>
+
+        </div>
+        
+        <!-- 快速連結 (可選) -->
+        <div class="mt-16 flex items-center justify-center gap-6 text-sm text-brand-500 animate-fade-in" style="animation-delay: 600ms;">
+            <a href="#" class="hover:text-brand-900 transition-colors flex items-center gap-1">
+                <i data-lucide="help-circle" class="w-4 h-4"></i>
+                系統操作指南
+            </a>
+            <span class="w-1 h-1 bg-gray-300 rounded-full"></span>
+            <a href="#" class="hover:text-brand-900 transition-colors flex items-center gap-1">
+                <i data-lucide="headphones" class="w-4 h-4"></i>
+                IT 支援
+            </a>
+        </div>
+
+    </main>
+
+    <!-- 頁尾 -->
+    <footer class="relative z-20 w-full p-6 text-center text-sm text-brand-500/70">
+        &copy; 2026 SolidWizard 實威國際. Internal Use Only.
+    </footer>
+
+    <!-- JavaScript 互動邏輯 -->
+    <script>
+        // 1. 初始化 Lucide Icons
+        lucide.createIcons();
+
+        // 2. 更新即時時鐘
+        function updateTime() {
+            const timeElement = document.getElementById('current-time');
+            if (timeElement) {
+                const now = new Date();
+                const timeString = now.toLocaleTimeString('zh-TW', {
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                timeElement.textContent = timeString;
+            }
+        }
+        
+        // 初始執行一次，然後每秒更新
+        updateTime();
+        setInterval(updateTime, 1000);
+    </script>
+</body>
+</html>
