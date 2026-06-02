@@ -1,0 +1,230 @@
+import React, { useState } from 'react';
+import { Plus, Trash2, Printer, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+
+const DAYS = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+const SALES = ['Amber', '', '業務3', '業務4', '業務5', '業務6', '業務7', '業務8'];
+const ENGINEERS = ['工程師1', '工程師2', '工程師3', '工程師4'];
+const PRINTERS = ['3D列印機 A (高精度光固化)', '3D列印機 B (大型FDM)', '3D列印機 C (高速FDM)'];
+const STATUS_OPTIONS = ['待確認', '執行中', '已完成', '異常/取消'];
+
+export default function App() {
+  const [bookings, setBookings] = useState([
+    {
+      id: 1,
+      day: '星期一',
+      sales: '業務2',
+      printer: '3D列印機 A (高精度光固化)',
+      purpose: '客戶A新產品打樣測試',
+      engineer: '工程師1',
+      status: '執行中',
+      timestamp: new Date().toLocaleDateString()
+    },
+    {
+      id: 2,
+      day: '星期三',
+      sales: '業務5',
+      printer: '3D列印機 B (大型FDM)',
+      purpose: '展會展示用模型',
+      engineer: '工程師3',
+      status: '待確認',
+      timestamp: new Date().toLocaleDateString()
+    }
+  ]);
+
+  const [formData, setFormData] = useState({
+    day: DAYS[0],
+    sales: SALES[0],
+    printer: PRINTERS[0],
+    purpose: '',
+    engineer: ENGINEERS[0]
+  });
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.purpose.trim()) {
+      alert('請填寫列印目的！');
+      return;
+    }
+    
+    const newBooking = {
+      ...formData,
+      id: Date.now(),
+      status: '待確認',
+      timestamp: new Date().toLocaleDateString()
+    };
+    
+    setBookings([newBooking, ...bookings]);
+    setFormData(prev => ({ ...prev, purpose: '' })); // 清空目的欄位
+  };
+
+  const updateStatus = (id, newStatus) => {
+    setBookings(bookings.map(b => b.id === id ? { ...b, status: newStatus } : b));
+  };
+
+  const deleteBooking = (id) => {
+    if(window.confirm('確定要刪除這筆預約紀錄嗎？')) {
+      setBookings(bookings.filter(b => b.id !== id));
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch(status) {
+      case '待確認': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case '執行中': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case '已完成': return 'bg-green-100 text-green-800 border-green-200';
+      case '異常/取消': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* Header */}
+        <div className="bg-white rounded-xl shadow-sm p-6 flex items-center gap-4 border-l-4 border-blue-600">
+          <div className="bg-blue-100 p-3 rounded-lg text-blue-600">
+            <Printer size={28} />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">3D列印機預約與任務分配表</h1>
+            <p className="text-sm text-gray-500">供業務單位預約設備，並由工程師追蹤與執行任務狀態。</p>
+          </div>
+        </div>
+
+        {/* Booking Form */}
+        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+          <h2 className="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">預約時間</label>
+              <select name="day" value={formData.day} onChange={handleInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">申請業務</label>
+              <select name="sales" value={formData.sales} onChange={handleInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                {SALES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">選擇設備 (3D列印機)</label>
+              <select name="printer" value={formData.printer} onChange={handleInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                {PRINTERS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1 lg:col-span-2">
+              <label className="text-sm font-medium text-gray-700">列印目的/備註說明</label>
+              <input 
+                type="text" 
+                name="purpose" 
+                value={formData.purpose} 
+                onChange={handleInputChange} 
+                placeholder="例如: 客戶A打樣、展會模型..."
+                className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-gray-700">指派工程師</label>
+              <select name="engineer" value={formData.engineer} onChange={handleInputChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                {ENGINEERS.map(e => <option key={e} value={e}>{e}</option>)}
+              </select>
+            </div>
+
+            <div className="lg:col-span-6 flex justify-end mt-2">
+              <button type="submit" className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium">
+                <Plus size={18} /> 送出預約
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Data Table (Excel-like view) */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-gray-800">總覽表單 (工程師執行清單)</h2>
+            <span className="text-sm text-gray-500">共 {bookings.length} 筆資料</span>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-100 text-gray-600 text-sm">
+                  <th className="p-3 border-b font-medium w-24">建立日期</th>
+                  <th className="p-3 border-b font-medium w-24">預約時間</th>
+                  <th className="p-3 border-b font-medium w-24">申請業務</th>
+                  <th className="p-3 border-b font-medium w-48">設備 (列印機)</th>
+                  <th className="p-3 border-b font-medium">列印目的</th>
+                  <th className="p-3 border-b font-medium w-32">負責工程師</th>
+                  <th className="p-3 border-b font-medium w-40">任務狀態 (可更改)</th>
+                  <th className="p-3 border-b font-medium w-20 text-center">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-sm text-gray-700">
+                {bookings.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="p-8 text-center text-gray-400">
+                      目前沒有任何預約紀錄
+                    </td>
+                  </tr>
+                ) : (
+                  bookings.map((booking) => (
+                    <tr key={booking.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="p-3 text-gray-500">{booking.timestamp}</td>
+                      <td className="p-3 font-medium text-gray-800">{booking.day}</td>
+                      <td className="p-3">
+                        <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">
+                          {booking.sales}
+                        </span>
+                      </td>
+                      <td className="p-3">{booking.printer}</td>
+                      <td className="p-3 text-gray-600">{booking.purpose}</td>
+                      <td className="p-3">
+                        <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">
+                          {booking.engineer}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        {/* 狀態下拉選單 - 方便工程師快速更改 */}
+                        <select 
+                          value={booking.status}
+                          onChange={(e) => updateStatus(booking.id, e.target.value)}
+                          className={`px-2 py-1.5 rounded-md border text-sm font-medium outline-none cursor-pointer ${getStatusColor(booking.status)}`}
+                        >
+                          {STATUS_OPTIONS.map(status => (
+                            <option key={status} value={status}>{status}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-3 text-center">
+                        <button 
+                          onClick={() => deleteBooking(booking.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                          title="刪除"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
