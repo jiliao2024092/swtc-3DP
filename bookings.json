@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": 1780371757219,
+    "date": "2026-06-03",
+    "day": "否",
+    "sales": "Amber",
+    "printer": "Form4",
+    "purpose": "test",
+    "engineer": "Jimmy",
+    "status": "待確認"
+  }
+]
