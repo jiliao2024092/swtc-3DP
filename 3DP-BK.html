@@ -96,7 +96,7 @@
 
                 <!-- 預約時間（星期幾） -->
                 <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">預約時間</label>
+                    <label class="text-sm font-medium text-gray-700">是否有單號(備註說明)</label>
                     <select id="day-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
 
@@ -144,7 +144,7 @@
                     <thead>
                         <tr class="bg-gray-100 text-gray-600 text-sm">
                             <th class="p-3 border-b font-medium w-28">預約日期</th>
-                            <th class="p-3 border-b font-medium w-24">預約時間</th>
+                            <th class="p-3 border-b font-medium w-24">是否有單號</th>
                             <th class="p-3 border-b font-medium w-24">申請業務</th>
                             <th class="p-3 border-b font-medium w-28">設備</th>
                             <th class="p-3 border-b font-medium">列印目的</th>
@@ -167,7 +167,7 @@ const GITHUB_REPO  = 'swtc-3DP';
 const GITHUB_FILE  = 'bookings.json';
 const TOKEN_KEY    = 'gh_3dp_token';
 
-const DAYS      = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
+const REASON      = ['是','否','其他'];
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
 const PRINTERS  = ['Form4','Form4L','MarkTwo','Other'];
@@ -387,7 +387,7 @@ window.deleteBooking = async function(id) {
 
 // ── 初始化 ───────────────────────────────────
 window.onload = function() {
-    populateSelect('day-select',      DAYS);
+    populateSelect('day-select',      REASON);
     populateSelect('sales-select',    SALES);
     populateSelect('printer-select',  PRINTERS);
     populateSelect('engineer-select', ENGINEERS);
