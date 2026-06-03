@@ -11,7 +11,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-03T05:21:09Z"
+    "updated_at": "2026-06-03T06:24:01Z"
   },
   {
     "serial": "BoldSturgeon",
@@ -25,7 +25,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-03T05:21:09Z"
+    "updated_at": "2026-06-03T06:24:01Z"
   },
   {
     "serial": "CreativeDragon",
@@ -39,21 +39,21 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-03T05:21:09Z"
+    "updated_at": "2026-06-03T06:24:01Z"
   },
   {
     "serial": "Form4-AluminumBowfin",
     "alias": "AluminumBowfin",
     "machine_type": "FORM-4-0",
-    "status": "IDLE",
-    "print_name": "",
-    "material": "",
-    "progress": 0,
-    "layer_now": 0,
-    "layer_total": 0,
-    "time_left": "-",
-    "last_pinged": "2026-06-03T01:20:55.521627-04:00",
-    "updated_at": "2026-06-03T05:21:09Z"
+    "status": "PRINTING",
+    "print_name": "20260603",
+    "material": "High Temp V2",
+    "progress": 0.1,
+    "layer_now": 1,
+    "layer_total": 1161,
+    "time_left": "2h 51m",
+    "last_pinged": "2026-06-03T02:23:56.994277-04:00",
+    "updated_at": "2026-06-03T06:24:01Z"
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -67,6 +67,6 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-03T05:21:09Z"
+    "updated_at": "2026-06-03T06:24:01Z"
   }
 ]
