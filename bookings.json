@@ -1,5 +1,15 @@
 [
   {
+    "id": 1780449129682,
+    "date": "2026-06-03",
+    "day": "否",
+    "sales": "Benny",
+    "printer": "Form4",
+    "purpose": "強淞展示樣品",
+    "engineer": "Jaylen",
+    "status": "待確認"
+  },
+  {
     "id": 1780449106575,
     "date": "2026-06-04",
     "day": "其他",
