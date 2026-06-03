@@ -2,20 +2,20 @@ name: Sync Formlabs Printer Status
 
 on:
   schedule:
-    - cron: '*/1 * * * *'   # 每 1 分鐘執行一次
+    - cron: '*/5 * * * *'   # 每 5 分鐘執行一次
   workflow_dispatch:          # 允許手動觸發
+  push:
+    branches: [main]          # push 時也執行（防止 cron 被暫停）
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:
-      contents: write         # 需要寫入 repo 權限
+      contents: write
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@v4.3.0   # v4.3.0+ 原生支援 Node.js 24，不再有警告
 
       - name: Fetch Formlabs access token
         id: auth
@@ -39,11 +39,9 @@ jobs:
         run: |
           curl -s https://api.formlabs.com/developer/v1/printers/ \
             -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
             -o raw-printers.json
 
-          # 擷取需要的欄位，縮減檔案大小
-          python3 << 'EOF'
+          python3 << 'PYEOF'
           import json, datetime
 
           with open('raw-printers.json') as f:
@@ -54,12 +52,10 @@ jobs:
               status = p.get('printer_status', {})
               run    = status.get('current_print_run') or {}
 
-              # 計算列印進度百分比
               layer_now   = run.get('currently_printing_layer', 0) or 0
               layer_total = run.get('layer_count', 0) or 0
               progress    = round(layer_now / layer_total * 100, 1) if layer_total > 0 else 0
 
-              # 剩餘時間轉換為可讀格式
               ms_left = run.get('estimated_time_remaining_ms', 0) or 0
               mins_left = ms_left // 60000
               time_left_str = f"{mins_left // 60}h {mins_left % 60}m" if mins_left >= 60 else (f"{mins_left}m" if mins_left > 0 else "-")
@@ -85,13 +81,12 @@ jobs:
           print(f"✅ 已處理 {len(result)} 台列印機")
           for r in result:
               print(f"  {r['alias']} → {r['status']}  進度: {r['progress']}%")
-          EOF
+          PYEOF
 
       - name: Commit and push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add printer-status.json
-          # 只有檔案有變動才 commit（避免無意義的空 commit）
           git diff --cached --quiet || git commit -m "chore: sync printer status $(date -u +'%H:%M UTC')"
           git push
