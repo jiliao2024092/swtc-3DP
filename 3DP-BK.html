@@ -239,6 +239,48 @@ const PRINTER_STATUS_MAP = {
     'UNKNOWN':              { label: '未知',     color: 'bg-gray-100 text-gray-500',   dot: 'bg-gray-300' },
 };
 
+// ── 機型名稱對照表 ────────────────────────────
+const MACHINE_TYPE_MAP = {
+    'form-4':          'Form 4',
+    'form-4l':         'Form 4L',
+    'form-4b':         'Form 4B',
+    'form-3':          'Form 3',
+    'form-3l':         'Form 3L',
+    'form-3-plus':     'Form 3+',
+    'form-3l-plus':    'Form 3L+',
+    'form-3b':         'Form 3B',
+    'form-3bl':        'Form 3BL',
+    'fuse-1':          'Fuse 1',
+    'fuse-1-plus':     'Fuse 1+',
+    // 部分 API 可能直接回傳大寫
+    'FORM4':           'Form 4',
+    'FORM4L':          'Form 4L',
+    'FORM3L':          'Form 3L',
+    'FORM3PLUS':       'Form 3+',
+    'FUSE1PLUS':       'Fuse 1+',
+};
+
+function getMachineLabel(machineTypeId) {
+    if (!machineTypeId) return '';
+    const key = machineTypeId.toLowerCase().replace(/\s/g, '');
+    // 嘗試精確比對
+    for (const [k, v] of Object.entries(MACHINE_TYPE_MAP)) {
+        if (k.toLowerCase() === key) return v;
+    }
+    // 模糊比對（包含關鍵字）
+    if (key.includes('fuse1plus') || key.includes('fuse-1-plus')) return 'Fuse 1+';
+    if (key.includes('fuse1'))   return 'Fuse 1';
+    if (key.includes('form4l'))  return 'Form 4L';
+    if (key.includes('form4b'))  return 'Form 4B';
+    if (key.includes('form4'))   return 'Form 4';
+    if (key.includes('form3lplus') || key.includes('form-3l-plus')) return 'Form 3L+';
+    if (key.includes('form3l'))  return 'Form 3L';
+    if (key.includes('form3plus') || key.includes('form-3-plus'))   return 'Form 3+';
+    if (key.includes('form3'))   return 'Form 3';
+    // 找不到就原樣回傳
+    return machineTypeId;
+}
+
 // ── 列印機狀態顯示 ────────────────────────────
 async function loadPrinterStatus() {
     const grid = document.getElementById('printer-status-grid');
@@ -266,14 +308,15 @@ async function loadPrinterStatus() {
         printers.forEach(p => {
             const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
             const isPrinting = p.status === 'PRINTING' || p.status === 'PAUSED' || p.status === 'PAUSING';
+            const machineLabel = getMachineLabel(p.machine_type);
 
             const card = document.createElement('div');
             card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
             card.innerHTML = `
                 <div class="flex items-start justify-between">
                     <div>
-                        <p class="font-semibold text-gray-800 text-sm">${p.alias || p.machine_type || p.serial}</p>
-                        <p class="text-xs text-gray-400 mt-0.5">${p.serial}</p>
+                        <p class="font-semibold text-gray-800 text-sm">${p.alias || p.serial}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">${machineLabel ? machineLabel + ' · ' : ''}${p.serial}</p>
                     </div>
                     <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
                         <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status === 'PRINTING' ? 'animate-pulse' : ''}"></span>
