@@ -106,27 +106,6 @@
             </div>
         </div>
 
-        <!-- ★ 列印機即時狀態面板 -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i>
-                    <h2 class="text-base font-semibold text-gray-800">列印機即時狀態</h2>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
-                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">每 5 分鐘自動更新</span>
-                </div>
-            </div>
-            <div id="printer-status-grid" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <!-- 由 JS 動態填入 -->
-                <div class="col-span-full text-center text-gray-400 text-sm py-6">
-                    <div style="width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 8px;"></div>
-                    從 GitHub 載入列印機狀態...
-                </div>
-            </div>
-        </div>
-
         <!-- Booking Form -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
@@ -197,6 +176,26 @@
                     </thead>
                     <tbody id="table-body" class="divide-y divide-gray-100 text-sm text-gray-700"></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- ★ 列印機即時狀態面板（最底部） -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i>
+                    <h2 class="text-base font-semibold text-gray-800">列印機即時狀態</h2>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
+                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">每 5 分鐘自動更新</span>
+                </div>
+            </div>
+            <div id="printer-status-grid" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="col-span-full text-center text-gray-400 text-sm py-6">
+                    <div style="width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 8px;"></div>
+                    從 GitHub 載入列印機狀態...
+                </div>
             </div>
         </div>
 
@@ -377,7 +376,9 @@ async function loadFromGitHub() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         fileSHA  = data.sha;
-        bookings = JSON.parse(atob(data.content.replace(/\n/g,'')));
+        const raw = atob(data.content.replace(/\n/g,''));
+        const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
+        bookings = JSON.parse(new TextDecoder('utf-8').decode(bytes));
         renderTable();
         setSyncStatus('ok');
     } catch(err) { setSyncStatus('error'); showToast('載入失敗：'+err.message,'error'); }
@@ -387,7 +388,10 @@ async function saveToGitHub(commitMsg) {
     if (isSaving) return;
     isSaving = true; setSyncStatus('saving');
     try {
-        const body = { message: commitMsg||'更新預約資料', content: btoa(unescape(encodeURIComponent(JSON.stringify(bookings,null,2)))), sha: fileSHA };
+        const jsonStr  = JSON.stringify(bookings, null, 2);
+            const encoded  = new TextEncoder().encode(jsonStr);
+            const b64      = btoa(String.fromCharCode(...encoded));
+            const body = { message: commitMsg||'更新預約資料', content: b64, sha: fileSHA };
         const res = await fetch(githubFileURL(BOOKINGS_FILE), { method:'PUT', headers: githubHeaders(), body: JSON.stringify(body) });
         if (res.status === 401) { showToast('Token 無效，請重新設定','error'); showTokenModal(true); return; }
         if (!res.ok) { const e = await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
