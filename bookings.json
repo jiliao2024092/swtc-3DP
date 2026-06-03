@@ -1,5 +1,16 @@
 [
   {
+    "id": 1780474046892,
+    "date": "2026-06-03",
+    "sales": "Amber",
+    "printer": "Form4L",
+    "hasOrder": true,
+    "purpose": "202605280003榮富工業",
+    "engineer": "Bill",
+    "status": "待確認",
+    "timestamp": "2026/6/3"
+  },
+  {
     "id": 1780466792382,
     "date": "2026-06-03",
     "sales": "其他",
