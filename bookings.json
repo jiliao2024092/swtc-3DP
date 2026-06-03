@@ -51,7 +51,8 @@
     "printer": "Form4",
     "purpose": "強淞展示樣品",
     "engineer": "Jaylen",
-    "status": "已完成"
+    "status": "已完成",
+    "hasOrder": false
   },
   {
     "id": 1780449106575,
