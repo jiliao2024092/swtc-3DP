@@ -2,10 +2,12 @@ name: Sync Formlabs Printer Status
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # 每 5 分鐘執行一次
-  workflow_dispatch:          # 允許手動觸發
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
   push:
-    branches: [main]          # push 時也執行（防止 cron 被暫停）
+    branches: [main]
+    paths-ignore:
+      - 'printer-status.json'   # 避免 sync bot 自己 push 又觸發自己
 
 jobs:
   sync:
@@ -15,73 +17,104 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4.3.0   # v4.3.0+ 原生支援 Node.js 24，不再有警告
+        uses: actions/checkout@v4
+        with:
+          node-version: '24'   # 明確指定 Node.js 24
 
       - name: Fetch Formlabs access token
         id: auth
         run: |
-          RESPONSE=$(curl -s -X POST https://api.formlabs.com/developer/v1/o/token/ \
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.formlabs.com/developer/v1/o/token/ \
             -H "Content-Type: application/x-www-form-urlencoded" \
             -d "grant_type=client_credentials&client_id=${{ secrets.FORMLABS_CLIENT_ID }}&client_secret=${{ secrets.FORMLABS_CLIENT_SECRET }}")
 
-          TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ 取得 token 失敗，HTTP $HTTP_CODE"
+            echo "回應內容：$BODY"
+            exit 1
+          fi
+
+          TOKEN=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('access_token',''))")
 
           if [ -z "$TOKEN" ]; then
-            echo "❌ 取得 access token 失敗"
-            echo "$RESPONSE"
+            echo "❌ access_token 欄位為空"
+            echo "回應：$BODY"
             exit 1
           fi
 
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
           echo "✅ 成功取得 access token"
 
-      - name: Fetch printer status
+      - name: Fetch and process printer status
         run: |
-          curl -s https://api.formlabs.com/developer/v1/printers/ \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" \
-            -o raw-printers.json
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o raw-printers.json \
+            https://api.formlabs.com/developer/v1/printers/ \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+
+          echo "Printers API HTTP: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ 取得列印機資料失敗，HTTP $HTTP_CODE"
+            cat raw-printers.json
+            exit 1
+          fi
 
           python3 << 'PYEOF'
-          import json, datetime
+import json, datetime
 
-          with open('raw-printers.json') as f:
-              printers = json.load(f)
+with open('raw-printers.json') as f:
+    printers = json.load(f)
 
-          result = []
-          for p in printers:
-              status = p.get('printer_status', {})
-              run    = status.get('current_print_run') or {}
+# API 可能回傳 list 或包在 results 裡的 dict
+if isinstance(printers, dict):
+    printers = printers.get('results', printers.get('printers', []))
 
-              layer_now   = run.get('currently_printing_layer', 0) or 0
-              layer_total = run.get('layer_count', 0) or 0
-              progress    = round(layer_now / layer_total * 100, 1) if layer_total > 0 else 0
+result = []
+for p in printers:
+    status = p.get('printer_status', {}) or {}
+    run    = status.get('current_print_run') or {}
 
-              ms_left = run.get('estimated_time_remaining_ms', 0) or 0
-              mins_left = ms_left // 60000
-              time_left_str = f"{mins_left // 60}h {mins_left % 60}m" if mins_left >= 60 else (f"{mins_left}m" if mins_left > 0 else "-")
+    layer_now   = run.get('currently_printing_layer', 0) or 0
+    layer_total = run.get('layer_count', 0) or 0
+    progress    = round(layer_now / layer_total * 100, 1) if layer_total > 0 else 0
 
-              result.append({
-                  "serial":       p.get('serial', ''),
-                  "alias":        p.get('alias') or p.get('machine_type_id', ''),
-                  "machine_type": p.get('machine_type_id', ''),
-                  "status":       status.get('status', 'UNKNOWN'),
-                  "print_name":   run.get('name', ''),
-                  "material":     run.get('material_name') or run.get('material', ''),
-                  "progress":     progress,
-                  "layer_now":    layer_now,
-                  "layer_total":  layer_total,
-                  "time_left":    time_left_str,
-                  "last_pinged":  status.get('last_pinged_at', ''),
-                  "updated_at":   datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-              })
+    ms_left   = run.get('estimated_time_remaining_ms', 0) or 0
+    mins_left = ms_left // 60000
+    if mins_left >= 60:
+        time_left_str = f"{mins_left // 60}h {mins_left % 60}m"
+    elif mins_left > 0:
+        time_left_str = f"{mins_left}m"
+    else:
+        time_left_str = "-"
 
-          with open('printer-status.json', 'w', encoding='utf-8') as f:
-              json.dump(result, f, ensure_ascii=False, indent=2)
+    result.append({
+        "serial":       p.get('serial', ''),
+        "alias":        p.get('alias') or p.get('machine_type_id', ''),
+        "machine_type": p.get('machine_type_id', ''),
+        "status":       status.get('status', 'UNKNOWN'),
+        "print_name":   run.get('name', ''),
+        "material":     run.get('material_name') or run.get('material', ''),
+        "progress":     progress,
+        "layer_now":    layer_now,
+        "layer_total":  layer_total,
+        "time_left":    time_left_str,
+        "last_pinged":  status.get('last_pinged_at', ''),
+        "updated_at":   datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    })
 
-          print(f"✅ 已處理 {len(result)} 台列印機")
-          for r in result:
-              print(f"  {r['alias']} → {r['status']}  進度: {r['progress']}%")
-          PYEOF
+with open('printer-status.json', 'w', encoding='utf-8') as f:
+    json.dump(result, f, ensure_ascii=False, indent=2)
+
+print(f"✅ 已處理 {len(result)} 台列印機")
+for r in result:
+    print(f"  {r['alias']} ({r['machine_type']}) → {r['status']}  進度: {r['progress']}%")
+PYEOF
 
       - name: Commit and push
         run: |
