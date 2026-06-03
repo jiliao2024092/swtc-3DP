@@ -1,5 +1,15 @@
 [
   {
+    "id": 1780457374149,
+    "date": "2026-06-03",
+    "day": "否",
+    "sales": "Amber",
+    "printer": "MarkTwo",
+    "purpose": "高禎材料測試",
+    "engineer": "Jimmy",
+    "status": "待確認"
+  },
+  {
     "id": 1780449129682,
     "date": "2026-06-03",
     "day": "否",
