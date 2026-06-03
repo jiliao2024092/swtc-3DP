@@ -11,7 +11,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-03T07:35:45Z"
+    "updated_at": "2026-06-03T07:52:09Z"
   },
   {
     "serial": "BoldSturgeon",
@@ -25,21 +25,21 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-03T07:35:45Z"
+    "updated_at": "2026-06-03T07:52:09Z"
   },
   {
     "serial": "Form4L-AdroitSauropod",
     "alias": "AdroitSauropod",
     "machine_type": "FRML-4-0",
-    "status": "CHECK_PRINTER",
+    "status": "PRINTING",
     "print_name": "榮富2",
     "material": "Tough 2000 V2",
-    "progress": 6.2,
-    "layer_now": 102,
+    "progress": 8.1,
+    "layer_now": 134,
     "layer_total": 1648,
-    "time_left": "4h 13m",
-    "last_pinged": "2026-06-03T03:35:28.321745-04:00",
-    "updated_at": "2026-06-03T07:35:45Z"
+    "time_left": "3h 57m",
+    "last_pinged": "2026-06-03T03:52:06.263647-04:00",
+    "updated_at": "2026-06-03T07:52:09Z"
   },
   {
     "serial": "CreativeDragon",
@@ -53,7 +53,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-03T07:35:45Z"
+    "updated_at": "2026-06-03T07:52:09Z"
   },
   {
     "serial": "Form4-AluminumBowfin",
@@ -62,12 +62,12 @@
     "status": "PRINTING",
     "print_name": "20260603",
     "material": "High Temp V2",
-    "progress": 25.5,
-    "layer_now": 296,
+    "progress": 37.6,
+    "layer_now": 436,
     "layer_total": 1161,
-    "time_left": "1h 41m",
-    "last_pinged": "2026-06-03T03:35:19.933842-04:00",
-    "updated_at": "2026-06-03T07:35:45Z"
+    "time_left": "1h 24m",
+    "last_pinged": "2026-06-03T03:52:03.145666-04:00",
+    "updated_at": "2026-06-03T07:52:09Z"
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -81,6 +81,6 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-03T07:35:45Z"
+    "updated_at": "2026-06-03T07:52:09Z"
   }
 ]
