@@ -11,7 +11,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-03T10:00:47Z"
+    "updated_at": "2026-06-03T14:43:17Z"
   },
   {
     "serial": "BoldSturgeon",
@@ -25,21 +25,21 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-03T10:00:47Z"
+    "updated_at": "2026-06-03T14:43:17Z"
   },
   {
     "serial": "Form4L-AdroitSauropod",
     "alias": "AdroitSauropod",
     "machine_type": "FRML-4-0",
-    "status": "PRINTING",
-    "print_name": "榮富2",
-    "material": "Tough 2000 V2",
-    "progress": 10.1,
-    "layer_now": 166,
-    "layer_total": 1648,
-    "time_left": "3h 49m",
-    "last_pinged": "2026-06-03T06:00:46.302569-04:00",
-    "updated_at": "2026-06-03T10:00:47Z"
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-06-03T09:59:43.931589-04:00",
+    "updated_at": "2026-06-03T14:43:17Z"
   },
   {
     "serial": "CreativeDragon",
@@ -53,21 +53,21 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-03T10:00:47Z"
+    "updated_at": "2026-06-03T14:43:17Z"
   },
   {
     "serial": "Form4-AluminumBowfin",
     "alias": "AluminumBowfin",
     "machine_type": "FORM-4-0",
-    "status": "PRINTING",
-    "print_name": "20260603_支援台北",
-    "material": "High Temp V2",
-    "progress": 0.8,
-    "layer_now": 2,
-    "layer_total": 238,
-    "time_left": "48m",
-    "last_pinged": "2026-06-03T06:00:42.427977-04:00",
-    "updated_at": "2026-06-03T10:00:47Z"
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-06-03T07:59:45.441513-04:00",
+    "updated_at": "2026-06-03T14:43:17Z"
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -81,6 +81,6 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-03T10:00:47Z"
+    "updated_at": "2026-06-03T14:43:17Z"
   }
 ]
