@@ -1,1 +1,72 @@
-[]
+[
+  {
+    "serial": "TealMoa",
+    "alias": "FS30-1-0",
+    "machine_type": "FS30-1-0",
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-05-28T07:59:43.924502-04:00",
+    "updated_at": "2026-06-03T03:59:09Z"
+  },
+  {
+    "serial": "BoldSturgeon",
+    "alias": "FRML-3-0",
+    "machine_type": "FRML-3-0",
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-03-18T04:26:59.914487-04:00",
+    "updated_at": "2026-06-03T03:59:09Z"
+  },
+  {
+    "serial": "CreativeDragon",
+    "alias": "FORM-3-2",
+    "machine_type": "FORM-3-2",
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-05-08T06:29:30.007577-04:00",
+    "updated_at": "2026-06-03T03:59:09Z"
+  },
+  {
+    "serial": "Form4-AluminumBowfin",
+    "alias": "AluminumBowfin",
+    "machine_type": "FORM-4-0",
+    "status": "PRINTING",
+    "print_name": "強淞企業-Rigid10k(0.05)-Demo用",
+    "material": "Rigid 10K V1.1",
+    "progress": 64.1,
+    "layer_now": 641,
+    "layer_total": 1000,
+    "time_left": "44m",
+    "last_pinged": "2026-06-02T23:58:45.491807-04:00",
+    "updated_at": "2026-06-03T03:59:09Z"
+  },
+  {
+    "serial": "Form4L-JasperGosling",
+    "alias": "JasperGosling",
+    "machine_type": "FRML-4-0",
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-02-10T03:27:54.064854-05:00",
+    "updated_at": "2026-06-03T03:59:09Z"
+  }
+]
