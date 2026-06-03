@@ -11,7 +11,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-03T07:52:09Z"
+    "updated_at": "2026-06-03T08:15:49Z"
   },
   {
     "serial": "BoldSturgeon",
@@ -25,7 +25,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-03T07:52:09Z"
+    "updated_at": "2026-06-03T08:15:49Z"
   },
   {
     "serial": "Form4L-AdroitSauropod",
@@ -34,12 +34,12 @@
     "status": "PRINTING",
     "print_name": "榮富2",
     "material": "Tough 2000 V2",
-    "progress": 8.1,
-    "layer_now": 134,
+    "progress": 10.1,
+    "layer_now": 166,
     "layer_total": 1648,
-    "time_left": "3h 57m",
-    "last_pinged": "2026-06-03T03:52:06.263647-04:00",
-    "updated_at": "2026-06-03T07:52:09Z"
+    "time_left": "3h 49m",
+    "last_pinged": "2026-06-03T04:15:42.244815-04:00",
+    "updated_at": "2026-06-03T08:15:49Z"
   },
   {
     "serial": "CreativeDragon",
@@ -53,7 +53,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-03T07:52:09Z"
+    "updated_at": "2026-06-03T08:15:49Z"
   },
   {
     "serial": "Form4-AluminumBowfin",
@@ -62,12 +62,12 @@
     "status": "PRINTING",
     "print_name": "20260603",
     "material": "High Temp V2",
-    "progress": 37.6,
-    "layer_now": 436,
+    "progress": 44.1,
+    "layer_now": 512,
     "layer_total": 1161,
-    "time_left": "1h 24m",
-    "last_pinged": "2026-06-03T03:52:03.145666-04:00",
-    "updated_at": "2026-06-03T07:52:09Z"
+    "time_left": "1h 15m",
+    "last_pinged": "2026-06-03T04:15:43.543913-04:00",
+    "updated_at": "2026-06-03T08:15:49Z"
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -81,6 +81,6 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-03T07:52:09Z"
+    "updated_at": "2026-06-03T08:15:49Z"
   }
 ]
