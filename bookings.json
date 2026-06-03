@@ -1,5 +1,16 @@
 [
   {
+    "id": 1780473499872,
+    "date": "2026-06-30",
+    "sales": "Benny",
+    "printer": "Form4",
+    "hasOrder": false,
+    "purpose": "測試",
+    "engineer": "Jimmy",
+    "status": "待確認",
+    "timestamp": "2026/6/3"
+  },
+  {
     "id": 1780466792382,
     "date": "2026-06-03",
     "sales": "其他",
