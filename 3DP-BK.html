@@ -13,13 +13,18 @@
         .toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; }
         @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .toggle-btn { padding: 5px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; border: 1px solid #d1d5db; cursor: pointer; transition: all 0.15s; background: white; color: #6b7280; }
+        .toggle-btn.active-yes { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+        .toggle-btn.active-no  { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+        .progress-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 
 <div id="toast" class="toast hidden"></div>
 
-<!-- Token 設定 Modal -->
+<!-- Token Modal -->
 <div id="token-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-2">
@@ -28,13 +33,13 @@
             </div>
             <h2 class="text-xl font-bold text-gray-800">GitHub 連線設定</h2>
         </div>
-        <p class="text-sm text-gray-500 mb-6">請輸入 GitHub Personal Access Token，僅儲存在你的瀏覽器中，不會上傳至任何伺服器。</p>
+        <p class="text-sm text-gray-500 mb-6">請輸入 GitHub Personal Access Token，僅儲存在你的瀏覽器中。</p>
         <div class="space-y-4">
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-gray-700">Personal Access Token</label>
                 <div class="relative">
                     <input id="modal-token" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                        class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm font-mono">
+                        class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono">
                     <button onclick="toggleTokenVisibility()" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
                         <i data-lucide="eye" id="eye-icon" class="w-4 h-4"></i>
                     </button>
@@ -64,16 +69,11 @@
             <h2 class="text-xl font-bold text-gray-800">安全權限驗證</h2>
         </div>
         <p class="text-sm text-gray-500 mb-6">執行刪除操作需要輸入管理密碼：</p>
-        <div class="space-y-4">
-            <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">管理密碼</label>
-                <input id="modal-password" type="password" placeholder="請輸入 3 位數密碼"
-                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm">
-            </div>
-        </div>
-        <div class="flex gap-3 mt-6">
-            <button onclick="closePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">取消</button>
-            <button onclick="verifyPasswordAction()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">驗證並執行</button>
+        <input id="modal-password" type="password" placeholder="請輸入管理密碼"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm mb-4">
+        <div class="flex gap-3">
+            <button onclick="closePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="verifyPasswordAction()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">驗證並執行</button>
         </div>
     </div>
 </div>
@@ -106,24 +106,35 @@
             </div>
         </div>
 
+        <!-- ★ 列印機即時狀態面板 -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i>
+                    <h2 class="text-base font-semibold text-gray-800">列印機即時狀態</h2>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
+                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">每 5 分鐘自動更新</span>
+                </div>
+            </div>
+            <div id="printer-status-grid" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <!-- 由 JS 動態填入 -->
+                <div class="col-span-full text-center text-gray-400 text-sm py-6">
+                    <div style="width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 8px;"></div>
+                    從 GitHub 載入列印機狀態...
+                </div>
+            </div>
+        </div>
+
         <!-- Booking Form -->
         <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
-            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-
-                <!-- 預約日期 -->
+            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">預約日期</label>
-                    <input type="date" id="date-input"
-                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                </div>
-
-                <!-- 預約時間（星期幾） -->
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">是否有單號(備註說明)</label>
+                    <label class="text-sm font-medium text-gray-700">預約時間</label>
                     <select id="day-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
-
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">申請業務</label>
                     <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
@@ -133,16 +144,22 @@
                     <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
                 <div class="space-y-1 lg:col-span-2">
-                    <label class="text-sm font-medium text-gray-700">列印目的/備註說明</label>
-                    <input type="text" id="purpose-input" placeholder="例如: 客戶A打樣、展會模型..."
-                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
+                    <div class="flex items-center justify-between">
+                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
+                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
+                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
+                        </div>
+                    </div>
+                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
+                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
                 </div>
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">指派工程師</label>
                     <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
-
-                <div class="lg:col-span-7 flex justify-end mt-2">
+                <div class="lg:col-span-6 flex justify-end mt-2">
                     <button type="submit" id="submit-btn"
                         class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
                         <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
@@ -167,11 +184,12 @@
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-gray-100 text-gray-600 text-sm">
-                            <th class="p-3 border-b font-medium w-28">預約日期</th>
-                            <th class="p-3 border-b font-medium w-24">是否有單號</th>
+                            <th class="p-3 border-b font-medium w-24">建立日期</th>
+                            <th class="p-3 border-b font-medium w-24">預約時間</th>
                             <th class="p-3 border-b font-medium w-24">申請業務</th>
                             <th class="p-3 border-b font-medium w-28">設備</th>
-                            <th class="p-3 border-b font-medium">列印目的</th>
+                            <th class="p-3 border-b font-medium w-16 text-center">有單號</th>
+                            <th class="p-3 border-b font-medium">單號 / 原因</th>
                             <th class="p-3 border-b font-medium w-28">負責工程師</th>
                             <th class="p-3 border-b font-medium w-40">任務狀態</th>
                             <th class="p-3 border-b font-medium w-20 text-center">操作</th>
@@ -186,27 +204,109 @@
 </div>
 
 <script>
-const GITHUB_OWNER = 'jiliao2024092';
-const GITHUB_REPO  = 'swtc-3DP';
-const GITHUB_FILE  = 'bookings.json';
-const TOKEN_KEY    = 'gh_3dp_token';
+// ── 設定 ─────────────────────────────────────
+const GITHUB_OWNER  = 'jiliao2024092';
+const GITHUB_REPO   = 'swtc-3DP';
+const BOOKINGS_FILE = 'bookings.json';
+const STATUS_FILE   = 'printer-status.json';
+const TOKEN_KEY     = 'gh_3dp_token';
+const ADMIN_PASSWORD = '100';
 
-const REASON      = ['是','否','其他'];
+const DAYS      = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
 const PRINTERS  = ['Form4','Form4L','MarkTwo','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 
-// 安全驗證密碼設定
-const ADMIN_PASSWORD = '100';
+let bookings = [], fileSHA = '', isSaving = false;
+let hasOrder = null;
+let pendingAction = null, pendingData = null;
+let printerRefreshTimer = null;
 
-let bookings = [];
-let fileSHA  = '';
-let isSaving = false;
+// ── 列印機狀態對照 ────────────────────────────
+const PRINTER_STATUS_MAP = {
+    'IDLE':                 { label: '閒置',     color: 'bg-gray-100 text-gray-600',   dot: 'bg-gray-400' },
+    'PRINTING':             { label: '列印中',   color: 'bg-blue-100 text-blue-700',   dot: 'bg-blue-500' },
+    'PAUSED':               { label: '已暫停',   color: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-500' },
+    'PAUSING':              { label: '暫停中',   color: 'bg-yellow-100 text-yellow-700', dot: 'bg-yellow-400' },
+    'FINISHED':             { label: '已完成',   color: 'bg-green-100 text-green-700', dot: 'bg-green-500' },
+    'ERROR':                { label: '異常',     color: 'bg-red-100 text-red-700',     dot: 'bg-red-500' },
+    'ABORTED':              { label: '已中止',   color: 'bg-red-100 text-red-600',     dot: 'bg-red-400' },
+    'ABORTING':             { label: '中止中',   color: 'bg-red-100 text-red-600',     dot: 'bg-red-400' },
+    'PREPRINT':             { label: '準備列印', color: 'bg-indigo-100 text-indigo-700', dot: 'bg-indigo-500' },
+    'PREHEAT':              { label: '預熱中',   color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-400' },
+    'WAITING_FOR_RESOLUTION':{ label: '待處理', color: 'bg-red-100 text-red-700',     dot: 'bg-red-500' },
+    'OFFLINE':              { label: '離線',     color: 'bg-gray-100 text-gray-500',   dot: 'bg-gray-300' },
+    'UNKNOWN':              { label: '未知',     color: 'bg-gray-100 text-gray-500',   dot: 'bg-gray-300' },
+};
 
-// 待處理的安全操作暫存
-let pendingAction = null; // 僅用於 'delete'
-let pendingData = null;   // 欲刪除的 id
+// ── 列印機狀態顯示 ────────────────────────────
+async function loadPrinterStatus() {
+    const grid = document.getElementById('printer-status-grid');
+    try {
+        // 用 raw.githubusercontent.com 直接讀取，不需要 token
+        const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${STATUS_FILE}?t=${Date.now()}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const printers = await res.json();
+
+        if (!Array.isArray(printers) || printers.length === 0) {
+            grid.innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料，GitHub Actions 尚未執行或設定中。</div>';
+            return;
+        }
+
+        // 更新時間顯示
+        const updatedAt = printers[0]?.updated_at;
+        if (updatedAt) {
+            const d = new Date(updatedAt);
+            document.getElementById('printer-updated').textContent =
+                `資料時間：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW', {hour:'2-digit', minute:'2-digit'})}`;
+        }
+
+        grid.innerHTML = '';
+        printers.forEach(p => {
+            const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
+            const isPrinting = p.status === 'PRINTING' || p.status === 'PAUSED' || p.status === 'PAUSING';
+
+            const card = document.createElement('div');
+            card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
+            card.innerHTML = `
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="font-semibold text-gray-800 text-sm">${p.alias || p.machine_type || p.serial}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">${p.serial}</p>
+                    </div>
+                    <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                        <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status === 'PRINTING' ? 'animate-pulse' : ''}"></span>
+                        ${s.label}
+                    </span>
+                </div>
+
+                ${isPrinting && p.print_name ? `
+                <div class="space-y-1.5">
+                    <div class="flex justify-between items-center">
+                        <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
+                        <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill ${p.status === 'PAUSED' ? 'bg-yellow-400' : 'bg-blue-500'}" style="width:${p.progress}%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-400">
+                        <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
+                        <span>${p.time_left !== '-' ? '剩餘 ' + p.time_left : '計算中...'}</span>
+                    </div>
+                </div>
+                ` : ''}
+
+                ${p.material ? `<p class="text-xs text-gray-400">材料：${p.material}</p>` : ''}
+            `;
+            grid.appendChild(card);
+        });
+
+    } catch(err) {
+        grid.innerHTML = `<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入列印機狀態：${err.message}</div>`;
+    }
+}
 
 // ── Token 管理 ──────────────────────────────
 function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
@@ -238,57 +338,41 @@ function saveToken() {
     loadFromGitHub();
 }
 
-// ── 密碼安全驗證管理 ─────────────────────────
+// ── 密碼驗證 ────────────────────────────────
 function showPasswordModal(action, data) {
-    pendingAction = action;
-    pendingData = data;
+    pendingAction = action; pendingData = data;
     document.getElementById('modal-password').value = '';
     document.getElementById('password-modal').classList.remove('hidden');
-    document.getElementById('modal-password').focus();
-    lucide.createIcons();
+    setTimeout(() => document.getElementById('modal-password').focus(), 100);
 }
-
 function closePasswordModal() {
-    pendingAction = null;
-    pendingData = null;
+    pendingAction = null; pendingData = null;
     document.getElementById('password-modal').classList.add('hidden');
 }
-
 async function verifyPasswordAction() {
-    const pwdInput = document.getElementById('modal-password');
-    const enteredPassword = pwdInput.value.trim();
-
-    if (enteredPassword !== ADMIN_PASSWORD) {
-        showToast('驗證失敗：密碼錯誤！', 'error');
-        pwdInput.focus();
+    if (document.getElementById('modal-password').value.trim() !== ADMIN_PASSWORD) {
+        showToast('密碼錯誤！', 'error');
+        document.getElementById('modal-password').focus();
         return;
     }
-
-    // 驗證通過，執行相應操作
-    const action = pendingAction;
-    const data = pendingData;
-    
-    // 立即關閉視窗與清除暫存
+    const action = pendingAction, data = pendingData;
     closePasswordModal();
-
-    if (action === 'delete') {
-        await executeDeleteBooking(data);
-    }
+    if (action === 'delete') await executeDeleteBooking(data);
 }
 
 // ── GitHub API ──────────────────────────────
 function githubHeaders() {
     return { 'Authorization': `token ${getToken()}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github+json' };
 }
-function githubFileURL() {
-    return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`;
+function githubFileURL(file) {
+    return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${file}`;
 }
 
 async function loadFromGitHub() {
     if (!getToken()) { showTokenModal(false); return; }
     setSyncStatus('loading');
     try {
-        const res = await fetch(githubFileURL(), { headers: githubHeaders() });
+        const res = await fetch(githubFileURL(BOOKINGS_FILE), { headers: githubHeaders() });
         if (res.status === 401) { setSyncStatus('error'); showToast('Token 無效或已過期，請重新設定','error'); setTimeout(()=>showTokenModal(false),1500); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -304,7 +388,7 @@ async function saveToGitHub(commitMsg) {
     isSaving = true; setSyncStatus('saving');
     try {
         const body = { message: commitMsg||'更新預約資料', content: btoa(unescape(encodeURIComponent(JSON.stringify(bookings,null,2)))), sha: fileSHA };
-        const res = await fetch(githubFileURL(), { method:'PUT', headers: githubHeaders(), body: JSON.stringify(body) });
+        const res = await fetch(githubFileURL(BOOKINGS_FILE), { method:'PUT', headers: githubHeaders(), body: JSON.stringify(body) });
         if (res.status === 401) { showToast('Token 無效，請重新設定','error'); showTokenModal(true); return; }
         if (!res.ok) { const e = await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
         const data = await res.json();
@@ -342,11 +426,18 @@ function populateSelect(id, options) {
     options.forEach(o => { const opt=document.createElement('option'); opt.value=opt.textContent=o; sel.appendChild(opt); });
 }
 
-// 將 YYYY-MM-DD 轉為 M/D（方便閱讀）
-function formatDate(dateStr) {
-    if (!dateStr) return '-';
-    const [y, m, d] = dateStr.split('-');
-    return `${parseInt(m)}/${parseInt(d)}`;
+// ── 單號切換 ─────────────────────────────────
+function setHasOrder(val) {
+    hasOrder = val;
+    const label = document.getElementById('purpose-label');
+    const input = document.getElementById('purpose-input');
+    document.getElementById('btn-yes').className = 'toggle-btn' + (val === true  ? ' active-yes' : '');
+    document.getElementById('btn-no').className  = 'toggle-btn' + (val === false ? ' active-no'  : '');
+    label.textContent    = val ? '單號' : '無單號原因';
+    input.placeholder    = val ? '請輸入單號' : '請說明無單號的原因';
+    input.disabled       = false;
+    input.value          = '';
+    input.focus();
 }
 
 // ── 表格渲染 ─────────────────────────────────
@@ -356,35 +447,23 @@ function renderTable() {
     tbody.innerHTML = '';
 
     if (bookings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
         return;
     }
 
-    // 依預約日期排序（近的在前，無日期的排最後）
-    const sorted = [...bookings].sort((a, b) => {
-        if (!a.date && !b.date) return 0;
-        if (!a.date) return 1;
-        if (!b.date) return -1;
-        return a.date.localeCompare(b.date);
-    });
-
-    sorted.forEach(b => {
+    bookings.forEach(b => {
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-gray-50 transition-colors';
         const opts = STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
-
-        // 判斷日期是否已過期
-        const today = new Date().toISOString().slice(0,10);
-        const isOverdue = b.date && b.date < today && b.status !== '已完成' && b.status !== '異常/取消';
-
+        const orderBadge = b.hasOrder
+            ? '<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">有</span>'
+            : '<span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium">無</span>';
         tr.innerHTML = `
-            <td class="p-3 font-medium ${isOverdue?'text-red-500':'text-gray-800'}">
-                ${b.date ? `<span title="${b.date}">${formatDate(b.date)}</span>` : '<span class="text-gray-400">-</span>'}
-                ${isOverdue ? '<span class="ml-1 text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>' : ''}
-            </td>
-            <td class="p-3">${b.day}</td>
+            <td class="p-3 text-gray-500">${b.timestamp}</td>
+            <td class="p-3 font-medium">${b.day}</td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
             <td class="p-3">${b.printer}</td>
+            <td class="p-3 text-center">${orderBadge}</td>
             <td class="p-3 text-gray-600">${b.purpose}</td>
             <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${b.engineer}</span></td>
             <td class="p-3">
@@ -409,43 +488,42 @@ function renderTable() {
 document.getElementById('booking-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const purpose = document.getElementById('purpose-input').value.trim();
-    const date    = document.getElementById('date-input').value;
-    if (!purpose) { showToast('請填寫列印目的！','error'); return; }
-    if (!date)    { showToast('請選擇預約日期！','error'); return; }
+    if (hasOrder === null) { showToast('請選擇是否有單號！','error'); return; }
+    if (!purpose) { showToast(hasOrder ? '請填寫單號！' : '請填寫無單號原因！','error'); return; }
 
-    const newBookingData = {
-        id:       Date.now(),
-        date:     date,
-        day:      document.getElementById('day-select').value,
-        sales:    document.getElementById('sales-select').value,
-        printer:  document.getElementById('printer-select').value,
-        purpose,
-        engineer: document.getElementById('engineer-select').value,
-        status:   '待確認'
-    };
-
-    // 直接執行新增預約
-    await executeAddBooking(newBookingData);
-});
-
-// 執行：新增預約
-async function executeAddBooking(newBooking) {
     const btn = document.getElementById('submit-btn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> 儲存中...';
 
+    const newBooking = {
+        id: Date.now(),
+        day: document.getElementById('day-select').value,
+        sales: document.getElementById('sales-select').value,
+        printer: document.getElementById('printer-select').value,
+        hasOrder,
+        purpose,
+        engineer: document.getElementById('engineer-select').value,
+        status: '待確認',
+        timestamp: new Date().toLocaleDateString('zh-TW')
+    };
+
     bookings.unshift(newBooking);
     renderTable();
-    await saveToGitHub(`新增預約：${newBooking.sales} ${newBooking.date} - ${newBooking.printer}`);
+    await saveToGitHub(`新增預約：${newBooking.sales} - ${newBooking.printer}`);
 
+    // 重設表單
     document.getElementById('purpose-input').value = '';
-    document.getElementById('date-input').value    = '';
+    document.getElementById('purpose-input').disabled = true;
+    document.getElementById('purpose-input').placeholder = '請先選擇是否有單號';
+    document.getElementById('purpose-label').textContent = '備註說明';
+    document.getElementById('btn-yes').className = 'toggle-btn';
+    document.getElementById('btn-no').className  = 'toggle-btn';
+    hasOrder = null;
     btn.disabled = false;
     btn.innerHTML = '<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
     lucide.createIcons();
-}
+});
 
-// 變更任務狀態（無需密碼）
 window.updateStatus = async function(id, newStatus) {
     const idx = bookings.findIndex(b=>b.id===id);
     if (idx===-1) return;
@@ -454,33 +532,34 @@ window.updateStatus = async function(id, newStatus) {
     await saveToGitHub(`更新狀態：#${id} → ${newStatus}`);
 };
 
-// 觸發刪除（開啟密碼框，仍需密碼）
-window.triggerDeleteBooking = function(id) {
-    showPasswordModal('delete', id);
-};
+window.triggerDeleteBooking = function(id) { showPasswordModal('delete', id); };
 
-// 執行：刪除預約
 async function executeDeleteBooking(id) {
     bookings = bookings.filter(b=>b.id!==id);
     renderTable();
     await saveToGitHub(`刪除預約 #${id}`);
 }
 
-// ── 初始化與監聽 ──────────────────────────────
+// ── 初始化 ───────────────────────────────────
 window.onload = function() {
-    populateSelect('day-select',      REASON);
+    populateSelect('day-select',      DAYS);
     populateSelect('sales-select',    SALES);
     populateSelect('printer-select',  PRINTERS);
     populateSelect('engineer-select', ENGINEERS);
-    
-    // 綁定密碼輸入框 Enter 鍵快捷送出
-    document.getElementById('modal-password').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            verifyPasswordAction();
-        }
+
+    // 密碼輸入 Enter 快捷鍵
+    document.getElementById('modal-password').addEventListener('keydown', e => {
+        if (e.key === 'Enter') verifyPasswordAction();
     });
 
     lucide.createIcons();
+
+    // 載入列印機狀態（不需要 token，直接讀 raw GitHub）
+    loadPrinterStatus();
+    // 每 5 分鐘自動重新整理列印機狀態
+    printerRefreshTimer = setInterval(loadPrinterStatus, 5 * 60 * 1000);
+
+    // 載入預約資料
     if (!getToken()) { showTokenModal(false); } else { loadFromGitHub(); }
 };
 </script>
