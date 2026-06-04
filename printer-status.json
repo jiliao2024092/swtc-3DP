@@ -1,5 +1,33 @@
 [
   {
+    "serial": "Form4L-AdroitSauropod",
+    "alias": "AdroitSauropod",
+    "machine_type": "FRML-4-0",
+    "status": "UNKNOWN",
+    "print_name": "",
+    "material": "",
+    "progress": 0,
+    "layer_now": 0,
+    "layer_total": 0,
+    "time_left": "-",
+    "last_pinged": "2026-06-03T22:20:43.862977-04:00",
+    "updated_at": "2026-06-04T10:44:16Z"
+  },
+  {
+    "serial": "Form4-AluminumBowfin",
+    "alias": "AluminumBowfin",
+    "machine_type": "FORM-4-0",
+    "status": "PRINTING",
+    "print_name": "百容20260601",
+    "material": "Rigid 10K V1.1",
+    "progress": 0.1,
+    "layer_now": 3,
+    "layer_total": 4050,
+    "time_left": "7h 33m",
+    "last_pinged": "2026-06-04T06:43:53.434559-04:00",
+    "updated_at": "2026-06-04T10:44:16Z"
+  },
+  {
     "serial": "TealMoa",
     "alias": "FS30-1-0",
     "machine_type": "FS30-1-0",
@@ -11,7 +39,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-03T20:42:33Z"
+    "updated_at": "2026-06-04T10:44:16Z"
   },
   {
     "serial": "BoldSturgeon",
@@ -25,21 +53,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-03T20:42:33Z"
-  },
-  {
-    "serial": "Form4L-AdroitSauropod",
-    "alias": "AdroitSauropod",
-    "machine_type": "FRML-4-0",
-    "status": "UNKNOWN",
-    "print_name": "",
-    "material": "",
-    "progress": 0,
-    "layer_now": 0,
-    "layer_total": 0,
-    "time_left": "-",
-    "last_pinged": "2026-06-03T09:59:43.931589-04:00",
-    "updated_at": "2026-06-03T20:42:33Z"
+    "updated_at": "2026-06-04T10:44:16Z"
   },
   {
     "serial": "CreativeDragon",
@@ -53,21 +67,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-03T20:42:33Z"
-  },
-  {
-    "serial": "Form4-AluminumBowfin",
-    "alias": "AluminumBowfin",
-    "machine_type": "FORM-4-0",
-    "status": "UNKNOWN",
-    "print_name": "",
-    "material": "",
-    "progress": 0,
-    "layer_now": 0,
-    "layer_total": 0,
-    "time_left": "-",
-    "last_pinged": "2026-06-03T07:59:45.441513-04:00",
-    "updated_at": "2026-06-03T20:42:33Z"
+    "updated_at": "2026-06-04T10:44:16Z"
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -81,6 +81,6 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-03T20:42:33Z"
+    "updated_at": "2026-06-04T10:44:16Z"
   }
 ]
