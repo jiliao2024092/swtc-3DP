@@ -1,6 +1,39 @@
 import json
 import datetime
 
+# ── 材料名稱 → API CODE 正規化（後端統一存 API CODE）──
+NAME_TO_CODE = {
+    'Clear V5': 'FLGPCL05',
+    'White V5': 'FLGPWH05',
+    'Grey V5': 'FLGPGR05',
+    'Black V5': 'FLGPBK05',
+    'Flexible 80A': 'FLFL8002',
+    'Flexible 80A V1': 'FLFL8001',
+    'Flexible 80A V2': 'FLFL8002',
+    'High Temp V2': 'FLHTAM02',
+    'Rigid 4000': 'FLRG4001',
+    'Rigid 4000 V1': 'FLRG4001',
+    'Rigid 10K V1.1': 'FLRG1002',
+    'Elastic 50A V2': 'FLFLES02',
+    'ESD Resin': 'FLESD001',
+    'Silicone 40A': 'FLSI4001',
+    'Tough 1500 V2': 'FLTO1502',
+    'Tough 2000 V2': 'FLTO2002',
+    'Fast Model': 'FLFAMD01',
+    'Precision Model': 'FLPRMD01',
+    'Flame Retardant': 'FLFRGR01',
+    'Tough 1500 V1.1': 'FLTO1501',
+    'Tough 2000 V1.1': 'FLTO2001',
+}
+KNOWN_CODES = set(NAME_TO_CODE.values())
+
+def canon_material(name):
+    if not name:
+        return name
+    if name in KNOWN_CODES:
+        return name
+    return NAME_TO_CODE.get(name, name)
+
 with open('raw-printers.json') as f:
     data = json.load(f)
 
@@ -54,7 +87,7 @@ for p in printers:
         elif not isinstance(c, dict):
             c = {}
         slot          = cs.get('cartridge_slot', '')
-        mat_name      = c.get('display_name') or c.get('material', '') or cartridge_str_name
+        mat_name      = canon_material(c.get('display_name') or c.get('material', '') or cartridge_str_name)
         initial_ml    = c.get('initial_volume_ml') or 0
         dispensed_ml  = c.get('volume_dispensed_ml') or 0
         remaining_ml  = round(initial_ml - dispensed_ml, 1) if initial_ml > 0 else None
@@ -73,7 +106,7 @@ for p in printers:
             primary_material  = mat_name
             primary_level_pct = remaining_pct
 
-    material_name = (
+    material_name = canon_material(
         primary_material
         or run.get('material_name', '')
         or run.get('material', '')
@@ -171,13 +204,6 @@ for r in result:
 
 # 完成狀態的判定
 DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED')
-
-# 材料名稱合併對照（FLTO2002 與 Tough 2000 V2 視為同一材料）
-MATERIAL_ALIASES = {
-    'FLTO2002': 'Tough 2000 V2',
-}
-def canon_material(name):
-    return MATERIAL_ALIASES.get(name, name)
 
 # 依完成時間排序（舊到新），確保扣除順序正確
 def print_finish_key(pr):
