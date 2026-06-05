@@ -21,10 +21,10 @@
   },
   "stock": {
     "Clear V5": {
-      "bottles": 1,
-      "total_ml": 390.5,
-      "updated_at": "2026-06-05T09:00:21Z",
-      "updated_by": "auto"
+      "bottles": 1.5,
+      "total_ml": 1500,
+      "updated_at": "2026-06-05T09:03:33.981Z",
+      "updated_by": "manual"
     },
     "Black V5": {
       "bottles": 1,
@@ -34,6 +34,15 @@
     }
   },
   "history": [
+    {
+      "id": 1780650213981,
+      "type": "manual",
+      "material": "Clear V5",
+      "printer": "備料庫存",
+      "ml": 1109.5,
+      "note": "調整為 1.5 罐",
+      "ts": "2026-06-05T09:03:33.981Z"
+    },
     {
       "id": 1780650198334,
       "type": "manual",
