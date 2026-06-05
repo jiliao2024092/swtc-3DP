@@ -509,10 +509,10 @@ function renderMaterialPanel(printers) {
         const ml=getMachineLabel(p.machine_type);
         const cartridges = p.cartridges || [];
 
-        // 主要進度條：優先用 material_level（已是 0~100），無則用 FRONT 料匣
+        // 主要進度條：優先用 material_level（已是 0~100），無則用 FRONT 樹脂罐
         const levelPct = p.material_level != null ? Math.round(p.material_level) : null;
 
-        // 料匣資料顯示
+        // 樹脂罐資料顯示
         function levelColor(pct) {
             return pct < 20 ? 'text-red-500' : pct < 40 ? 'text-yellow-600' : 'text-green-600';
         }
@@ -520,11 +520,11 @@ function renderMaterialPanel(printers) {
             return pct < 20 ? 'bg-red-400' : pct < 40 ? 'bg-yellow-400' : 'bg-green-500';
         }
 
-        // 每個料匣的詳細區塊
+        // 每個樹脂罐的詳細區塊
         const cartridgeHTML = cartridges.length ? cartridges.map(c => {
             const pct = c.remaining_pct;
             const remMl = c.remaining_ml;
-            const slotLabel = c.slot === 'FRONT' ? '前匣' : c.slot === 'BACK' ? '後匣' : c.slot || '料匣';
+            const slotLabel = c.slot === 'FRONT' ? '前匣' : c.slot === 'BACK' ? '後匣' : c.slot || '樹脂罐';
             const emptyBadge = c.is_empty ? '<span class="ml-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">已空</span>' : '';
             return `
             <div class="bg-gray-50 rounded-lg p-3 space-y-2">
@@ -548,7 +548,7 @@ function renderMaterialPanel(printers) {
             </div>`;
         }).join('') : `
             <div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
-                料匣用量資料由 Formlabs API 提供<br>需 GitHub Actions 同步後顯示
+                樹脂罐用量資料由 Formlabs API 提供<br>需 GitHub Actions 同步後顯示
             </div>`;
 
         const card=document.createElement('div');
