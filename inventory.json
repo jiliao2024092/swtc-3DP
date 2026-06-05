@@ -27,13 +27,22 @@
       "updated_by": "auto"
     },
     "Black V5": {
-      "bottles": 0.1,
-      "total_ml": 100,
-      "updated_at": "2026-06-05T09:03:14.810Z",
+      "bottles": 1,
+      "total_ml": 1000,
+      "updated_at": "2026-06-05T09:03:18.334Z",
       "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650198334,
+      "type": "manual",
+      "material": "Black V5",
+      "printer": "備料庫存",
+      "ml": 900,
+      "note": "調整為 1 罐",
+      "ts": "2026-06-05T09:03:18.334Z"
+    },
     {
       "id": 1780650194810,
       "type": "manual",
