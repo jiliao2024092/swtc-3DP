@@ -858,7 +858,8 @@
   ],
   "safety": {
     "Clear V5": 2000,
-    "Grey V5": 2000
+    "Grey V5": 2000,
+    "High Temp V2": 0
   },
   "last_processed_prints": [
     "d87390f2-8ed4-4e65-a24f-7e476d37e36d",
