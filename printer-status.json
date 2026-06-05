@@ -6,12 +6,12 @@
     "status": "PRINTING",
     "print_name": "達理測試",
     "material": "Clear V5",
-    "progress": 35.3,
-    "layer_now": 1337,
+    "progress": 47.3,
+    "layer_now": 1789,
     "layer_total": 3785,
-    "time_left": "4h 20m",
-    "last_pinged": "2026-06-05T02:42:52.453428-04:00",
-    "updated_at": "2026-06-05T06:43:10Z"
+    "time_left": "3h 35m",
+    "last_pinged": "2026-06-05T03:32:16.028408-04:00",
+    "updated_at": "2026-06-05T07:32:25Z"
   },
   {
     "serial": "Form4L-AdroitSauropod",
@@ -25,7 +25,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-06-03T22:20:43.862977-04:00",
-    "updated_at": "2026-06-05T06:43:10Z"
+    "updated_at": "2026-06-05T07:32:25Z"
   },
   {
     "serial": "TealMoa",
@@ -39,7 +39,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-05T06:43:10Z"
+    "updated_at": "2026-06-05T07:32:25Z"
   },
   {
     "serial": "BoldSturgeon",
@@ -53,7 +53,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-05T06:43:10Z"
+    "updated_at": "2026-06-05T07:32:25Z"
   },
   {
     "serial": "CreativeDragon",
@@ -67,7 +67,7 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-05T06:43:10Z"
+    "updated_at": "2026-06-05T07:32:25Z"
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -81,6 +81,6 @@
     "layer_total": 0,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-05T06:43:10Z"
+    "updated_at": "2026-06-05T07:32:25Z"
   }
 ]
