@@ -6,9 +6,24 @@
       "total_ml": 1000,
       "updated_at": "2026-06-05T08:47:18.241Z",
       "updated_by": "manual"
+    },
+    "Clear V5": {
+      "bottles": 1,
+      "total_ml": 1000,
+      "updated_at": "2026-06-05T08:48:01.160Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780649281160,
+      "type": "stockin",
+      "material": "Clear V5",
+      "printer": "備料庫存",
+      "ml": 1000,
+      "note": "備料入庫（1罐×1000ml）",
+      "ts": "2026-06-05T08:48:01.160Z"
+    },
     {
       "id": 1780649238241,
       "type": "manual",
