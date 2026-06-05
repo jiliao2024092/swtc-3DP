@@ -69,24 +69,25 @@
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-6">
             <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="package-plus" class="w-5 h-5 text-blue-600"></i></div>
-            <h2 class="text-xl font-bold">新增備料</h2>
+            <h2 class="text-xl font-bold">新增備料入庫</h2>
         </div>
         <div class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">材料名稱</label>
-                <select id="stock-material" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"></select>
+                <label class="text-sm font-medium text-gray-700">材料種類</label>
+                <input list="material-options" id="stock-material" autocomplete="off" placeholder="選擇或直接輸入新材料名稱"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <datalist id="material-options"></datalist>
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">數量（罐數）</label>
-                <input type="number" id="stock-qty" min="1" value="1" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-            </div>
-            <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">每罐容量（ml）</label>
-                <input type="number" id="stock-ml" value="1000" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <label class="text-sm font-medium text-gray-700">數量（罐）</label>
+                <input type="number" id="stock-qty" min="0" step="0.1" value="1" placeholder="例：1.2 = 1.2罐 = 1200ml"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <p class="text-xs text-gray-400">1 罐 = 1000ml，可輸入小數（如 1.2 罐 = 1200ml）</p>
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-gray-700">備註</label>
-                <input type="text" id="stock-note" placeholder="例：補貨入庫" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <input type="text" id="stock-note" placeholder="例：補貨入庫"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
         </div>
         <div class="flex gap-3 mt-6">
@@ -95,6 +96,7 @@
         </div>
     </div>
 </div>
+
 
 <!-- ══ 安全庫存設定 Modal ══ -->
 <div id="safety-modal" class="modal-overlay hidden">
@@ -706,12 +708,18 @@ function renderStockTable() {
         const s=inv.stock[m]||{bottles:0,total_ml:0};
         const safety=getSafetyStock(m);
         const low=isLowStock(m);
+        const bottles=s.bottles||0;
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${m}</td>
-            <td class="p-3 text-right text-gray-600">${s.bottles||0}</td>
-            <td class="p-3 text-right font-medium ${low?'text-red-500':''}">${Math.round(s.total_ml||0)}</td>
+            <td class="p-3 text-right">
+                <input type="number" min="0" step="0.1" value="${bottles}"
+                    onchange="updateStockBottles('${m.replace(/'/g,"\\'")}', this.value)"
+                    class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors">
+                <span class="text-xs text-gray-400 ml-1">罐</span>
+            </td>
+            <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${Math.round(s.total_ml||0)}</td>
             <td class="p-3 text-gray-500 text-sm">${safety} ml</td>
             <td class="p-3">${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
             <td class="p-3 text-xs text-gray-400">
@@ -719,65 +727,87 @@ function renderStockTable() {
                 <span class="ml-1 ${s.updated_by==='auto'?'text-blue-400':'text-gray-400'}">${s.updated_by==='auto'?'🤖':'✏️'}</span>
             </td>
             <td class="p-3 text-center">
-                <button onclick="editStockDirect('${m}')" class="text-xs px-2 py-1 rounded border border-gray-300 hover:border-blue-400 hover:text-blue-600 transition-colors">調整</button>
+                <button onclick="deleteStock('${m.replace(/'/g,"\\'")}')" title="刪除此材料備料"
+                    class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
             </td>
         `;
         tbody.appendChild(tr);
     });
+    lucide.createIcons();
 }
 
-function editStockDirect(material) {
-    const s=inv.stock[material]||{bottles:0,total_ml:0};
-    const newMl=prompt(`調整「${material}」備料庫存\n目前：${Math.round(s.total_ml||0)} ml\n\n請輸入新的 ml 數量：`,Math.round(s.total_ml||0));
-    if(newMl===null) return;
-    const val=parseFloat(newMl);
-    if(isNaN(val)){showToast('請輸入有效數字','error');return;}
-    if(!inv.stock[material]) inv.stock[material]={bottles:0,total_ml:0,safety_ml:DEFAULT_SAFETY};
-    const diff=val-(inv.stock[material].total_ml||0);
-    inv.stock[material].total_ml=val;
-    inv.stock[material].updated_at=new Date().toISOString();
-    inv.stock[material].updated_by='manual';
-    // 記錄
-    addHistory({type:'manual',material,printer:'備料庫存',ml:diff,note:'手動調整庫存'});
+// 直接在表格修改罐數（換算成 ml）
+async function updateStockBottles(material, value) {
+    const bottles = parseFloat(value);
+    if(isNaN(bottles) || bottles < 0){ showToast('請輸入有效的罐數','error'); renderStockTable(); return; }
+
+    if(!inv.stock[material]) inv.stock[material]={bottles:0,total_ml:0};
+    const oldMl = inv.stock[material].total_ml || 0;
+    const newMl = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;
+    const diff  = Math.round((newMl - oldMl) * 10) / 10;
+
+    inv.stock[material].bottles  = bottles;
+    inv.stock[material].total_ml = newMl;
+    inv.stock[material].updated_at = new Date().toISOString();
+    inv.stock[material].updated_by = 'manual';
+
+    if(diff !== 0){
+        addHistory({type:'manual',material,printer:'備料庫存',ml:diff,note:`調整為 ${bottles} 罐`});
+    }
     renderAll();
-    saveAll('手動調整備料庫存：'+material);
+    await saveAll(`調整備料：${material} → ${bottles} 罐`);
+}
+
+async function deleteStock(material) {
+    if(!confirm(`確定要刪除「${material}」的備料庫存紀錄嗎？`)) return;
+    delete inv.stock[material];
+    renderAll();
+    await saveAll(`刪除備料：${material}`);
 }
 
 // ══ 備料入庫 Modal ══
+const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
+
 function showStockModal() {
-    // 填充材料選單
-    const sel=document.getElementById('stock-material');
-    sel.innerHTML='';
-    const mats=getAllMaterials();
-    if(!mats.length) sel.innerHTML='<option>請先設定樹脂罐材料</option>';
-    else mats.forEach(m=>{const o=document.createElement('option');o.value=o.textContent=m;sel.appendChild(o);});
-    // 加入自訂選項
-    const custom=document.createElement('option');
-    custom.value='__custom__';custom.textContent='--- 輸入新材料名稱 ---';
-    sel.appendChild(custom);
+    // 填充 datalist 既有材料供選擇
+    const dl = document.getElementById('material-options');
+    dl.innerHTML = '';
+    getAllMaterials().forEach(m => {
+        const o = document.createElement('option');
+        o.value = m;
+        dl.appendChild(o);
+    });
+    // 清空輸入
+    document.getElementById('stock-material').value = '';
+    document.getElementById('stock-qty').value = '1';
+    document.getElementById('stock-note').value = '';
     document.getElementById('stock-modal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('stock-material').focus(), 100);
 }
 function closeStockModal() { document.getElementById('stock-modal').classList.add('hidden'); }
 
 async function saveStockIn() {
-    let mat=document.getElementById('stock-material').value;
-    if(mat==='__custom__'){
-        mat=prompt('請輸入材料名稱：','');
-        if(!mat){showToast('材料名稱不能為空','error');return;}
-    }
-    const qty=parseInt(document.getElementById('stock-qty').value)||1;
-    const ml=parseFloat(document.getElementById('stock-ml').value)||DEFAULT_CARTRIDGE_ML;
-    const note=document.getElementById('stock-note').value.trim()||'備料入庫';
-    const totalMl=qty*ml;
-    if(!inv.stock[mat]) inv.stock[mat]={bottles:0,total_ml:0};
-    inv.stock[mat].bottles=(inv.stock[mat].bottles||0)+qty;
-    inv.stock[mat].total_ml=(inv.stock[mat].total_ml||0)+totalMl;
-    inv.stock[mat].updated_at=new Date().toISOString();
-    inv.stock[mat].updated_by='manual';
-    addHistory({type:'stockin',material:mat,printer:'備料庫存',ml:totalMl,note:`${note}（${qty}罐×${ml}ml）`});
+    const mat = document.getElementById('stock-material').value.trim();
+    if(!mat){ showToast('請輸入材料種類','error'); return; }
+
+    const bottles = parseFloat(document.getElementById('stock-qty').value);
+    if(isNaN(bottles) || bottles <= 0){ showToast('請輸入有效的罐數','error'); return; }
+
+    const note = document.getElementById('stock-note').value.trim() || '備料入庫';
+    const totalMl = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;  // 罐 → ml
+
+    if(!inv.stock[mat]) inv.stock[mat] = { bottles:0, total_ml:0 };
+    inv.stock[mat].bottles  = Math.round(((inv.stock[mat].bottles||0) + bottles) * 10) / 10;
+    inv.stock[mat].total_ml = Math.round(((inv.stock[mat].total_ml||0) + totalMl) * 10) / 10;
+    inv.stock[mat].updated_at = new Date().toISOString();
+    inv.stock[mat].updated_by = 'manual';
+
+    addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${bottles} 罐）` });
     closeStockModal();
     renderAll();
-    await saveAll(`備料入庫：${mat} ${qty}罐`);
+    await saveAll(`備料入庫：${mat} ${bottles} 罐`);
 }
 
 // ══ 安全庫存設定 ══
