@@ -840,7 +840,9 @@
       "ts": "2026-06-05T08:48:01.160Z"
     }
   ],
-  "safety": {},
+  "safety": {
+    "Clear V5": 2000
+  },
   "last_processed_prints": [
     "d87390f2-8ed4-4e65-a24f-7e476d37e36d",
     "e0106365-3f13-4d25-a8ba-8ff1d1ade849",
