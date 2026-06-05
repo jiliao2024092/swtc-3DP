@@ -47,8 +47,9 @@
     "Grey V5": {
       "bottles": 3,
       "total_ml": 3000,
-      "updated_at": "2026-06-05T09:12:58.299Z",
-      "updated_by": "manual"
+      "updated_at": "2026-06-05T09:13:13.609Z",
+      "updated_by": "manual",
+      "note": "Benny借2"
     }
   },
   "history": [
