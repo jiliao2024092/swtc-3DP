@@ -286,8 +286,8 @@
                 <div class="flex items-center gap-2">
                     <select id="monthly-printer" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
                         <option value="">全部機台</option>
-                        <option value="AluminumBowfin">AluminumBowfin</option>
-                        <option value="AdroitSauropod">AdroitSauropod</option>
+                        <option value="AluminumBowfin">Form4 (AluminumBowfin)</option>
+                        <option value="AdroitSauropod">Form4L (AdroitSauropod)</option>
                     </select>
                     <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                     <select id="monthly-month" onchange="renderMonthlyPie()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
@@ -429,18 +429,44 @@ async function loadAll() {
     } catch(err) { setSyncStatus('error'); showToast('載入失敗：'+err.message,'error'); }
 }
 
-// ══ 材料名稱合併對照 ══
-const MATERIAL_ALIASES = {
-    'FLTO2002': 'Tough 2000 V2',
+// ══ 材料代碼 → 顯示名稱對照 ══
+const CODE_TO_NAME = {
+    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
+    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
+    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
+    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
 };
-function canonMaterial(name) {
-    return MATERIAL_ALIASES[name] || name;
+const NAME_TO_CODE_FE = {};
+Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
+NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';
+NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
+
+function matName(code) {
+    return CODE_TO_NAME[code] || code;
+}
+function matCode(input) {
+    if(!input) return input;
+    if(CODE_TO_NAME[input]) return input;
+    return NAME_TO_CODE_FE[input] || input;
+}
+
+// ══ 機台代號 → 顯示名稱 ══
+const PRINTER_DISPLAY = {
+    'AluminumBowfin':'Form4',
+    'AdroitSauropod':'Form4L',
+};
+function printerDisplay(name) {
+    if(!name) return name;
+    for(const [k,v] of Object.entries(PRINTER_DISPLAY)){ if(name.includes(k)) return v; }
+    return name;
 }
 function mergeMaterialAliases() {
     let changed = false;
     // 合併備料
     Object.keys(inv.stock).forEach(m=>{
-        const canon = canonMaterial(m);
+        const canon = matCode(m);
         if(canon !== m){
             if(!inv.stock[canon]) inv.stock[canon] = {bottles:0,total_ml:0};
             inv.stock[canon].bottles  = Math.round(((inv.stock[canon].bottles||0)+(inv.stock[m].bottles||0))*10)/10;
@@ -453,7 +479,7 @@ function mergeMaterialAliases() {
     });
     // 合併安全庫存（取較大值）
     Object.keys(inv.safety).forEach(m=>{
-        const canon = canonMaterial(m);
+        const canon = matCode(m);
         if(canon !== m){
             inv.safety[canon] = Math.max(inv.safety[canon]??0, inv.safety[m]??0);
             delete inv.safety[m];
@@ -462,12 +488,12 @@ function mergeMaterialAliases() {
     });
     // 合併歷史材料名稱
     inv.history.forEach(h=>{
-        const canon = canonMaterial(h.material);
+        const canon = matCode(h.material);
         if(canon !== h.material){ h.material = canon; changed = true; }
     });
     // 合併樹脂罐材料名稱
     Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>{
-        const canon = canonMaterial(s.material);
+        const canon = matCode(s.material);
         if(canon !== s.material){ s.material = canon; changed = true; }
     }));
     return changed;
@@ -636,7 +662,7 @@ function renderAlerts() {
     items.innerHTML=mats.map(m=>{
         const total=getTotalInventory(m);
         const safety=getSafetyStock(m);
-        return `<div class="text-sm text-red-600">• <strong>${m}</strong>：總庫存 ${Math.round(total)} ml，低於安全庫存 ${safety} ml</div>`;
+        return `<div class="text-sm text-red-600">• <strong>${matName(m)}</strong>：總庫存 ${Math.round(total)} ml，低於安全庫存 ${safety} ml</div>`;
     }).join('');
 }
 
@@ -659,7 +685,7 @@ function renderOverview() {
         card.innerHTML=`
             <div class="flex items-start justify-between">
                 <div>
-                    <p class="font-semibold text-gray-800 text-sm">${m}</p>
+                    <p class="font-semibold text-gray-800 text-sm">${matName(m)}</p>
                     <p class="text-xs text-gray-400 mt-0.5">總庫存</p>
                 </div>
                 ${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> 需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">庫存充足</span>'}
@@ -704,7 +730,7 @@ function renderCartridges() {
                 <div class="flex justify-between items-center mb-2">
                     <div>
                         <span class="text-xs font-medium text-gray-500">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot}</span>
-                        <p class="font-semibold text-gray-800 text-sm">${s.material||'—'}</p>
+                        <p class="font-semibold text-gray-800 text-sm">${matName(s.material)||'—'}</p>
                     </div>
                     <div class="text-right">
                         <p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${Math.round(s.remaining_ml||0)} ml</p>
@@ -722,7 +748,8 @@ function renderCartridges() {
             <div class="bg-gray-50 px-4 py-3 flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>
-                    <span class="font-semibold text-gray-800">${printer}</span>
+                    <span class="font-semibold text-gray-800">${printerDisplay(printer)}</span>
+                    <span class="text-xs text-gray-400">(${printer})</span>
                 </div>
                 <span class="text-xs text-gray-400">${slots.length} 個樹脂罐</span>
             </div>
@@ -735,13 +762,16 @@ function renderCartridges() {
 
 // ══ 樹脂罐編輯 Modal ══
 function openCartridgeModal() {
+    // 填充材料名稱選單
+    const dl = document.getElementById('material-options');
+    if(dl){ dl.innerHTML=''; Object.values(CODE_TO_NAME).forEach(n=>{const o=document.createElement('option');o.value=n;dl.appendChild(o);}); }
     const body=document.getElementById('cartridge-modal-body');
     body.innerHTML='';
     TRACKED_PRINTERS.forEach(printer=>{
         const slots=inv.cartridges[printer]||[{slot:'FRONT',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML},{slot:'BACK',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML}];
         const sec=document.createElement('div');
         sec.className='space-y-3';
-        sec.innerHTML=`<h3 class="font-semibold text-gray-700 flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>${printer}</h3>`;
+        sec.innerHTML=`<h3 class="font-semibold text-gray-700 flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>${printerDisplay(printer)} <span class="text-xs text-gray-400 font-normal">(${printer})</span></h3>`;
         slots.forEach((s,i)=>{
             const slotLabel=s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot||`樹脂罐${i+1}`;
             const row=document.createElement('div');
@@ -751,7 +781,7 @@ function openCartridgeModal() {
                 <div class="grid grid-cols-2 gap-2">
                     <div class="space-y-1">
                         <label class="text-xs text-gray-600">材料名稱</label>
-                        <input type="text" value="${s.material||''}" data-printer="${printer}" data-idx="${i}" data-field="material"
+                        <input type="text" list="material-options" value="${matName(s.material)||''}" data-printer="${printer}" data-idx="${i}" data-field="material"
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none" placeholder="e.g. Clear V5">
                     </div>
                     <div class="space-y-1">
@@ -801,7 +831,10 @@ async function saveCartridgeEdit() {
         const field=el.dataset.field;
         if(!inv.cartridges[printer]) inv.cartridges[printer]=[];
         if(!inv.cartridges[printer][idx]) inv.cartridges[printer][idx]={slot:'FRONT',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML};
-        const val=field==='material'||field==='slot' ? el.value : parseFloat(el.value)||0;
+        let val;
+        if(field==='material') val = matCode(el.value.trim());  // 名稱→代碼
+        else if(field==='slot') val = el.value;
+        else val = parseFloat(el.value)||0;
         inv.cartridges[printer][idx][field]=val;
         inv.cartridges[printer][idx].updated_at=new Date().toISOString();
         inv.cartridges[printer][idx].updated_by='manual';
@@ -828,7 +861,7 @@ function renderStockTable() {
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
         tr.innerHTML=`
-            <td class="p-3 font-medium text-gray-800">${m}</td>
+            <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
             <td class="p-3 text-right">
                 <input type="number" min="0" step="0.1" value="${bottles}" ${isEditor?'':'disabled'}
                     onchange="updateStockBottles('${me}', this.value)"
@@ -883,7 +916,7 @@ async function updateStockBottles(material, value) {
         addHistory({type:'manual',material,printer:'備料庫存',ml:diff,note:`調整為 ${bottles} 罐`});
     }
     renderAll();
-    await saveAll(`調整備料：${material} → ${bottles} 罐`);
+    await saveAll(`調整備料：${matName(material)} → ${bottles} 罐`);
 }
 
 // 直接在表格修改安全庫存（輸入罐數，換算成 ml 儲存）
@@ -892,7 +925,7 @@ async function updateSafety(material, value) {
     if(isNaN(bottles) || bottles < 0){ showToast('請輸入有效的安全庫存罐數','error'); renderStockTable(); return; }
     inv.safety[material] = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;
     renderAll();
-    await saveAll(`設定安全庫存：${material} → ${bottles} 罐`);
+    await saveAll(`設定安全庫存：${matName(material)} → ${bottles} 罐`);
 }
 
 // 直接在表格修改備註
@@ -901,12 +934,12 @@ async function updateStockNote(material, value) {
     inv.stock[material].note = value.trim();
     inv.stock[material].updated_at = new Date().toISOString();
     inv.stock[material].updated_by = 'manual';
-    await saveAll(`更新備註：${material}`);
+    await saveAll(`更新備註：${matName(material)}`);
 }
 
 async function deleteStock(material) {
     const onMachine = getCartridgeTotal(material) > 0;
-    let msg = `確定要刪除「${material}」嗎？`;
+    let msg = `確定要刪除「${matName(material)}」嗎？`;
     if(onMachine) msg += `\n\n注意：此材料目前仍裝載在機台樹脂罐上，刪除後僅清除備料與安全庫存設定，機台樹脂罐資料不受影響。`;
     if(!confirm(msg)) return;
 
@@ -917,8 +950,8 @@ async function deleteStock(material) {
     inv.history = inv.history.filter(h => !(h.material===material && (h.type==='stockin'||h.type==='manual')));
 
     renderAll();
-    await saveAll(`刪除備料：${material}`);
-    showToast(`已刪除 ${material} 的備料資料`,'success');
+    await saveAll(`刪除備料：${matName(material)}`);
+    showToast(`已刪除 ${matName(material)} 的備料資料`,'success');
 }
 
 
@@ -929,7 +962,13 @@ function showStockModal() {
     dl.innerHTML = '';
     getAllMaterials().forEach(m => {
         const o = document.createElement('option');
-        o.value = m;
+        o.value = matName(m);
+        dl.appendChild(o);
+    });
+    // 也補上所有已知材料名稱供選擇
+    Object.values(CODE_TO_NAME).forEach(n => {
+        const o = document.createElement('option');
+        o.value = n;
         dl.appendChild(o);
     });
     // 清空輸入
@@ -942,8 +981,9 @@ function showStockModal() {
 function closeStockModal() { document.getElementById('stock-modal').classList.add('hidden'); }
 
 async function saveStockIn() {
-    const mat = document.getElementById('stock-material').value.trim();
-    if(!mat){ showToast('請輸入材料種類','error'); return; }
+    const matInput = document.getElementById('stock-material').value.trim();
+    if(!matInput){ showToast('請輸入材料種類','error'); return; }
+    const mat = matCode(matInput);  // 名稱→代碼
 
     const bottles = parseFloat(document.getElementById('stock-qty').value);
     if(isNaN(bottles) || bottles <= 0){ showToast('請輸入有效的罐數','error'); return; }
@@ -960,7 +1000,7 @@ async function saveStockIn() {
     addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${bottles} 罐）` });
     closeStockModal();
     renderAll();
-    await saveAll(`備料入庫：${mat} ${bottles} 罐`);
+    await saveAll(`備料入庫：${matName(mat)} ${bottles} 罐`);
 }
 
 // ══ 安全庫存設定 ══
@@ -974,7 +1014,7 @@ function showSafetyModal() {
         const row=document.createElement('div');
         row.className='flex items-center gap-3';
         row.innerHTML=`
-            <label class="flex-1 text-sm font-medium text-gray-700">${m}</label>
+            <label class="flex-1 text-sm font-medium text-gray-700">${matName(m)}</label>
             <input type="number" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" min="0" step="0.1" data-material="${m}"
                 class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> 罐
         `;
@@ -1004,7 +1044,7 @@ function renderHistory() {
     const sel=document.getElementById('history-filter');
     const cur=sel.value;
     sel.innerHTML='<option value="">全部材料</option>';
-    getAllMaterials().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
+    getAllMaterials().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=matName(m);sel.appendChild(o);});
     sel.value=cur;
 
     const filtered=filter?inv.history.filter(h=>h.material===filter):inv.history;
@@ -1023,8 +1063,8 @@ function renderHistory() {
         tr.className='hover:bg-gray-50';
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-            <td class="p-3 font-medium text-gray-800 text-sm">${h.material||'—'}</td>
-            <td class="p-3 text-sm text-gray-600">${h.printer||'—'}</td>
+            <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
+            <td class="p-3 text-sm text-gray-600">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':''}">${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml</td>
             <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
@@ -1101,7 +1141,7 @@ function renderMonthly() {
         const total=monthly.reduce((s,v)=>s+v,0);
         if(!total) return;
         html+=`<tr class="hover:bg-gray-50 border-b border-gray-100">
-            <td class="p-3 font-medium text-gray-800">${mat}</td>
+            <td class="p-3 font-medium text-gray-800">${matName(mat)}</td>
             ${monthly.map(v=>`<td class="p-3 text-right text-gray-600">${v>0?Math.round(v):'—'}</td>`).join('')}
             <td class="p-3 text-right font-bold text-gray-800">${Math.round(total)}</td>
         </tr>`;
@@ -1171,7 +1211,7 @@ function renderMonthlyPie() {
         return `<div class="flex items-center justify-between text-sm">
             <div class="flex items-center gap-2">
                 <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colors[i]}"></span>
-                <span class="text-gray-700">${mat}</span>
+                <span class="text-gray-700">${matName(mat)}</span>
             </div>
             <div class="text-gray-500"><span class="font-medium text-gray-800">${Math.round(ml)}</span> ml · ${pct}%</div>
         </div>`;
@@ -1184,10 +1224,10 @@ function renderMonthlyPie() {
 function exportInventoryExcel() {
     const wb=XLSX.utils.book_new();
     // 總覽
-    const ovRows=getAllMaterials().map(m=>({'材料':m,'機台樹脂罐(ml)':Math.round(getCartridgeTotal(m)),'備料庫存(ml)':Math.round(getStockTotal(m)),'總庫存(ml)':Math.round(getTotalInventory(m)),'安全庫存(ml)':getSafetyStock(m),'狀態':isLowStock(m)?'需叫料':'充足'}));
+    const ovRows=getAllMaterials().map(m=>({'材料':matName(m),'機台樹脂罐(ml)':Math.round(getCartridgeTotal(m)),'備料庫存(ml)':Math.round(getStockTotal(m)),'總庫存(ml)':Math.round(getTotalInventory(m)),'安全庫存(ml)':getSafetyStock(m),'狀態':isLowStock(m)?'需叫料':'充足'}));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovRows),'庫存總覽');
     // 歷史
-    const hRows=inv.history.map(h=>({'時間':new Date(h.ts).toLocaleString('zh-TW'),'材料':h.material||'','機台':h.printer||'','類型':h.type==='consume'?'列印消耗':h.type==='stockin'?'備料入庫':'手動調整','數量(ml)':h.type==='consume'?-Math.round(h.ml||0):Math.round(h.ml||0),'備註':h.note||''}));
+    const hRows=inv.history.map(h=>({'時間':new Date(h.ts).toLocaleString('zh-TW'),'材料':matName(h.material)||'','機台':printerDisplay(h.printer)||'','類型':h.type==='consume'?'列印消耗':h.type==='stockin'?'備料入庫':'手動調整','數量(ml)':h.type==='consume'?-Math.round(h.ml||0):Math.round(h.ml||0),'備註':h.note||''}));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hRows),'消耗記錄');
     const fname=`庫存記錄_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb,fname);
