@@ -153,6 +153,9 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
+                <a href="inventory.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
+                    <i data-lucide="package" class="w-4 h-4"></i> 庫存管理
+                </a>
                 <div class="flex items-center gap-2 text-sm text-gray-400">
                     <i data-lucide="cloud" class="w-4 h-4"></i>
                     <span id="sync-status">連線中...</span>
@@ -267,6 +270,10 @@
                             材料用量
                         </button>
                     </div>
+                    <button onclick="manualRefreshPrinters()" id="printer-refresh-btn" title="立即刷新機台狀態"
+                        class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="printer-refresh-icon"></i> 刷新
+                    </button>
                     <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
                 </div>
             </div>
@@ -367,6 +374,18 @@ function toggleTokenVisibility() {
     if (input.type==='password'){input.type='text';icon.setAttribute('data-lucide','eye-off');}
     else{input.type='password';icon.setAttribute('data-lucide','eye');}
     lucide.createIcons();
+}
+
+// ══ 手動刷新機台狀態 ══════════════════════════
+async function manualRefreshPrinters() {
+    const btn  = document.getElementById('printer-refresh-btn');
+    const icon = document.getElementById('printer-refresh-icon');
+    btn.disabled = true;
+    icon.style.animation = 'spin 0.7s linear infinite';
+    document.getElementById('printer-updated').textContent = '刷新中...';
+    await loadPrinterStatus();
+    btn.disabled = false;
+    icon.style.animation = '';
 }
 
 // ══ 列印機狀態 ════════════════════════════════
