@@ -62,9 +62,24 @@
       "total_ml": 3200,
       "updated_at": "2026-06-05T09:13:37.338Z",
       "updated_by": "manual"
+    },
+    "Rigid 4000 V1": {
+      "bottles": 1.7,
+      "total_ml": 1700,
+      "updated_at": "2026-06-05T09:13:44.043Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650824043,
+      "type": "manual",
+      "material": "Rigid 4000 V1",
+      "printer": "備料庫存",
+      "ml": 1700,
+      "note": "調整為 1.7 罐",
+      "ts": "2026-06-05T09:13:44.043Z"
+    },
     {
       "id": 1780650817338,
       "type": "manual",
