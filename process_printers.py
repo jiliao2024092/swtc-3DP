@@ -172,6 +172,13 @@ for r in result:
 # 完成狀態的判定
 DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED')
 
+# 材料名稱合併對照（FLTO2002 與 Tough 2000 V2 視為同一材料）
+MATERIAL_ALIASES = {
+    'FLTO2002': 'Tough 2000 V2',
+}
+def canon_material(name):
+    return MATERIAL_ALIASES.get(name, name)
+
 # 依完成時間排序（舊到新），確保扣除順序正確
 def print_finish_key(pr):
     return pr.get('print_finished_at') or pr.get('created_at') or ''
@@ -191,7 +198,7 @@ for pr in prints_sorted:
         continue
 
     volume   = pr.get('volume_ml')
-    material = pr.get('material_name') or pr.get('material', '')
+    material = canon_material(pr.get('material_name') or pr.get('material', ''))
     finished = pr.get('print_finished_at') or pr.get('created_at', '')
 
     # 找出是哪台機台印的
