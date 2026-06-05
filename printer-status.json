@@ -6,12 +6,22 @@
     "status": "PRINTING",
     "print_name": "達理測試",
     "material": "Clear V5",
-    "progress": 50.0,
-    "layer_now": 1891,
+    "material_level": null,
+    "cartridges": [],
+    "progress": 53.9,
+    "layer_now": 2042,
     "layer_total": 3785,
-    "time_left": "3h 25m",
-    "last_pinged": "2026-06-05T03:42:53.617187-04:00",
-    "updated_at": "2026-06-05T07:43:30Z"
+    "volume_ml": 143.3420361771926,
+    "time_left": "3h 9m",
+    "last_pinged": "2026-06-05T04:04:10.363553-04:00",
+    "updated_at": "2026-06-05T08:04:25Z",
+    "last_completed_print": {
+      "guid": "0ba5bc0b-4934-4624-a4bb-e008d26e18d8",
+      "material": "Clear V5",
+      "volume_ml": 143.3420361771926,
+      "status": "FINISHED",
+      "finished": "1969-12-31T19:00:00.001000-05:00"
+    }
   },
   {
     "serial": "Form4L-AdroitSauropod",
@@ -19,13 +29,42 @@
     "machine_type": "FRML-4-0",
     "status": "UNKNOWN",
     "print_name": "",
-    "material": "",
+    "material": "FLTO2002",
+    "material_level": 10.0,
+    "cartridges": [
+      {
+        "slot": "FRONT",
+        "material": "FLTO2002",
+        "initial_ml": 1000.0,
+        "dispensed_ml": 900.0,
+        "remaining_ml": 100.0,
+        "remaining_pct": 10.0,
+        "is_empty": false
+      },
+      {
+        "slot": "BACK",
+        "material": "FLTO2002",
+        "initial_ml": 1000.0,
+        "dispensed_ml": 800.0,
+        "remaining_ml": 200.0,
+        "remaining_pct": 20.0,
+        "is_empty": false
+      }
+    ],
     "progress": 0,
     "layer_now": 0,
     "layer_total": 0,
+    "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-06-03T22:20:43.862977-04:00",
-    "updated_at": "2026-06-05T07:43:30Z"
+    "updated_at": "2026-06-05T08:04:25Z",
+    "last_completed_print": {
+      "guid": "722bfabf-a01d-4675-afba-5106d4155776",
+      "material": "Tough 2000 V2",
+      "volume_ml": 465.44440181082456,
+      "status": "FINISHED",
+      "finished": "1969-12-31T19:00:00.001000-05:00"
+    }
   },
   {
     "serial": "TealMoa",
@@ -33,13 +72,23 @@
     "machine_type": "FS30-1-0",
     "status": "UNKNOWN",
     "print_name": "",
-    "material": "",
+    "material": "FLP12G01",
+    "material_level": 1.0,
+    "cartridges": [],
     "progress": 0,
     "layer_now": 0,
     "layer_total": 0,
+    "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-05T07:43:30Z"
+    "updated_at": "2026-06-05T08:04:25Z",
+    "last_completed_print": {
+      "guid": "883a1bec-598f-40f3-92f8-c0a56f9e6b91",
+      "material": "Nylon 12",
+      "volume_ml": 446.98064492703907,
+      "status": "ERROR",
+      "finished": "2026-05-20T09:47:43-04:00"
+    }
   },
   {
     "serial": "BoldSturgeon",
@@ -48,12 +97,41 @@
     "status": "UNKNOWN",
     "print_name": "",
     "material": "",
+    "material_level": null,
+    "cartridges": [
+      {
+        "slot": "FRONT",
+        "material": "",
+        "initial_ml": 0,
+        "dispensed_ml": 0,
+        "remaining_ml": null,
+        "remaining_pct": null,
+        "is_empty": false
+      },
+      {
+        "slot": "BACK",
+        "material": "",
+        "initial_ml": 0,
+        "dispensed_ml": 0,
+        "remaining_ml": null,
+        "remaining_pct": null,
+        "is_empty": false
+      }
+    ],
     "progress": 0,
     "layer_now": 0,
     "layer_total": 0,
+    "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-05T07:43:30Z"
+    "updated_at": "2026-06-05T08:04:25Z",
+    "last_completed_print": {
+      "guid": "7bd7c604-a011-4eba-a73a-a5a9374b0292",
+      "material": "Flexible 80A V1",
+      "volume_ml": 29.775076053211762,
+      "status": "FINISHED",
+      "finished": "2025-07-30T03:39:45-04:00"
+    }
   },
   {
     "serial": "CreativeDragon",
@@ -62,12 +140,22 @@
     "status": "UNKNOWN",
     "print_name": "",
     "material": "",
+    "material_level": null,
+    "cartridges": [],
     "progress": 0,
     "layer_now": 0,
     "layer_total": 0,
+    "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-05T07:43:30Z"
+    "updated_at": "2026-06-05T08:04:25Z",
+    "last_completed_print": {
+      "guid": "a7730dbb-8580-4c23-9ece-322323983b8a",
+      "material": "Flexible 80A V1",
+      "volume_ml": 22.740088920638154,
+      "status": "FINISHED",
+      "finished": "2026-05-08T06:05:39-04:00"
+    }
   },
   {
     "serial": "Form4L-JasperGosling",
@@ -75,12 +163,41 @@
     "machine_type": "FRML-4-0",
     "status": "UNKNOWN",
     "print_name": "",
-    "material": "",
+    "material": "FLGPGR05",
+    "material_level": 0.0,
+    "cartridges": [
+      {
+        "slot": "FRONT",
+        "material": "FLGPGR05",
+        "initial_ml": 1000.0,
+        "dispensed_ml": 1000.0,
+        "remaining_ml": 0.0,
+        "remaining_pct": 0.0,
+        "is_empty": false
+      },
+      {
+        "slot": "BACK",
+        "material": "FLGPGR05",
+        "initial_ml": 1000.0,
+        "dispensed_ml": 0,
+        "remaining_ml": 1000.0,
+        "remaining_pct": 100.0,
+        "is_empty": false
+      }
+    ],
     "progress": 0,
     "layer_now": 0,
     "layer_total": 0,
+    "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-05T07:43:30Z"
+    "updated_at": "2026-06-05T08:04:25Z",
+    "last_completed_print": {
+      "guid": "6143c037-4268-4f29-8068-65492806ed60",
+      "material": "Grey V5",
+      "volume_ml": 8.0674144218189,
+      "status": "FINISHED",
+      "finished": "1969-12-31T19:00:00.001000-05:00"
+    }
   }
 ]
