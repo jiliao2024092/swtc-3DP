@@ -50,9 +50,24 @@
       "updated_at": "2026-06-05T09:13:13.609Z",
       "updated_by": "manual",
       "note": "Benny借2"
+    },
+    "High Temp V2": {
+      "bottles": 0.3,
+      "total_ml": 300,
+      "updated_at": "2026-06-05T09:13:32.241Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650812241,
+      "type": "manual",
+      "material": "High Temp V2",
+      "printer": "備料庫存",
+      "ml": 300,
+      "note": "調整為 0.3 罐",
+      "ts": "2026-06-05T09:13:32.241Z"
+    },
     {
       "id": 1780650778299,
       "type": "manual",
