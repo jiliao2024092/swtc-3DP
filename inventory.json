@@ -20,12 +20,6 @@
     ]
   },
   "stock": {
-    "請先設定樹脂罐材料": {
-      "bottles": 1,
-      "total_ml": 1000,
-      "updated_at": "2026-06-05T08:47:18.241Z",
-      "updated_by": "manual"
-    },
     "Clear V5": {
       "bottles": 1,
       "total_ml": 390.5,
@@ -80,7 +74,7 @@
       "type": "consume",
       "material": "Tough 1000 V1",
       "printer": "AluminumBowfin",
-      "ml": 12.0,
+      "ml": 12,
       "note": "Formlabs 評估樣品T1000單片_高禎實業",
       "print_guid": "8b981044-6bbe-4e94-9c5a-bab95c7c467a"
     },
@@ -170,7 +164,7 @@
       "type": "consume",
       "material": "Grey V5",
       "printer": "AluminumBowfin",
-      "ml": 31.0,
+      "ml": 31,
       "note": "實威國際_SLA體驗營_GreyV5樣品",
       "print_guid": "bb38bc04-e298-4423-af0f-997c9f2db756"
     },
@@ -220,7 +214,7 @@
       "type": "consume",
       "material": "Grey V5",
       "printer": "AluminumBowfin",
-      "ml": 31.0,
+      "ml": 31,
       "note": "Form 4 Demo",
       "print_guid": "5163e4a4-4a58-4c5b-84c1-1194e422a5e6"
     },
@@ -250,7 +244,7 @@
       "type": "consume",
       "material": "Tough 2000 V2",
       "printer": "AluminumBowfin",
-      "ml": 16.0,
+      "ml": 16,
       "note": "20260430-美律-3",
       "print_guid": "fa4221dc-acbe-496a-88ec-1976b68f89e2"
     },
@@ -260,7 +254,7 @@
       "type": "consume",
       "material": "Tough 2000 V2",
       "printer": "AluminumBowfin",
-      "ml": 19.0,
+      "ml": 19,
       "note": "20260430-美律-2",
       "print_guid": "3795cf3d-61f6-4946-9892-40ab2af4d616"
     },
@@ -410,7 +404,7 @@
       "type": "consume",
       "material": "Tough 2000 V2",
       "printer": "AluminumBowfin",
-      "ml": 44.0,
+      "ml": 44,
       "note": "通合20260408",
       "print_guid": "75763d1f-f185-42c6-ae4f-8a3c2dfae5aa"
     },
@@ -420,7 +414,7 @@
       "type": "consume",
       "material": "Black V5",
       "printer": "AluminumBowfin",
-      "ml": 27.0,
+      "ml": 27,
       "note": "合興20260407",
       "print_guid": "515201e0-896d-421f-8d0d-447739d55e6c"
     },
@@ -510,7 +504,7 @@
       "type": "consume",
       "material": "Grey V5",
       "printer": "AluminumBowfin",
-      "ml": 31.0,
+      "ml": 31,
       "note": "Form 4 Demo",
       "print_guid": "c73979ac-358c-4ed0-934e-bce9b209a8f8"
     },
@@ -540,7 +534,7 @@
       "type": "consume",
       "material": "Grey V5",
       "printer": "AluminumBowfin",
-      "ml": 11.0,
+      "ml": 11,
       "note": "20260320_智高Demo_測試",
       "print_guid": "15ea2758-50b5-40c5-a84e-ed765679feb7"
     },
@@ -730,7 +724,7 @@
       "type": "consume",
       "material": "High Temp V2",
       "printer": "AluminumBowfin",
-      "ml": 64.0,
+      "ml": 64,
       "note": "20260603",
       "print_guid": "6e3bc29a-3b42-4ec3-9ecf-ef812ddedd85"
     },
