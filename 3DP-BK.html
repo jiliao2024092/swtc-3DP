@@ -310,6 +310,24 @@ const PAGE_SIZE     = 10;
 // Form 4 機台名稱（材料用量顯示用）
 const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 
+// 材料代碼 → 顯示名稱
+const CODE_TO_NAME = {
+    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
+    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
+    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
+    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+};
+function matName(code){ return CODE_TO_NAME[code] || code; }
+// 機台代號 → 顯示名稱
+const PRINTER_DISPLAY = { 'AluminumBowfin':'Form4', 'AdroitSauropod':'Form4L' };
+function printerDisplay(name){
+    if(!name) return name;
+    for(const [k,v] of Object.entries(PRINTER_DISPLAY)){ if(name.includes(k)) return v; }
+    return name;
+}
+
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
 const PRINTERS  = ['Form4','Form4L','MarkTwo','Other'];
@@ -471,8 +489,8 @@ function renderStatusPanel(printers) {
         card.innerHTML=`
             <div class="flex items-start justify-between">
                 <div>
-                    <p class="font-semibold text-gray-800 text-sm">${p.alias||p.serial}</p>
-                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.serial}</p>
+                    <p class="font-semibold text-gray-800 text-sm">${printerDisplay(p.alias)||p.serial}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
                 </div>
                 <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
                     <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
@@ -490,7 +508,7 @@ function renderStatusPanel(printers) {
                     <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
                 </div>
             </div>`:''}
-            ${p.material?`<p class="text-xs text-gray-400">材料：${p.material}</p>`:''}
+            ${p.material?`<p class="text-xs text-gray-400">材料：${matName(p.material)}</p>`:''}
         `;
         grid.appendChild(card);
     });
@@ -533,7 +551,7 @@ function renderMaterialPanel(printers) {
                         <span class="text-xs font-medium text-gray-600">${slotLabel}</span>
                         ${emptyBadge}
                     </div>
-                    <span class="text-xs font-semibold text-gray-800">${c.material||'—'}</span>
+                    <span class="text-xs font-semibold text-gray-800">${matName(c.material)||'—'}</span>
                 </div>
                 ${pct != null ? `
                 <div class="space-y-1">
@@ -556,8 +574,8 @@ function renderMaterialPanel(printers) {
         card.innerHTML=`
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="font-semibold text-gray-800">${p.alias||p.serial}</p>
-                    <p class="text-xs text-gray-400">${ml?ml+' · ':''}${p.serial||''}</p>
+                    <p class="font-semibold text-gray-800">${printerDisplay(p.alias)||p.serial}</p>
+                    <p class="text-xs text-gray-400">${ml?ml+' · ':''}${p.alias||p.serial||''}</p>
                 </div>
                 <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
                     <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
