@@ -74,9 +74,24 @@
       "total_ml": 400,
       "updated_at": "2026-06-05T09:13:53.169Z",
       "updated_by": "manual"
+    },
+    "Tough 2000 V1.1": {
+      "bottles": 2,
+      "total_ml": 2000,
+      "updated_at": "2026-06-05T09:14:22.666Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650862666,
+      "type": "manual",
+      "material": "Tough 2000 V1.1",
+      "printer": "備料庫存",
+      "ml": 2000,
+      "note": "調整為 2 罐",
+      "ts": "2026-06-05T09:14:22.666Z"
+    },
     {
       "id": 1780650833169,
       "type": "manual",
