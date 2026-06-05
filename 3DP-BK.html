@@ -6,62 +6,75 @@
     <title>3D列印機預約與任務追蹤系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, 'Microsoft JhengHei'; }
-        .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; vertical-align: middle; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); animation: slideIn 0.3s ease; }
-        @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-        .toggle-btn { padding: 5px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; border: 1px solid #d1d5db; cursor: pointer; transition: all 0.15s; background: white; color: #6b7280; }
-        .toggle-btn.active-yes { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
-        .toggle-btn.active-no  { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
-        .progress-bar { height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
-        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
-        .page-btn { padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid #d1d5db; background: white; color: #374151; cursor: pointer; transition: all 0.15s; }
-        .page-btn:hover { background: #f3f4f6; }
-        .page-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
-        .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .toast { position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease; }
+        @keyframes slideIn { from{transform:translateX(100px);opacity:0} to{transform:translateX(0);opacity:1} }
+        .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center; }
+        .toggle-btn { padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;border:1px solid #d1d5db;cursor:pointer;transition:all 0.15s;background:white;color:#6b7280; }
+        .toggle-btn.active-yes { background:#dbeafe;color:#1d4ed8;border-color:#93c5fd; }
+        .toggle-btn.active-no  { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
+        .progress-bar { height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden; }
+        .progress-fill { height:100%;border-radius:3px;transition:width 0.5s ease; }
+        .page-btn { padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #d1d5db;background:white;color:#374151;cursor:pointer;transition:all 0.15s; }
+        .page-btn:hover { background:#f3f4f6; }
+        .page-btn.active { background:#2563eb;color:white;border-color:#2563eb; }
+        .page-btn:disabled { opacity:0.4;cursor:not-allowed; }
+        /* 材料欄滑動 */
+        .printer-panel { transition: transform 0.35s cubic-bezier(.4,0,.2,1), opacity 0.3s; }
+        .read-only-overlay { pointer-events:none; opacity:0.6; }
+        .role-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 
 <div id="toast" class="toast hidden"></div>
 
-<!-- Token Modal -->
-<div id="token-modal" class="modal-overlay hidden">
+<!-- ══ 設定 / 角色選擇 Modal ══════════════════ -->
+<div id="settings-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-2">
-            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="key-round" class="w-6 h-6 text-blue-600"></i></div>
-            <h2 class="text-xl font-bold text-gray-800">GitHub 連線設定</h2>
+            <div class="bg-slate-100 p-2.5 rounded-lg"><i data-lucide="settings-2" class="w-5 h-5 text-slate-600"></i></div>
+            <h2 class="text-xl font-bold text-gray-800">系統設定</h2>
         </div>
-        <p class="text-sm text-gray-500 mb-6">請輸入 GitHub Personal Access Token，僅儲存在你的瀏覽器中。</p>
+        <p class="text-sm text-gray-500 mb-6">輸入 GitHub Token 後可新增/編輯/刪除，不輸入則為唯讀模式（業務查看）。</p>
+
         <div class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">Personal Access Token</label>
+                <label class="text-sm font-medium text-gray-700">GitHub Personal Access Token（選填）</label>
                 <div class="relative">
-                    <input id="modal-token" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                    <input id="modal-token" type="password" placeholder="ghp_xxxxxxxxxxxx（留空為唯讀模式）"
                         class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono">
                     <button onclick="toggleTokenVisibility()" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
                         <i data-lucide="eye" id="eye-icon" class="w-4 h-4"></i>
                     </button>
                 </div>
             </div>
-            <div class="bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
-                <p class="font-medium">如何取得 Token：</p>
-                <p>1. 前往 GitHub → Settings → Developer settings</p>
-                <p>2. Personal access tokens → Tokens (classic)</p>
-                <p>3. Generate new token → 勾選 <strong>repo</strong> → 複製</p>
+            <div class="grid grid-cols-2 gap-3 pt-1">
+                <button onclick="applySettings(false)" class="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer group">
+                    <i data-lucide="eye" class="w-6 h-6 text-gray-400 group-hover:text-blue-500"></i>
+                    <span class="text-sm font-medium text-gray-600 group-hover:text-blue-600">唯讀模式</span>
+                    <span class="text-xs text-gray-400">業務查看狀態</span>
+                </button>
+                <button onclick="applySettings(true)" class="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 transition-colors cursor-pointer group">
+                    <i data-lucide="pencil" class="w-6 h-6 text-gray-400 group-hover:text-green-500"></i>
+                    <span class="text-sm font-medium text-gray-600 group-hover:text-green-600">編輯模式</span>
+                    <span class="text-xs text-gray-400">工程師操作</span>
+                </button>
             </div>
         </div>
-        <div class="flex gap-3 mt-6">
-            <button id="cancel-token-btn" onclick="cancelTokenSetup()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors hidden">取消</button>
-            <button onclick="saveToken()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors">儲存並連線</button>
+
+        <div class="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
+            <p class="font-medium">如何取得 Token：</p>
+            <p>GitHub → Settings → Developer settings → Personal access tokens (classic) → 勾選 <strong>repo</strong></p>
         </div>
     </div>
 </div>
 
-<!-- 密碼驗證 Modal -->
+<!-- ══ 密碼驗證 Modal ════════════════════════ -->
 <div id="password-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm mx-4">
         <div class="flex items-center gap-3 mb-2">
@@ -78,7 +91,7 @@
     </div>
 </div>
 
-<!-- 編輯 Modal -->
+<!-- ══ 編輯 Modal ═════════════════════════════ -->
 <div id="edit-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xl mx-4">
         <div class="flex items-center gap-3 mb-6">
@@ -88,8 +101,7 @@
         <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">預約日期</label>
-                <input type="date" id="edit-date"
-                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <input type="date" id="edit-date" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
             <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">申請業務</label>
@@ -112,8 +124,7 @@
                         <button type="button" id="edit-btn-no"  onclick="setEditHasOrder(false)" class="toggle-btn">無</button>
                     </div>
                 </div>
-                <input type="text" id="edit-purpose" placeholder="請先選擇是否有單號"
-                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
+                <input type="text" id="edit-purpose" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
         </div>
         <div class="flex gap-3 mt-6">
@@ -123,6 +134,7 @@
     </div>
 </div>
 
+<!-- ══ 主體 ══════════════════════════════════ -->
 <div class="p-4 md:p-8">
     <div class="max-w-7xl mx-auto space-y-6">
 
@@ -131,7 +143,12 @@
             <div class="flex items-center gap-4">
                 <div class="bg-blue-100 p-3 rounded-lg text-blue-600"><i data-lucide="printer" class="w-7 h-7"></i></div>
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-800">3D列印機預約與任務分配表</h1>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-2xl font-bold text-gray-800">3D列印機預約與任務分配表</h1>
+                        <span id="role-badge" class="role-badge bg-gray-100 text-gray-500">
+                            <i data-lucide="eye" class="w-3 h-3"></i> 唯讀
+                        </span>
+                    </div>
                     <p class="text-sm text-gray-500">供業務單位預約設備，並由工程師追蹤與執行任務狀態。</p>
                 </div>
             </div>
@@ -143,14 +160,14 @@
                 <button onclick="loadFromGitHub()" title="重新整理" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                 </button>
-                <button onclick="showTokenModal(true)" title="更換 Token" class="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors">
-                    <i data-lucide="key-round" class="w-4 h-4"></i>
+                <button onclick="showSettingsModal()" title="設定" class="p-2 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
+                    <i data-lucide="settings-2" class="w-4 h-4"></i>
                 </button>
             </div>
         </div>
 
-        <!-- Booking Form -->
-        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+        <!-- 新增預約單（工程師才顯示） -->
+        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
             <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
                 <div class="space-y-1">
@@ -190,11 +207,17 @@
             </form>
         </div>
 
-        <!-- Data Table -->
+        <!-- 執行清單 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                 <h2 class="text-lg font-semibold text-gray-800">總覽表單 (工程師執行清單)</h2>
-                <span id="total-count" class="text-sm text-gray-500">共 0 筆資料</span>
+                <div class="flex items-center gap-2">
+                    <span id="total-count" class="text-sm text-gray-500">共 0 筆資料</span>
+                    <button onclick="exportExcel()" title="匯出 Excel"
+                        class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
+                        <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出 Excel
+                    </button>
+                </div>
             </div>
             <div id="loading-state" class="p-12 text-center text-gray-400 hidden">
                 <div class="flex flex-col items-center gap-3">
@@ -213,20 +236,19 @@
                             <th class="p-3 border-b font-medium">單號 / 原因</th>
                             <th class="p-3 border-b font-medium w-28">負責工程師</th>
                             <th class="p-3 border-b font-medium w-40">任務狀態</th>
-                            <th class="p-3 border-b font-medium w-24 text-center">操作</th>
+                            <th id="ops-col" class="p-3 border-b font-medium w-24 text-center hidden">操作</th>
                         </tr>
                     </thead>
                     <tbody id="table-body" class="divide-y divide-gray-100 text-sm text-gray-700"></tbody>
                 </table>
             </div>
-            <!-- 分頁控制 -->
             <div id="pagination" class="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between hidden">
                 <span id="page-info" class="text-sm text-gray-500"></span>
                 <div class="flex items-center gap-1" id="page-btns"></div>
             </div>
         </div>
 
-        <!-- 列印機即時狀態面板 -->
+        <!-- 列印機即時狀態 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                 <div class="flex items-center gap-2">
@@ -234,14 +256,34 @@
                     <h2 class="text-base font-semibold text-gray-800">列印機即時狀態</h2>
                 </div>
                 <div class="flex items-center gap-3">
+                    <!-- 切換按鈕 -->
+                    <div class="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                        <button id="view-status-btn" onclick="switchPrinterView('status')"
+                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700 transition-all">
+                            機台狀態
+                        </button>
+                        <button id="view-material-btn" onclick="switchPrinterView('material')"
+                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500 transition-all">
+                            材料用量
+                        </button>
+                    </div>
                     <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
-                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">不定時自動更新</span>
                 </div>
             </div>
-            <div id="printer-status-grid" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+
+            <!-- 狀態面板 -->
+            <div id="panel-status" class="printer-panel p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div class="col-span-full text-center text-gray-400 text-sm py-6">
                     <div style="width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 8px;"></div>
                     從 GitHub 載入列印機狀態...
+                </div>
+            </div>
+
+            <!-- 材料用量面板 -->
+            <div id="panel-material" class="printer-panel p-4 hidden">
+                <p class="text-xs text-gray-400 mb-3">僅顯示 Form 4 機台（AluminumBowfin、AdroitSauropod）材料使用量</p>
+                <div id="material-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="col-span-full text-center text-gray-400 text-sm py-4">載入中...</div>
                 </div>
             </div>
         </div>
@@ -250,7 +292,7 @@
 </div>
 
 <script>
-// ── 設定 ─────────────────────────────────────
+// ══ 設定 ══════════════════════════════════════
 const GITHUB_OWNER  = 'jiliao2024092';
 const GITHUB_REPO   = 'swtc-3DP';
 const BOOKINGS_FILE = 'bookings.json';
@@ -258,384 +300,463 @@ const STATUS_FILE   = 'printer-status.json';
 const TOKEN_KEY     = 'gh_3dp_token';
 const ADMIN_PASSWORD = '100';
 const PAGE_SIZE     = 10;
+// Form 4 機台名稱（材料用量顯示用）
+const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
 const PRINTERS  = ['Form4','Form4L','MarkTwo','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
+const DONE_STATUSES = new Set(['已完成','異常/取消']);
 
-let bookings = [], fileSHA = '', isSaving = false;
-let hasOrder = null;
-let editHasOrder = null;
-let editingId = null;
-let pendingAction = null, pendingData = null;
-let currentPage = 1;
+let bookings=[], fileSHA='', isSaving=false;
+let hasOrder=null, editHasOrder=null, editingId=null;
+let pendingAction=null, pendingData=null;
+let currentPage=1;
+let isEditor=false;       // 是否為編輯模式
+let printerView='status'; // 'status' | 'material'
+let cachedPrinters=[];
 
-// ── 列印機狀態對照 ────────────────────────────
+// ══ 設定 / 角色 ══════════════════════════════
+function showSettingsModal() {
+    document.getElementById('settings-modal').classList.remove('hidden');
+    document.getElementById('modal-token').value = getToken();
+    lucide.createIcons();
+}
+
+function applySettings(wantEdit) {
+    const token = document.getElementById('modal-token').value.trim();
+    if (wantEdit) {
+        if (!token) { showToast('編輯模式需要輸入 Token','error'); return; }
+        if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+            showToast('Token 格式不正確，應以 ghp_ 開頭','error'); return;
+        }
+        localStorage.setItem(TOKEN_KEY, token);
+        isEditor = true;
+    } else {
+        isEditor = false;
+    }
+    document.getElementById('settings-modal').classList.add('hidden');
+    applyRoleUI();
+    loadFromGitHub();
+}
+
+function applyRoleUI() {
+    const badge    = document.getElementById('role-badge');
+    const bookSec  = document.getElementById('booking-section');
+    const opsCol   = document.getElementById('ops-col');
+
+    if (isEditor) {
+        badge.innerHTML = '<i data-lucide="pencil" class="w-3 h-3"></i> 編輯模式';
+        badge.className = 'role-badge bg-green-100 text-green-700';
+        bookSec.classList.remove('hidden');
+        opsCol.classList.remove('hidden');
+    } else {
+        badge.innerHTML = '<i data-lucide="eye" class="w-3 h-3"></i> 唯讀';
+        badge.className = 'role-badge bg-gray-100 text-gray-500';
+        bookSec.classList.add('hidden');
+        opsCol.classList.add('hidden');
+    }
+    lucide.createIcons();
+    renderTable();
+}
+
+function toggleTokenVisibility() {
+    const input=document.getElementById('modal-token');
+    const icon =document.getElementById('eye-icon');
+    if (input.type==='password'){input.type='text';icon.setAttribute('data-lucide','eye-off');}
+    else{input.type='password';icon.setAttribute('data-lucide','eye');}
+    lucide.createIcons();
+}
+
+// ══ 列印機狀態 ════════════════════════════════
 const PRINTER_STATUS_MAP = {
-    'IDLE':                  { label:'閒置',     color:'bg-gray-100 text-gray-600',    dot:'bg-gray-400' },
-    'PRINTING':              { label:'列印中',   color:'bg-blue-100 text-blue-700',    dot:'bg-blue-500' },
-    'PAUSED':                { label:'已暫停',   color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-500' },
-    'PAUSING':               { label:'暫停中',   color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-400' },
-    'FINISHED':              { label:'已完成',   color:'bg-green-100 text-green-700',  dot:'bg-green-500' },
-    'ERROR':                 { label:'異常',     color:'bg-red-100 text-red-700',      dot:'bg-red-500' },
-    'ABORTED':               { label:'已中止',   color:'bg-red-100 text-red-600',      dot:'bg-red-400' },
-    'ABORTING':              { label:'中止中',   color:'bg-red-100 text-red-600',      dot:'bg-red-400' },
-    'PREPRINT':              { label:'準備列印', color:'bg-indigo-100 text-indigo-700',dot:'bg-indigo-500' },
-    'PREHEAT':               { label:'預熱中',   color:'bg-orange-100 text-orange-700',dot:'bg-orange-400' },
-    'WAITING_FOR_RESOLUTION':{ label:'待處理',   color:'bg-red-100 text-red-700',      dot:'bg-red-500' },
-    'OFFLINE':               { label:'離線',     color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300' },
-    'UNKNOWN':               { label:'未知',     color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300' },
+    'IDLE':                  {label:'閒置',    color:'bg-gray-100 text-gray-600',    dot:'bg-gray-400'},
+    'PRINTING':              {label:'列印中',  color:'bg-blue-100 text-blue-700',    dot:'bg-blue-500'},
+    'PAUSED':                {label:'已暫停',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-500'},
+    'PAUSING':               {label:'暫停中',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-400'},
+    'FINISHED':              {label:'已完成',  color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
+    'ERROR':                 {label:'異常',    color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
+    'ABORTED':               {label:'已中止',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
+    'ABORTING':              {label:'中止中',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
+    'PREPRINT':              {label:'準備列印',color:'bg-indigo-100 text-indigo-700',dot:'bg-indigo-500'},
+    'PREHEAT':               {label:'預熱中',  color:'bg-orange-100 text-orange-700',dot:'bg-orange-400'},
+    'WAITING_FOR_RESOLUTION':{label:'待處理',  color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
+    'OFFLINE':               {label:'離線',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
+    'UNKNOWN':               {label:'未知',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
 };
-
 const MACHINE_TYPE_MAP = {
     'form-4':'Form 4','form-4l':'Form 4L','form-4b':'Form 4B',
-    'form-3':'Form 3','form-3l':'Form 3L','form-3-plus':'Form 3+','form-3l-plus':'Form 3L+',
+    'form-3':'Form 3','form-3l':'Form 3L','form-3-plus':'Form 3+',
     'fuse-1':'Fuse 1','fuse-1-plus':'Fuse 1+',
 };
 function getMachineLabel(id) {
     if (!id) return '';
-    const k = id.toLowerCase().replace(/\s/g,'');
-    for (const [mk,mv] of Object.entries(MACHINE_TYPE_MAP)) if (mk===k) return mv;
-    if (k.includes('fuse1plus')) return 'Fuse 1+';
-    if (k.includes('fuse1'))    return 'Fuse 1';
-    if (k.includes('form4l'))   return 'Form 4L';
-    if (k.includes('form4'))    return 'Form 4';
-    if (k.includes('form3l'))   return 'Form 3L';
-    if (k.includes('form3plus'))return 'Form 3+';
-    if (k.includes('form3'))    return 'Form 3';
+    const k=id.toLowerCase().replace(/\s/g,'');
+    for(const[mk,mv] of Object.entries(MACHINE_TYPE_MAP)) if(mk===k) return mv;
+    if(k.includes('fuse1plus')) return 'Fuse 1+';
+    if(k.includes('fuse1'))    return 'Fuse 1';
+    if(k.includes('form4l'))   return 'Form 4L';
+    if(k.includes('form4'))    return 'Form 4';
+    if(k.includes('form3l'))   return 'Form 3L';
+    if(k.includes('form3plus'))return 'Form 3+';
+    if(k.includes('form3'))    return 'Form 3';
     return id;
 }
 
-// ── 列印機狀態 ────────────────────────────────
+function switchPrinterView(v) {
+    printerView = v;
+    document.getElementById('panel-status').classList.toggle('hidden', v!=='status');
+    document.getElementById('panel-material').classList.toggle('hidden', v!=='material');
+    document.getElementById('view-status-btn').className   = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='status'  ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    document.getElementById('view-material-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='material'? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    if (v==='material' && cachedPrinters.length) renderMaterialPanel(cachedPrinters);
+}
+
 async function loadPrinterStatus() {
-    const grid = document.getElementById('printer-status-grid');
     try {
-        const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${STATUS_FILE}?t=${Date.now()}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const printers = await res.json();
-        if (!Array.isArray(printers) || printers.length === 0) {
-            grid.innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料，GitHub Actions 尚未執行或設定中。</div>';
-            return;
-        }
-        const updatedAt = printers[0]?.updated_at;
-        if (updatedAt) {
-            const d = new Date(updatedAt);
-            document.getElementById('printer-updated').textContent =
+        const url=`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${STATUS_FILE}?t=${Date.now()}`;
+        const res=await fetch(url);
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const printers=await res.json();
+        cachedPrinters=Array.isArray(printers)?printers:[];
+
+        const updatedAt=cachedPrinters[0]?.updated_at;
+        if(updatedAt){
+            const d=new Date(updatedAt);
+            document.getElementById('printer-updated').textContent=
                 `資料時間：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
         }
-        grid.innerHTML = '';
-        printers.forEach(p => {
-            const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
-            const isPrinting = ['PRINTING','PAUSED','PAUSING'].includes(p.status);
-            const machineLabel = getMachineLabel(p.machine_type);
-            const card = document.createElement('div');
-            card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
-            card.innerHTML = `
-                <div class="flex items-start justify-between">
-                    <div>
-                        <p class="font-semibold text-gray-800 text-sm">${p.alias||p.serial}</p>
-                        <p class="text-xs text-gray-400 mt-0.5">${machineLabel?machineLabel+' · ':''}${p.serial}</p>
-                    </div>
-                    <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
-                        <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
-                    </span>
-                </div>
-                ${isPrinting && p.print_name ? `
-                <div class="space-y-1.5">
-                    <div class="flex justify-between items-center">
-                        <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
-                        <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
-                    </div>
-                    <div class="progress-bar"><div class="progress-fill ${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'}" style="width:${p.progress}%"></div></div>
-                    <div class="flex justify-between text-xs text-gray-400">
-                        <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
-                        <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
-                    </div>
-                </div>` : ''}
-                ${p.material?`<p class="text-xs text-gray-400">材料：${p.material}</p>`:''}
-            `;
-            grid.appendChild(card);
-        });
+
+        if(!cachedPrinters.length){
+            document.getElementById('panel-status').innerHTML='<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
+            return;
+        }
+
+        renderStatusPanel(cachedPrinters);
+        if(printerView==='material') renderMaterialPanel(cachedPrinters);
     } catch(err) {
-        grid.innerHTML = `<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入列印機狀態：${err.message}</div>`;
+        document.getElementById('panel-status').innerHTML=`<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入：${err.message}</div>`;
     }
 }
 
-// ── Token 管理 ──────────────────────────────
-function getToken() { return localStorage.getItem(TOKEN_KEY)||''; }
-function showTokenModal(canCancel=false) {
-    document.getElementById('token-modal').classList.remove('hidden');
-    document.getElementById('cancel-token-btn').classList.toggle('hidden',!canCancel);
-    document.getElementById('modal-token').value = getToken();
-    lucide.createIcons();
-}
-function cancelTokenSetup() { document.getElementById('token-modal').classList.add('hidden'); }
-function toggleTokenVisibility() {
-    const input = document.getElementById('modal-token');
-    const icon  = document.getElementById('eye-icon');
-    if (input.type==='password') { input.type='text'; icon.setAttribute('data-lucide','eye-off'); }
-    else { input.type='password'; icon.setAttribute('data-lucide','eye'); }
-    lucide.createIcons();
-}
-function saveToken() {
-    const token = document.getElementById('modal-token').value.trim();
-    if (!token) { showToast('請輸入 Token','error'); return; }
-    if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) { showToast('Token 格式不正確','error'); return; }
-    localStorage.setItem(TOKEN_KEY, token);
-    document.getElementById('token-modal').classList.add('hidden');
-    loadFromGitHub();
+function renderStatusPanel(printers) {
+    const grid=document.getElementById('panel-status');
+    grid.innerHTML='';
+    printers.forEach(p=>{
+        const s=PRINTER_STATUS_MAP[p.status]||PRINTER_STATUS_MAP['UNKNOWN'];
+        const isPrinting=['PRINTING','PAUSED','PAUSING'].includes(p.status);
+        const ml=getMachineLabel(p.machine_type);
+        const card=document.createElement('div');
+        card.className='border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
+        card.innerHTML=`
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800 text-sm">${p.alias||p.serial}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.serial}</p>
+                </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
+                </span>
+            </div>
+            ${isPrinting&&p.print_name?`
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
+                    <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill ${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'}" style="width:${p.progress}%"></div></div>
+                <div class="flex justify-between text-xs text-gray-400">
+                    <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
+                    <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
+                </div>
+            </div>`:''}
+            ${p.material?`<p class="text-xs text-gray-400">材料：${p.material}</p>`:''}
+        `;
+        grid.appendChild(card);
+    });
 }
 
-// ── 密碼驗證 ────────────────────────────────
-function showPasswordModal(action, data) {
-    pendingAction=action; pendingData=data;
+function renderMaterialPanel(printers) {
+    const grid=document.getElementById('material-grid');
+    // 只顯示指定兩台
+    const targets=printers.filter(p=>MATERIAL_PRINTERS.some(name=>(p.alias||'').includes(name)));
+    if(!targets.length){
+        grid.innerHTML='<div class="col-span-full text-center text-gray-400 text-sm py-4">找不到指定機台（AluminumBowfin、AdroitSauropod）資料</div>';
+        return;
+    }
+    grid.innerHTML='';
+    targets.forEach(p=>{
+        const s=PRINTER_STATUS_MAP[p.status]||PRINTER_STATUS_MAP['UNKNOWN'];
+        const ml=getMachineLabel(p.machine_type);
+        // material_level 是 0~1 的百分比（API 提供），若無則顯示未知
+        const levelPct = p.material_level!=null ? Math.round(p.material_level*100) : null;
+        const cartridges = p.cartridges || [];  // 若 API 有多個料匣
+
+        const card=document.createElement('div');
+        card.className='border border-gray-200 rounded-xl p-5 space-y-4';
+        card.innerHTML=`
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800">${p.alias||p.serial}</p>
+                    <p class="text-xs text-gray-400">${ml||p.machine_type||''}</p>
+                </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>${s.label}
+                </span>
+            </div>
+            <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600 font-medium">材料</span>
+                    <span class="text-gray-800 font-semibold">${p.material||'—'}</span>
+                </div>
+                ${levelPct!=null?`
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-gray-500">
+                        <span>料槽用量</span>
+                        <span class="font-medium ${levelPct<20?'text-red-500':levelPct<40?'text-yellow-600':'text-green-600'}">${levelPct}%</span>
+                    </div>
+                    <div class="progress-bar h-3 rounded-md">
+                        <div class="progress-fill rounded-md ${levelPct<20?'bg-red-400':levelPct<40?'bg-yellow-400':'bg-green-500'}" style="width:${levelPct}%"></div>
+                    </div>
+                </div>`:`
+                <div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
+                    料槽用量資料由 Formlabs API 提供<br>需 GitHub Actions 同步後顯示
+                </div>`}
+                ${cartridges.length?cartridges.map((c,i)=>`
+                <div class="text-xs text-gray-500 flex justify-between">
+                    <span>料匣 ${i+1}</span>
+                    <span>${c.material||'—'} ${c.volume_remaining!=null?Math.round(c.volume_remaining)+'ml':''}</span>
+                </div>`).join(''):''}
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+// ══ 密碼驗證 ══════════════════════════════════
+function showPasswordModal(action,data){
+    pendingAction=action;pendingData=data;
     document.getElementById('modal-password').value='';
     document.getElementById('password-modal').classList.remove('hidden');
     setTimeout(()=>document.getElementById('modal-password').focus(),100);
 }
-function closePasswordModal() {
-    pendingAction=null; pendingData=null;
+function closePasswordModal(){
+    pendingAction=null;pendingData=null;
     document.getElementById('password-modal').classList.add('hidden');
 }
-async function verifyPasswordAction() {
-    if (document.getElementById('modal-password').value.trim()!==ADMIN_PASSWORD) {
+async function verifyPasswordAction(){
+    if(document.getElementById('modal-password').value.trim()!==ADMIN_PASSWORD){
         showToast('密碼錯誤！','error');
-        document.getElementById('modal-password').focus(); return;
+        document.getElementById('modal-password').focus();return;
     }
-    const action=pendingAction, data=pendingData;
+    const action=pendingAction,data=pendingData;
     closePasswordModal();
-    if (action==='delete') await executeDeleteBooking(data);
+    if(action==='delete') await executeDeleteBooking(data);
 }
 
-// ── 編輯 Modal ───────────────────────────────
-function openEditModal(id) {
-    const b = bookings.find(x=>x.id===id);
-    if (!b) return;
-    editingId = id;
-    editHasOrder = b.hasOrder ?? null;
-
-    document.getElementById('edit-date').value    = b.date || '';
-    document.getElementById('edit-purpose').value = b.purpose || '';
-
-    // 選單同步
-    ['edit-sales','edit-printer','edit-engineer'].forEach(sid => {
-        const sel = document.getElementById(sid);
-        const field = sid.replace('edit-','');
-        sel.value = b[field==='sales'?'sales':field==='printer'?'printer':'engineer'];
-    });
-
-    // 單號按鈕狀態
-    const btnY = document.getElementById('edit-btn-yes');
-    const btnN = document.getElementById('edit-btn-no');
-    const lbl  = document.getElementById('edit-purpose-label');
-    if (editHasOrder === true) {
-        btnY.className='toggle-btn active-yes'; btnN.className='toggle-btn';
-        lbl.textContent='單號';
-    } else if (editHasOrder === false) {
-        btnY.className='toggle-btn'; btnN.className='toggle-btn active-no';
-        lbl.textContent='無單號原因';
-    } else {
-        btnY.className='toggle-btn'; btnN.className='toggle-btn';
-        lbl.textContent='備註說明';
-    }
-
+// ══ 編輯 Modal ════════════════════════════════
+function openEditModal(id){
+    const b=bookings.find(x=>x.id===id);
+    if(!b) return;
+    editingId=id; editHasOrder=b.hasOrder??null;
+    document.getElementById('edit-date').value   =b.date||'';
+    document.getElementById('edit-purpose').value=b.purpose||'';
+    document.getElementById('edit-sales').value   =b.sales;
+    document.getElementById('edit-printer').value =b.printer;
+    document.getElementById('edit-engineer').value=b.engineer;
+    const btnY=document.getElementById('edit-btn-yes');
+    const btnN=document.getElementById('edit-btn-no');
+    const lbl =document.getElementById('edit-purpose-label');
+    if(editHasOrder===true){btnY.className='toggle-btn active-yes';btnN.className='toggle-btn';lbl.textContent='單號';}
+    else if(editHasOrder===false){btnY.className='toggle-btn';btnN.className='toggle-btn active-no';lbl.textContent='無單號原因';}
+    else{btnY.className='toggle-btn';btnN.className='toggle-btn';lbl.textContent='備註說明';}
     document.getElementById('edit-modal').classList.remove('hidden');
     lucide.createIcons();
 }
-
-function closeEditModal() {
-    editingId=null; editHasOrder=null;
-    document.getElementById('edit-modal').classList.add('hidden');
+function closeEditModal(){editingId=null;editHasOrder=null;document.getElementById('edit-modal').classList.add('hidden');}
+function setEditHasOrder(val){
+    editHasOrder=val;
+    document.getElementById('edit-btn-yes').className='toggle-btn'+(val===true?' active-yes':'');
+    document.getElementById('edit-btn-no').className ='toggle-btn'+(val===false?' active-no':'');
+    document.getElementById('edit-purpose-label').textContent=val?'單號':'無單號原因';
 }
-
-function setEditHasOrder(val) {
-    editHasOrder = val;
-    document.getElementById('edit-btn-yes').className = 'toggle-btn'+(val===true?' active-yes':'');
-    document.getElementById('edit-btn-no').className  = 'toggle-btn'+(val===false?' active-no':'');
-    document.getElementById('edit-purpose-label').textContent = val?'單號':'無單號原因';
-}
-
-async function saveEdit() {
-    const purpose = document.getElementById('edit-purpose').value.trim();
-    const date    = document.getElementById('edit-date').value;
-    if (!date)              { showToast('請選擇預約日期！','error'); return; }
-    if (editHasOrder===null){ showToast('請選擇是否有單號！','error'); return; }
-    if (!purpose)           { showToast(editHasOrder?'請填寫單號！':'請填寫無單號原因！','error'); return; }
-
-    const idx = bookings.findIndex(b=>b.id===editingId);
-    if (idx===-1) return;
-
-    bookings[idx] = {
-        ...bookings[idx],
-        date,
-        sales:    document.getElementById('edit-sales').value,
-        printer:  document.getElementById('edit-printer').value,
-        engineer: document.getElementById('edit-engineer').value,
-        hasOrder: editHasOrder,
-        purpose,
-    };
-
-    closeEditModal();
-    renderTable();
+async function saveEdit(){
+    const purpose=document.getElementById('edit-purpose').value.trim();
+    const date   =document.getElementById('edit-date').value;
+    if(!date)              {showToast('請選擇預約日期！','error');return;}
+    if(editHasOrder===null){showToast('請選擇是否有單號！','error');return;}
+    if(!purpose)           {showToast(editHasOrder?'請填寫單號！':'請填寫無單號原因！','error');return;}
+    const idx=bookings.findIndex(b=>b.id===editingId);
+    if(idx===-1) return;
+    bookings[idx]={...bookings[idx],date,sales:document.getElementById('edit-sales').value,printer:document.getElementById('edit-printer').value,engineer:document.getElementById('edit-engineer').value,hasOrder:editHasOrder,purpose};
+    closeEditModal();renderTable();
     await saveToGitHub(`編輯預約 #${editingId}`);
 }
 
-// ── GitHub API ──────────────────────────────
-function githubHeaders() {
-    return {'Authorization':`token ${getToken()}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'};
-}
-function githubFileURL(file) {
-    return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${file}`;
-}
-async function loadFromGitHub() {
-    if (!getToken()) { showTokenModal(false); return; }
+// ══ GitHub API ════════════════════════════════
+function getToken(){return localStorage.getItem(TOKEN_KEY)||'';}
+function githubHeaders(){return{'Authorization':`token ${getToken()}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'};}
+function githubFileURL(file){return`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${file}`;}
+
+async function loadFromGitHub(){
     setSyncStatus('loading');
-    try {
-        const res = await fetch(githubFileURL(BOOKINGS_FILE),{headers:githubHeaders()});
-        if (res.status===401) { setSyncStatus('error'); showToast('Token 無效或已過期','error'); setTimeout(()=>showTokenModal(false),1500); return; }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        fileSHA = data.sha;
-        const raw = atob(data.content.replace(/\n/g,''));
-        const bytes = Uint8Array.from(raw, c=>c.charCodeAt(0));
-        bookings = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-        currentPage = 1;
-        renderTable();
-        setSyncStatus('ok');
-    } catch(err) { setSyncStatus('error'); showToast('載入失敗：'+err.message,'error'); }
-}
-async function saveToGitHub(commitMsg) {
-    if (isSaving) return;
-    isSaving=true; setSyncStatus('saving');
-    try {
-        const jsonStr = JSON.stringify(bookings,null,2);
-        const encoded = new TextEncoder().encode(jsonStr);
-        const b64 = btoa(String.fromCharCode(...encoded));
-        const body = {message:commitMsg||'更新預約資料',content:b64,sha:fileSHA};
-        const res = await fetch(githubFileURL(BOOKINGS_FILE),{method:'PUT',headers:githubHeaders(),body:JSON.stringify(body)});
-        if (res.status===401) { showToast('Token 無效，請重新設定','error'); showTokenModal(true); return; }
-        if (!res.ok) { const e=await res.json(); throw new Error(e.message||`HTTP ${res.status}`); }
-        const data = await res.json();
-        fileSHA = data.content.sha;
-        setSyncStatus('ok'); showToast('✓ 已儲存至 GitHub','success');
-    } catch(err) { setSyncStatus('error'); showToast('儲存失敗：'+err.message,'error'); }
-    finally { isSaving=false; }
+    try{
+        const url = isEditor
+            ? githubFileURL(BOOKINGS_FILE)
+            : `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${BOOKINGS_FILE}?t=${Date.now()}`;
+        const opts = isEditor ? {headers:githubHeaders()} : {};
+        const res=await fetch(url,opts);
+        if(res.status===401){setSyncStatus('error');showToast('Token 無效，請重新設定','error');return;}
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        if(isEditor){
+            const data=await res.json();
+            fileSHA=data.sha;
+            const raw=atob(data.content.replace(/\n/g,''));
+            const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+            bookings=JSON.parse(new TextDecoder('utf-8').decode(bytes));
+        } else {
+            bookings=await res.json();
+        }
+        currentPage=1;renderTable();setSyncStatus('ok');
+    }catch(err){setSyncStatus('error');showToast('載入失敗：'+err.message,'error');}
 }
 
-// ── UI 工具 ──────────────────────────────────
-function setSyncStatus(state) {
+async function saveToGitHub(commitMsg){
+    if(isSaving) return;
+    isSaving=true;setSyncStatus('saving');
+    try{
+        const jsonStr=JSON.stringify(bookings,null,2);
+        const encoded=new TextEncoder().encode(jsonStr);
+        const b64=btoa(String.fromCharCode(...encoded));
+        const body={message:commitMsg||'更新預約資料',content:b64,sha:fileSHA};
+        const res=await fetch(githubFileURL(BOOKINGS_FILE),{method:'PUT',headers:githubHeaders(),body:JSON.stringify(body)});
+        if(res.status===401){showToast('Token 無效，請重新設定','error');return;}
+        if(!res.ok){const e=await res.json();throw new Error(e.message||`HTTP ${res.status}`);}
+        const data=await res.json();
+        fileSHA=data.content.sha;
+        setSyncStatus('ok');showToast('✓ 已儲存至 GitHub','success');
+    }catch(err){setSyncStatus('error');showToast('儲存失敗：'+err.message,'error');}
+    finally{isSaving=false;}
+}
+
+// ══ UI 工具 ═══════════════════════════════════
+function setSyncStatus(state){
     const text=document.getElementById('sync-status');
     const loading=document.getElementById('loading-state');
     const map={loading:['載入中...',true],saving:['儲存中...',false],ok:['已同步 GitHub',false],error:['連線失敗',false]};
     const [label,showLoad]=map[state]||['--',false];
-    text.textContent=label;
-    loading.classList.toggle('hidden',!showLoad);
+    text.textContent=label;loading.classList.toggle('hidden',!showLoad);
 }
-function showToast(msg,type) {
+function showToast(msg,type){
     const toast=document.getElementById('toast');
     toast.textContent=msg;
     toast.className=`toast ${type==='error'?'bg-red-600 text-white':'bg-green-600 text-white'}`;
-    toast.classList.remove('hidden');
-    clearTimeout(toast._timer);
+    toast.classList.remove('hidden');clearTimeout(toast._timer);
     toast._timer=setTimeout(()=>toast.classList.add('hidden'),3500);
 }
-function getStatusColor(status) {
-    return {'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
+function getStatusColor(status){
+    return{'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
 }
-function populateSelect(id,options) {
+function populateSelect(id,options){
     const sel=document.getElementById(id);
     options.forEach(o=>{const opt=document.createElement('option');opt.value=opt.textContent=o;sel.appendChild(opt);});
 }
 
-// ── 單號切換（新增表單） ──────────────────────
-function setHasOrder(val) {
+// ══ 單號切換 ══════════════════════════════════
+function setHasOrder(val){
     hasOrder=val;
     const label=document.getElementById('purpose-label');
     const input=document.getElementById('purpose-input');
     document.getElementById('btn-yes').className='toggle-btn'+(val===true?' active-yes':'');
     document.getElementById('btn-no').className ='toggle-btn'+(val===false?' active-no':'');
-    label.textContent   = val?'單號':'無單號原因';
-    input.placeholder   = val?'請輸入單號':'請說明無單號的原因';
-    input.disabled      = false;
-    input.value         = '';
-    input.focus();
+    label.textContent=val?'單號':'無單號原因';
+    input.placeholder=val?'請輸入單號':'請說明無單號的原因';
+    input.disabled=false;input.value='';input.focus();
 }
 
-// ── 分頁渲染 ─────────────────────────────────
-function renderPagination(total) {
-    const totalPages = Math.ceil(total / PAGE_SIZE);
-    const pagination = document.getElementById('pagination');
-    const pageInfo   = document.getElementById('page-info');
-    const pageBtns   = document.getElementById('page-btns');
+// ══ 匯出 Excel ════════════════════════════════
+function exportExcel(){
+    if(!bookings.length){showToast('沒有資料可以匯出','error');return;}
+    const rows=bookings.map(b=>({
+        '預約日期': b.date||b.timestamp||'',
+        '申請業務': b.sales||'',
+        '設備':     b.printer||'',
+        '有單號':   b.hasOrder?'有':'無',
+        '單號/原因':b.purpose||'',
+        '負責工程師':b.engineer||'',
+        '任務狀態': b.status||'',
+    }));
+    const ws=XLSX.utils.json_to_sheet(rows);
+    // 欄位寬度
+    ws['!cols']=[{wch:14},{wch:10},{wch:10},{wch:8},{wch:30},{wch:12},{wch:10}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,'預約清單');
+    const now=new Date();
+    const fname=`3DP預約清單_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.xlsx`;
+    XLSX.writeFile(wb,fname);
+    showToast('✓ 已匯出 '+fname,'success');
+}
 
-    if (totalPages <= 1) { pagination.classList.add('hidden'); return; }
+// ══ 分頁 ══════════════════════════════════════
+function renderPagination(total){
+    const totalPages=Math.ceil(total/PAGE_SIZE);
+    const pagination=document.getElementById('pagination');
+    const pageInfo  =document.getElementById('page-info');
+    const pageBtns  =document.getElementById('page-btns');
+    if(totalPages<=1){pagination.classList.add('hidden');return;}
     pagination.classList.remove('hidden');
-
-    const start = (currentPage-1)*PAGE_SIZE+1;
-    const end   = Math.min(currentPage*PAGE_SIZE, total);
-    pageInfo.textContent = `第 ${start}–${end} 筆，共 ${total} 筆`;
-
-    pageBtns.innerHTML = '';
-
-    // 上一頁
-    const prev = document.createElement('button');
-    prev.className='page-btn'; prev.textContent='‹';
-    if (currentPage===1) prev.disabled=true;
-    prev.onclick=()=>{ currentPage--; renderTable(); };
+    const start=(currentPage-1)*PAGE_SIZE+1;
+    const end=Math.min(currentPage*PAGE_SIZE,total);
+    pageInfo.textContent=`第 ${start}–${end} 筆，共 ${total} 筆`;
+    pageBtns.innerHTML='';
+    const prev=document.createElement('button');
+    prev.className='page-btn';prev.textContent='‹';
+    if(currentPage===1) prev.disabled=true;
+    prev.onclick=()=>{currentPage--;renderTable();};
     pageBtns.appendChild(prev);
-
-    // 頁碼按鈕（最多顯示 5 頁）
-    let startPage = Math.max(1, currentPage-2);
-    let endPage   = Math.min(totalPages, startPage+4);
-    if (endPage-startPage < 4) startPage = Math.max(1, endPage-4);
-
-    for (let i=startPage; i<=endPage; i++) {
+    let sp=Math.max(1,currentPage-2),ep=Math.min(totalPages,sp+4);
+    if(ep-sp<4) sp=Math.max(1,ep-4);
+    for(let i=sp;i<=ep;i++){
         const btn=document.createElement('button');
         btn.className='page-btn'+(i===currentPage?' active':'');
         btn.textContent=i;
-        btn.onclick=(()=>{ const p=i; return ()=>{ currentPage=p; renderTable(); }; })();
+        btn.onclick=(()=>{const p=i;return()=>{currentPage=p;renderTable();};})();
         pageBtns.appendChild(btn);
     }
-
-    // 下一頁
     const next=document.createElement('button');
-    next.className='page-btn'; next.textContent='›';
-    if (currentPage===totalPages) next.disabled=true;
-    next.onclick=()=>{ currentPage++; renderTable(); };
+    next.className='page-btn';next.textContent='›';
+    if(currentPage===totalPages) next.disabled=true;
+    next.onclick=()=>{currentPage++;renderTable();};
     pageBtns.appendChild(next);
 }
 
-// ── 表格渲染 ─────────────────────────────────
-function renderTable() {
+// ══ 表格渲染 ══════════════════════════════════
+function renderTable(){
     const tbody=document.getElementById('table-body');
     document.getElementById('total-count').textContent=`共 ${bookings.length} 筆資料`;
     tbody.innerHTML='';
-
-    if (bookings.length===0) {
+    if(!bookings.length){
         tbody.innerHTML='<tr><td colspan="8" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
-        document.getElementById('pagination').classList.add('hidden');
-        return;
+        document.getElementById('pagination').classList.add('hidden');return;
     }
 
-    // 依預約日期排序
-    const sorted=[...bookings].sort((a,b)=>{
-        const da=a.date||a.timestamp||'', db=b.date||b.timestamp||'';
-        if (!da&&!db) return 0; if (!da) return 1; if (!db) return -1;
-        return da.localeCompare(db);
-    });
+    // 排序：先依「未完成/已完成」分組，組內再依日期升冪
+    const dateKey=b=>b.date||b.timestamp||'';
+    const active=bookings.filter(b=>!DONE_STATUSES.has(b.status)).sort((a,b)=>dateKey(a).localeCompare(dateKey(b)));
+    const done  =bookings.filter(b=> DONE_STATUSES.has(b.status)).sort((a,b)=>dateKey(a).localeCompare(dateKey(b)));
+    const sorted=[...active,...done];
 
-    // 分頁切片
-    const totalPages = Math.ceil(sorted.length/PAGE_SIZE);
-    if (currentPage > totalPages) currentPage = totalPages;
-    const pageData = sorted.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
-
+    const totalPages=Math.ceil(sorted.length/PAGE_SIZE);
+    if(currentPage>totalPages) currentPage=Math.max(1,totalPages);
+    const pageData=sorted.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
     const today=new Date().toISOString().slice(0,10);
 
-    pageData.forEach(b=>{
+    pageData.forEach((b,idx)=>{
         const tr=document.createElement('tr');
-        tr.className='hover:bg-gray-50 transition-colors';
+        const isDone=DONE_STATUSES.has(b.status);
+        tr.className='hover:bg-gray-50 transition-colors'+(isDone?' opacity-60':'');
         const opts=STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
         const orderBadge=b.hasOrder
             ?'<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">有</span>'
@@ -643,7 +764,7 @@ function renderTable() {
         const displayDate=b.date
             ?new Date(b.date).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
             :(b.timestamp||'-');
-        const isOverdue=b.date&&b.date<today&&b.status!=='已完成'&&b.status!=='異常/取消';
+        const isOverdue=b.date&&b.date<today&&!DONE_STATUSES.has(b.status);
 
         tr.innerHTML=`
             <td class="p-3 font-medium ${isOverdue?'text-red-500':'text-gray-800'}">
@@ -655,11 +776,12 @@ function renderTable() {
             <td class="p-3 text-gray-600">${b.purpose}</td>
             <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${b.engineer}</span></td>
             <td class="p-3">
-                <select onchange="updateStatus(${b.id},this.value)"
-                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none cursor-pointer ${getStatusColor(b.status)}">
+                <select ${isEditor?'':'disabled'} onchange="updateStatus(${b.id},this.value)"
+                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${isEditor?'cursor-pointer':''} ${getStatusColor(b.status)}">
                     ${opts}
                 </select>
             </td>
+            ${isEditor?`
             <td class="p-3 text-center">
                 <div class="flex items-center justify-center gap-1">
                     <button onclick="openEditModal(${b.id})" title="編輯"
@@ -671,7 +793,7 @@ function renderTable() {
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                     </button>
                 </div>
-            </td>
+            </td>`:'<td></td>'}
         `;
         tbody.appendChild(tr);
     });
@@ -680,29 +802,19 @@ function renderTable() {
     lucide.createIcons();
 }
 
-// ── CRUD ─────────────────────────────────────
-document.getElementById('booking-form').addEventListener('submit', async function(e) {
+// ══ CRUD ══════════════════════════════════════
+document.getElementById('booking-form').addEventListener('submit',async function(e){
     e.preventDefault();
     const purpose=document.getElementById('purpose-input').value.trim();
     const date   =document.getElementById('date-input').value;
-    if (!date)            { showToast('請選擇預約日期！','error'); return; }
-    if (hasOrder===null)  { showToast('請選擇是否有單號！','error'); return; }
-    if (!purpose)         { showToast(hasOrder?'請填寫單號！':'請填寫無單號原因！','error'); return; }
-
+    if(!date)           {showToast('請選擇預約日期！','error');return;}
+    if(hasOrder===null) {showToast('請選擇是否有單號！','error');return;}
+    if(!purpose)        {showToast(hasOrder?'請填寫單號！':'請填寫無單號原因！','error');return;}
     const btn=document.getElementById('submit-btn');
-    btn.disabled=true; btn.innerHTML='<span class="spinner"></span> 儲存中...';
-
-    const newBooking={
-        id:Date.now(), date, sales:document.getElementById('sales-select').value,
-        printer:document.getElementById('printer-select').value, hasOrder, purpose,
-        engineer:document.getElementById('engineer-select').value,
-        status:'待確認', timestamp:new Date().toLocaleDateString('zh-TW')
-    };
-    bookings.unshift(newBooking);
-    currentPage=1;
-    renderTable();
+    btn.disabled=true;btn.innerHTML='<span class="spinner"></span> 儲存中...';
+    const newBooking={id:Date.now(),date,sales:document.getElementById('sales-select').value,printer:document.getElementById('printer-select').value,hasOrder,purpose,engineer:document.getElementById('engineer-select').value,status:'待確認',timestamp:new Date().toLocaleDateString('zh-TW')};
+    bookings.unshift(newBooking);currentPage=1;renderTable();
     await saveToGitHub(`新增預約：${newBooking.sales} - ${newBooking.printer}`);
-
     document.getElementById('date-input').value='';
     document.getElementById('purpose-input').value='';
     document.getElementById('purpose-input').disabled=true;
@@ -710,38 +822,37 @@ document.getElementById('booking-form').addEventListener('submit', async functio
     document.getElementById('purpose-label').textContent='備註說明';
     document.getElementById('btn-yes').className='toggle-btn';
     document.getElementById('btn-no').className ='toggle-btn';
-    hasOrder=null;
-    btn.disabled=false; btn.innerHTML='<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
+    hasOrder=null;btn.disabled=false;btn.innerHTML='<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
     lucide.createIcons();
 });
 
-window.updateStatus=async function(id,newStatus) {
+window.updateStatus=async function(id,newStatus){
     const idx=bookings.findIndex(b=>b.id===id);
-    if (idx===-1) return;
-    bookings[idx].status=newStatus;
-    renderTable();
+    if(idx===-1) return;
+    bookings[idx].status=newStatus;renderTable();
     await saveToGitHub(`更新狀態：#${id} → ${newStatus}`);
 };
-window.triggerDeleteBooking=function(id){ showPasswordModal('delete',id); };
-async function executeDeleteBooking(id) {
-    bookings=bookings.filter(b=>b.id!==id);
-    renderTable();
+window.triggerDeleteBooking=function(id){showPasswordModal('delete',id);};
+async function executeDeleteBooking(id){
+    bookings=bookings.filter(b=>b.id!==id);renderTable();
     await saveToGitHub(`刪除預約 #${id}`);
 }
 
-// ── 初始化 ───────────────────────────────────
-window.onload=function() {
-    const selOpts=[['sales-select',SALES],['printer-select',PRINTERS],['engineer-select',ENGINEERS],
-                   ['edit-sales',SALES],['edit-printer',PRINTERS],['edit-engineer',ENGINEERS]];
-    selOpts.forEach(([id,opts])=>populateSelect(id,opts));
-
+// ══ 初始化 ════════════════════════════════════
+window.onload=function(){
+    [['sales-select',SALES],['printer-select',PRINTERS],['engineer-select',ENGINEERS],
+     ['edit-sales',SALES],['edit-printer',PRINTERS],['edit-engineer',ENGINEERS]]
+        .forEach(([id,opts])=>populateSelect(id,opts));
     document.getElementById('date-input').value=new Date().toISOString().slice(0,10);
-    document.getElementById('modal-password').addEventListener('keydown',e=>{ if(e.key==='Enter') verifyPasswordAction(); });
-
+    document.getElementById('modal-password').addEventListener('keydown',e=>{if(e.key==='Enter') verifyPasswordAction();});
     lucide.createIcons();
+
+    // 列印機狀態（不需 token）
     loadPrinterStatus();
-    setInterval(loadPrinterStatus, 5*60*1000);
-    if (!getToken()) { showTokenModal(false); } else { loadFromGitHub(); }
+    setInterval(loadPrinterStatus,5*60*1000);
+
+    // 第一次進入：直接顯示設定 Modal
+    showSettingsModal();
 };
 </script>
 </body>
