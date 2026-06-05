@@ -934,8 +934,8 @@
     "FLTO2002": 2000,
     "FLFLES02": 0,
     "FLGPBK05": 1000,
-    "FLTO1502": 1000,
-    "Flexible 80A V1.1": 1000
+    "FLTO1502": 0,
+    "Flexible 80A V1.1": 0
   },
   "last_processed_prints": [
     "d87390f2-8ed4-4e65-a24f-7e476d37e36d",
