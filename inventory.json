@@ -923,7 +923,8 @@
     "Rigid 10K V1.1": 2000,
     "Rigid 4000 V1": 0,
     "Tough 1000 V1": 2000,
-    "Tough 2000 V1.1": 2000
+    "Tough 2000 V1.1": 2000,
+    "Tough 2000 V2": 2000
   },
   "last_processed_prints": [
     "d87390f2-8ed4-4e65-a24f-7e476d37e36d",
