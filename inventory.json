@@ -4,11 +4,20 @@
     "請先設定樹脂罐材料": {
       "bottles": 1,
       "total_ml": 1000,
-      "updated_at": "2026-06-05T08:47:13.583Z",
+      "updated_at": "2026-06-05T08:47:18.241Z",
       "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780649238241,
+      "type": "manual",
+      "material": "請先設定樹脂罐材料",
+      "printer": "備料庫存",
+      "ml": 0,
+      "note": "手動調整庫存",
+      "ts": "2026-06-05T08:47:18.241Z"
+    },
     {
       "id": 1780649233583,
       "type": "stockin",
