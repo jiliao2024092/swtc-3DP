@@ -68,9 +68,24 @@
       "total_ml": 1700,
       "updated_at": "2026-06-05T09:13:44.043Z",
       "updated_by": "manual"
+    },
+    "Tough 1000 V1": {
+      "bottles": 0.4,
+      "total_ml": 400,
+      "updated_at": "2026-06-05T09:13:53.169Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650833169,
+      "type": "manual",
+      "material": "Tough 1000 V1",
+      "printer": "備料庫存",
+      "ml": 400,
+      "note": "調整為 0.4 罐",
+      "ts": "2026-06-05T09:13:53.169Z"
+    },
     {
       "id": 1780650824043,
       "type": "manual",
@@ -905,7 +920,8 @@
     "Clear V5": 2000,
     "Grey V5": 2000,
     "High Temp V2": 0,
-    "Rigid 10K V1.1": 2000
+    "Rigid 10K V1.1": 2000,
+    "Rigid 4000 V1": 0
   },
   "last_processed_prints": [
     "d87390f2-8ed4-4e65-a24f-7e476d37e36d",
