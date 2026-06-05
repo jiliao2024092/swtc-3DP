@@ -56,9 +56,24 @@
       "total_ml": 300,
       "updated_at": "2026-06-05T09:13:32.241Z",
       "updated_by": "manual"
+    },
+    "Rigid 10K V1.1": {
+      "bottles": 3.2,
+      "total_ml": 3200,
+      "updated_at": "2026-06-05T09:13:37.338Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650817338,
+      "type": "manual",
+      "material": "Rigid 10K V1.1",
+      "printer": "備料庫存",
+      "ml": 3200,
+      "note": "調整為 3.2 罐",
+      "ts": "2026-06-05T09:13:37.338Z"
+    },
     {
       "id": 1780650812241,
       "type": "manual",
