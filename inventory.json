@@ -1,0 +1,24 @@
+{
+  "cartridges": {},
+  "stock": {
+    "請先設定樹脂罐材料": {
+      "bottles": 1,
+      "total_ml": 1000,
+      "updated_at": "2026-06-05T08:47:13.583Z",
+      "updated_by": "manual"
+    }
+  },
+  "history": [
+    {
+      "id": 1780649233583,
+      "type": "stockin",
+      "material": "請先設定樹脂罐材料",
+      "printer": "備料庫存",
+      "ml": 1000,
+      "note": "備料入庫（1罐×1000ml）",
+      "ts": "2026-06-05T08:47:13.583Z"
+    }
+  ],
+  "safety": {},
+  "last_processed_prints": []
+}
