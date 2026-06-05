@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, 'Microsoft JhengHei'; }
         .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle; }
@@ -214,8 +215,9 @@
                             <th class="p-3 border-b font-medium">材料名稱</th>
                             <th class="p-3 border-b font-medium text-right">罐數</th>
                             <th class="p-3 border-b font-medium text-right">估計剩餘(ml)</th>
-                            <th class="p-3 border-b font-medium">安全庫存</th>
+                            <th class="p-3 border-b font-medium text-right w-32">安全庫存(ml)</th>
                             <th class="p-3 border-b font-medium">狀態</th>
+                            <th class="p-3 border-b font-medium w-40">備註</th>
                             <th class="p-3 border-b font-medium">最後更新</th>
                             <th class="p-3 border-b font-medium text-center">操作</th>
                         </tr>
@@ -260,8 +262,24 @@
         <div id="panel-monthly" class="p-6 hidden">
             <div class="flex items-center justify-between mb-4">
                 <p class="text-sm text-gray-500">各材料每月消耗量統計。</p>
-                <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
-                </select>
+                <div class="flex items-center gap-2">
+                    <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="monthly-month" onchange="renderMonthlyPie()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+            </div>
+            <!-- 圓餅圖 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="border border-gray-100 rounded-xl p-4">
+                    <h3 id="pie-title" class="text-sm font-semibold text-gray-700 mb-3">當月各材料消耗佔比</h3>
+                    <div style="position:relative; height:280px;">
+                        <canvas id="monthly-pie"></canvas>
+                    </div>
+                    <p id="pie-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                </div>
+                <div class="border border-gray-100 rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-gray-700 mb-3">當月消耗明細</h3>
+                    <div id="pie-legend" class="space-y-2"></div>
+                </div>
             </div>
             <div id="monthly-content"></div>
         </div>
@@ -702,32 +720,42 @@ function closeCartridgeModal() { document.getElementById('cartridge-modal').clas
 function renderStockTable() {
     const tbody=document.getElementById('stock-table-body');
     const mats=getAllMaterials();
-    if(!mats.length){ tbody.innerHTML='<tr><td colspan="7" class="p-8 text-center text-gray-400">尚無庫存資料</td></tr>'; return; }
+    if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">尚無庫存資料</td></tr>'; return; }
     tbody.innerHTML='';
     mats.forEach(m=>{
         const s=inv.stock[m]||{bottles:0,total_ml:0};
         const safety=getSafetyStock(m);
         const low=isLowStock(m);
         const bottles=s.bottles||0;
+        const me=m.replace(/'/g,"\\'");
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${m}</td>
             <td class="p-3 text-right">
                 <input type="number" min="0" step="0.1" value="${bottles}"
-                    onchange="updateStockBottles('${m.replace(/'/g,"\\'")}', this.value)"
+                    onchange="updateStockBottles('${me}', this.value)"
                     class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors">
                 <span class="text-xs text-gray-400 ml-1">罐</span>
             </td>
             <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${Math.round(s.total_ml||0)}</td>
-            <td class="p-3 text-gray-500 text-sm">${safety} ml</td>
+            <td class="p-3 text-right">
+                <input type="number" min="0" step="100" value="${safety}"
+                    onchange="updateSafety('${me}', this.value)"
+                    class="w-24 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm transition-colors">
+            </td>
             <td class="p-3">${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
+            <td class="p-3">
+                <input type="text" value="${(s.note||'').replace(/"/g,'&quot;')}" placeholder="備註"
+                    onchange="updateStockNote('${me}', this.value)"
+                    class="w-full px-2 py-1 rounded-md border border-gray-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors">
+            </td>
             <td class="p-3 text-xs text-gray-400">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
                 <span class="ml-1 ${s.updated_by==='auto'?'text-blue-400':'text-gray-400'}">${s.updated_by==='auto'?'🤖':'✏️'}</span>
             </td>
             <td class="p-3 text-center">
-                <button onclick="deleteStock('${m.replace(/'/g,"\\'")}')" title="刪除此材料備料"
+                <button onclick="deleteStock('${me}')" title="刪除此材料"
                     class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
@@ -760,12 +788,41 @@ async function updateStockBottles(material, value) {
     await saveAll(`調整備料：${material} → ${bottles} 罐`);
 }
 
+// 直接在表格修改安全庫存
+async function updateSafety(material, value) {
+    const v = parseFloat(value);
+    if(isNaN(v) || v < 0){ showToast('請輸入有效的安全庫存量','error'); renderStockTable(); return; }
+    inv.safety[material] = v;
+    renderAll();
+    await saveAll(`設定安全庫存：${material} → ${v} ml`);
+}
+
+// 直接在表格修改備註
+async function updateStockNote(material, value) {
+    if(!inv.stock[material]) inv.stock[material]={bottles:0,total_ml:0};
+    inv.stock[material].note = value.trim();
+    inv.stock[material].updated_at = new Date().toISOString();
+    inv.stock[material].updated_by = 'manual';
+    await saveAll(`更新備註：${material}`);
+}
+
 async function deleteStock(material) {
-    if(!confirm(`確定要刪除「${material}」的備料庫存紀錄嗎？`)) return;
+    const onMachine = getCartridgeTotal(material) > 0;
+    let msg = `確定要刪除「${material}」嗎？`;
+    if(onMachine) msg += `\n\n注意：此材料目前仍裝載在機台樹脂罐上，刪除後僅清除備料與安全庫存設定，機台樹脂罐資料不受影響。`;
+    if(!confirm(msg)) return;
+
+    // 清除備料、安全庫存
     delete inv.stock[material];
+    delete inv.safety[material];
+    // 清除與此材料相關的「備料/手動」歷史（保留列印消耗紀錄供月度分析）
+    inv.history = inv.history.filter(h => !(h.material===material && (h.type==='stockin'||h.type==='manual')));
+
     renderAll();
     await saveAll(`刪除備料：${material}`);
+    showToast(`已刪除 ${material} 的備料資料`,'success');
 }
+
 
 // ══ 備料入庫 Modal ══
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
@@ -897,6 +954,9 @@ function renderHistory() {
 }
 
 // ══ 月度分析 ══
+let monthlyPieChart = null;
+const PIE_COLORS = ['#378ADD','#1D9E75','#EF9F27','#D85A30','#7F77DD','#D4537E','#639922','#E24B4A','#5DCAA5','#FAC775','#85B7EB','#F0997B'];
+
 function renderMonthly() {
     const yearSel=document.getElementById('monthly-year');
     const years=[...new Set(inv.history.filter(h=>h.ts).map(h=>new Date(h.ts).getFullYear()))].sort((a,b)=>b-a);
@@ -905,14 +965,27 @@ function renderMonthly() {
     yearSel.innerHTML='';
     years.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y+'年';if(y===curYear)o.selected=true;yearSel.appendChild(o);});
 
+    // 月份選擇器（預設當月）
+    const monthSel=document.getElementById('monthly-month');
+    if(!monthSel.value){
+        const nowMonth=new Date().getMonth()+1;
+        monthSel.innerHTML='';
+        for(let mo=1;mo<=12;mo++){
+            const o=document.createElement('option');o.value=mo;o.textContent=mo+'月';
+            if(mo===nowMonth)o.selected=true;
+            monthSel.appendChild(o);
+        }
+    }
+
     const content=document.getElementById('monthly-content');
     const mats=getAllMaterials();
-    if(!mats.length){content.innerHTML='<p class="text-center text-gray-400 py-8">尚無資料</p>';return;}
+    if(!mats.length){
+        content.innerHTML='<p class="text-center text-gray-400 py-8">尚無資料</p>';
+        renderMonthlyPie();
+        return;
+    }
 
-    // 統計每月每材料消耗
     const MONTHS=Array.from({length:12},(_,i)=>i+1);
-    const table=document.createElement('div');
-    table.className='overflow-x-auto';
     let html=`<table class="w-full text-sm border-collapse"><thead><tr class="bg-gray-100 text-gray-600">
         <th class="p-3 border-b font-medium text-left">材料</th>
         ${MONTHS.map(m=>`<th class="p-3 border-b font-medium text-right">${m}月</th>`).join('')}
@@ -934,7 +1007,73 @@ function renderMonthly() {
         </tr>`;
     });
     html+='</tbody></table>';
-    content.innerHTML=html;
+    content.innerHTML=`<div class="overflow-x-auto">${html}</div>`;
+
+    renderMonthlyPie();
+}
+
+function renderMonthlyPie() {
+    const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+
+    document.getElementById('pie-title').textContent = `${curYear}年 ${curMonth}月 各材料消耗佔比`;
+
+    // 統計當月各材料消耗
+    const byMaterial = {};
+    inv.history
+        .filter(h=>h.type==='consume' && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth)
+        .forEach(h=>{ byMaterial[h.material]=(byMaterial[h.material]||0)+(h.ml||0); });
+
+    const entries = Object.entries(byMaterial).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+
+    const canvas = document.getElementById('monthly-pie');
+    const empty  = document.getElementById('pie-empty');
+    const legend = document.getElementById('pie-legend');
+
+    if(monthlyPieChart){ monthlyPieChart.destroy(); monthlyPieChart=null; }
+
+    if(!entries.length){
+        canvas.style.display='none';
+        empty.classList.remove('hidden');
+        legend.innerHTML='<p class="text-gray-400 text-sm text-center py-8">當月尚無消耗紀錄</p>';
+        return;
+    }
+    canvas.style.display='block';
+    empty.classList.add('hidden');
+
+    const labels = entries.map(e=>e[0]);
+    const data   = entries.map(e=>Math.round(e[1]));
+    const total  = data.reduce((s,v)=>s+v,0);
+    const colors = labels.map((_,i)=>PIE_COLORS[i%PIE_COLORS.length]);
+
+    monthlyPieChart = new Chart(canvas, {
+        type:'pie',
+        data:{ labels, datasets:[{ data, backgroundColor:colors, borderWidth:2, borderColor:'#fff' }] },
+        options:{
+            responsive:true, maintainAspectRatio:false,
+            plugins:{
+                legend:{ display:false },
+                tooltip:{ callbacks:{ label:(ctx)=>{
+                    const v=ctx.parsed; const pct=Math.round(v/total*100);
+                    return ` ${ctx.label}: ${v} ml (${pct}%)`;
+                }}}
+            }
+        }
+    });
+
+    // 自訂圖例
+    legend.innerHTML = entries.map(([mat,ml],i)=>{
+        const pct=Math.round(ml/total*100);
+        return `<div class="flex items-center justify-between text-sm">
+            <div class="flex items-center gap-2">
+                <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colors[i]}"></span>
+                <span class="text-gray-700">${mat}</span>
+            </div>
+            <div class="text-gray-500"><span class="font-medium text-gray-800">${Math.round(ml)}</span> ml · ${pct}%</div>
+        </div>`;
+    }).join('') + `<div class="flex items-center justify-between text-sm pt-2 mt-2 border-t border-gray-100">
+        <span class="font-medium text-gray-700">當月總計</span>
+        <span class="font-bold text-gray-800">${total} ml</span></div>`;
 }
 
 // ══ 匯出 ══
