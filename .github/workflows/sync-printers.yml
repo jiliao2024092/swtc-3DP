@@ -64,6 +64,20 @@ jobs:
             exit 1
           fi
 
+      - name: Fetch print history
+        run: |
+          HTTP_CODE=$(curl -s -w "%{http_code}" \
+            -o raw-prints.json \
+            "https://api.formlabs.com/developer/v1/prints/?per_page=100" \
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+
+          echo "Prints API HTTP: $HTTP_CODE"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Prints API failed (non-fatal), writing empty list"
+            echo "[]" > raw-prints.json
+          fi
+
       - name: Process printer data
         run: python3 process_printers.py
 
