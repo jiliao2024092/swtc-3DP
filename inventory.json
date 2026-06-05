@@ -1,5 +1,24 @@
 {
-  "cartridges": {},
+  "cartridges": {
+    "AdroitSauropod": [
+      {
+        "slot": "FRONT",
+        "material": "FLTO2002",
+        "remaining_ml": 100,
+        "initial_ml": 1000,
+        "updated_at": "2026-06-05T08:55:15.191Z",
+        "updated_by": "auto"
+      },
+      {
+        "slot": "BACK",
+        "material": "FLTO2002",
+        "remaining_ml": 200,
+        "initial_ml": 1000,
+        "updated_at": "2026-06-05T08:55:15.191Z",
+        "updated_by": "auto"
+      }
+    ]
+  },
   "stock": {
     "請先設定樹脂罐材料": {
       "bottles": 1,
