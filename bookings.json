@@ -22,18 +22,6 @@
     "timestamp": "2026/6/3"
   },
   {
-    "id": 1780463750313,
-    "day": "星期四",
-    "sales": "Amber",
-    "printer": "Form4",
-    "hasOrder": true,
-    "purpose": "202606010001",
-    "engineer": "Bill",
-    "status": "待確認",
-    "timestamp": "2026/6/3",
-    "date": "2026-06-03"
-  },
-  {
     "id": 1780457374149,
     "date": "2026-06-03",
     "day": "否",
