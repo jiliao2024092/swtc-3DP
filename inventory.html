@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>材料庫存管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, 'Microsoft JhengHei'; }
+        .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle; }
+        @keyframes spin { to{transform:rotate(360deg);} }
+        .toast { position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease; }
+        @keyframes slideIn { from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1} }
+        .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center; }
+        .progress-bar { height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden; }
+        .progress-fill { height:100%;border-radius:4px;transition:width 0.4s ease; }
+        .tab-btn { padding:8px 20px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.15s;color:#6b7280;background:transparent;border:none; }
+        .tab-btn.active { background:white;color:#1d4ed8;box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+        input[type=number]::-webkit-inner-spin-button { opacity:1; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+<div id="toast" class="toast hidden"></div>
+
+<!-- ══ Token Modal ══ -->
+<div id="token-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="key-round" class="w-5 h-5 text-blue-600"></i></div>
+            <h2 class="text-xl font-bold">GitHub 連線設定</h2>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">請輸入 GitHub Personal Access Token（需有 repo 權限）</p>
+        <div class="relative mb-4">
+            <input id="modal-token" type="password" placeholder="ghp_xxxxxxxxxxxx"
+                class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono">
+            <button onclick="toggleTokenVis()" class="absolute right-3 top-3 text-gray-400">
+                <i data-lucide="eye" id="eye-icon" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <div class="flex gap-3">
+            <button id="cancel-token-btn" onclick="cancelToken()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hidden">取消</button>
+            <button onclick="saveToken()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">儲存並連線</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ 編輯料匣 Modal ══ -->
+<div id="cartridge-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <div class="bg-teal-100 p-2.5 rounded-lg"><i data-lucide="flask-conical" class="w-5 h-5 text-teal-600"></i></div>
+                <h2 class="text-xl font-bold" id="cartridge-modal-title">編輯料匣</h2>
+            </div>
+            <button onclick="closeCartridgeModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="space-y-4" id="cartridge-modal-body"></div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeCartridgeModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="saveCartridgeEdit()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">儲存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ 新增備料 Modal ══ -->
+<div id="stock-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="package-plus" class="w-5 h-5 text-blue-600"></i></div>
+            <h2 class="text-xl font-bold">新增備料</h2>
+        </div>
+        <div class="space-y-4">
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">材料名稱</label>
+                <select id="stock-material" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"></select>
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">數量（罐數）</label>
+                <input type="number" id="stock-qty" min="1" value="1" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">每罐容量（ml）</label>
+                <input type="number" id="stock-ml" value="1000" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">備註</label>
+                <input type="text" id="stock-note" placeholder="例：補貨入庫" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeStockModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="saveStockIn()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認入庫</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ 安全庫存設定 Modal ══ -->
+<div id="safety-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-100 p-2.5 rounded-lg"><i data-lucide="shield-alert" class="w-5 h-5 text-amber-600"></i></div>
+                <h2 class="text-xl font-bold">安全庫存設定</h2>
+            </div>
+            <button onclick="closeSafetyModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">設定每種材料的安全庫存量（ml），低於此量時會顯示叫料提醒。</p>
+        <div class="space-y-3" id="safety-modal-body"></div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeSafetyModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="saveSafetyStock()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">儲存設定</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ 主體 ══ -->
+<div class="p-4 md:p-8">
+<div class="max-w-7xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between border-l-4 border-teal-600">
+        <div class="flex items-center gap-4">
+            <div class="bg-teal-100 p-3 rounded-lg text-teal-600"><i data-lucide="package" class="w-7 h-7"></i></div>
+            <div>
+                <div class="flex items-center gap-3">
+                    <h1 class="text-2xl font-bold text-gray-800">材料庫存管理</h1>
+                    <span class="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">Form 4 / Form 4L</span>
+                </div>
+                <p class="text-sm text-gray-500">追蹤機台料匣 + 備料庫存，自動計算列印消耗。</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="index.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 px-3 py-2 rounded-md hover:bg-blue-50 transition-colors">
+                <i data-lucide="calendar-check" class="w-4 h-4"></i> 預約系統
+            </a>
+            <div class="flex items-center gap-2 text-sm text-gray-400">
+                <i data-lucide="cloud" class="w-4 h-4"></i>
+                <span id="sync-status">連線中...</span>
+            </div>
+            <button onclick="loadAll()" title="重新整理" class="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+            <button onclick="showTokenModal(true)" title="設定 Token" class="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors">
+                <i data-lucide="key-round" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- 叫料提醒橫幅 -->
+    <div id="alert-banner" class="hidden bg-red-50 border border-red-200 rounded-xl p-4">
+        <div class="flex items-start gap-3">
+            <i data-lucide="bell-ring" class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"></i>
+            <div>
+                <p class="font-semibold text-red-700 mb-1">⚠️ 以下材料庫存不足，請安排叫料</p>
+                <div id="alert-items" class="space-y-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 導航 -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="bg-gray-50 px-4 py-2 flex items-center gap-1 border-b border-gray-100">
+            <div class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                <button class="tab-btn active" id="tab-overview" onclick="switchTab('overview')">庫存總覽</button>
+                <button class="tab-btn" id="tab-cartridges" onclick="switchTab('cartridges')">機台料匣</button>
+                <button class="tab-btn" id="tab-stock" onclick="switchTab('stock')">備料庫存</button>
+                <button class="tab-btn" id="tab-history" onclick="switchTab('history')">消耗記錄</button>
+                <button class="tab-btn" id="tab-monthly" onclick="switchTab('monthly')">月度分析</button>
+            </div>
+            <div class="ml-auto flex gap-2">
+                <button onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
+                    <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
+                </button>
+                <button onclick="exportInventoryExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
+                    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出
+                </button>
+            </div>
+        </div>
+
+        <!-- 庫存總覽 -->
+        <div id="panel-overview" class="p-6">
+            <div id="overview-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-full text-center text-gray-400 py-8">載入中...</div>
+            </div>
+        </div>
+
+        <!-- 機台料匣 -->
+        <div id="panel-cartridges" class="p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm text-gray-500">記錄 AluminumBowfin 和 AdroitSauropod 機台上目前裝載的料匣資訊。</p>
+                <button onclick="openCartridgeModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors">
+                    <i data-lucide="pencil" class="w-4 h-4"></i> 手動更新料匣
+                </button>
+            </div>
+            <div id="cartridges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        </div>
+
+        <!-- 備料庫存 -->
+        <div id="panel-stock" class="p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm text-gray-500">尚未放入機器的備用料罐庫存。</p>
+                <button onclick="showStockModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                    <i data-lucide="package-plus" class="w-4 h-4"></i> 新增入庫
+                </button>
+            </div>
+            <div id="stock-table-wrap" class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600">
+                            <th class="p-3 border-b font-medium">材料名稱</th>
+                            <th class="p-3 border-b font-medium text-right">罐數</th>
+                            <th class="p-3 border-b font-medium text-right">估計剩餘(ml)</th>
+                            <th class="p-3 border-b font-medium">安全庫存</th>
+                            <th class="p-3 border-b font-medium">狀態</th>
+                            <th class="p-3 border-b font-medium">最後更新</th>
+                            <th class="p-3 border-b font-medium text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-table-body" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 消耗記錄 -->
+        <div id="panel-history" class="p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm text-gray-500">列印完成後自動記錄的材料消耗，以及手動入庫紀錄。</p>
+                <div class="flex gap-2">
+                    <select id="history-filter" onchange="renderHistory()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">全部材料</option>
+                    </select>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-600">
+                            <th class="p-3 border-b font-medium w-36">時間</th>
+                            <th class="p-3 border-b font-medium">材料</th>
+                            <th class="p-3 border-b font-medium">機台</th>
+                            <th class="p-3 border-b font-medium">類型</th>
+                            <th class="p-3 border-b font-medium text-right w-28">數量(ml)</th>
+                            <th class="p-3 border-b font-medium">備註</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body" class="divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+            <div id="history-pagination" class="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between hidden">
+                <span id="history-page-info" class="text-sm text-gray-500"></span>
+                <div class="flex gap-1" id="history-page-btns"></div>
+            </div>
+        </div>
+
+        <!-- 月度分析 -->
+        <div id="panel-monthly" class="p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <p class="text-sm text-gray-500">各材料每月消耗量統計。</p>
+                <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
+                </select>
+            </div>
+            <div id="monthly-content"></div>
+        </div>
+    </div>
+
+</div>
+</div>
+
+<script>
+// ══ 設定 ══
+const GITHUB_OWNER   = 'jiliao2024092';
+const GITHUB_REPO    = 'swtc-3DP';
+const INVENTORY_FILE = 'inventory.json';
+const TOKEN_KEY      = 'gh_3dp_token';
+const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+const DEFAULT_CARTRIDGE_ML = 1000;
+
+// 預設安全庫存（ml）
+const DEFAULT_SAFETY = 1000;
+
+let inv = {
+    cartridges: {},   // { printerAlias: [ {slot, material, remaining_ml, updated_at, updated_by}, ...] }
+    stock: {},        // { material: { bottles, total_ml, safety_ml, updated_at, updated_by } }
+    history: [],      // [ {id, ts, type:'consume'|'stockin'|'manual', material, printer, ml, note} ]
+    safety: {},       // { material: safety_ml }
+    last_processed_prints: []  // 已處理的 print_run guid，避免重複扣除
+};
+let fileSHA = '';
+let isSaving = false;
+let currentTab = 'overview';
+let historyPage = 1;
+const HISTORY_PAGE_SIZE = 20;
+let editingCartridge = null;
+
+// ══ Token ══
+function getToken() { return localStorage.getItem(TOKEN_KEY)||''; }
+function showTokenModal(canCancel=false) {
+    document.getElementById('token-modal').classList.remove('hidden');
+    document.getElementById('cancel-token-btn').classList.toggle('hidden',!canCancel);
+    document.getElementById('modal-token').value=getToken();
+    lucide.createIcons();
+}
+function cancelToken() { document.getElementById('token-modal').classList.add('hidden'); }
+function toggleTokenVis() {
+    const i=document.getElementById('modal-token');
+    const ic=document.getElementById('eye-icon');
+    if(i.type==='password'){i.type='text';ic.setAttribute('data-lucide','eye-off');}
+    else{i.type='password';ic.setAttribute('data-lucide','eye');}
+    lucide.createIcons();
+}
+function saveToken() {
+    const t=document.getElementById('modal-token').value.trim();
+    if(!t){showToast('請輸入 Token','error');return;}
+    if(!t.startsWith('ghp_')&&!t.startsWith('github_pat_')){showToast('Token 格式錯誤','error');return;}
+    localStorage.setItem(TOKEN_KEY,t);
+    document.getElementById('token-modal').classList.add('hidden');
+    loadAll();
+}
+
+// ══ GitHub API ══
+function ghHeaders() {
+    return {'Authorization':`token ${getToken()}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'};
+}
+function ghURL(f) { return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${f}`; }
+
+async function loadAll() {
+    setSyncStatus('loading');
+    try {
+        const res = await fetch(ghURL(INVENTORY_FILE),{headers:ghHeaders()});
+        if(res.status===401){setSyncStatus('error');showToast('Token 無效，請重新設定','error');setTimeout(()=>showTokenModal(false),1500);return;}
+        if(res.status===404){
+            // 檔案不存在，初始化空的
+            inv = initEmptyInv();
+            fileSHA='';
+            setSyncStatus('ok');
+            renderAll();
+            return;
+        }
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data=await res.json();
+        fileSHA=data.sha;
+        const raw=atob(data.content.replace(/\n/g,''));
+        const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
+        inv=JSON.parse(new TextDecoder('utf-8').decode(bytes));
+        // 補齊缺少的欄位
+        inv.cartridges   = inv.cartridges   || {};
+        inv.stock        = inv.stock        || {};
+        inv.history      = inv.history      || [];
+        inv.safety       = inv.safety       || {};
+        inv.last_processed_prints = inv.last_processed_prints || [];
+        setSyncStatus('ok');
+        renderAll();
+    } catch(err) { setSyncStatus('error'); showToast('載入失敗：'+err.message,'error'); }
+}
+
+async function saveAll(commitMsg) {
+    if(isSaving) return;
+    isSaving=true; setSyncStatus('saving');
+    try {
+        const jsonStr=JSON.stringify(inv,null,2);
+        const encoded=new TextEncoder().encode(jsonStr);
+        const b64=btoa(String.fromCharCode(...encoded));
+        const body={message:commitMsg||'更新庫存資料',content:b64};
+        if(fileSHA) body.sha=fileSHA;
+        const res=await fetch(ghURL(INVENTORY_FILE),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
+        if(!res.ok){const e=await res.json();throw new Error(e.message||`HTTP ${res.status}`);}
+        const data=await res.json();
+        fileSHA=data.content.sha;
+        setSyncStatus('ok'); showToast('✓ 已儲存至 GitHub','success');
+    } catch(err){ setSyncStatus('error'); showToast('儲存失敗：'+err.message,'error'); }
+    finally { isSaving=false; }
+}
+
+function initEmptyInv() {
+    return { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[] };
+}
+
+// ══ UI 工具 ══
+function setSyncStatus(s) {
+    const map={loading:'載入中...',saving:'儲存中...',ok:'已同步',error:'連線失敗'};
+    document.getElementById('sync-status').textContent=map[s]||'--';
+}
+function showToast(msg,type) {
+    const t=document.getElementById('toast');
+    t.textContent=msg;
+    t.className=`toast ${type==='error'?'bg-red-600 text-white':'bg-green-600 text-white'}`;
+    t.classList.remove('hidden');
+    clearTimeout(t._t);
+    t._t=setTimeout(()=>t.classList.add('hidden'),3500);
+}
+
+function switchTab(tab) {
+    currentTab=tab;
+    ['overview','cartridges','stock','history','monthly'].forEach(t=>{
+        document.getElementById('panel-'+t).classList.toggle('hidden',t!==tab);
+        document.getElementById('tab-'+t).classList.toggle('active',t===tab);
+    });
+    if(tab==='history') renderHistory();
+    if(tab==='monthly') renderMonthly();
+}
+
+// ══ 計算函式 ══
+function getAllMaterials() {
+    const mats=new Set();
+    // 從料匣
+    Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>{ if(s.material) mats.add(s.material); }));
+    // 從備料
+    Object.keys(inv.stock).forEach(m=>mats.add(m));
+    // 從歷史
+    inv.history.forEach(h=>{ if(h.material) mats.add(h.material); });
+    return [...mats].sort();
+}
+
+function getCartridgeTotal(material) {
+    // 機台上的料匣剩餘量
+    let total=0;
+    Object.values(inv.cartridges).forEach(slots=>{
+        (slots||[]).forEach(s=>{ if(s.material===material && s.remaining_ml) total+=s.remaining_ml; });
+    });
+    return total;
+}
+
+function getStockTotal(material) {
+    return inv.stock[material]?.total_ml || 0;
+}
+
+function getTotalInventory(material) {
+    return getCartridgeTotal(material) + getStockTotal(material);
+}
+
+function getSafetyStock(material) {
+    return inv.safety[material] ?? DEFAULT_SAFETY;
+}
+
+function isLowStock(material) {
+    return getTotalInventory(material) < getSafetyStock(material);
+}
+
+// ══ 叫料提醒 ══
+function renderAlerts() {
+    const mats=getAllMaterials().filter(m=>isLowStock(m));
+    const banner=document.getElementById('alert-banner');
+    const items=document.getElementById('alert-items');
+    if(!mats.length){ banner.classList.add('hidden'); return; }
+    banner.classList.remove('hidden');
+    items.innerHTML=mats.map(m=>{
+        const total=getTotalInventory(m);
+        const safety=getSafetyStock(m);
+        return `<div class="text-sm text-red-600">• <strong>${m}</strong>：總庫存 ${Math.round(total)} ml，低於安全庫存 ${safety} ml</div>`;
+    }).join('');
+}
+
+// ══ 總覽 ══
+function renderOverview() {
+    const grid=document.getElementById('overview-grid');
+    const mats=getAllMaterials();
+    if(!mats.length){ grid.innerHTML='<div class="col-span-full text-center text-gray-400 py-8">尚無庫存資料，請先在「機台料匣」頁面手動輸入料匣資訊。</div>'; return; }
+    grid.innerHTML='';
+    mats.forEach(m=>{
+        const total=getTotalInventory(m);
+        const safety=getSafetyStock(m);
+        const cartTotal=getCartridgeTotal(m);
+        const stockTotal=getStockTotal(m);
+        const low=isLowStock(m);
+        const pct=safety>0?Math.min(Math.round(total/safety*100),200):100;
+        const barColor=low?'bg-red-400':pct>150?'bg-green-500':'bg-blue-500';
+        const card=document.createElement('div');
+        card.className=`border ${low?'border-red-300 bg-red-50':'border-gray-200 bg-white'} rounded-xl p-4 space-y-3`;
+        card.innerHTML=`
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800 text-sm">${m}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">總庫存</p>
+                </div>
+                ${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> 需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">庫存充足</span>'}
+            </div>
+            <div class="text-2xl font-bold text-gray-800">${Math.round(total)} <span class="text-sm font-normal text-gray-400">ml</span></div>
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs text-gray-500">
+                    <span>安全庫存：${safety} ml</span>
+                    <span class="${low?'text-red-500 font-medium':''}">${pct}%</span>
+                </div>
+                <div class="progress-bar"><div class="progress-fill ${barColor}" style="width:${Math.min(pct,100)}%"></div></div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-1">
+                <div class="bg-gray-50 rounded-lg p-2 text-center">
+                    <p class="text-xs text-gray-400">機台料匣</p>
+                    <p class="text-sm font-semibold text-gray-700">${Math.round(cartTotal)} ml</p>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-2 text-center">
+                    <p class="text-xs text-gray-400">備料庫存</p>
+                    <p class="text-sm font-semibold text-gray-700">${Math.round(stockTotal)} ml</p>
+                </div>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+    lucide.createIcons();
+}
+
+// ══ 機台料匣 ══
+function renderCartridges() {
+    const grid=document.getElementById('cartridges-grid');
+    grid.innerHTML='';
+    TRACKED_PRINTERS.forEach(printer=>{
+        const slots=inv.cartridges[printer]||[];
+        const card=document.createElement('div');
+        card.className='border border-gray-200 rounded-xl overflow-hidden';
+        const slotsHTML=slots.length?slots.map(s=>{
+            const pct=s.initial_ml>0?Math.round(s.remaining_ml/s.initial_ml*100):null;
+            const low=s.remaining_ml<200;
+            return `
+            <div class="p-4 border-t border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <span class="text-xs font-medium text-gray-500">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot}</span>
+                        <p class="font-semibold text-gray-800 text-sm">${s.material||'—'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${Math.round(s.remaining_ml||0)} ml</p>
+                        ${pct!=null?`<p class="text-xs text-gray-400">${pct}%</p>`:''}
+                    </div>
+                </div>
+                ${pct!=null?`<div class="progress-bar h-2"><div class="progress-fill ${pct<20?'bg-red-400':pct<40?'bg-yellow-400':'bg-teal-500'}" style="width:${pct}%"></div></div>`:''}
+                <p class="text-xs text-gray-400 mt-2">
+                    ${s.updated_by==='auto'?'🤖 自動同步':'✏️ 手動更新'}
+                    · ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+                </p>
+            </div>`;
+        }).join('') : '<div class="p-4 border-t border-gray-100 text-center text-gray-400 text-sm">尚未設定料匣</div>';
+        card.innerHTML=`
+            <div class="bg-gray-50 px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>
+                    <span class="font-semibold text-gray-800">${printer}</span>
+                </div>
+                <span class="text-xs text-gray-400">${slots.length} 個料匣</span>
+            </div>
+            ${slotsHTML}
+        `;
+        grid.appendChild(card);
+    });
+    lucide.createIcons();
+}
+
+// ══ 料匣編輯 Modal ══
+function openCartridgeModal() {
+    const body=document.getElementById('cartridge-modal-body');
+    body.innerHTML='';
+    TRACKED_PRINTERS.forEach(printer=>{
+        const slots=inv.cartridges[printer]||[{slot:'FRONT',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML},{slot:'BACK',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML}];
+        const sec=document.createElement('div');
+        sec.className='space-y-3';
+        sec.innerHTML=`<h3 class="font-semibold text-gray-700 flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>${printer}</h3>`;
+        slots.forEach((s,i)=>{
+            const slotLabel=s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot||`料匣${i+1}`;
+            const row=document.createElement('div');
+            row.className='bg-gray-50 rounded-lg p-3 space-y-2';
+            row.innerHTML=`
+                <p class="text-xs font-medium text-gray-500">${slotLabel}</p>
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-600">材料名稱</label>
+                        <input type="text" value="${s.material||''}" data-printer="${printer}" data-idx="${i}" data-field="material"
+                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none" placeholder="e.g. Clear V5">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-600">剩餘(ml)</label>
+                        <input type="number" value="${s.remaining_ml||0}" min="0" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
+                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-600">初始容量(ml)</label>
+                        <input type="number" value="${s.initial_ml||DEFAULT_CARTRIDGE_ML}" min="1" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
+                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-xs text-gray-600">料匣位置</label>
+                        <select data-printer="${printer}" data-idx="${i}" data-field="slot"
+                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                            <option value="FRONT" ${s.slot==='FRONT'?'selected':''}>前匣 (FRONT)</option>
+                            <option value="BACK"  ${s.slot==='BACK'?'selected':''}>後匣 (BACK)</option>
+                            <option value="SINGLE" ${s.slot==='SINGLE'?'selected':''}>單匣 (SINGLE)</option>
+                        </select>
+                    </div>
+                </div>
+            `;
+            sec.appendChild(row);
+        });
+        // 新增料匣按鈕
+        const addBtn=document.createElement('button');
+        addBtn.className='text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1';
+        addBtn.innerHTML='<i data-lucide="plus" class="w-3 h-3"></i> 新增料匣';
+        addBtn.onclick=()=>{
+            if(!inv.cartridges[printer]) inv.cartridges[printer]=[];
+            inv.cartridges[printer].push({slot:'FRONT',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML,updated_at:new Date().toISOString(),updated_by:'manual'});
+            openCartridgeModal();
+        };
+        sec.appendChild(addBtn);
+        body.appendChild(sec);
+    });
+    document.getElementById('cartridge-modal').classList.remove('hidden');
+    lucide.createIcons();
+}
+
+async function saveCartridgeEdit() {
+    // 收集所有輸入值
+    document.querySelectorAll('.cartridge-input').forEach(el=>{
+        const printer=el.dataset.printer;
+        const idx=parseInt(el.dataset.idx);
+        const field=el.dataset.field;
+        if(!inv.cartridges[printer]) inv.cartridges[printer]=[];
+        if(!inv.cartridges[printer][idx]) inv.cartridges[printer][idx]={slot:'FRONT',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML};
+        const val=field==='material'||field==='slot' ? el.value : parseFloat(el.value)||0;
+        inv.cartridges[printer][idx][field]=val;
+        inv.cartridges[printer][idx].updated_at=new Date().toISOString();
+        inv.cartridges[printer][idx].updated_by='manual';
+    });
+    closeCartridgeModal();
+    renderAll();
+    await saveAll('手動更新料匣資訊');
+}
+
+function closeCartridgeModal() { document.getElementById('cartridge-modal').classList.add('hidden'); }
+
+// ══ 備料庫存 ══
+function renderStockTable() {
+    const tbody=document.getElementById('stock-table-body');
+    const mats=getAllMaterials();
+    if(!mats.length){ tbody.innerHTML='<tr><td colspan="7" class="p-8 text-center text-gray-400">尚無庫存資料</td></tr>'; return; }
+    tbody.innerHTML='';
+    mats.forEach(m=>{
+        const s=inv.stock[m]||{bottles:0,total_ml:0};
+        const safety=getSafetyStock(m);
+        const low=isLowStock(m);
+        const tr=document.createElement('tr');
+        tr.className='hover:bg-gray-50';
+        tr.innerHTML=`
+            <td class="p-3 font-medium text-gray-800">${m}</td>
+            <td class="p-3 text-right text-gray-600">${s.bottles||0}</td>
+            <td class="p-3 text-right font-medium ${low?'text-red-500':''}">${Math.round(s.total_ml||0)}</td>
+            <td class="p-3 text-gray-500 text-sm">${safety} ml</td>
+            <td class="p-3">${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
+            <td class="p-3 text-xs text-gray-400">
+                ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+                <span class="ml-1 ${s.updated_by==='auto'?'text-blue-400':'text-gray-400'}">${s.updated_by==='auto'?'🤖':'✏️'}</span>
+            </td>
+            <td class="p-3 text-center">
+                <button onclick="editStockDirect('${m}')" class="text-xs px-2 py-1 rounded border border-gray-300 hover:border-blue-400 hover:text-blue-600 transition-colors">調整</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function editStockDirect(material) {
+    const s=inv.stock[material]||{bottles:0,total_ml:0};
+    const newMl=prompt(`調整「${material}」備料庫存\n目前：${Math.round(s.total_ml||0)} ml\n\n請輸入新的 ml 數量：`,Math.round(s.total_ml||0));
+    if(newMl===null) return;
+    const val=parseFloat(newMl);
+    if(isNaN(val)){showToast('請輸入有效數字','error');return;}
+    if(!inv.stock[material]) inv.stock[material]={bottles:0,total_ml:0,safety_ml:DEFAULT_SAFETY};
+    const diff=val-(inv.stock[material].total_ml||0);
+    inv.stock[material].total_ml=val;
+    inv.stock[material].updated_at=new Date().toISOString();
+    inv.stock[material].updated_by='manual';
+    // 記錄
+    addHistory({type:'manual',material,printer:'備料庫存',ml:diff,note:'手動調整庫存'});
+    renderAll();
+    saveAll('手動調整備料庫存：'+material);
+}
+
+// ══ 備料入庫 Modal ══
+function showStockModal() {
+    // 填充材料選單
+    const sel=document.getElementById('stock-material');
+    sel.innerHTML='';
+    const mats=getAllMaterials();
+    if(!mats.length) sel.innerHTML='<option>請先設定料匣材料</option>';
+    else mats.forEach(m=>{const o=document.createElement('option');o.value=o.textContent=m;sel.appendChild(o);});
+    // 加入自訂選項
+    const custom=document.createElement('option');
+    custom.value='__custom__';custom.textContent='--- 輸入新材料名稱 ---';
+    sel.appendChild(custom);
+    document.getElementById('stock-modal').classList.remove('hidden');
+}
+function closeStockModal() { document.getElementById('stock-modal').classList.add('hidden'); }
+
+async function saveStockIn() {
+    let mat=document.getElementById('stock-material').value;
+    if(mat==='__custom__'){
+        mat=prompt('請輸入材料名稱：','');
+        if(!mat){showToast('材料名稱不能為空','error');return;}
+    }
+    const qty=parseInt(document.getElementById('stock-qty').value)||1;
+    const ml=parseFloat(document.getElementById('stock-ml').value)||DEFAULT_CARTRIDGE_ML;
+    const note=document.getElementById('stock-note').value.trim()||'備料入庫';
+    const totalMl=qty*ml;
+    if(!inv.stock[mat]) inv.stock[mat]={bottles:0,total_ml:0};
+    inv.stock[mat].bottles=(inv.stock[mat].bottles||0)+qty;
+    inv.stock[mat].total_ml=(inv.stock[mat].total_ml||0)+totalMl;
+    inv.stock[mat].updated_at=new Date().toISOString();
+    inv.stock[mat].updated_by='manual';
+    addHistory({type:'stockin',material:mat,printer:'備料庫存',ml:totalMl,note:`${note}（${qty}罐×${ml}ml）`});
+    closeStockModal();
+    renderAll();
+    await saveAll(`備料入庫：${mat} ${qty}罐`);
+}
+
+// ══ 安全庫存設定 ══
+function showSafetyModal() {
+    const body=document.getElementById('safety-modal-body');
+    body.innerHTML='';
+    const mats=getAllMaterials();
+    if(!mats.length){ body.innerHTML='<p class="text-gray-400 text-sm">尚無材料，請先設定料匣。</p>'; }
+    mats.forEach(m=>{
+        const safety=getSafetyStock(m);
+        const row=document.createElement('div');
+        row.className='flex items-center gap-3';
+        row.innerHTML=`
+            <label class="flex-1 text-sm font-medium text-gray-700">${m}</label>
+            <input type="number" value="${safety}" min="0" data-material="${m}"
+                class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> ml
+        `;
+        body.appendChild(row);
+    });
+    document.getElementById('safety-modal').classList.remove('hidden');
+}
+function closeSafetyModal() { document.getElementById('safety-modal').classList.add('hidden'); }
+async function saveSafetyStock() {
+    document.querySelectorAll('.safety-input').forEach(el=>{
+        inv.safety[el.dataset.material]=parseFloat(el.value)||0;
+    });
+    closeSafetyModal();
+    renderAll();
+    await saveAll('更新安全庫存設定');
+}
+
+// ══ 歷史記錄 ══
+function addHistory(entry) {
+    inv.history.unshift({id:Date.now(),...entry,ts:new Date().toISOString()});
+}
+
+function renderHistory() {
+    const filter=document.getElementById('history-filter').value;
+    // 更新 filter 選單
+    const sel=document.getElementById('history-filter');
+    const cur=sel.value;
+    sel.innerHTML='<option value="">全部材料</option>';
+    getAllMaterials().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o);});
+    sel.value=cur;
+
+    const filtered=filter?inv.history.filter(h=>h.material===filter):inv.history;
+    const total=filtered.length;
+    const totalPages=Math.ceil(total/HISTORY_PAGE_SIZE);
+    if(historyPage>totalPages) historyPage=Math.max(1,totalPages);
+    const page=filtered.slice((historyPage-1)*HISTORY_PAGE_SIZE,historyPage*HISTORY_PAGE_SIZE);
+
+    const tbody=document.getElementById('history-body');
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="6" class="p-8 text-center text-gray-400">尚無紀錄</td></tr>'; return; }
+    tbody.innerHTML='';
+    page.forEach(h=>{
+        const typeMap={consume:{label:'列印消耗',color:'text-red-600 bg-red-50'},stockin:{label:'備料入庫',color:'text-green-700 bg-green-50'},manual:{label:'手動調整',color:'text-blue-600 bg-blue-50'}};
+        const t=typeMap[h.type]||{label:h.type,color:'bg-gray-100 text-gray-600'};
+        const tr=document.createElement('tr');
+        tr.className='hover:bg-gray-50';
+        tr.innerHTML=`
+            <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+            <td class="p-3 font-medium text-gray-800 text-sm">${h.material||'—'}</td>
+            <td class="p-3 text-sm text-gray-600">${h.printer||'—'}</td>
+            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
+            <td class="p-3 text-right font-medium text-sm ${h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':''}">${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml</td>
+            <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+    // Pagination
+    const pgDiv=document.getElementById('history-pagination');
+    const pgInfo=document.getElementById('history-page-info');
+    const pgBtns=document.getElementById('history-page-btns');
+    if(totalPages<=1){pgDiv.classList.add('hidden');return;}
+    pgDiv.classList.remove('hidden');
+    pgInfo.textContent=`第 ${(historyPage-1)*HISTORY_PAGE_SIZE+1}–${Math.min(historyPage*HISTORY_PAGE_SIZE,total)} 筆，共 ${total} 筆`;
+    pgBtns.innerHTML='';
+    ['‹',...Array.from({length:Math.min(totalPages,5)},(_, i)=>i+Math.max(1,historyPage-2)),'›'].forEach((v,idx,arr)=>{
+        const btn=document.createElement('button');
+        btn.className=`px-2.5 py-1 rounded border text-sm ${typeof v==='number'&&v===historyPage?'bg-blue-600 text-white border-blue-600':'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`;
+        btn.textContent=v;
+        if(v==='‹') btn.onclick=()=>{if(historyPage>1){historyPage--;renderHistory();}};
+        else if(v==='›') btn.onclick=()=>{if(historyPage<totalPages){historyPage++;renderHistory();}};
+        else btn.onclick=()=>{historyPage=v;renderHistory();};
+        pgBtns.appendChild(btn);
+    });
+}
+
+// ══ 月度分析 ══
+function renderMonthly() {
+    const yearSel=document.getElementById('monthly-year');
+    const years=[...new Set(inv.history.filter(h=>h.ts).map(h=>new Date(h.ts).getFullYear()))].sort((a,b)=>b-a);
+    if(!years.length) years.push(new Date().getFullYear());
+    const curYear=parseInt(yearSel.value)||years[0];
+    yearSel.innerHTML='';
+    years.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y+'年';if(y===curYear)o.selected=true;yearSel.appendChild(o);});
+
+    const content=document.getElementById('monthly-content');
+    const mats=getAllMaterials();
+    if(!mats.length){content.innerHTML='<p class="text-center text-gray-400 py-8">尚無資料</p>';return;}
+
+    // 統計每月每材料消耗
+    const MONTHS=Array.from({length:12},(_,i)=>i+1);
+    const table=document.createElement('div');
+    table.className='overflow-x-auto';
+    let html=`<table class="w-full text-sm border-collapse"><thead><tr class="bg-gray-100 text-gray-600">
+        <th class="p-3 border-b font-medium text-left">材料</th>
+        ${MONTHS.map(m=>`<th class="p-3 border-b font-medium text-right">${m}月</th>`).join('')}
+        <th class="p-3 border-b font-medium text-right">年計</th>
+    </tr></thead><tbody>`;
+
+    mats.forEach(mat=>{
+        const monthly=MONTHS.map(mo=>{
+            return inv.history
+                .filter(h=>h.type==='consume'&&h.material===mat&&new Date(h.ts).getFullYear()===curYear&&new Date(h.ts).getMonth()+1===mo)
+                .reduce((s,h)=>s+(h.ml||0),0);
+        });
+        const total=monthly.reduce((s,v)=>s+v,0);
+        if(!total) return;
+        html+=`<tr class="hover:bg-gray-50 border-b border-gray-100">
+            <td class="p-3 font-medium text-gray-800">${mat}</td>
+            ${monthly.map(v=>`<td class="p-3 text-right text-gray-600">${v>0?Math.round(v):'—'}</td>`).join('')}
+            <td class="p-3 text-right font-bold text-gray-800">${Math.round(total)}</td>
+        </tr>`;
+    });
+    html+='</tbody></table>';
+    content.innerHTML=html;
+}
+
+// ══ 匯出 ══
+function exportInventoryExcel() {
+    const wb=XLSX.utils.book_new();
+    // 總覽
+    const ovRows=getAllMaterials().map(m=>({'材料':m,'機台料匣(ml)':Math.round(getCartridgeTotal(m)),'備料庫存(ml)':Math.round(getStockTotal(m)),'總庫存(ml)':Math.round(getTotalInventory(m)),'安全庫存(ml)':getSafetyStock(m),'狀態':isLowStock(m)?'需叫料':'充足'}));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovRows),'庫存總覽');
+    // 歷史
+    const hRows=inv.history.map(h=>({'時間':new Date(h.ts).toLocaleString('zh-TW'),'材料':h.material||'','機台':h.printer||'','類型':h.type==='consume'?'列印消耗':h.type==='stockin'?'備料入庫':'手動調整','數量(ml)':h.type==='consume'?-Math.round(h.ml||0):Math.round(h.ml||0),'備註':h.note||''}));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hRows),'消耗記錄');
+    const fname=`庫存記錄_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb,fname);
+    showToast('✓ 已匯出 '+fname,'success');
+}
+
+// ══ 統一渲染 ══
+function renderAll() {
+    renderAlerts();
+    renderOverview();
+    renderCartridges();
+    renderStockTable();
+    if(currentTab==='history') renderHistory();
+    if(currentTab==='monthly') renderMonthly();
+    lucide.createIcons();
+}
+
+// ══ 初始化 ══
+window.onload=function(){
+    lucide.createIcons();
+    if(!getToken()){ showTokenModal(false); } else { loadAll(); }
+};
+</script>
+</body>
+</html>
