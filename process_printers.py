@@ -13,8 +13,14 @@ TRACKED_PRINTERS = ['AluminumBowfin', 'AdroitSauropod']
 
 result = []
 for p in printers:
-    status = p.get('printer_status', {}) or {}
-    run    = status.get('current_print_run') or {}
+    if not isinstance(p, dict):
+        continue
+    status = p.get('printer_status', {})
+    if not isinstance(status, dict):
+        status = {}
+    run = status.get('current_print_run')
+    if not isinstance(run, dict):
+        run = {}
 
     layer_now   = run.get('currently_printing_layer', 0) or 0
     layer_total = run.get('layer_count', 0) or 0
@@ -36,9 +42,19 @@ for p in printers:
     primary_level_pct = None
 
     for cs in cartridge_list:
-        c             = cs.get('cartridge', {}) or {}
+        # cs 本身可能是字串或非 dict，先檢查
+        if not isinstance(cs, dict):
+            continue
+        c = cs.get('cartridge', {})
+        # cartridge 欄位有時是字串（材料名）而非物件
+        cartridge_str_name = ''
+        if isinstance(c, str):
+            cartridge_str_name = c
+            c = {}
+        elif not isinstance(c, dict):
+            c = {}
         slot          = cs.get('cartridge_slot', '')
-        mat_name      = c.get('display_name') or c.get('material', '')
+        mat_name      = c.get('display_name') or c.get('material', '') or cartridge_str_name
         initial_ml    = c.get('initial_volume_ml') or 0
         dispensed_ml  = c.get('volume_dispensed_ml') or 0
         remaining_ml  = round(initial_ml - dispensed_ml, 1) if initial_ml > 0 else None
@@ -73,7 +89,9 @@ for p in printers:
         primary_level_pct = round(float(material_credit) * 100, 1)
 
     # 抓取最近已完成的列印紀錄（previous_print_run）用於消耗計算
-    prev_run = p.get('previous_print_run') or {}
+    prev_run = p.get('previous_print_run')
+    if not isinstance(prev_run, dict):
+        prev_run = {}
 
     result.append({
         'serial':         p.get('serial', ''),
