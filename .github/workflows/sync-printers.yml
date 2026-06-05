@@ -5,9 +5,11 @@ on:
     - cron: '*/5 * * * *'
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
     paths-ignore:
       - 'printer-status.json'
+      - 'inventory.json'
 
 jobs:
   sync:
@@ -22,88 +24,53 @@ jobs:
       - name: Fetch Formlabs access token
         id: auth
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.formlabs.com/developer/v1/o/token/ \
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST https://api.formlabs.com/developer/v1/o/token/ \
             -H "Content-Type: application/x-www-form-urlencoded" \
             -d "grant_type=client_credentials&client_id=${{ secrets.FORMLABS_CLIENT_ID }}&client_secret=${{ secrets.FORMLABS_CLIENT_SECRET }}")
+
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -1)
           echo "HTTP Status: $HTTP_CODE"
+
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "token failed HTTP $HTTP_CODE: $BODY"
+            echo "Token failed: $BODY"
             exit 1
           fi
-          TOKEN=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+
+          TOKEN=$(echo "$BODY" | python3 -c "import sys, json; print(json.load(sys.stdin).get('access_token', ''))")
+
           if [ -z "$TOKEN" ]; then
-            echo "empty token: $BODY"
+            echo "Empty token: $BODY"
             exit 1
           fi
+
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch printer status
         run: |
-          HTTP_CODE=$(curl -s -w "%{http_code}" -o raw-printers.json \
+          HTTP_CODE=$(curl -s -w "%{http_code}" \
+            -o raw-printers.json \
             https://api.formlabs.com/developer/v1/printers/ \
-            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}" )
+            -H "Authorization: Bearer ${{ steps.auth.outputs.token }}")
+
           echo "Printers API HTTP: $HTTP_CODE"
+
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "printers API failed"
+            echo "Printers API failed"
             cat raw-printers.json
             exit 1
           fi
 
-      - name: Process and save printer data
-        run: |
-          python3 - << 'PYEOF'
-          import json, datetime
-
-          with open('raw-printers.json') as f:
-              printers = json.load(f)
-
-          if isinstance(printers, dict):
-              printers = printers.get('results', printers.get('printers', []))
-
-          result = []
-          for p in printers:
-              status = p.get('printer_status', {}) or {}
-              run = status.get('current_print_run') or {}
-              layer_now = run.get('currently_printing_layer', 0) or 0
-              layer_total = run.get('layer_count', 0) or 0
-              progress = round(layer_now / layer_total * 100, 1) if layer_total > 0 else 0
-              ms_left = run.get('estimated_time_remaining_ms', 0) or 0
-              mins_left = ms_left // 60000
-              if mins_left >= 60:
-                  tl = str(mins_left // 60) + 'h ' + str(mins_left % 60) + 'm'
-              elif mins_left > 0:
-                  tl = str(mins_left) + 'm'
-              else:
-                  tl = '-'
-              result.append({
-                  'serial': p.get('serial', ''),
-                  'alias': p.get('alias') or p.get('machine_type_id', ''),
-                  'machine_type': p.get('machine_type_id', ''),
-                  'status': status.get('status', 'UNKNOWN'),
-                  'print_name': run.get('name', ''),
-                  'material': run.get('material_name') or run.get('material', ''),
-                  'progress': progress,
-                  'layer_now': layer_now,
-                  'layer_total': layer_total,
-                  'time_left': tl,
-                  'last_pinged': status.get('last_pinged_at', ''),
-                  'updated_at': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
-              })
-
-          with open('printer-status.json', 'w', encoding='utf-8') as f:
-              json.dump(result, f, ensure_ascii=False, indent=2)
-
-          print('OK: ' + str(len(result)) + ' printers')
-          for r in result:
-              print('  ' + r['alias'] + ' -> ' + r['status'])
-          PYEOF
+      - name: Process printer data
+        run: python3 process_printers.py
 
       - name: Commit and push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add printer-status.json
-          git diff --cached --quiet || git commit -m "chore: sync printer status $(date -u +'%H:%M UTC')"
+          git add inventory.json 2>/dev/null || true
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: sync printer status $(date -u +'%H:%M UTC') [skip ci]"
           git push
