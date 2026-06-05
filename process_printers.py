@@ -150,23 +150,56 @@ processed = set(inv['last_processed_prints'])
 new_entries = []
 now_str = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 
+# ── 讀取 print history（/developer/v1/prints/）─────────────────────
+prints = []
+if os.path.exists('raw-prints.json'):
+    try:
+        with open('raw-prints.json', encoding='utf-8') as f:
+            pdata = json.load(f)
+        if isinstance(pdata, dict):
+            prints = pdata.get('results', pdata.get('prints', []))
+        elif isinstance(pdata, list):
+            prints = pdata
+    except Exception as e:
+        print('讀取 raw-prints.json 失敗：' + str(e))
+
+# alias 對照表：serial -> alias（用於把 print 的 printer 對應到機台名）
+serial_to_alias = {}
 for r in result:
-    alias = r['alias']
+    if r.get('serial'):
+        serial_to_alias[r['serial']] = r['alias']
+
+# 完成狀態的判定
+DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED')
+
+# 依完成時間排序（舊到新），確保扣除順序正確
+def print_finish_key(pr):
+    return pr.get('print_finished_at') or pr.get('created_at') or ''
+
+prints_sorted = sorted(
+    [p for p in prints if isinstance(p, dict)],
+    key=print_finish_key
+)
+
+for pr in prints_sorted:
+    guid = pr.get('guid', '')
+    if not guid or guid in processed:
+        continue
+
+    status = (pr.get('status') or '').upper()
+    if status not in DONE_STATUSES:
+        continue
+
+    volume   = pr.get('volume_ml')
+    material = pr.get('material_name') or pr.get('material', '')
+    finished = pr.get('print_finished_at') or pr.get('created_at', '')
+
+    # 找出是哪台機台印的
+    printer_field = pr.get('printer', '')
+    alias = serial_to_alias.get(printer_field, printer_field)
+
+    # 只追蹤指定機台
     if not any(t in alias for t in TRACKED_PRINTERS):
-        continue
-
-    lcp = r.get('last_completed_print')
-    if not lcp or not lcp.get('guid'):
-        continue
-
-    guid     = lcp['guid']
-    volume   = lcp.get('volume_ml')
-    material = lcp.get('material', '')
-    finished = lcp.get('finished', '')
-
-    if guid in processed:
-        continue
-    if lcp.get('status') not in ('FINISHED', 'SUCCESS', 'COMPLETE'):
         continue
     if not volume or not material:
         continue
@@ -174,7 +207,7 @@ for r in result:
     volume = round(float(volume), 1)
     print(f'  新消耗：{alias} - {material} - {volume} ml (guid={guid[:8]})')
 
-    # 1. 扣除機台料匣剩餘量
+    # 1. 扣除機台樹脂罐剩餘量
     slots = inv['cartridges'].get(alias, [])
     remaining_to_deduct = volume
     for slot in slots:
@@ -186,7 +219,7 @@ for r in result:
             slot['updated_by']    = 'auto'
             remaining_to_deduct  -= deduct
 
-    # 2. 若料匣不夠，從備料扣除
+    # 2. 若樹脂罐不夠，從備料扣除
     if remaining_to_deduct > 0 and material in inv['stock']:
         stock_ml = inv['stock'][material].get('total_ml', 0) or 0
         deduct   = min(stock_ml, remaining_to_deduct)
@@ -196,20 +229,20 @@ for r in result:
 
     # 3. 記錄消耗歷史
     inv['history'].insert(0, {
-        'id':       int(datetime.datetime.utcnow().timestamp() * 1000),
-        'ts':       finished or now_str,
-        'type':     'consume',
-        'material': material,
-        'printer':  alias,
-        'ml':       volume,
-        'note':     f'列印完成 (guid: {guid[:8]}...)',
+        'id':         int(datetime.datetime.utcnow().timestamp() * 1000) + len(new_entries),
+        'ts':         finished or now_str,
+        'type':       'consume',
+        'material':   material,
+        'printer':    alias,
+        'ml':         volume,
+        'note':       pr.get('name', '') or ('列印完成 ' + guid[:8]),
         'print_guid': guid,
     })
 
     processed.add(guid)
     new_entries.append(guid)
 
-inv['last_processed_prints'] = list(processed)[-500:]  # 只保留最近 500 筆避免無限增長
+inv['last_processed_prints'] = list(processed)[-1000:]  # 保留最近 1000 筆
 
 if new_entries:
     with open(INVENTORY_FILE, 'w', encoding='utf-8') as f:
