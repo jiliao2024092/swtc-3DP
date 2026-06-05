@@ -43,9 +43,24 @@
       "total_ml": 1000,
       "updated_at": "2026-06-05T09:12:27.307Z",
       "updated_by": "manual"
+    },
+    "Grey V5": {
+      "bottles": 3,
+      "total_ml": 3000,
+      "updated_at": "2026-06-05T09:12:58.299Z",
+      "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650778299,
+      "type": "manual",
+      "material": "Grey V5",
+      "printer": "備料庫存",
+      "ml": 3000,
+      "note": "調整為 3 罐",
+      "ts": "2026-06-05T09:12:58.299Z"
+    },
     {
       "id": 1780650747307,
       "type": "manual",
