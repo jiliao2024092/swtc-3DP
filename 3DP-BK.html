@@ -479,7 +479,6 @@ function renderStatusPanel(printers) {
 
 function renderMaterialPanel(printers) {
     const grid=document.getElementById('material-grid');
-    // 只顯示指定兩台
     const targets=printers.filter(p=>MATERIAL_PRINTERS.some(name=>(p.alias||'').includes(name)));
     if(!targets.length){
         grid.innerHTML='<div class="col-span-full text-center text-gray-400 text-sm py-4">找不到指定機台（AluminumBowfin、AdroitSauropod）資料</div>';
@@ -489,46 +488,73 @@ function renderMaterialPanel(printers) {
     targets.forEach(p=>{
         const s=PRINTER_STATUS_MAP[p.status]||PRINTER_STATUS_MAP['UNKNOWN'];
         const ml=getMachineLabel(p.machine_type);
-        // material_level 是 0~1 的百分比（API 提供），若無則顯示未知
-        const levelPct = p.material_level!=null ? Math.round(p.material_level*100) : null;
-        const cartridges = p.cartridges || [];  // 若 API 有多個料匣
+        const cartridges = p.cartridges || [];
+
+        // 主要進度條：優先用 material_level（已是 0~100），無則用 FRONT 料匣
+        const levelPct = p.material_level != null ? Math.round(p.material_level) : null;
+
+        // 料匣資料顯示
+        function levelColor(pct) {
+            return pct < 20 ? 'text-red-500' : pct < 40 ? 'text-yellow-600' : 'text-green-600';
+        }
+        function barColor(pct) {
+            return pct < 20 ? 'bg-red-400' : pct < 40 ? 'bg-yellow-400' : 'bg-green-500';
+        }
+
+        // 每個料匣的詳細區塊
+        const cartridgeHTML = cartridges.length ? cartridges.map(c => {
+            const pct = c.remaining_pct;
+            const remMl = c.remaining_ml;
+            const slotLabel = c.slot === 'FRONT' ? '前匣' : c.slot === 'BACK' ? '後匣' : c.slot || '料匣';
+            const emptyBadge = c.is_empty ? '<span class="ml-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">已空</span>' : '';
+            return `
+            <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-medium text-gray-600">${slotLabel}</span>
+                        ${emptyBadge}
+                    </div>
+                    <span class="text-xs font-semibold text-gray-800">${c.material||'—'}</span>
+                </div>
+                ${pct != null ? `
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">${remMl != null ? remMl + ' ml 剩餘' : ''}</span>
+                        <span class="font-medium ${levelColor(pct)}">${pct}%</span>
+                    </div>
+                    <div class="progress-bar h-2.5 rounded-md">
+                        <div class="progress-fill rounded-md ${barColor(pct)}" style="width:${Math.min(pct,100)}%"></div>
+                    </div>
+                </div>` : `<p class="text-xs text-gray-400">用量資料待同步</p>`}
+            </div>`;
+        }).join('') : `
+            <div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
+                料匣用量資料由 Formlabs API 提供<br>需 GitHub Actions 同步後顯示
+            </div>`;
 
         const card=document.createElement('div');
-        card.className='border border-gray-200 rounded-xl p-5 space-y-4';
+        card.className='border border-gray-200 rounded-xl p-5 space-y-3';
         card.innerHTML=`
             <div class="flex items-center justify-between">
                 <div>
                     <p class="font-semibold text-gray-800">${p.alias||p.serial}</p>
-                    <p class="text-xs text-gray-400">${ml||p.machine_type||''}</p>
+                    <p class="text-xs text-gray-400">${ml?ml+' · ':''}${p.serial||''}</p>
                 </div>
                 <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
-                    <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>${s.label}
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
                 </span>
             </div>
-            <div class="space-y-2">
-                <div class="flex justify-between text-sm">
-                    <span class="text-gray-600 font-medium">材料</span>
-                    <span class="text-gray-800 font-semibold">${p.material||'—'}</span>
+            ${levelPct != null ? `
+            <div class="space-y-1">
+                <div class="flex justify-between text-xs text-gray-500">
+                    <span class="font-medium">整體用料</span>
+                    <span class="font-medium ${levelColor(levelPct)}">${levelPct}%</span>
                 </div>
-                ${levelPct!=null?`
-                <div class="space-y-1">
-                    <div class="flex justify-between text-xs text-gray-500">
-                        <span>料槽用量</span>
-                        <span class="font-medium ${levelPct<20?'text-red-500':levelPct<40?'text-yellow-600':'text-green-600'}">${levelPct}%</span>
-                    </div>
-                    <div class="progress-bar h-3 rounded-md">
-                        <div class="progress-fill rounded-md ${levelPct<20?'bg-red-400':levelPct<40?'bg-yellow-400':'bg-green-500'}" style="width:${levelPct}%"></div>
-                    </div>
-                </div>`:`
-                <div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
-                    料槽用量資料由 Formlabs API 提供<br>需 GitHub Actions 同步後顯示
-                </div>`}
-                ${cartridges.length?cartridges.map((c,i)=>`
-                <div class="text-xs text-gray-500 flex justify-between">
-                    <span>料匣 ${i+1}</span>
-                    <span>${c.material||'—'} ${c.volume_remaining!=null?Math.round(c.volume_remaining)+'ml':''}</span>
-                </div>`).join(''):''}
-            </div>
+                <div class="progress-bar h-2 rounded-full">
+                    <div class="progress-fill rounded-full ${barColor(levelPct)}" style="width:${Math.min(levelPct,100)}%"></div>
+                </div>
+            </div>` : ''}
+            <div class="space-y-2">${cartridgeHTML}</div>
         `;
         grid.appendChild(card);
     });
