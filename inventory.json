@@ -33,13 +33,37 @@
       "updated_by": "manual"
     },
     "FLTO2002": {
-      "bottles": 0.1,
-      "total_ml": 100,
-      "updated_at": "2026-06-05T09:12:04.510Z",
+      "bottles": 0,
+      "total_ml": 0,
+      "updated_at": "2026-06-05T09:12:05.016Z",
+      "updated_by": "manual"
+    },
+    "Flexible 80A V1.1": {
+      "bottles": 1,
+      "total_ml": 1000,
+      "updated_at": "2026-06-05T09:12:27.307Z",
       "updated_by": "manual"
     }
   },
   "history": [
+    {
+      "id": 1780650747307,
+      "type": "manual",
+      "material": "Flexible 80A V1.1",
+      "printer": "備料庫存",
+      "ml": 1000,
+      "note": "調整為 1 罐",
+      "ts": "2026-06-05T09:12:27.307Z"
+    },
+    {
+      "id": 1780650725016,
+      "type": "manual",
+      "material": "FLTO2002",
+      "printer": "備料庫存",
+      "ml": -100,
+      "note": "調整為 0 罐",
+      "ts": "2026-06-05T09:12:05.016Z"
+    },
     {
       "id": 1780650724510,
       "type": "manual",
