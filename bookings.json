@@ -56,7 +56,8 @@
     "purpose": "強淞展示樣品",
     "engineer": "Jaylen",
     "status": "已完成",
-    "hasOrder": false
+    "hasOrder": false,
+    "slot": "AM"
   },
   {
     "id": 1780449106575,
