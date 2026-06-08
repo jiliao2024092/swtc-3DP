@@ -23,8 +23,8 @@
     "layer_total": 3785,
     "volume_ml": 143.3420361771926,
     "time_left": "3h 9m",
-    "last_pinged": "2026-06-07T23:03:30.645386-04:00",
-    "updated_at": "2026-06-08T03:04:10Z",
+    "last_pinged": "2026-06-07T23:03:57.873467-04:00",
+    "updated_at": "2026-06-08T03:04:26Z",
     "last_completed_print": {
       "guid": "0ba5bc0b-4934-4624-a4bb-e008d26e18d8",
       "material": "Clear V5",
@@ -67,7 +67,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-06-03T22:20:43.862977-04:00",
-    "updated_at": "2026-06-08T03:04:10Z",
+    "updated_at": "2026-06-08T03:04:26Z",
     "last_completed_print": {
       "guid": "722bfabf-a01d-4675-afba-5106d4155776",
       "material": "Tough 2000 V2",
@@ -91,7 +91,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-08T03:04:10Z",
+    "updated_at": "2026-06-08T03:04:26Z",
     "last_completed_print": {
       "guid": "883a1bec-598f-40f3-92f8-c0a56f9e6b91",
       "material": "Nylon 12",
@@ -115,7 +115,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-08T03:04:10Z",
+    "updated_at": "2026-06-08T03:04:26Z",
     "last_completed_print": {
       "guid": "7bd7c604-a011-4eba-a73a-a5a9374b0292",
       "material": "Flexible 80A V1",
@@ -149,7 +149,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-05-08T06:29:30.007577-04:00",
-    "updated_at": "2026-06-08T03:04:10Z",
+    "updated_at": "2026-06-08T03:04:26Z",
     "last_completed_print": {
       "guid": "a7730dbb-8580-4c23-9ece-322323983b8a",
       "material": "Flexible 80A V1",
@@ -192,7 +192,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-08T03:04:10Z",
+    "updated_at": "2026-06-08T03:04:26Z",
     "last_completed_print": {
       "guid": "6143c037-4268-4f29-8068-65492806ed60",
       "material": "Grey V5",
