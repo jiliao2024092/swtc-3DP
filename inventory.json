@@ -17,6 +17,16 @@
         "updated_at": "2026-06-05T09:49:08.301Z",
         "updated_by": "auto"
       }
+    ],
+    "AluminumBowfin": [
+      {
+        "slot": "SINGLE",
+        "material": "FLGPCL05",
+        "remaining_ml": 600,
+        "initial_ml": 1000,
+        "updated_at": "2026-06-08T01:39:50.185Z",
+        "updated_by": "auto"
+      }
     ]
   },
   "stock": {
