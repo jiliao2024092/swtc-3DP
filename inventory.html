@@ -520,16 +520,16 @@ async function autoSyncCartridges() {
             const existing = inv.cartridges[key] || [];
 
             apiCartridges.forEach(ac => {
-                // API 有提供有效容量資料才自動帶入
-                if(ac.remaining_ml == null) return;
+                // 沒有材料名稱也沒有容量，完全沒資料才跳過
+                if(!ac.material && ac.remaining_ml == null) return;
                 // 找現有同 slot 的樹脂罐
                 let slot = existing.find(s => s.slot === ac.slot);
                 if(!slot) {
-                    // 新增（API 自動帶入）
+                    // 新增（API 自動帶入）。若 API 無容量，remaining_ml 保持 null 等待手動補登
                     slot = {
                         slot: ac.slot || 'FRONT',
                         material: ac.material || '',
-                        remaining_ml: ac.remaining_ml,
+                        remaining_ml: ac.remaining_ml,   // 可能為 null（API 未提供容量）
                         initial_ml: ac.initial_ml || DEFAULT_CARTRIDGE_ML,
                         updated_at: new Date().toISOString(),
                         updated_by: 'auto'
@@ -537,17 +537,16 @@ async function autoSyncCartridges() {
                     existing.push(slot);
                     changed = true;
                 } else if(slot.updated_by !== 'manual' || slot.material !== ac.material) {
-                    // 只在非手動鎖定、或材料換了的情況下更新
                     // 材料換了代表換了新罐，直接覆蓋
                     if(slot.material !== ac.material) {
                         slot.material = ac.material || slot.material;
-                        slot.remaining_ml = ac.remaining_ml;
+                        if(ac.remaining_ml != null) slot.remaining_ml = ac.remaining_ml;
                         slot.initial_ml = ac.initial_ml || DEFAULT_CARTRIDGE_ML;
                         slot.updated_at = new Date().toISOString();
                         slot.updated_by = 'auto';
                         changed = true;
-                    } else if(slot.updated_by === 'auto') {
-                        // 同材料且原本就是自動的，更新剩餘量
+                    } else if(slot.updated_by === 'auto' && ac.remaining_ml != null) {
+                        // 同材料且原本就是自動的，API 有提供容量才更新剩餘量
                         if(slot.remaining_ml !== ac.remaining_ml) {
                             slot.remaining_ml = ac.remaining_ml;
                             slot.initial_ml = ac.initial_ml || slot.initial_ml;
@@ -723,18 +722,20 @@ function renderCartridges() {
         const card=document.createElement('div');
         card.className='border border-gray-200 rounded-xl overflow-hidden';
         const slotsHTML=slots.length?slots.map(s=>{
-            const pct=s.initial_ml>0?Math.round(s.remaining_ml/s.initial_ml*100):null;
-            const low=s.remaining_ml<200;
+            const noCapacity = s.remaining_ml == null;
+            const pct=(!noCapacity && s.initial_ml>0)?Math.round(s.remaining_ml/s.initial_ml*100):null;
+            const low=!noCapacity && s.remaining_ml<200;
             return `
             <div class="p-4 border-t border-gray-100">
                 <div class="flex justify-between items-center mb-2">
                     <div>
-                        <span class="text-xs font-medium text-gray-500">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot}</span>
+                        <span class="text-xs font-medium text-gray-500">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
                         <p class="font-semibold text-gray-800 text-sm">${matName(s.material)||'—'}</p>
                     </div>
                     <div class="text-right">
-                        <p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${Math.round(s.remaining_ml||0)} ml</p>
-                        ${pct!=null?`<p class="text-xs text-gray-400">${pct}%</p>`:''}
+                        ${noCapacity
+                            ? '<p class="text-xs text-amber-600 font-medium">容量待補登</p>'
+                            : `<p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${Math.round(s.remaining_ml||0)} ml</p>${pct!=null?`<p class="text-xs text-gray-400">${pct}%</p>`:''}`}
                     </div>
                 </div>
                 ${pct!=null?`<div class="progress-bar h-2"><div class="progress-fill ${pct<20?'bg-red-400':pct<40?'bg-yellow-400':'bg-teal-500'}" style="width:${pct}%"></div></div>`:''}
