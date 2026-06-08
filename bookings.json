@@ -32,7 +32,8 @@
     "purpose": "支援台北列印HighTemp",
     "engineer": "Jimmy",
     "status": "已完成",
-    "timestamp": "2026/6/3"
+    "timestamp": "2026/6/3",
+    "slot": "PM"
   },
   {
     "id": 1780457374149,
