@@ -217,9 +217,15 @@ for r in result:
 # 完成狀態的判定
 DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED')
 
-# 依完成時間排序（舊到新），確保扣除順序正確
+# 依時間排序（舊到新）。print_finished_at 常為 1969 epoch（異常），故優先用 created_at
+def valid_time(t):
+    # 過濾掉 1969/1970 epoch 異常時間
+    if not t or t.startswith('1969') or t.startswith('1970'):
+        return ''
+    return t
+
 def print_finish_key(pr):
-    return pr.get('print_finished_at') or pr.get('created_at') or ''
+    return valid_time(pr.get('created_at')) or valid_time(pr.get('print_finished_at')) or ''
 
 prints_sorted = sorted(
     [p for p in prints if isinstance(p, dict)],
@@ -237,7 +243,8 @@ for pr in prints_sorted:
 
     volume   = pr.get('volume_ml')
     material = canon_material(pr.get('material_name') or pr.get('material', ''))
-    finished = pr.get('print_finished_at') or pr.get('created_at', '')
+    # 時間：優先用 created_at（print_finished_at 常為 1969 epoch）
+    finished = valid_time(pr.get('created_at')) or valid_time(pr.get('print_finished_at')) or now_str
 
     # 找出是哪台機台印的
     printer_field = pr.get('printer', '')
