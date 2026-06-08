@@ -69,7 +69,14 @@ for p in printers:
         time_left_str = '-'
 
     hopper_material = status.get('hopper_material') or ''
-    cartridge_list  = p.get('cartridge_status', []) or []
+    # cartridge_status 可能是「陣列」(Form 4L 雙匣) 或「單一物件」(Form 4 單匣)
+    raw_cartridge = p.get('cartridge_status')
+    if isinstance(raw_cartridge, dict):
+        cartridge_list = [raw_cartridge]          # 單一物件 → 包成陣列
+    elif isinstance(raw_cartridge, list):
+        cartridge_list = raw_cartridge
+    else:
+        cartridge_list = []
     cartridges_out  = []
     primary_material  = ''
     primary_level_pct = None
@@ -79,15 +86,20 @@ for p in printers:
         if not isinstance(cs, dict):
             continue
         c = cs.get('cartridge', {})
-        # cartridge 欄位有時是字串（材料名）而非物件
+        # cartridge 可能是 null（無樹脂罐）、字串（材料名）或物件
         cartridge_str_name = ''
+        if c is None:
+            continue   # 無樹脂罐資料，跳過
         if isinstance(c, str):
             cartridge_str_name = c
             c = {}
         elif not isinstance(c, dict):
             c = {}
-        slot          = cs.get('cartridge_slot', '')
+        slot          = cs.get('cartridge_slot', '') or 'SINGLE'   # 空字串 → SINGLE（單匣機型）
         mat_name      = canon_material(c.get('display_name') or c.get('material', '') or cartridge_str_name)
+        # 若完全沒材料也沒容量，跳過這個空槽
+        if not mat_name and not c.get('initial_volume_ml'):
+            continue
         initial_ml    = c.get('initial_volume_ml') or 0
         dispensed_ml  = c.get('volume_dispensed_ml') or 0
         remaining_ml  = round(initial_ml - dispensed_ml, 1) if initial_ml > 0 else None
@@ -102,7 +114,7 @@ for p in printers:
             'remaining_pct': remaining_pct,
             'is_empty':      is_empty,
         })
-        if slot == 'FRONT' or not primary_material:
+        if slot in ('FRONT', 'SINGLE') or not primary_material:
             primary_material  = mat_name
             primary_level_pct = remaining_pct
 
