@@ -155,6 +155,8 @@
     "printer": "Form4",
     "purpose": "高禎材料測試",
     "engineer": "Jimmy",
-    "status": "已完成"
+    "status": "已完成",
+    "slot": "AM",
+    "hasOrder": false
   }
 ]
