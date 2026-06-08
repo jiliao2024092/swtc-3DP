@@ -429,15 +429,15 @@ const MACHINE_TYPE_MAP = {
 };
 function getMachineLabel(id) {
     if (!id) return '';
-    const k=id.toLowerCase().replace(/\s/g,'');
-    for(const[mk,mv] of Object.entries(MACHINE_TYPE_MAP)) if(mk===k) return mv;
-    if(k.includes('fuse1plus')) return 'Fuse 1+';
-    if(k.includes('fuse1'))    return 'Fuse 1';
-    if(k.includes('form4l'))   return 'Form 4L';
-    if(k.includes('form4'))    return 'Form 4';
-    if(k.includes('form3l'))   return 'Form 3L';
-    if(k.includes('form3plus'))return 'Form 3+';
-    if(k.includes('form3'))    return 'Form 3';
+    const k=id.toLowerCase().replace(/[\s\-]/g,'');   // 去掉空白和連字號
+    for(const[mk,mv] of Object.entries(MACHINE_TYPE_MAP)) if(mk.replace(/-/g,'')===k) return mv;
+    if(k.includes('frml40')||k.includes('form4l')) return 'Form 4L';
+    if(k.includes('frml30')||k.includes('form3l')) return 'Form 3L';
+    if(k.includes('form40')||k.includes('form4'))  return 'Form 4';
+    if(k.includes('form32')||k.includes('form3plus')) return 'Form 3+';
+    if(k.includes('form3')) return 'Form 3';
+    if(k.includes('fs30')||k.includes('fuse1plus')) return 'Fuse 1+';
+    if(k.includes('fuse1')) return 'Fuse 1';
     return id;
 }
 
@@ -542,7 +542,7 @@ function renderMaterialPanel(printers) {
         const cartridgeHTML = cartridges.length ? cartridges.map(c => {
             const pct = c.remaining_pct;
             const remMl = c.remaining_ml;
-            const slotLabel = c.slot === 'FRONT' ? '前匣' : c.slot === 'BACK' ? '後匣' : c.slot || '樹脂罐';
+            const slotLabel = c.slot === 'FRONT' ? '前匣' : c.slot === 'BACK' ? '後匣' : c.slot === 'SINGLE' ? '單匣' : c.slot || '樹脂罐';
             const emptyBadge = c.is_empty ? '<span class="ml-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">已空</span>' : '';
             return `
             <div class="bg-gray-50 rounded-lg p-3 space-y-2">
@@ -562,7 +562,7 @@ function renderMaterialPanel(printers) {
                     <div class="progress-bar h-2.5 rounded-md">
                         <div class="progress-fill rounded-md ${barColor(pct)}" style="width:${Math.min(pct,100)}%"></div>
                     </div>
-                </div>` : `<p class="text-xs text-gray-400">用量資料待同步</p>`}
+                </div>` : `<p class="text-xs text-amber-600">容量待補登 · 可至庫存管理手動輸入</p>`}
             </div>`;
         }).join('') : `
             <div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
