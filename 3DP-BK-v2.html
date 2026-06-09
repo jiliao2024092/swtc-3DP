@@ -793,38 +793,60 @@ function renderGantt() {
             const isToday = dayKey===todayKey;
             const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
-            const hasAllDay = allDayItems.length > 0;
+            const amItems     = dayBookings.filter(b=>(b.slot||'AM')==='AM');
+            const pmItems     = dayBookings.filter(b=>b.slot==='PM');
+            const todayBg = isToday?'bg-blue-50/40':'';
 
-            ['AM','PM'].forEach(slot=>{
-                const slotItems = dayBookings.filter(b=>(b.slot||'AM')===slot);
-                const items = [...slotItems, ...allDayItems];
-                const isConflict = items.length > 1;
-                let borderClasses = 'border border-gray-200';
-                if(hasAllDay){
-                    if(slot==='AM') borderClasses = 'border-t border-l border-b border-gray-200';
-                    else            borderClasses = 'border-t border-r border-b border-gray-200';
-                }
-                if(items.length){
-                    const cellContent = items.map(b=>{
-                        const color = ganttStatusColor(b.status);
-                        const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
-                        const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                        return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
-                            ${text}${allDayMark}
-                        </div>`;
-                    }).join('');
-                    const conflictBadge = isConflict ? '<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 '+items.length+'筆</div>' : '';
-                    const cellBg = isConflict ? 'bg-orange-100' : (isToday?'bg-blue-50/40':'');
-                    const ringClass = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
-                    if(hasAllDay && slot==='PM' && allDayItems.length===items.length){
-                        html += `<td class="p-1 ${borderClasses} ${cellBg}${ringClass}" style="min-width:70px"></td>`;
-                    } else {
-                        html += `<td class="p-1 ${borderClasses} align-top ${cellBg}${ringClass}" style="min-width:70px">${conflictBadge}${cellContent}</td>`;
-                    }
-                } else {
-                    html += `<td class="p-1 ${borderClasses} ${isToday?'bg-blue-50/40':''}"></td>`;
-                }
-            });
+            // 衝突偵測：AM 格 = amItems + allDay；PM 格 = pmItems + allDay
+            const amCombined = [...amItems, ...allDayItems];
+            const pmCombined = [...pmItems, ...allDayItems];
+            const amConflict = amCombined.length > 1;
+            const pmConflict = pmCombined.length > 1;
+
+            // 渲染一個預約色塊
+            const renderItem = (b) => {
+                const color = ganttStatusColor(b.status);
+                const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
+                const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
+                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
+                    ${text}${allDayMark}
+                </div>`;
+            };
+            const renderConflictBadge = (n) => `<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
+
+            // 情境 A：當天只有全天預約，無 AM/PM 單獨預約 → 用 colspan=2 橫跨
+            if(allDayItems.length && !amItems.length && !pmItems.length){
+                const isConflict = allDayItems.length > 1;
+                const bg = isConflict ? 'bg-orange-100' : todayBg;
+                const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
+                const content = allDayItems.map(renderItem).join('');
+                html += `<td colspan="2" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:140px">${badge}${content}</td>`;
+                return;  // 跳過下面 AM/PM 兩格
+            }
+
+            // 情境 B：同時有全天 + AM/PM 單獨預約（衝突情況）→ 仍分兩格但兩格都顯示全天那筆
+            // 情境 C：只有 AM/PM 單獨預約，無全天 → 標準兩格
+            // 情境 D：完全沒預約 → 空兩格
+
+            // AM 格
+            if(amCombined.length){
+                const ring = amConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const bg   = amConflict ? 'bg-orange-100' : todayBg;
+                const badge = amConflict ? renderConflictBadge(amCombined.length) : '';
+                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px">${badge}${amCombined.map(renderItem).join('')}</td>`;
+            } else {
+                html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
+            }
+            // PM 格
+            if(pmCombined.length){
+                const ring = pmConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const bg   = pmConflict ? 'bg-orange-100' : todayBg;
+                const badge = pmConflict ? renderConflictBadge(pmCombined.length) : '';
+                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px">${badge}${pmCombined.map(renderItem).join('')}</td>`;
+            } else {
+                html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
+            }
         });
         html += '</tr>';
     });
