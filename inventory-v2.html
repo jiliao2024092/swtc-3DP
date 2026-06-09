@@ -486,40 +486,127 @@ function subscribeAll() {
 
     // 訂閱 inventory/main（單一文件）
     unsubscribeInv = onSnapshot(doc(db, 'inventory', 'main'), (snap) => {
-        if (snap.exists()) {
-            const d = snap.data();
-            inv.cartridges = d.cartridges || {};
-            inv.stock      = d.stock      || {};
-            inv.safety     = d.safety     || {};
-            inv.last_processed_prints = d.last_processed_prints || [];
-        } else {
-            // 文件不存在（首次使用）
-            inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = [];
+        try {
+            if (snap.exists()) {
+                const d = snap.data();
+                inv.cartridges = d.cartridges || {};
+                inv.stock      = d.stock      || {};
+                inv.safety     = d.safety     || {};
+                inv.last_processed_prints = d.last_processed_prints || [];
+            } else {
+                // 文件不存在（首次使用）
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = [];
+            }
+            mergeMaterialAliases();
+            // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
+            autoSyncCartridges().catch(()=>{});
+            setSyncStatus('ok');
+            renderAll();
+        } catch (err) {
+            console.error('inventory 訂閱回呼錯誤:', err);
+            setSyncStatus('error');
+            showToast('渲染失敗：' + err.message, 'error');
+            // 即使出錯也試著顯示空狀態
+            try { renderAll(); } catch(_) {}
         }
-        mergeMaterialAliases();
-        // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
-        autoSyncCartridges().catch(()=>{});
-        setSyncStatus('ok');
-        renderAll();
     }, (err) => {
         setSyncStatus('error');
         showToast('訂閱庫存失敗：' + err.message, 'error');
+        console.error('inventory 訂閱錯誤:', err);
     });
 
     // 訂閱 inventory_history（消耗紀錄 collection）
     const q = query(collection(db, 'inventory_history'), orderBy('tsDate', 'desc'));
     unsubscribeHist = onSnapshot(q, (snap) => {
-        inv.history = snap.docs.map(d => {
-            const data = d.data();
-            return {
-                id: d.id,
-                ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
-                type: data.type, material: data.material, printer: data.printer,
-                ml: data.ml, note: data.note, print_guid: data.print_guid,
-            };
-        });
-        renderHistory();
+        try {
+            inv.history = snap.docs.map(d => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
+                    type: data.type, material: data.material, printer: data.printer,
+                    ml: data.ml, note: data.note, print_guid: data.print_guid,
+                };
+            });
+            renderHistory();
+        } catch (err) {
+            console.error('history 訂閱回呼錯誤:', err);
+        }
+    }, (err) => {
+        console.error('history 訂閱錯誤:', err);
     });
+}
+
+// ══ 材料代碼 → 顯示名稱對照 ══
+const CODE_TO_NAME = {
+    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
+    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
+    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
+    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+};
+const NAME_TO_CODE_FE = {};
+Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
+NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
+NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
+
+function matName(code) {
+    return CODE_TO_NAME[code] || code;
+}
+function matCode(input) {
+    if(!input) return input;
+    if(CODE_TO_NAME[input]) return input;
+    return NAME_TO_CODE_FE[input] || input;
+}
+
+// ══ 機台代號 → 顯示名稱 ══
+const PRINTER_DISPLAY = {
+    'AluminumBowfin':'Form4',
+    'AdroitSauropod':'Form4L',
+};
+function printerDisplay(name) {
+    if(!name) return name;
+    for(const [k,v] of Object.entries(PRINTER_DISPLAY)){ if(name.includes(k)) return v; }
+    return name;
+}
+
+// ══ 合併重複材料名稱（如 FLTO2002 → Tough 2000 V2）══
+function mergeMaterialAliases() {
+    let changed = false;
+    // 合併備料
+    Object.keys(inv.stock).forEach(m=>{
+        const canon = matCode(m);
+        if(canon !== m){
+            if(!inv.stock[canon]) inv.stock[canon] = {bottles:0,total_ml:0};
+            inv.stock[canon].bottles  = Math.round(((inv.stock[canon].bottles||0)+(inv.stock[m].bottles||0))*10)/10;
+            inv.stock[canon].total_ml = Math.round(((inv.stock[canon].total_ml||0)+(inv.stock[m].total_ml||0))*10)/10;
+            inv.stock[canon].updated_at = inv.stock[m].updated_at || inv.stock[canon].updated_at;
+            if(inv.stock[m].note && !inv.stock[canon].note) inv.stock[canon].note = inv.stock[m].note;
+            delete inv.stock[m];
+            changed = true;
+        }
+    });
+    // 合併安全庫存（取較大值）
+    Object.keys(inv.safety).forEach(m=>{
+        const canon = matCode(m);
+        if(canon !== m){
+            inv.safety[canon] = Math.max(inv.safety[canon]??0, inv.safety[m]??0);
+            delete inv.safety[m];
+            changed = true;
+        }
+    });
+    // 合併歷史材料名稱（注意：v2 的 inv.history 由 onSnapshot 維護，此處改名不會持久化）
+    (inv.history || []).forEach(h=>{
+        const canon = matCode(h.material);
+        if(canon !== h.material){ h.material = canon; changed = true; }
+    });
+    // 合併樹脂罐材料名稱
+    Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>{
+        const canon = matCode(s.material);
+        if(canon !== s.material){ s.material = canon; changed = true; }
+    }));
+    return changed;
 }
 
 // ══ 寫入：inventory/main ══
