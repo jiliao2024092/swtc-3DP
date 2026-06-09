@@ -229,15 +229,26 @@
                     <i data-lucide="package-plus" class="w-4 h-4"></i> 新增入庫
                 </button>
             </div>
+            <!-- 篩選工具列 -->
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+                <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
+                <select id="stock-filter-status" onchange="renderStockTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                    <option value="">全部狀態</option>
+                    <option value="low">僅需叫料</option>
+                    <option value="ok">僅充足</option>
+                </select>
+                <input type="text" id="stock-filter-name" oninput="renderStockTable()" placeholder="搜尋材料名稱..." class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white w-40">
+                <button onclick="resetStockFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
+            </div>
             <div id="stock-table-wrap" class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
                         <tr class="bg-gray-100 text-gray-600">
-                            <th class="p-3 border-b font-medium">材料名稱</th>
-                            <th class="p-3 border-b font-medium text-right">罐數</th>
-                            <th class="p-3 border-b font-medium text-right">估計剩餘(ml)</th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">罐數<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">估計剩餘(ml)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right w-32">安全庫存(罐)</th>
-                            <th class="p-3 border-b font-medium">狀態</th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium w-40">備註</th>
                             <th class="p-3 border-b font-medium">最後更新</th>
                             <th class="p-3 border-b font-medium text-center">操作</th>
@@ -250,23 +261,40 @@
 
         <!-- 消耗記錄 -->
         <div id="panel-history" class="p-6 hidden">
-            <div class="flex items-center justify-between mb-4">
-                <p class="text-sm text-gray-500">列印完成後自動記錄的材料消耗，以及手動入庫紀錄。</p>
-                <div class="flex gap-2">
-                    <select id="history-filter" onchange="renderHistory()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
+            <div class="mb-4">
+                <p class="text-sm text-gray-500 mb-3">列印完成後自動記錄的材料消耗，以及手動入庫紀錄。</p>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
+                    <select id="history-filter" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
                         <option value="">全部材料</option>
                     </select>
+                    <select id="history-filter-printer" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">全部機台</option>
+                        <option value="AluminumBowfin">Form4</option>
+                        <option value="AdroitSauropod">Form4L</option>
+                        <option value="備料庫存">備料庫存</option>
+                    </select>
+                    <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">全部類型</option>
+                        <option value="consume">列印消耗</option>
+                        <option value="stockin">備料入庫</option>
+                        <option value="manual">手動調整</option>
+                    </select>
+                    <input type="date" id="history-filter-from" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="起始日期">
+                    <span class="text-xs text-gray-400">～</span>
+                    <input type="date" id="history-filter-to" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="結束日期">
+                    <button onclick="resetHistoryFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
                 </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
                         <tr class="bg-gray-100 text-gray-600">
-                            <th class="p-3 border-b font-medium w-36">時間</th>
-                            <th class="p-3 border-b font-medium">材料</th>
-                            <th class="p-3 border-b font-medium">機台</th>
+                            <th class="p-3 border-b font-medium w-36 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ts')">時間<span id="hist-sort-ts" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">類型</th>
-                            <th class="p-3 border-b font-medium text-right w-28">數量(ml)</th>
+                            <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量(ml)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">備註</th>
                         </tr>
                     </thead>
@@ -341,6 +369,8 @@ let historyPage = 1;
 const HISTORY_PAGE_SIZE = 20;
 let editingCartridge = null;
 let isEditor = false;
+let stockSortField='material', stockSortDir='asc';
+let histSortField='ts', histSortDir='desc';
 
 // ══ Token / 角色 ══
 function getToken() { return localStorage.getItem(TOKEN_KEY)||''; }
@@ -848,10 +878,57 @@ async function saveCartridgeEdit() {
 function closeCartridgeModal() { document.getElementById('cartridge-modal').classList.add('hidden'); }
 
 // ══ 備料庫存 ══
+// ══ 庫存排序/篩選 ══
+function stockSortBy(field){
+    if(stockSortField===field) stockSortDir = stockSortDir==='asc'?'desc':'asc';
+    else { stockSortField=field; stockSortDir='asc'; }
+    renderStockTable();
+}
+function resetStockFilters(){
+    document.getElementById('stock-filter-status').value='';
+    document.getElementById('stock-filter-name').value='';
+    renderStockTable();
+}
+function updateStockSortIndicators(){
+    ['material','bottles','total_ml','status'].forEach(f=>{
+        const el=document.getElementById('stock-sort-'+f);
+        if(!el) return;
+        if(f===stockSortField){
+            el.textContent = stockSortDir==='asc'?'↑':'↓';
+            el.className = 'ml-1 text-blue-600 font-bold';
+        } else { el.textContent=''; el.className='ml-1 text-gray-300'; }
+    });
+}
+
 function renderStockTable() {
+    updateStockSortIndicators();
     const tbody=document.getElementById('stock-table-body');
-    const mats=getAllMaterials();
-    if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">尚無庫存資料</td></tr>'; return; }
+    let mats=getAllMaterials();
+
+    // 篩選
+    const fStatus = document.getElementById('stock-filter-status')?.value || '';
+    const fName   = (document.getElementById('stock-filter-name')?.value || '').toLowerCase();
+    mats = mats.filter(m=>{
+        if(fStatus==='low' && !isLowStock(m)) return false;
+        if(fStatus==='ok'  &&  isLowStock(m)) return false;
+        if(fName && !(m.toLowerCase().includes(fName) || matName(m).toLowerCase().includes(fName))) return false;
+        return true;
+    });
+
+    // 排序
+    mats.sort((a,b)=>{
+        let ka, kb;
+        if(stockSortField==='material'){ ka=matName(a); kb=matName(b); }
+        else if(stockSortField==='bottles'){ ka=(inv.stock[a]?.bottles||0); kb=(inv.stock[b]?.bottles||0); }
+        else if(stockSortField==='total_ml'){ ka=(inv.stock[a]?.total_ml||0); kb=(inv.stock[b]?.total_ml||0); }
+        else if(stockSortField==='status'){ ka=isLowStock(a)?0:1; kb=isLowStock(b)?0:1; }
+        const dir = stockSortDir==='asc'?1:-1;
+        if(ka<kb) return -1*dir;
+        if(ka>kb) return  1*dir;
+        return 0;
+    });
+
+    if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">'+(getAllMaterials().length?'沒有符合篩選條件的資料':'尚無庫存資料')+'</td></tr>'; return; }
     tbody.innerHTML='';
     mats.forEach(m=>{
         const s=inv.stock[m]||{bottles:0,total_ml:0};
@@ -1039,23 +1116,76 @@ function addHistory(entry) {
     inv.history.unshift({id:Date.now(),...entry,ts:new Date().toISOString()});
 }
 
+// ══ 消耗記錄排序/篩選 ══
+function historySortBy(field){
+    if(histSortField===field) histSortDir = histSortDir==='asc'?'desc':'asc';
+    else { histSortField=field; histSortDir = field==='ts'?'desc':'asc'; }
+    renderHistory();
+}
+function resetHistoryFilters(){
+    document.getElementById('history-filter').value='';
+    document.getElementById('history-filter-printer').value='';
+    document.getElementById('history-filter-type').value='';
+    document.getElementById('history-filter-from').value='';
+    document.getElementById('history-filter-to').value='';
+    renderHistory();
+}
+function updateHistorySortIndicators(){
+    ['ts','material','printer','ml'].forEach(f=>{
+        const el=document.getElementById('hist-sort-'+f);
+        if(!el) return;
+        if(f===histSortField){
+            el.textContent = histSortDir==='asc'?'↑':'↓';
+            el.className = 'ml-1 text-blue-600 font-bold';
+        } else { el.textContent=''; el.className='ml-1 text-gray-300'; }
+    });
+}
+
 function renderHistory() {
-    const filter=document.getElementById('history-filter').value;
-    // 更新 filter 選單
+    updateHistorySortIndicators();
+    // 更新材料 filter 選單
     const sel=document.getElementById('history-filter');
     const cur=sel.value;
     sel.innerHTML='<option value="">全部材料</option>';
     getAllMaterials().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=matName(m);sel.appendChild(o);});
     sel.value=cur;
 
-    const filtered=filter?inv.history.filter(h=>h.material===filter):inv.history;
+    // 取得所有篩選值
+    const fMat     = sel.value;
+    const fPrinter = document.getElementById('history-filter-printer').value;
+    const fType    = document.getElementById('history-filter-type').value;
+    const fFrom    = document.getElementById('history-filter-from').value;
+    const fTo      = document.getElementById('history-filter-to').value;
+
+    let filtered = inv.history.filter(h=>{
+        if(fMat     && h.material !== fMat) return false;
+        if(fPrinter && !(h.printer||'').includes(fPrinter)) return false;
+        if(fType    && h.type !== fType) return false;
+        if(fFrom    && (h.ts||'').slice(0,10) < fFrom) return false;
+        if(fTo      && (h.ts||'').slice(0,10) > fTo) return false;
+        return true;
+    });
+
+    // 排序
+    const dir = histSortDir==='asc'?1:-1;
+    filtered.sort((a,b)=>{
+        let ka, kb;
+        if(histSortField==='ts'){ ka=a.ts||''; kb=b.ts||''; }
+        else if(histSortField==='material'){ ka=matName(a.material||''); kb=matName(b.material||''); }
+        else if(histSortField==='printer'){ ka=a.printer||''; kb=b.printer||''; }
+        else if(histSortField==='ml'){ ka=Math.abs(a.ml||0); kb=Math.abs(b.ml||0); }
+        if(ka<kb) return -1*dir;
+        if(ka>kb) return  1*dir;
+        return 0;
+    });
+
     const total=filtered.length;
     const totalPages=Math.ceil(total/HISTORY_PAGE_SIZE);
     if(historyPage>totalPages) historyPage=Math.max(1,totalPages);
     const page=filtered.slice((historyPage-1)*HISTORY_PAGE_SIZE,historyPage*HISTORY_PAGE_SIZE);
 
     const tbody=document.getElementById('history-body');
-    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="6" class="p-8 text-center text-gray-400">尚無紀錄</td></tr>'; return; }
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="6" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
         const typeMap={consume:{label:'列印消耗',color:'text-red-600 bg-red-50'},stockin:{label:'備料入庫',color:'text-green-700 bg-green-50'},manual:{label:'手動調整',color:'text-blue-600 bg-blue-50'}};
