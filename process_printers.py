@@ -1,5 +1,18 @@
+"""
+Formlabs 列印機狀態同步 + 消耗扣庫存
+─────────────────────────────────────────────────────────
+Part 1: 處理 raw-printers.json → 產生 printer-status.json
+        （公開即時資料，繼續寫到 GitHub repo）
+
+Part 2: 處理 raw-prints.json   → 寫入 Firestore
+        - inventory/main           (cartridges/stock/safety 扣減)
+        - inventory_history/{auto} (消耗紀錄)
+        （需設定 FIREBASE_SERVICE_ACCOUNT 環境變數）
+"""
 import json
 import datetime
+import os
+import sys
 
 # ── 材料名稱 → API CODE 正規化（後端統一存 API CODE）──
 NAME_TO_CODE = {
@@ -33,6 +46,11 @@ def canon_material(name):
     if name in KNOWN_CODES:
         return name
     return NAME_TO_CODE.get(name, name)
+
+
+# ════════════════════════════════════════════════════════
+# Part 1: raw-printers.json → printer-status.json
+# ════════════════════════════════════════════════════════
 
 with open('raw-printers.json') as f:
     data = json.load(f)
@@ -72,7 +90,7 @@ for p in printers:
     # cartridge_status 可能是「陣列」(Form 4L 雙匣) 或「單一物件」(Form 4 單匣)
     raw_cartridge = p.get('cartridge_status')
     if isinstance(raw_cartridge, dict):
-        cartridge_list = [raw_cartridge]          # 單一物件 → 包成陣列
+        cartridge_list = [raw_cartridge]
     elif isinstance(raw_cartridge, list):
         cartridge_list = raw_cartridge
     else:
@@ -82,22 +100,19 @@ for p in printers:
     primary_level_pct = None
 
     for cs in cartridge_list:
-        # cs 本身可能是字串或非 dict，先檢查
         if not isinstance(cs, dict):
             continue
         c = cs.get('cartridge', {})
-        # cartridge 可能是 null（無樹脂罐）、字串（材料名）或物件
         cartridge_str_name = ''
         if c is None:
-            continue   # 無樹脂罐資料，跳過
+            continue
         if isinstance(c, str):
             cartridge_str_name = c
             c = {}
         elif not isinstance(c, dict):
             c = {}
-        slot          = cs.get('cartridge_slot', '') or 'SINGLE'   # 空字串 → SINGLE（單匣機型）
+        slot          = cs.get('cartridge_slot', '') or 'SINGLE'
         mat_name      = canon_material(c.get('display_name') or c.get('material', '') or cartridge_str_name)
-        # 若完全沒材料也沒容量，跳過這個空槽
         if not mat_name and not c.get('initial_volume_ml'):
             continue
         initial_ml    = c.get('initial_volume_ml') or 0
@@ -133,7 +148,6 @@ for p in printers:
     if primary_level_pct is None and material_credit is not None:
         primary_level_pct = round(float(material_credit) * 100, 1)
 
-    # 抓取最近已完成的列印紀錄（previous_print_run）用於消耗計算
     prev_run = p.get('previous_print_run')
     if not isinstance(prev_run, dict):
         prev_run = {}
@@ -154,7 +168,6 @@ for p in printers:
         'time_left':      time_left_str,
         'last_pinged':    status.get('last_pinged_at', ''),
         'updated_at':     datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-        # 附帶上一次完成的列印資訊（給庫存消耗計算用）
         'last_completed_print': {
             'guid':      prev_run.get('guid', ''),
             'material':  prev_run.get('material_name') or prev_run.get('material', ''),
@@ -167,27 +180,56 @@ for p in printers:
 with open('printer-status.json', 'w', encoding='utf-8') as f:
     json.dump(result, f, ensure_ascii=False, indent=2)
 
-print('OK: ' + str(len(result)) + ' printers processed')
+print('Part 1: OK ' + str(len(result)) + ' printers processed')
 for r in result:
     level_str = str(r['material_level']) + '%' if r['material_level'] is not None else 'N/A'
     cart_str  = ', '.join([c['slot'] + ':' + str(c['remaining_pct']) + '%' for c in r['cartridges']]) if r['cartridges'] else 'no cartridge'
     print('  ' + r['alias'] + ' -> ' + r['status'] + '  level=' + level_str + '  cartridges: ' + cart_str)
 
 
-# ══ 自動消耗計算：更新 inventory.json ══════════════════════════════
-import os, sys
+# ════════════════════════════════════════════════════════
+# Part 2: raw-prints.json → Firestore（消耗扣減）
+# ════════════════════════════════════════════════════════
 
-INVENTORY_FILE = 'inventory.json'
-if not os.path.exists(INVENTORY_FILE):
-    print('inventory.json 不存在，跳過消耗計算')
+service_account_str = os.environ.get('FIREBASE_SERVICE_ACCOUNT')
+if not service_account_str:
+    print('\n[Part 2] FIREBASE_SERVICE_ACCOUNT 未設定，跳過 Firestore 同步')
     sys.exit(0)
 
-with open(INVENTORY_FILE, encoding='utf-8') as f:
-    inv = json.load(f)
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+except ImportError:
+    print('\n[Part 2] firebase-admin 套件未安裝，跳過 Firestore 同步')
+    print('  workflow 須加 `pip install firebase-admin` 步驟')
+    sys.exit(0)
+
+try:
+    service_account_dict = json.loads(service_account_str)
+except json.JSONDecodeError as e:
+    print(f'\n[Part 2] FIREBASE_SERVICE_ACCOUNT JSON 格式錯誤: {e}')
+    sys.exit(1)
+
+try:
+    cred = credentials.Certificate(service_account_dict)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    print('\n[Part 2] Firestore 連線成功')
+except Exception as e:
+    print(f'\n[Part 2] Firestore 連線失敗: {e}')
+    sys.exit(1)
+
+# ── 讀取 inventory/main ──
+inv_ref = db.collection('inventory').document('main')
+inv_doc = inv_ref.get()
+if inv_doc.exists:
+    inv = inv_doc.to_dict() or {}
+else:
+    print('  inventory/main 不存在，將建立新文件')
+    inv = {}
 
 inv.setdefault('cartridges', {})
 inv.setdefault('stock', {})
-inv.setdefault('history', [])
 inv.setdefault('safety', {})
 inv.setdefault('last_processed_prints', [])
 
@@ -195,7 +237,7 @@ processed = set(inv['last_processed_prints'])
 new_entries = []
 now_str = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 
-# ── 讀取 print history（/developer/v1/prints/）─────────────────────
+# ── 讀取 print history ──
 prints = []
 if os.path.exists('raw-prints.json'):
     try:
@@ -206,20 +248,17 @@ if os.path.exists('raw-prints.json'):
         elif isinstance(pdata, list):
             prints = pdata
     except Exception as e:
-        print('讀取 raw-prints.json 失敗：' + str(e))
+        print('  讀取 raw-prints.json 失敗：' + str(e))
 
-# alias 對照表：serial -> alias（用於把 print 的 printer 對應到機台名）
+# alias 對照表：serial -> alias
 serial_to_alias = {}
 for r in result:
     if r.get('serial'):
         serial_to_alias[r['serial']] = r['alias']
 
-# 完成狀態的判定
 DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED')
 
-# 依時間排序（舊到新）。print_finished_at 常為 1969 epoch（異常），故優先用 created_at
 def valid_time(t):
-    # 過濾掉 1969/1970 epoch 異常時間
     if not t or t.startswith('1969') or t.startswith('1970'):
         return ''
     return t
@@ -243,14 +282,11 @@ for pr in prints_sorted:
 
     volume   = pr.get('volume_ml')
     material = canon_material(pr.get('material_name') or pr.get('material', ''))
-    # 時間：優先用 created_at（print_finished_at 常為 1969 epoch）
     finished = valid_time(pr.get('created_at')) or valid_time(pr.get('print_finished_at')) or now_str
 
-    # 找出是哪台機台印的
     printer_field = pr.get('printer', '')
     alias = serial_to_alias.get(printer_field, printer_field)
 
-    # 只追蹤指定機台
     if not any(t in alias for t in TRACKED_PRINTERS):
         continue
     if not volume or not material:
@@ -279,26 +315,55 @@ for pr in prints_sorted:
         inv['stock'][material]['updated_at'] = now_str
         inv['stock'][material]['updated_by'] = 'auto'
 
-    # 3. 記錄消耗歷史
-    inv['history'].insert(0, {
-        'id':         int(datetime.datetime.utcnow().timestamp() * 1000) + len(new_entries),
+    # 3. 暫存消耗紀錄（稍後 batch 寫入）
+    try:
+        ts_dt = datetime.datetime.fromisoformat(finished.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        ts_dt = datetime.datetime.utcnow()
+
+    new_entries.append({
         'ts':         finished or now_str,
+        'tsDate':     ts_dt,
         'type':       'consume',
         'material':   material,
         'printer':    alias,
         'ml':         volume,
         'note':       pr.get('name', '') or ('列印完成 ' + guid[:8]),
         'print_guid': guid,
+        'createdBy':       'system',
+        'createdByEmail':  'github-actions@bot',
     })
 
     processed.add(guid)
-    new_entries.append(guid)
 
-inv['last_processed_prints'] = list(processed)[-1000:]  # 保留最近 1000 筆
+inv['last_processed_prints'] = list(processed)[-1000:]
 
+# ── 寫回 Firestore ──
 if new_entries:
-    with open(INVENTORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(inv, f, ensure_ascii=False, indent=2)
-    print(f'inventory.json 已更新，新增 {len(new_entries)} 筆消耗紀錄')
+    try:
+        inv_ref.set({
+            'cartridges': inv['cartridges'],
+            'stock':      inv['stock'],
+            'safety':     inv['safety'],
+            'last_processed_prints': inv['last_processed_prints'],
+            'updatedAt':      firestore.SERVER_TIMESTAMP,
+            'updatedBy':      'system',
+            'updatedByEmail': 'github-actions@bot',
+            'lastReason':     f'自動扣減 {len(new_entries)} 筆列印消耗',
+        }, merge=True)
+
+        # batch 寫入消耗紀錄
+        BATCH_SIZE = 400
+        for i in range(0, len(new_entries), BATCH_SIZE):
+            batch = db.batch()
+            for entry in new_entries[i:i+BATCH_SIZE]:
+                doc_ref = db.collection('inventory_history').document()
+                batch.set(doc_ref, entry)
+            batch.commit()
+
+        print(f'\n[Part 2] OK 已寫入 Firestore：{len(new_entries)} 筆消耗紀錄')
+    except Exception as e:
+        print(f'\n[Part 2] 寫入 Firestore 失敗: {e}')
+        sys.exit(1)
 else:
-    print('inventory.json 無新消耗紀錄')
+    print('\n[Part 2] OK 無新消耗紀錄')
