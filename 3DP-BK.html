@@ -104,6 +104,14 @@
                 <input type="date" id="edit-date" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
             <div class="space-y-1">
+                <label class="text-sm font-medium text-gray-700">時段</label>
+                <select id="edit-slot" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    <option value="AM">上午</option>
+                    <option value="PM">下午</option>
+                    <option value="ALL">全天</option>
+                </select>
+            </div>
+            <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">申請業務</label>
                 <select id="edit-sales" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
             </div>
@@ -169,88 +177,6 @@
             </div>
         </div>
 
-        <!-- 新增預約單（工程師才顯示） -->
-        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
-            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
-            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">預約日期</label>
-                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">申請業務</label>
-                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
-                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1 lg:col-span-2">
-                    <div class="flex items-center justify-between">
-                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
-                        <div class="flex items-center gap-1">
-                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
-                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
-                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
-                        </div>
-                    </div>
-                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
-                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
-                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="lg:col-span-7 flex justify-end mt-2">
-                    <button type="submit" id="submit-btn"
-                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
-                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
-                    </button>
-                </div>
-            </form>
-        </div>
-
-        <!-- 執行清單 -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-gray-800">總覽表單 (工程師執行清單)</h2>
-                <div class="flex items-center gap-2">
-                    <span id="total-count" class="text-sm text-gray-500">共 0 筆資料</span>
-                    <button onclick="exportExcel()" title="匯出 Excel"
-                        class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
-                        <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出 Excel
-                    </button>
-                </div>
-            </div>
-            <div id="loading-state" class="p-12 text-center text-gray-400 hidden">
-                <div class="flex flex-col items-center gap-3">
-                    <div style="width:28px;height:28px;border:3px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
-                    <span class="text-sm">從 GitHub 載入資料中...</span>
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-100 text-gray-600 text-sm">
-                            <th class="p-3 border-b font-medium w-28">預約日期</th>
-                            <th class="p-3 border-b font-medium w-24">申請業務</th>
-                            <th class="p-3 border-b font-medium w-28">設備</th>
-                            <th class="p-3 border-b font-medium w-16 text-center">有單號</th>
-                            <th class="p-3 border-b font-medium">單號 / 原因</th>
-                            <th class="p-3 border-b font-medium w-28">負責工程師</th>
-                            <th class="p-3 border-b font-medium w-40">任務狀態</th>
-                            <th id="ops-col" class="p-3 border-b font-medium w-24 text-center hidden">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="table-body" class="divide-y divide-gray-100 text-sm text-gray-700"></tbody>
-                </table>
-            </div>
-            <div id="pagination" class="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between hidden">
-                <span id="page-info" class="text-sm text-gray-500"></span>
-                <div class="flex items-center gap-1" id="page-btns"></div>
-            </div>
-        </div>
-
         <!-- 列印機即時狀態 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
@@ -294,6 +220,156 @@
                 </div>
             </div>
         </div>
+
+        <!-- 新增預約單（工程師才顯示） -->
+        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
+            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
+            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">預約日期</label>
+                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">時段</label>
+                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="AM">上午</option>
+                        <option value="PM">下午</option>
+                        <option value="ALL">全天</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">申請業務</label>
+                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
+                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1 lg:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
+                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
+                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
+                        </div>
+                    </div>
+                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
+                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
+                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="lg:col-span-8 flex justify-end mt-2">
+                    <button type="submit" id="submit-btn"
+                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- 執行清單 -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                <h2 class="text-lg font-semibold text-gray-800">總覽表單 (工程師執行清單)</h2>
+                <div class="flex items-center gap-2">
+                    <span id="total-count" class="text-sm text-gray-500">共 0 筆資料</span>
+                    <!-- 表格/甘特圖切換 -->
+                    <div class="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                        <button id="view-table-btn" onclick="switchListView('table')"
+                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700 transition-all">
+                            <i data-lucide="table" class="w-3.5 h-3.5 inline"></i> 表格
+                        </button>
+                        <button id="view-gantt-btn" onclick="switchListView('gantt')"
+                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500 transition-all">
+                            <i data-lucide="calendar-range" class="w-3.5 h-3.5 inline"></i> 甘特圖
+                        </button>
+                    </div>
+                    <button onclick="exportExcel()" title="匯出 Excel"
+                        class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
+                        <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出 Excel
+                    </button>
+                </div>
+            </div>
+            <div id="loading-state" class="p-12 text-center text-gray-400 hidden">
+                <div class="flex flex-col items-center gap-3">
+                    <div style="width:28px;height:28px;border:3px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+                    <span class="text-sm">從 GitHub 載入資料中...</span>
+                </div>
+            </div>
+
+            <!-- 表格檢視 -->
+            <div id="list-table-view">
+                <!-- 篩選工具列 -->
+                <div class="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
+                    <select id="filter-engineer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">所有工程師</option>
+                    </select>
+                    <select id="filter-status" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">所有狀態</option>
+                    </select>
+                    <select id="filter-printer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">所有設備</option>
+                    </select>
+                    <select id="filter-sales" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">所有業務</option>
+                    </select>
+                    <select id="filter-special" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">全部</option>
+                        <option value="overdue">僅逾期</option>
+                        <option value="active">僅未完成</option>
+                        <option value="conflict">僅衝突</option>
+                    </select>
+                    <button onclick="resetFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100 text-gray-600 text-sm">
+                                <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('date')">預約日期<span id="sort-date" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-20 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('slot')">時段<span id="sort-slot" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-24 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('sales')">申請業務<span id="sort-sales" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('printer')">設備<span id="sort-printer" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-16 text-center">有單號</th>
+                                <th class="p-3 border-b font-medium">單號 / 原因</th>
+                                <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('engineer')">負責工程師<span id="sort-engineer" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-40 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('status')">任務狀態<span id="sort-status" class="ml-1 text-gray-300"></span></th>
+                                <th id="ops-col" class="p-3 border-b font-medium w-24 text-center hidden">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-gray-100 text-sm text-gray-700"></tbody>
+                    </table>
+                </div>
+                <div id="pagination" class="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between hidden">
+                    <span id="page-info" class="text-sm text-gray-500"></span>
+                    <div class="flex items-center gap-1" id="page-btns"></div>
+                </div>
+            </div>
+
+            <!-- 甘特圖檢視 -->
+            <div id="list-gantt-view" class="hidden p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <button onclick="ganttShiftWeek(-1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                        <span id="gantt-range" class="text-sm font-medium text-gray-700"></span>
+                        <button onclick="ganttShiftWeek(1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button onclick="ganttToday()" class="text-xs px-2.5 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600">本週</button>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs text-gray-500">
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-yellow-300"></span>待確認</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-blue-400"></span>執行中</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-green-400"></span>已完成</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-300"></span>異常/取消</span>
+                    </div>
+                </div>
+                <div id="gantt-container" class="overflow-x-auto"></div>
+            </div>
+        </div>
+
+
 
     </div>
 </div>
@@ -340,6 +416,11 @@ let pendingAction=null, pendingData=null;
 let currentPage=1;
 let isEditor=false;       // 是否為編輯模式
 let printerView='status'; // 'status' | 'material'
+let listView='table';     // 'table' | 'gantt'
+let ganttWeekStart=null;  // 甘特圖週起始日（Date）
+const GANTT_PRINTERS=['Form4','Form4L'];  // 甘特圖排的兩台
+let sortField='date';     // 排序欄位
+let sortDir='asc';        // asc | desc
 let cachedPrinters=[];
 
 // ══ 設定 / 角色 ══════════════════════════════
@@ -408,7 +489,7 @@ async function manualRefreshPrinters() {
 
 // ══ 列印機狀態 ════════════════════════════════
 const PRINTER_STATUS_MAP = {
-    'IDLE':                  {label:'閒置',    color:'bg-gray-100 text-gray-600',    dot:'bg-gray-400'},
+    'IDLE':                  {label:'閒置',    color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
     'PRINTING':              {label:'列印中',  color:'bg-blue-100 text-blue-700',    dot:'bg-blue-500'},
     'PAUSED':                {label:'已暫停',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-500'},
     'PAUSING':               {label:'暫停中',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-400'},
@@ -624,6 +705,7 @@ function openEditModal(id){
     if(!b) return;
     editingId=id; editHasOrder=b.hasOrder??null;
     document.getElementById('edit-date').value   =b.date||'';
+    document.getElementById('edit-slot').value   =b.slot||'AM';
     document.getElementById('edit-purpose').value=b.purpose||'';
     document.getElementById('edit-sales').value   =b.sales;
     document.getElementById('edit-printer').value =b.printer;
@@ -652,7 +734,7 @@ async function saveEdit(){
     if(!purpose)           {showToast(editHasOrder?'請填寫單號！':'請填寫無單號原因！','error');return;}
     const idx=bookings.findIndex(b=>b.id===editingId);
     if(idx===-1) return;
-    bookings[idx]={...bookings[idx],date,sales:document.getElementById('edit-sales').value,printer:document.getElementById('edit-printer').value,engineer:document.getElementById('edit-engineer').value,hasOrder:editHasOrder,purpose};
+    bookings[idx]={...bookings[idx],date,slot:document.getElementById('edit-slot').value,sales:document.getElementById('edit-sales').value,printer:document.getElementById('edit-printer').value,engineer:document.getElementById('edit-engineer').value,hasOrder:editHasOrder,purpose};
     closeEditModal();renderTable();
     await saveToGitHub(`編輯預約 #${editingId}`);
 }
@@ -744,6 +826,7 @@ function exportExcel(){
     if(!bookings.length){showToast('沒有資料可以匯出','error');return;}
     const rows=bookings.map(b=>({
         '預約日期': b.date||b.timestamp||'',
+        '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='ALL'?'全天':'',
         '申請業務': b.sales||'',
         '設備':     b.printer||'',
         '有單號':   b.hasOrder?'有':'無',
@@ -753,7 +836,7 @@ function exportExcel(){
     }));
     const ws=XLSX.utils.json_to_sheet(rows);
     // 欄位寬度
-    ws['!cols']=[{wch:14},{wch:10},{wch:10},{wch:8},{wch:30},{wch:12},{wch:10}];
+    ws['!cols']=[{wch:14},{wch:8},{wch:10},{wch:10},{wch:8},{wch:30},{wch:12},{wch:10}];
     const wb=XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,ws,'預約清單');
     const now=new Date();
@@ -795,31 +878,167 @@ function renderPagination(total){
     pageBtns.appendChild(next);
 }
 
+// ══ 衝突偵測：同機台+同日期+同時段 出現多筆 ══
+// 「全天」會佔上下午兩個時段，因此與任何 AM/PM/ALL 都算衝突
+function getOccupiedSlots(b) {
+    if(b.slot === 'ALL') return ['AM','PM'];
+    return [b.slot || 'AM'];
+}
+function getConflictKeys() {
+    const counts = {};
+    bookings.forEach(b=>{
+        if(!b.date || !b.printer) return;
+        getOccupiedSlots(b).forEach(slot=>{
+            const key = `${b.printer}|${b.date}|${slot}`;
+            counts[key] = (counts[key]||0) + 1;
+        });
+    });
+    const conflicts = new Set();
+    Object.entries(counts).forEach(([k,c])=>{ if(c>1) conflicts.add(k); });
+    return conflicts;
+}
+function bookingHasConflict(b, conflictSet) {
+    return getOccupiedSlots(b).some(slot =>
+        conflictSet.has(`${b.printer}|${b.date||''}|${slot}`)
+    );
+}
+
+// ══ 排序與篩選 ══════════════════════════════════
+function sortBy(field) {
+    if(sortField === field){
+        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortField = field;
+        sortDir = 'asc';
+    }
+    renderTable();
+}
+
+function resetFilters() {
+    ['filter-engineer','filter-status','filter-printer','filter-sales','filter-special'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el) el.value='';
+    });
+    renderTable();
+}
+
+function populateFilterSelects() {
+    // 動態填入「工程師」「狀態」「設備」「業務」選項（保留目前選的值）
+    const fills = [
+        ['filter-engineer','所有工程師', ENGINEERS],
+        ['filter-status',  '所有狀態',   STATUSES],
+        ['filter-printer', '所有設備',   PRINTERS],
+        ['filter-sales',   '所有業務',   SALES],
+    ];
+    fills.forEach(([id,placeholder,opts])=>{
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = `<option value="">${placeholder}</option>` +
+            opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('');
+    });
+}
+
+function updateSortIndicators() {
+    ['date','slot','sales','printer','engineer','status'].forEach(f=>{
+        const el = document.getElementById('sort-'+f);
+        if(!el) return;
+        if(f === sortField){
+            el.textContent = sortDir==='asc' ? '↑' : '↓';
+            el.className = 'ml-1 text-blue-600 font-bold';
+        } else {
+            el.textContent = '';
+            el.className = 'ml-1 text-gray-300';
+        }
+    });
+}
+
+// 排序鍵：依欄位回傳可比較的值
+function getSortKey(b, field) {
+    if(field==='date')     return b.date || b.timestamp || '';
+    if(field==='slot')     return ({'AM':1,'PM':2,'ALL':0}[b.slot]) ?? 9;
+    if(field==='sales')    return b.sales || '';
+    if(field==='printer')  return b.printer || '';
+    if(field==='engineer') return b.engineer || '';
+    if(field==='status'){
+        const order={'執行中':0,'待確認':1,'已完成':2,'異常/取消':3};
+        return order[b.status] ?? 9;
+    }
+    return '';
+}
+
 // ══ 表格渲染 ══════════════════════════════════
 function renderTable(){
     const tbody=document.getElementById('table-body');
-    document.getElementById('total-count').textContent=`共 ${bookings.length} 筆資料`;
     tbody.innerHTML='';
+    populateFilterSelects();
+    updateSortIndicators();
+
     if(!bookings.length){
-        tbody.innerHTML='<tr><td colspan="8" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
-        document.getElementById('pagination').classList.add('hidden');return;
+        document.getElementById('total-count').textContent='共 0 筆資料';
+        tbody.innerHTML='<tr><td colspan="9" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
+        document.getElementById('pagination').classList.add('hidden');
+        if(listView==='gantt') renderGantt();
+        return;
     }
 
-    // 排序：先依「未完成/已完成」分組，組內再依日期升冪
-    const dateKey=b=>b.date||b.timestamp||'';
-    const active=bookings.filter(b=>!DONE_STATUSES.has(b.status)).sort((a,b)=>dateKey(a).localeCompare(dateKey(b)));
-    const done  =bookings.filter(b=> DONE_STATUSES.has(b.status)).sort((a,b)=>dateKey(a).localeCompare(dateKey(b)));
-    const sorted=[...active,...done];
+    // 篩選條件
+    const fEng     = document.getElementById('filter-engineer').value;
+    const fStatus  = document.getElementById('filter-status').value;
+    const fPrinter = document.getElementById('filter-printer').value;
+    const fSales   = document.getElementById('filter-sales').value;
+    const fSpecial = document.getElementById('filter-special').value;
+
+    const _d=new Date();
+    const today=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+    const conflicts=getConflictKeys();
+
+    let filtered = bookings.filter(b=>{
+        if(fEng     && b.engineer !== fEng)     return false;
+        if(fStatus  && b.status   !== fStatus)  return false;
+        if(fPrinter && b.printer  !== fPrinter) return false;
+        if(fSales   && b.sales    !== fSales)   return false;
+        if(fSpecial==='overdue'  && !(b.date && b.date<today && !DONE_STATUSES.has(b.status))) return false;
+        if(fSpecial==='active'   && DONE_STATUSES.has(b.status)) return false;
+        if(fSpecial==='conflict' && !bookingHasConflict(b, conflicts)) return false;
+        return true;
+    });
+
+    // 顯示總數（已篩選/全部）
+    document.getElementById('total-count').textContent =
+        filtered.length === bookings.length ? `共 ${bookings.length} 筆資料` : `已篩選 ${filtered.length} / ${bookings.length} 筆`;
+
+    if(!filtered.length){
+        tbody.innerHTML='<tr><td colspan="9" class="p-10 text-center text-gray-400">'+(bookings.length?'沒有符合篩選條件的資料':'目前沒有任何預約紀錄')+'</td></tr>';
+        document.getElementById('pagination').classList.add('hidden');
+        if(listView==='gantt') renderGantt();
+        return;
+    }
+
+    // 排序：先依使用者選擇的欄位，未完成優先
+    const dir = sortDir==='asc' ? 1 : -1;
+    const sorted = filtered.slice().sort((a,b)=>{
+        // 主要：完成的排後（不論排序欄位都是這樣）
+        const aDone = DONE_STATUSES.has(a.status) ? 1 : 0;
+        const bDone = DONE_STATUSES.has(b.status) ? 1 : 0;
+        if(aDone !== bDone) return aDone - bDone;
+        // 次要：依使用者選擇的欄位
+        const ka = getSortKey(a, sortField);
+        const kb = getSortKey(b, sortField);
+        if(ka < kb) return -1*dir;
+        if(ka > kb) return  1*dir;
+        return 0;
+    });
 
     const totalPages=Math.ceil(sorted.length/PAGE_SIZE);
     if(currentPage>totalPages) currentPage=Math.max(1,totalPages);
     const pageData=sorted.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
-    const today=new Date().toISOString().slice(0,10);
 
     pageData.forEach((b,idx)=>{
         const tr=document.createElement('tr');
         const isDone=DONE_STATUSES.has(b.status);
-        tr.className='hover:bg-gray-50 transition-colors'+(isDone?' opacity-60':'');
+        const isConflict=bookingHasConflict(b, conflicts);
+        tr.className='hover:bg-gray-50 transition-colors'+(isDone?' opacity-60':'')+(isConflict?' bg-orange-50':'');
         const opts=STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
         const orderBadge=b.hasOrder
             ?'<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">有</span>'
@@ -828,13 +1047,19 @@ function renderTable(){
             ?new Date(b.date).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
             :(b.timestamp||'-');
         const isOverdue=b.date&&b.date<today&&!DONE_STATUSES.has(b.status);
+        const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='ALL' ? '全天' : '—';
+        const slotColor = isConflict ? 'bg-orange-200 text-orange-800' : (b.slot==='PM' ? 'bg-orange-100 text-orange-700' : b.slot==='ALL' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700');
+        const printerCell = isConflict
+            ? `<span class="text-orange-700 font-medium">${b.printer}</span> <span class="text-xs bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full" title="同機台同時段重複預約">衝突</span>`
+            : b.printer;
 
         tr.innerHTML=`
             <td class="p-3 font-medium ${isOverdue?'text-red-500':'text-gray-800'}">
                 ${displayDate}${isOverdue?' <span class="text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>':''}
             </td>
+            <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
-            <td class="p-3">${b.printer}</td>
+            <td class="p-3">${printerCell}</td>
             <td class="p-3 text-center">${orderBadge}</td>
             <td class="p-3 text-gray-600">${b.purpose}</td>
             <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${b.engineer}</span></td>
@@ -863,6 +1088,137 @@ function renderTable(){
 
     renderPagination(sorted.length);
     lucide.createIcons();
+    if(listView==='gantt') renderGantt();
+}
+
+// ══ 表格/甘特圖切換 ════════════════════════════
+function switchListView(v) {
+    listView = v;
+    document.getElementById('list-table-view').classList.toggle('hidden', v!=='table');
+    document.getElementById('list-gantt-view').classList.toggle('hidden', v!=='gantt');
+    document.getElementById('view-table-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='table' ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    document.getElementById('view-gantt-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='gantt' ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    lucide.createIcons();
+    if(v==='gantt') renderGantt();
+}
+
+// ══ 甘特圖 ════════════════════════════════════
+function startOfWeek(d) {
+    // 以週一為一週開始
+    const date = new Date(d);
+    const day = date.getDay();            // 0=日,1=一...
+    const diff = (day === 0 ? -6 : 1 - day);
+    date.setDate(date.getDate() + diff);
+    date.setHours(0,0,0,0);
+    return date;
+}
+function ganttToday() { ganttWeekStart = startOfWeek(new Date()); renderGantt(); }
+function ganttShiftWeek(n) {
+    if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
+    ganttWeekStart.setDate(ganttWeekStart.getDate() + n*7);
+    renderGantt();
+}
+
+function ganttStatusColor(status) {
+    return {
+        '待確認':'bg-yellow-300 text-yellow-900',
+        '執行中':'bg-blue-400 text-white',
+        '已完成':'bg-green-400 text-white',
+        '異常/取消':'bg-red-300 text-red-900'
+    }[status] || 'bg-gray-300 text-gray-700';
+}
+
+function renderGantt() {
+    if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
+    const container = document.getElementById('gantt-container');
+
+    // 本地時區的 yyyy-mm-dd（不可用 toISOString，會跨時區跑掉一天）
+    const fmtKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+    // 7 天日期
+    const days = [];
+    for(let i=0;i<7;i++){
+        const d = new Date(ganttWeekStart);
+        d.setDate(d.getDate()+i);
+        days.push(d);
+    }
+    const weekdayNames = ['週一','週二','週三','週四','週五','週六','週日'];
+
+    // 範圍標題
+    const rangeStr = `${ganttWeekStart.getMonth()+1}/${ganttWeekStart.getDate()} – ${days[6].getMonth()+1}/${days[6].getDate()}`;
+    document.getElementById('gantt-range').textContent = rangeStr;
+
+    const todayKey = fmtKey(new Date());
+
+    // 表頭：機台 | 日×7（每日分上午/下午）
+    let html = '<table class="w-full border-collapse text-xs" style="min-width:760px"><thead>';
+    html += '<tr class="bg-gray-100 text-gray-600">';
+    html += '<th class="p-2 border border-gray-200 w-24 sticky left-0 bg-gray-100">機台</th>';
+    days.forEach((d,i)=>{
+        const isToday = fmtKey(d)===todayKey;
+        html += `<th class="p-2 border border-gray-200 ${isToday?'bg-blue-50':''}" colspan="2">
+            <div class="font-medium ${isToday?'text-blue-600':''}">${d.getMonth()+1}/${d.getDate()}</div>
+            <div class="text-gray-400 font-normal">${weekdayNames[i]}</div>
+        </th>`;
+    });
+    html += '</tr><tr class="bg-gray-50 text-gray-400">';
+    html += '<th class="p-1 border border-gray-200 sticky left-0 bg-gray-50"></th>';
+    days.forEach(()=>{ html += '<th class="p-1 border border-gray-200 font-normal">上午</th><th class="p-1 border border-gray-200 font-normal">下午</th>'; });
+    html += '</tr></thead><tbody>';
+
+    // 每台機台一列
+    GANTT_PRINTERS.forEach(printer=>{
+        html += `<tr><td class="p-2 border border-gray-200 font-medium text-gray-700 sticky left-0 bg-white">${printer}</td>`;
+        days.forEach(d=>{
+            const dayKey = fmtKey(d);
+            const isToday = dayKey===todayKey;
+            // 找出該機台該天的所有預約，分類成全天/上午/下午
+            const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
+            const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
+            const hasAllDay = allDayItems.length > 0;
+
+            ['AM','PM'].forEach(slot=>{
+                // 同格的預約：當格 slot 的 + 所有 ALL 的
+                const slotItems = dayBookings.filter(b=>(b.slot||'AM')===slot);
+                const items = [...slotItems, ...allDayItems];
+                const isConflict = items.length > 1;
+
+                // 全天合併：AM 格去掉右框、PM 格去掉左框（視覺上合併）
+                let borderClasses = 'border border-gray-200';
+                if(hasAllDay){
+                    if(slot==='AM') borderClasses = 'border-t border-l border-b border-gray-200';
+                    else            borderClasses = 'border-t border-r border-b border-gray-200';
+                }
+
+                if(items.length){
+                    const cellContent = items.map(b=>{
+                        const color = ganttStatusColor(b.status);
+                        // 文字格式：工程師: 備註
+                        const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
+                        const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
+                        return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${isEditor?`onclick="openEditModal(${b.id})"`:''}>
+                            ${text}${allDayMark}
+                        </div>`;
+                    }).join('');
+                    const conflictBadge = isConflict ? '<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 '+items.length+'筆</div>' : '';
+                    const cellBg = isConflict ? 'bg-orange-100' : (isToday?'bg-blue-50/40':'');
+                    const ringClass = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                    // 全天時：只在 AM 格顯示內容（避免重複），PM 格留空但保留底色
+                    if(hasAllDay && slot==='PM' && allDayItems.length===items.length){
+                        html += `<td class="p-1 ${borderClasses} ${cellBg}${ringClass}" style="min-width:70px"></td>`;
+                    } else {
+                        html += `<td class="p-1 ${borderClasses} align-top ${cellBg}${ringClass}" style="min-width:70px">${conflictBadge}${cellContent}</td>`;
+                    }
+                } else {
+                    html += `<td class="p-1 ${borderClasses} ${isToday?'bg-blue-50/40':''}"></td>`;
+                }
+            });
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    lucide.createIcons();
 }
 
 // ══ CRUD ══════════════════════════════════════
@@ -873,9 +1229,17 @@ document.getElementById('booking-form').addEventListener('submit',async function
     if(!date)           {showToast('請選擇預約日期！','error');return;}
     if(hasOrder===null) {showToast('請選擇是否有單號！','error');return;}
     if(!purpose)        {showToast(hasOrder?'請填寫單號！':'請填寫無單號原因！','error');return;}
+    // 衝突檢查：同機台+同日+同時段已有預約
+    const newPrinter = document.getElementById('printer-select').value;
+    const newSlot    = document.getElementById('slot-input').value;
+    const dupCount   = bookings.filter(b=>b.printer===newPrinter && b.date===date && (b.slot||'AM')===newSlot).length;
+    if(dupCount > 0){
+        const slotTxt = newSlot==='PM'?'下午':'上午';
+        if(!confirm(`注意：${newPrinter} 在 ${date} ${slotTxt} 已有 ${dupCount} 筆預約。\n確定仍要新增嗎？（會標示為衝突）`)) return;
+    }
     const btn=document.getElementById('submit-btn');
     btn.disabled=true;btn.innerHTML='<span class="spinner"></span> 儲存中...';
-    const newBooking={id:Date.now(),date,sales:document.getElementById('sales-select').value,printer:document.getElementById('printer-select').value,hasOrder,purpose,engineer:document.getElementById('engineer-select').value,status:'待確認',timestamp:new Date().toLocaleDateString('zh-TW')};
+    const newBooking={id:Date.now(),date,slot:document.getElementById('slot-input').value,sales:document.getElementById('sales-select').value,printer:document.getElementById('printer-select').value,hasOrder,purpose,engineer:document.getElementById('engineer-select').value,status:'待確認',timestamp:new Date().toLocaleDateString('zh-TW')};
     bookings.unshift(newBooking);currentPage=1;renderTable();
     await saveToGitHub(`新增預約：${newBooking.sales} - ${newBooking.printer}`);
     document.getElementById('date-input').value='';
@@ -895,19 +1259,24 @@ window.updateStatus=async function(id,newStatus){
     bookings[idx].status=newStatus;renderTable();
     await saveToGitHub(`更新狀態：#${id} → ${newStatus}`);
 };
-window.triggerDeleteBooking=function(id){showPasswordModal('delete',id);};
-async function executeDeleteBooking(id){
-    bookings=bookings.filter(b=>b.id!==id);renderTable();
+window.triggerDeleteBooking=async function(id){
+    const b=bookings.find(x=>x.id===id);
+    if(!b) return;
+    const desc=`${b.date||'—'} · ${b.printer} · ${b.sales} · ${b.purpose||''}`;
+    if(!confirm(`確定要刪除這筆預約嗎？\n\n${desc}`)) return;
+    bookings=bookings.filter(x=>x.id!==id);renderTable();
     await saveToGitHub(`刪除預約 #${id}`);
-}
+};
 
 // ══ 初始化 ════════════════════════════════════
 window.onload=function(){
     [['sales-select',SALES],['printer-select',PRINTERS],['engineer-select',ENGINEERS],
      ['edit-sales',SALES],['edit-printer',PRINTERS],['edit-engineer',ENGINEERS]]
         .forEach(([id,opts])=>populateSelect(id,opts));
-    document.getElementById('date-input').value=new Date().toISOString().slice(0,10);
+    const _today=new Date();
+    document.getElementById('date-input').value=`${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
     document.getElementById('modal-password').addEventListener('keydown',e=>{if(e.key==='Enter') verifyPasswordAction();});
+    ganttWeekStart = startOfWeek(new Date());
     lucide.createIcons();
 
     // 列印機狀態（不需 token）
