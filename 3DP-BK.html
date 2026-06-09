@@ -774,7 +774,13 @@ async function saveToGitHub(commitMsg){
     try{
         const jsonStr=JSON.stringify(bookings,null,2);
         const encoded=new TextEncoder().encode(jsonStr);
-        const b64=btoa(String.fromCharCode(...encoded));
+        // 分段轉 base64，避免大資料 spread 爆掉 call stack
+        let binary = '';
+        const CHUNK = 0x8000;
+        for (let i = 0; i < encoded.length; i += CHUNK) {
+            binary += String.fromCharCode.apply(null, encoded.subarray(i, i + CHUNK));
+        }
+        const b64 = btoa(binary);
         const body={message:commitMsg||'更新預約資料',content:b64,sha:fileSHA};
         const res=await fetch(githubFileURL(BOOKINGS_FILE),{method:'PUT',headers:githubHeaders(),body:JSON.stringify(body)});
         if(res.status===401){showToast('Token 無效，請重新設定','error');return;}
@@ -1172,47 +1178,56 @@ function renderGantt() {
         days.forEach(d=>{
             const dayKey = fmtKey(d);
             const isToday = dayKey===todayKey;
-            // 找出該機台該天的所有預約，分類成全天/上午/下午
             const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
-            const hasAllDay = allDayItems.length > 0;
+            const amItems     = dayBookings.filter(b=>(b.slot||'AM')==='AM');
+            const pmItems     = dayBookings.filter(b=>b.slot==='PM');
+            const todayBg = isToday?'bg-blue-50/40':'';
 
-            ['AM','PM'].forEach(slot=>{
-                // 同格的預約：當格 slot 的 + 所有 ALL 的
-                const slotItems = dayBookings.filter(b=>(b.slot||'AM')===slot);
-                const items = [...slotItems, ...allDayItems];
-                const isConflict = items.length > 1;
+            const amCombined = [...amItems, ...allDayItems];
+            const pmCombined = [...pmItems, ...allDayItems];
+            const amConflict = amCombined.length > 1;
+            const pmConflict = pmCombined.length > 1;
 
-                // 全天合併：AM 格去掉右框、PM 格去掉左框（視覺上合併）
-                let borderClasses = 'border border-gray-200';
-                if(hasAllDay){
-                    if(slot==='AM') borderClasses = 'border-t border-l border-b border-gray-200';
-                    else            borderClasses = 'border-t border-r border-b border-gray-200';
-                }
+            const renderItem = (b) => {
+                const color = ganttStatusColor(b.status);
+                const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
+                const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
+                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${isEditor?`onclick="openEditModal(${b.id})"`:''}>
+                    ${text}${allDayMark}
+                </div>`;
+            };
+            const renderConflictBadge = (n) => `<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
 
-                if(items.length){
-                    const cellContent = items.map(b=>{
-                        const color = ganttStatusColor(b.status);
-                        // 文字格式：工程師: 備註
-                        const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
-                        const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                        return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${isEditor?`onclick="openEditModal(${b.id})"`:''}>
-                            ${text}${allDayMark}
-                        </div>`;
-                    }).join('');
-                    const conflictBadge = isConflict ? '<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 '+items.length+'筆</div>' : '';
-                    const cellBg = isConflict ? 'bg-orange-100' : (isToday?'bg-blue-50/40':'');
-                    const ringClass = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
-                    // 全天時：只在 AM 格顯示內容（避免重複），PM 格留空但保留底色
-                    if(hasAllDay && slot==='PM' && allDayItems.length===items.length){
-                        html += `<td class="p-1 ${borderClasses} ${cellBg}${ringClass}" style="min-width:70px"></td>`;
-                    } else {
-                        html += `<td class="p-1 ${borderClasses} align-top ${cellBg}${ringClass}" style="min-width:70px">${conflictBadge}${cellContent}</td>`;
-                    }
-                } else {
-                    html += `<td class="p-1 ${borderClasses} ${isToday?'bg-blue-50/40':''}"></td>`;
-                }
-            });
+            // 情境 A：當天只有全天 → colspan=2 橫跨
+            if(allDayItems.length && !amItems.length && !pmItems.length){
+                const isConflict = allDayItems.length > 1;
+                const bg = isConflict ? 'bg-orange-100' : todayBg;
+                const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
+                const content = allDayItems.map(renderItem).join('');
+                html += `<td colspan="2" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:140px">${badge}${content}</td>`;
+                return;
+            }
+
+            // AM 格
+            if(amCombined.length){
+                const ring = amConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const bg   = amConflict ? 'bg-orange-100' : todayBg;
+                const badge = amConflict ? renderConflictBadge(amCombined.length) : '';
+                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px">${badge}${amCombined.map(renderItem).join('')}</td>`;
+            } else {
+                html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
+            }
+            // PM 格
+            if(pmCombined.length){
+                const ring = pmConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const bg   = pmConflict ? 'bg-orange-100' : todayBg;
+                const badge = pmConflict ? renderConflictBadge(pmCombined.length) : '';
+                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px">${badge}${pmCombined.map(renderItem).join('')}</td>`;
+            } else {
+                html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
+            }
         });
         html += '</tr>';
     });
