@@ -217,6 +217,33 @@
             <span>即時同步啟用中：其他人變更會自動更新到此畫面</span>
         </div>
 
+        <!-- 列印機即時狀態 -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i>
+                    <h2 class="text-base font-semibold text-gray-800">列印機即時狀態</h2>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                        <button id="view-status-btn" onclick="switchPrinterView('status')" class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700">機台狀態</button>
+                        <button id="view-material-btn" onclick="switchPrinterView('material')" class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500">材料用量</button>
+                    </div>
+                    <button onclick="manualRefreshPrinters()" id="printer-refresh-btn" title="立即刷新" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="printer-refresh-icon"></i> 刷新
+                    </button>
+                    <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
+                </div>
+            </div>
+            <div id="panel-status" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="col-span-full text-center text-gray-400 text-sm py-6">載入中...</div>
+            </div>
+            <div id="panel-material" class="p-4 hidden">
+                <p class="text-xs text-gray-400 mb-3">僅顯示 Form 4 機台（AluminumBowfin、AdroitSauropod）材料使用量</p>
+                <div id="material-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+            </div>
+        </div>
+
         <!-- 新增預約（僅 editor/admin）-->
         <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
@@ -1138,7 +1165,192 @@ window.exportExcel = function(){
 };
 
 // ══════════════════════════════════════════════
-// ══ 9. 工具 ═══════════════════════════════════
+// ══════════════════════════════════════════════
+// ══ 9. 列印機即時狀態（讀 GitHub raw URL）═════
+// ══════════════════════════════════════════════
+const STATUS_URL = `https://raw.githubusercontent.com/jiliao2024092/swtc-3DP/main/printer-status.json`;
+const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+const CODE_TO_NAME = {
+    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
+    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
+    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
+    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+};
+function matNameFE(code){ return CODE_TO_NAME[code] || code; }
+const PRINTER_DISPLAY_MAP = { 'AluminumBowfin':'Form4', 'AdroitSauropod':'Form4L' };
+function printerDisplayFE(name){
+    if(!name) return name;
+    for(const [k,v] of Object.entries(PRINTER_DISPLAY_MAP)){ if(name.includes(k)) return v; }
+    return name;
+}
+const PRINTER_STATUS_MAP = {
+    'IDLE':                  {label:'閒置',    color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
+    'PRINTING':              {label:'列印中',  color:'bg-blue-100 text-blue-700',    dot:'bg-blue-500'},
+    'PAUSED':                {label:'已暫停',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-500'},
+    'PAUSING':               {label:'暫停中',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-400'},
+    'FINISHED':              {label:'已完成',  color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
+    'ERROR':                 {label:'異常',    color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
+    'ABORTED':               {label:'已中止',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
+    'OFFLINE':               {label:'離線',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
+    'UNKNOWN':               {label:'未知',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
+};
+const MACHINE_TYPE_MAP_FE = {
+    'form-4':'Form 4','form-4l':'Form 4L','form-3':'Form 3','form-3l':'Form 3L',
+    'fuse-1':'Fuse 1','fuse-1-plus':'Fuse 1+',
+};
+function getMachineLabelFE(id) {
+    if (!id) return '';
+    const k=id.toLowerCase().replace(/[\s\-]/g,'');
+    for(const[mk,mv] of Object.entries(MACHINE_TYPE_MAP_FE)) if(mk.replace(/-/g,'')===k) return mv;
+    if(k.includes('frml40')||k.includes('form4l')) return 'Form 4L';
+    if(k.includes('frml30')||k.includes('form3l')) return 'Form 3L';
+    if(k.includes('form40')||k.includes('form4'))  return 'Form 4';
+    if(k.includes('form3')) return 'Form 3';
+    return id;
+}
+
+let printerView = 'status';
+let cachedPrinters = [];
+
+window.switchPrinterView = function(v){
+    printerView = v;
+    document.getElementById('panel-status').classList.toggle('hidden', v!=='status');
+    document.getElementById('panel-material').classList.toggle('hidden', v!=='material');
+    document.getElementById('view-status-btn').className   = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='status'  ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    document.getElementById('view-material-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='material'? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    if(v==='material' && cachedPrinters.length) renderMaterialPanel(cachedPrinters);
+};
+window.manualRefreshPrinters = async function() {
+    const btn = document.getElementById('printer-refresh-btn');
+    const icon = document.getElementById('printer-refresh-icon');
+    btn.disabled = true;
+    icon.style.animation = 'spin 0.7s linear infinite';
+    document.getElementById('printer-updated').textContent = '刷新中...';
+    await loadPrinterStatus();
+    btn.disabled = false;
+    icon.style.animation = '';
+};
+
+async function loadPrinterStatus() {
+    try {
+        const res = await fetch(STATUS_URL + '?t=' + Date.now());
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const printers = await res.json();
+        cachedPrinters = Array.isArray(printers) ? printers : [];
+        const updatedAt = cachedPrinters[0]?.updated_at;
+        if(updatedAt){
+            const d = new Date(updatedAt);
+            document.getElementById('printer-updated').textContent =
+                `資料時間：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
+        }
+        if(!cachedPrinters.length){
+            document.getElementById('panel-status').innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
+            return;
+        }
+        renderStatusPanel(cachedPrinters);
+        if(printerView==='material') renderMaterialPanel(cachedPrinters);
+    } catch(err){
+        document.getElementById('panel-status').innerHTML = `<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入：${err.message}</div>`;
+    }
+}
+
+function renderStatusPanel(printers) {
+    const grid = document.getElementById('panel-status');
+    grid.innerHTML = '';
+    printers.forEach(p=>{
+        const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
+        const isPrinting = ['PRINTING','PAUSED','PAUSING'].includes(p.status);
+        const ml = getMachineLabelFE(p.machine_type);
+        const card = document.createElement('div');
+        card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
+        card.innerHTML = `
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800 text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
+                </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
+                </span>
+            </div>
+            ${isPrinting&&p.print_name?`
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
+                    <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
+                </div>
+                <div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>
+                <div class="flex justify-between text-xs text-gray-400">
+                    <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
+                    <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
+                </div>
+            </div>`:''}
+            ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function renderMaterialPanel(printers) {
+    const grid = document.getElementById('material-grid');
+    const targets = printers.filter(p=>MATERIAL_PRINTERS.some(name=>(p.alias||'').includes(name)));
+    if(!targets.length){
+        grid.innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-4">找不到指定機台資料</div>';
+        return;
+    }
+    grid.innerHTML = '';
+    targets.forEach(p=>{
+        const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
+        const ml = getMachineLabelFE(p.machine_type);
+        const cartridges = p.cartridges || [];
+        const levelColor = pct => pct < 20 ? 'text-red-500' : pct < 40 ? 'text-yellow-600' : 'text-green-600';
+        const barColor   = pct => pct < 20 ? 'bg-red-400'   : pct < 40 ? 'bg-yellow-400'   : 'bg-green-500';
+        const cartridgeHTML = cartridges.length ? cartridges.map(c=>{
+            const slotLabel = c.slot==='FRONT'?'前匣':c.slot==='BACK'?'後匣':c.slot==='SINGLE'?'單匣':c.slot||'樹脂罐';
+            const pct = c.remaining_pct;
+            return `
+            <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-600">${slotLabel}</span>
+                    <span class="text-xs font-semibold text-gray-800">${matNameFE(c.material)||'—'}</span>
+                </div>
+                ${pct!=null?`
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">${c.remaining_ml!=null?c.remaining_ml+' ml':''}</span>
+                        <span class="font-medium ${levelColor(pct)}">${pct}%</span>
+                    </div>
+                    <div class="bg-gray-200 rounded-md h-2.5 overflow-hidden"><div class="${barColor(pct)} h-full" style="width:${Math.min(pct,100)}%"></div></div>
+                </div>`:`<p class="text-xs text-amber-600">容量待補登</p>`}
+            </div>`;
+        }).join('') : `<div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">尚無樹脂罐資料</div>`;
+        const card = document.createElement('div');
+        card.className = 'border border-gray-200 rounded-xl p-5 space-y-3';
+        card.innerHTML = `
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800">${printerDisplayFE(p.alias)||p.serial}</p>
+                    <p class="text-xs text-gray-400">${ml?ml+' · ':''}${p.alias||''}</p>
+                </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>${s.label}
+                </span>
+            </div>
+            <div class="space-y-2">${cartridgeHTML}</div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+// 啟動列印機狀態載入
+loadPrinterStatus();
+setInterval(loadPrinterStatus, 5*60*1000);
+
+// ══════════════════════════════════════════════
+// ══ 10. 工具 ══════════════════════════════════
+// ══════════════════════════════════════════════
 // ══════════════════════════════════════════════
 window.showToast = function(msg,type){
     const t = document.getElementById('toast');
