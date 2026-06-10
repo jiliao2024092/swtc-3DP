@@ -145,9 +145,15 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <a href="3DP-BK.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 px-3 py-2 rounded-md hover:bg-blue-50 transition-colors">
+            <a href="3DP-BK-v2.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 px-3 py-2 rounded-md hover:bg-blue-50 transition-colors">
                 <i data-lucide="calendar-check" class="w-4 h-4"></i> 預約系統
             </a>
+            <button onclick="triggerSyncWorkflow()" title="觸發 GitHub workflow 重新同步消耗資料（會開新分頁）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-700 transition-colors">
+                <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> 觸發同步
+            </button>
+            <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="reload-icon"></i> 重新載入
+            </button>
             <div class="text-right mr-2">
                 <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
                 <p id="user-email" class="text-xs text-gray-400">—</p>
@@ -1488,6 +1494,31 @@ function renderAll() {
     lucide.createIcons();
 }
 
+// ══ 重新載入資料（unsubscribe → subscribe 強制重拉）══
+function reloadData() {
+    const icon = document.getElementById('reload-icon');
+    if(icon) icon.style.animation = 'spin 0.7s linear infinite';
+    setSyncStatus('loading');
+    if (unsubscribeInv)  { unsubscribeInv(); unsubscribeInv = null; }
+    if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
+    // 重置 inv 物件
+    inv = { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[] };
+    // 延遲一點再訂閱，讓 UI 有重新整理感
+    setTimeout(() => {
+        subscribeAll();
+        if(icon) icon.style.animation = '';
+        showToast('✓ 已重新載入', 'success');
+    }, 300);
+}
+
+// ══ 觸發 GitHub workflow（開新分頁到 Actions 頁，使用者手動點 Run workflow）══
+function triggerSyncWorkflow() {
+    const url = 'https://github.com/jiliao2024092/swtc-3DP/actions/workflows/sync-printers.yml';
+    if(confirm('將開啟 GitHub Actions 頁面。\n請於頁面右上點「Run workflow」按鈕觸發同步，約 30 秒後再點「重新載入」查看結果。\n\n要繼續嗎？')){
+        window.open(url, '_blank');
+    }
+}
+
 // ══ 暴露給 HTML inline event handlers ══
 window.closeCartridgeModal = closeCartridgeModal;
 window.closeSafetyModal = closeSafetyModal;
@@ -1505,6 +1536,8 @@ window.showSafetyModal = showSafetyModal;
 window.showStockModal = showStockModal;
 window.stockSortBy = stockSortBy;
 window.switchTab = switchTab;
+window.reloadData = reloadData;
+window.triggerSyncWorkflow = triggerSyncWorkflow;
 window.renderHistory = renderHistory;
 window.renderMonthly = renderMonthly;
 window.renderMonthlyPie = renderMonthlyPie;
