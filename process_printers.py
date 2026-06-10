@@ -196,27 +196,38 @@ if not service_account_str:
     print('\n[Part 2] FIREBASE_SERVICE_ACCOUNT 未設定，跳過 Firestore 同步')
     sys.exit(0)
 
+print(f'\n[Part 2] FIREBASE_SERVICE_ACCOUNT 已設定（{len(service_account_str)} 字元）')
+
 try:
     import firebase_admin
     from firebase_admin import credentials, firestore
-except ImportError:
-    print('\n[Part 2] firebase-admin 套件未安裝，跳過 Firestore 同步')
+    print('[Part 2] firebase-admin 模組載入成功')
+except ImportError as e:
+    print(f'\n[Part 2] firebase-admin 套件未安裝: {e}')
     print('  workflow 須加 `pip install firebase-admin` 步驟')
-    sys.exit(0)
+    sys.exit(1)
 
 try:
     service_account_dict = json.loads(service_account_str)
+    print(f'[Part 2] JSON 解析成功，project_id: {service_account_dict.get("project_id")}')
+    print(f'         client_email: {service_account_dict.get("client_email")}')
 except json.JSONDecodeError as e:
     print(f'\n[Part 2] FIREBASE_SERVICE_ACCOUNT JSON 格式錯誤: {e}')
+    print(f'  前 100 字元: {service_account_str[:100]}')
     sys.exit(1)
 
 try:
     cred = credentials.Certificate(service_account_dict)
     firebase_admin.initialize_app(cred)
     db = firestore.client()
-    print('\n[Part 2] Firestore 連線成功')
+    # 測試讀取（這會驗證連線和權限）
+    test_ref = db.collection('inventory').document('main')
+    test_doc = test_ref.get()
+    print(f'[Part 2] Firestore 連線成功，inventory/main exists: {test_doc.exists}')
 except Exception as e:
-    print(f'\n[Part 2] Firestore 連線失敗: {e}')
+    print(f'\n[Part 2] Firestore 連線失敗: {type(e).__name__}: {e}')
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
 # ── 讀取 inventory/main ──
@@ -341,6 +352,7 @@ inv['last_processed_prints'] = list(processed)[-1000:]
 # ── 寫回 Firestore ──
 if new_entries:
     try:
+        print(f'\n[Part 2] 準備寫入 {len(new_entries)} 筆新紀錄...')
         inv_ref.set({
             'cartridges': inv['cartridges'],
             'stock':      inv['stock'],
@@ -351,6 +363,7 @@ if new_entries:
             'updatedByEmail': 'github-actions@bot',
             'lastReason':     f'自動扣減 {len(new_entries)} 筆列印消耗',
         }, merge=True)
+        print('[Part 2] inventory/main 更新成功')
 
         # batch 寫入消耗紀錄
         BATCH_SIZE = 400
@@ -360,10 +373,13 @@ if new_entries:
                 doc_ref = db.collection('inventory_history').document()
                 batch.set(doc_ref, entry)
             batch.commit()
+            print(f'[Part 2] 已 commit batch {i//BATCH_SIZE + 1}（{len(new_entries[i:i+BATCH_SIZE])} 筆）')
 
         print(f'\n[Part 2] OK 已寫入 Firestore：{len(new_entries)} 筆消耗紀錄')
     except Exception as e:
-        print(f'\n[Part 2] 寫入 Firestore 失敗: {e}')
+        print(f'\n[Part 2] 寫入 Firestore 失敗: {type(e).__name__}: {e}')
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 else:
     print('\n[Part 2] OK 無新消耗紀錄')
