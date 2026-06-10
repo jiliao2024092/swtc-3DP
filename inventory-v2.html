@@ -1488,6 +1488,31 @@ function renderAll() {
     lucide.createIcons();
 }
 
+// ══ 暴露給 HTML inline event handlers ══
+window.closeCartridgeModal = closeCartridgeModal;
+window.closeSafetyModal = closeSafetyModal;
+window.closeStockModal = closeStockModal;
+window.deleteStock = deleteStock;
+window.exportInventoryExcel = exportInventoryExcel;
+window.historySortBy = historySortBy;
+window.openCartridgeModal = openCartridgeModal;
+window.resetHistoryFilters = resetHistoryFilters;
+window.resetStockFilters = resetStockFilters;
+window.saveCartridgeEdit = saveCartridgeEdit;
+window.saveSafetyStock = saveSafetyStock;
+window.saveStockIn = saveStockIn;
+window.showSafetyModal = showSafetyModal;
+window.showStockModal = showStockModal;
+window.stockSortBy = stockSortBy;
+window.switchTab = switchTab;
+window.renderHistory = renderHistory;
+window.renderMonthly = renderMonthly;
+window.renderMonthlyPie = renderMonthlyPie;
+window.renderStockTable = renderStockTable;
+window.updateSafety = updateSafety;
+window.updateStockBottles = updateStockBottles;
+window.updateStockNote = updateStockNote;
+
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
 lucide.createIcons();
