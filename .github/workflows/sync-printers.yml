@@ -9,6 +9,15 @@ on:
       - main
     paths-ignore:
       - 'printer-status.json'
+      - 'bookings.json'
+      - 'inventory.json'
+      - '*.html'
+      - '*.md'
+
+# 同時只能跑一個，新觸發的會等舊的結束（避免 push 衝突）
+concurrency:
+  group: sync-printers
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -98,4 +107,22 @@ jobs:
             exit 0
           fi
           git commit -m "chore: sync printer status $(date -u +'%H:%M UTC') [skip ci]"
-          git push
+
+          # 推送（含衝突自動重試）：最多嘗試 3 次
+          for i in 1 2 3; do
+            echo "Push attempt $i/3..."
+            if git push; then
+              echo "✓ Push 成功"
+              exit 0
+            fi
+            echo "Push 被拒，rebase 後重試..."
+            # stash 防範本地有未追蹤檔案
+            git pull --rebase --autostash origin main || {
+              echo "Rebase 失敗，放棄"
+              git rebase --abort 2>/dev/null || true
+              exit 1
+            }
+            sleep 2
+          done
+          echo "✗ 重試 3 次仍失敗"
+          exit 1
