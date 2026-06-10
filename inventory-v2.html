@@ -481,43 +481,55 @@ function applyRoleUI() {
 
 // ══ Firestore 即時訂閱 ══
 function subscribeAll() {
+    console.log('[subscribeAll] 開始訂閱，user:', currentUser?.email, 'role:', currentUser?.role);
     if (unsubscribeInv)  unsubscribeInv();
     if (unsubscribeHist) unsubscribeHist();
 
     // 訂閱 inventory/main（單一文件）
+    console.log('[subscribeAll] 訂閱 inventory/main...');
     unsubscribeInv = onSnapshot(doc(db, 'inventory', 'main'), (snap) => {
+        console.log('[inventory snapshot] 觸發，exists:', snap.exists());
         try {
             if (snap.exists()) {
                 const d = snap.data();
+                console.log('[inventory snapshot] 資料欄位:', Object.keys(d));
                 inv.cartridges = d.cartridges || {};
                 inv.stock      = d.stock      || {};
                 inv.safety     = d.safety     || {};
                 inv.last_processed_prints = d.last_processed_prints || [];
             } else {
-                // 文件不存在（首次使用）
+                // 文件不存在（首次使用或還沒匯入）
+                console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
                 inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = [];
             }
             mergeMaterialAliases();
             // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
-            autoSyncCartridges().catch(()=>{});
+            autoSyncCartridges().catch(e => console.warn('autoSyncCartridges 失敗:', e.message));
             setSyncStatus('ok');
+            console.log('[inventory snapshot] 呼叫 renderAll()');
             renderAll();
+            console.log('[inventory snapshot] renderAll 完成');
         } catch (err) {
-            console.error('inventory 訂閱回呼錯誤:', err);
+            console.error('[inventory snapshot] 渲染錯誤:', err);
             setSyncStatus('error');
             showToast('渲染失敗：' + err.message, 'error');
-            // 即使出錯也試著顯示空狀態
             try { renderAll(); } catch(_) {}
         }
     }, (err) => {
+        console.error('[inventory snapshot] 訂閱失敗:', err.code, err.message);
         setSyncStatus('error');
-        showToast('訂閱庫存失敗：' + err.message, 'error');
-        console.error('inventory 訂閱錯誤:', err);
+        if (err.code === 'permission-denied') {
+            showToast('權限被拒絕：請確認 Firestore Security Rules 已部署', 'error');
+        } else {
+            showToast('訂閱庫存失敗：' + err.message, 'error');
+        }
     });
 
     // 訂閱 inventory_history（消耗紀錄 collection）
+    console.log('[subscribeAll] 訂閱 inventory_history...');
     const q = query(collection(db, 'inventory_history'), orderBy('tsDate', 'desc'));
     unsubscribeHist = onSnapshot(q, (snap) => {
+        console.log('[history snapshot] 觸發，筆數:', snap.docs.length);
         try {
             inv.history = snap.docs.map(d => {
                 const data = d.data();
@@ -530,10 +542,13 @@ function subscribeAll() {
             });
             renderHistory();
         } catch (err) {
-            console.error('history 訂閱回呼錯誤:', err);
+            console.error('[history snapshot] 渲染錯誤:', err);
         }
     }, (err) => {
-        console.error('history 訂閱錯誤:', err);
+        console.error('[history snapshot] 訂閱失敗:', err.code, err.message);
+        if (err.code === 'failed-precondition') {
+            console.warn('需要 Firestore index（tsDate desc），請看錯誤訊息中的連結建立 index');
+        }
     });
 }
 
