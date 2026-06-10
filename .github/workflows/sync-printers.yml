@@ -75,15 +75,27 @@ jobs:
         run: python3 fetch_prints.py "${{ steps.auth.outputs.token }}"
 
       - name: Process printer data + sync inventory to Firestore
+        id: process
+        continue-on-error: true
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: python3 process_printers.py
+
+      - name: Check process result
+        run: |
+          if [ "${{ steps.process.outcome }}" != "success" ]; then
+            echo "⚠️ Part 2 (Firestore sync) 失敗，但 Part 1 (printer-status.json) 仍會 commit"
+            echo "請至 Actions log 看 Part 2 的錯誤訊息"
+          fi
 
       - name: Commit printer-status.json
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add printer-status.json
-          git diff --cached --quiet && echo "No printer status changes" && exit 0
+          if git diff --cached --quiet; then
+            echo "No printer status changes"
+            exit 0
+          fi
           git commit -m "chore: sync printer status $(date -u +'%H:%M UTC') [skip ci]"
           git push
