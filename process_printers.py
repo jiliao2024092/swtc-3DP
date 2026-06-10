@@ -272,7 +272,12 @@ for r in result:
     if r.get('serial'):
         serial_to_alias[r['serial']] = r['alias']
 
-DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED')
+DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED', 'PRINTED')
+# 已知會「不該扣材料」的狀態（進行中/未完成/取消）
+NON_DEDUCT_STATUSES = ('IN_PROGRESS', 'QUEUED', 'CANCELED', 'CANCELLED', 'NOT_STARTED', 'PREPRINT', 'PREHEAT')
+
+# 列出所有出現過的 status，方便日後調整
+seen_statuses = {}
 
 def valid_time(t):
     if not t or t.startswith('1969') or t.startswith('1970'):
@@ -300,9 +305,22 @@ for pr in prints_sorted:
         continue
 
     status = (pr.get('status') or '').upper()
-    if status not in DONE_STATUSES:
+    seen_statuses[status] = seen_statuses.get(status, 0) + 1
+
+    # 過濾掉「明確未消耗材料」的狀態
+    if status in NON_DEDUCT_STATUSES:
         skip_not_done += 1
         continue
+
+    # 過濾掉「明確失敗/錯誤」的狀態（材料可能已消耗但結果不算）
+    # 暫不扣這些，避免重複；如要扣，改 DONE_STATUSES 即可
+    if status in ('FAILED', 'ERROR', 'ABORTED', 'ABORTING'):
+        skip_not_done += 1
+        continue
+
+    # 未列入已知清單的，印警告但仍嘗試處理（保守地當作可能消耗了）
+    if status not in DONE_STATUSES:
+        print(f'  ⚠ 未知 status: {status}（guid={guid[:8]}），暫時當作完成處理')
 
     volume   = pr.get('volume_ml')
     material = canon_material(pr.get('material_name') or pr.get('material', ''))
@@ -368,6 +386,11 @@ print(f'  已處理過跳過：        {skip_already_processed} 筆')
 print(f'  狀態非完成跳過：      {skip_not_done} 筆')
 print(f'  非追蹤機台跳過：      {skip_not_tracked} 筆（只追蹤 {TRACKED_PRINTERS}）')
 print(f'  缺資料跳過：          {skip_no_data} 筆')
+if seen_statuses:
+    print(f'\n[Part 2] raw-prints.json 中出現過的 status 分布：')
+    for s, c in sorted(seen_statuses.items(), key=lambda x: -x[1]):
+        mark = '✓' if s in DONE_STATUSES else ('✗' if s in NON_DEDUCT_STATUSES + ('FAILED','ERROR','ABORTED','ABORTING') else '?')
+        print(f'    {mark} {s:25s} {c} 筆')
 
 inv['last_processed_prints'] = list(processed)[-1000:]
 
