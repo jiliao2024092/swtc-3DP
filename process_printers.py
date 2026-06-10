@@ -260,6 +260,11 @@ if os.path.exists('raw-prints.json'):
             prints = pdata
     except Exception as e:
         print('  讀取 raw-prints.json 失敗：' + str(e))
+else:
+    print('  raw-prints.json 不存在！fetch_prints.py 可能未執行')
+
+print(f'\n[Part 2] raw-prints.json 共 {len(prints)} 筆 print')
+print(f'[Part 2] inventory.last_processed_prints 已有 {len(processed)} 個 guid')
 
 # alias 對照表：serial -> alias
 serial_to_alias = {}
@@ -282,13 +287,21 @@ prints_sorted = sorted(
     key=print_finish_key
 )
 
+# 診斷計數
+skip_already_processed = 0
+skip_not_done          = 0
+skip_not_tracked       = 0
+skip_no_data           = 0
+
 for pr in prints_sorted:
     guid = pr.get('guid', '')
     if not guid or guid in processed:
+        skip_already_processed += 1
         continue
 
     status = (pr.get('status') or '').upper()
     if status not in DONE_STATUSES:
+        skip_not_done += 1
         continue
 
     volume   = pr.get('volume_ml')
@@ -299,8 +312,10 @@ for pr in prints_sorted:
     alias = serial_to_alias.get(printer_field, printer_field)
 
     if not any(t in alias for t in TRACKED_PRINTERS):
+        skip_not_tracked += 1
         continue
     if not volume or not material:
+        skip_no_data += 1
         continue
 
     volume = round(float(volume), 1)
@@ -346,6 +361,13 @@ for pr in prints_sorted:
     })
 
     processed.add(guid)
+
+print(f'\n[Part 2] 處理統計：')
+print(f'  新消耗：              {len(new_entries)} 筆')
+print(f'  已處理過跳過：        {skip_already_processed} 筆')
+print(f'  狀態非完成跳過：      {skip_not_done} 筆')
+print(f'  非追蹤機台跳過：      {skip_not_tracked} 筆（只追蹤 {TRACKED_PRINTERS}）')
+print(f'  缺資料跳過：          {skip_no_data} 筆')
 
 inv['last_processed_prints'] = list(processed)[-1000:]
 
