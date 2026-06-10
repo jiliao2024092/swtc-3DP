@@ -202,6 +202,9 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
+                <a href="inventory-v2.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
+                    <i data-lucide="package" class="w-4 h-4"></i> 庫存管理
+                </a>
                 <div class="text-right mr-2">
                     <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
                     <p id="user-email" class="text-xs text-gray-400">—</p>
@@ -343,7 +346,6 @@
                                 <th class="p-3 border-b font-medium w-20 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('slot')">時段<span id="sort-slot" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-24 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('sales')">業務<span id="sort-sales" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('printer')">設備<span id="sort-printer" class="ml-1 text-gray-300"></span></th>
-                                <th class="p-3 border-b font-medium w-16 text-center">單號</th>
                                 <th class="p-3 border-b font-medium">單號 / 備註</th>
                                 <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('engineer')">工程師<span id="sort-engineer" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-32 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('status')">狀態<span id="sort-status" class="ml-1 text-gray-300"></span></th>
@@ -664,7 +666,7 @@ window.renderTable = function() {
 
     if(!bookings.length){
         document.getElementById('total-count').textContent = '共 0 筆';
-        tbody.innerHTML = '<tr><td colspan="10" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
         document.getElementById('pagination').classList.add('hidden');
         if(listView==='gantt') renderGantt();
         return;
@@ -693,7 +695,7 @@ window.renderTable = function() {
         filtered.length === bookings.length ? `共 ${bookings.length} 筆` : `已篩選 ${filtered.length} / ${bookings.length} 筆`;
 
     if(!filtered.length){
-        tbody.innerHTML = '<tr><td colspan="10" class="p-10 text-center text-gray-400">沒有符合篩選條件的資料</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="p-10 text-center text-gray-400">沒有符合篩選條件的資料</td></tr>';
         document.getElementById('pagination').classList.add('hidden');
         if(listView==='gantt') renderGantt();
         return;
@@ -723,9 +725,6 @@ window.renderTable = function() {
         const isConflict = bookingHasConflict(b, conflicts);
         tr.className = 'hover:bg-gray-50 transition-colors' + (isDone?' opacity-60':'') + (isConflict?' bg-orange-50':'');
         const opts = STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
-        const orderBadge = b.hasOrder
-            ? '<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">有</span>'
-            : '<span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium">無</span>';
         const displayDate = b.date
             ? new Date(b.date+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
             : '—';
@@ -735,6 +734,11 @@ window.renderTable = function() {
         const printerCell = isConflict
             ? `<span class="text-orange-700 font-medium">${b.printer}</span> <span class="text-xs bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">衝突</span>`
             : b.printer;
+
+        // 單號 / 備註：依 hasOrder 區分樣式（有單號 = 綠框 badge；無 = 灰色備註文字）
+        const purposeCell = b.hasOrder
+            ? `<span class="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded text-xs font-medium">${b.purpose||'—'}</span>`
+            : `<span class="text-gray-500 text-xs">${b.purpose||'—'}</span>`;
 
         const lastEdit = b.updatedAt ? fmtRelTime(b.updatedAt) : (b.createdAt ? fmtRelTime(b.createdAt) : '—');
         const lastBy = b.updatedByEmail || b.createdByEmail || '';
@@ -747,8 +751,7 @@ window.renderTable = function() {
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
             <td class="p-3">${printerCell}</td>
-            <td class="p-3 text-center">${orderBadge}</td>
-            <td class="p-3 text-gray-600">${b.purpose||''}</td>
+            <td class="p-3">${purposeCell}</td>
             <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${b.engineer}</span></td>
             <td class="p-3">
                 <select ${canEdit?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
@@ -1201,8 +1204,8 @@ window.exportExcel = function(){
         '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='ALL'?'全天':'',
         '申請業務': b.sales||'',
         '設備':     b.printer||'',
-        '有單號':   b.hasOrder?'有':'無',
-        '單號/備註':b.purpose||'',
+        '類型':     b.hasOrder?'單號':'備註',
+        '內容':     b.purpose||'',
         '負責工程師':b.engineer||'',
         '任務狀態': b.status||'',
         '建立者':   b.createdByEmail||'',
