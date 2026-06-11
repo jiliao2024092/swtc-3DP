@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D列印機預約系統 (Firebase POC)</title>
+    <title>3D列印機預約系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -42,7 +42,7 @@
             <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="printer" class="w-5 h-5 text-blue-600"></i></div>
             <div>
                 <h2 class="text-xl font-bold text-gray-800">3D列印機預約系統</h2>
-                <p class="text-xs text-amber-600">Firebase POC 測試版</p>
+                <p class="text-xs text-gray-400">預約機台使用日期</p>
             </div>
         </div>
         <p class="text-sm text-gray-500 mb-6">請使用您的帳號登入。</p>
@@ -196,13 +196,12 @@
                     <div class="flex items-center gap-2">
                         <h1 class="text-2xl font-bold text-gray-800">3D列印機預約系統</h1>
                         <span id="role-badge" class="role-badge"></span>
-                        <span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Firebase POC</span>
                     </div>
-                    <p class="text-sm text-gray-500">即時同步、多人協作版本（測試中）</p>
+                    <p class="text-sm text-gray-500">預約機台使用日期</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <a href="inventory-v2.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
+                <a href="inventory.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
                     <i data-lucide="package" class="w-4 h-4"></i> 庫存管理
                 </a>
                 <div class="text-right mr-2">
@@ -216,12 +215,6 @@
                     <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
             </div>
-        </div>
-
-        <!-- 連線狀態提示 -->
-        <div id="sync-banner" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2 text-sm text-blue-700">
-            <i data-lucide="wifi" class="w-4 h-4"></i>
-            <span>即時同步啟用中：其他人變更會自動更新到此畫面</span>
         </div>
 
         <!-- 列印機即時狀態 -->
@@ -382,11 +375,6 @@
             </div>
         </div>
 
-        <!-- 底部說明 -->
-        <div class="text-xs text-gray-400 text-center pt-2">
-            POC 測試版資料獨立於正式系統 ·
-            <a href="3DP-BK.html" class="text-blue-500 hover:underline">回到正式系統</a>
-        </div>
     </div>
 </div>
 
@@ -559,7 +547,6 @@ function applyRoleUI() {
     document.getElementById('booking-section').classList.toggle('hidden', !canEdit);
     document.getElementById('ops-col').classList.toggle('hidden', !canEdit);
     document.getElementById('users-mgmt-btn').classList.toggle('hidden', u.role !== 'admin');
-    document.getElementById('sync-banner').classList.remove('hidden');
     lucide.createIcons();
 }
 
