@@ -21,6 +21,9 @@
         .tab-btn.active { background:white;color:#1d4ed8;box-shadow:0 1px 4px rgba(0,0,0,0.1); }
         input[type=number]::-webkit-inner-spin-button { opacity:1; }
         .role-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px; }
+        details[open] .detail-chevron { transform: rotate(90deg); }
+        details summary::-webkit-details-marker { display: none; }
+        details summary::marker { content: ''; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
@@ -364,7 +367,38 @@
                     <div id="pie-legend" class="space-y-2"></div>
                 </div>
             </div>
-            <div id="monthly-content"></div>
+
+            <!-- 月度趨勢圖 -->
+            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="trend-title" class="text-sm font-semibold text-gray-700">月度消耗趨勢</h3>
+                    <div class="flex items-center gap-1">
+                        <button onclick="trendPrevYear()" title="前一年" class="p-1.5 border border-gray-300 hover:bg-gray-50 rounded-md text-gray-500">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="trendNextYear()" title="後一年" class="p-1.5 border border-gray-300 hover:bg-gray-50 rounded-md text-gray-500">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                        <div class="ml-2 inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                            <button onclick="setTrendType('line')" id="trend-line-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">折線圖</button>
+                            <button onclick="setTrendType('bar')" id="trend-bar-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">長條圖</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="position:relative; height:300px;">
+                    <canvas id="monthly-trend"></canvas>
+                </div>
+                <p id="trend-empty" class="text-center text-gray-400 text-sm py-8 hidden">本年度尚無消耗紀錄</p>
+            </div>
+
+            <!-- 詳細統計（可折疊）-->
+            <details class="border border-gray-200 rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 font-medium text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span id="detail-title">詳細統計（當年每月各材料）</span>
+                </summary>
+                <div id="monthly-content" class="p-4 border-t border-gray-100"></div>
+            </details>
         </div>
     </div>
 
@@ -1559,7 +1593,124 @@ function renderMonthly() {
     html+='</tbody></table>';
     content.innerHTML=`<div class="overflow-x-auto">${html}</div>`;
 
+    // 更新詳細統計 summary 標題
+    const dt = document.getElementById('detail-title');
+    if (dt) dt.textContent = `詳細統計（${curYear}年 每月各材料消耗，點此展開）`;
+
     renderMonthlyPie();
+    renderMonthlyTrend();
+}
+
+// ══ 月度趨勢圖（折線/長條切換）══
+let monthlyTrendChart = null;
+let trendChartType = 'line';
+
+function setTrendType(t) {
+    trendChartType = t;
+    document.getElementById('trend-line-btn').className = 'px-3 py-1.5 transition-colors ' + (t==='line' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+    document.getElementById('trend-bar-btn').className  = 'px-3 py-1.5 transition-colors ' + (t==='bar'  ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+    renderMonthlyTrend();
+}
+
+function trendShiftYear(delta) {
+    const yearSel = document.getElementById('monthly-year');
+    const curYear = parseInt(yearSel.value);
+    const newYear = curYear + delta;
+    // 若 select 已有此選項就切換；沒有就新增（讓使用者可看「無資料的年份」也行）
+    let found = false;
+    for (const o of yearSel.options) {
+        if (parseInt(o.value) === newYear) { yearSel.value = newYear; found = true; break; }
+    }
+    if (!found) {
+        const opt = document.createElement('option');
+        opt.value = newYear; opt.textContent = newYear + '年';
+        // 插入到正確位置（年份由大到小）
+        let inserted = false;
+        for (let i = 0; i < yearSel.options.length; i++) {
+            if (parseInt(yearSel.options[i].value) < newYear) {
+                yearSel.insertBefore(opt, yearSel.options[i]);
+                inserted = true; break;
+            }
+        }
+        if (!inserted) yearSel.appendChild(opt);
+        yearSel.value = newYear;
+    }
+    renderMonthly();
+}
+
+function trendPrevYear() { trendShiftYear(-1); }
+function trendNextYear() { trendShiftYear(1); }
+
+function renderMonthlyTrend() {
+    const curYear = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const printerFilter = document.getElementById('monthly-printer').value;
+    const matchPrinter = h => !printerFilter || (h.printer||'').includes(printerFilter);
+
+    // 計算每月總消耗（type='consume' 且不在停用清單）
+    const monthlyTotals = Array.from({length:12}, (_,i) => {
+        const mo = i + 1;
+        return inv.history
+            .filter(h => h.type==='consume' && matchPrinter(h)
+                && new Date(h.ts).getFullYear() === curYear
+                && new Date(h.ts).getMonth() + 1 === mo
+                && !isDisabled(h.material))
+            .reduce((s, h) => s + (h.ml||0), 0);
+    });
+
+    const totalForYear = monthlyTotals.reduce((s,v)=>s+v, 0);
+    const printerLabel = printerFilter ? ` · ${printerFilter}` : '';
+    document.getElementById('trend-title').textContent = `${curYear}年 月度消耗趨勢${printerLabel}（年計 ${Math.round(totalForYear)} ml）`;
+
+    const empty = document.getElementById('trend-empty');
+    const canvas = document.getElementById('monthly-trend');
+    if (totalForYear === 0) {
+        canvas.style.display = 'none';
+        empty.classList.remove('hidden');
+        if (monthlyTrendChart) { monthlyTrendChart.destroy(); monthlyTrendChart = null; }
+        return;
+    }
+    canvas.style.display = '';
+    empty.classList.add('hidden');
+
+    const ctx = canvas.getContext('2d');
+    if (monthlyTrendChart) monthlyTrendChart.destroy();
+
+    monthlyTrendChart = new Chart(ctx, {
+        type: trendChartType,
+        data: {
+            labels: Array.from({length:12}, (_,i) => (i+1)+'月'),
+            datasets: [{
+                label: '當月總消耗 (ml)',
+                data: monthlyTotals.map(v => Math.round(v)),
+                borderColor: '#378ADD',
+                backgroundColor: trendChartType==='bar' ? '#85B7EB' : 'rgba(55,138,221,0.15)',
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#378ADD',
+                fill: trendChartType === 'line',
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => Math.round(c.raw) + ' ml' } }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: '消耗量 (ml)', color: '#6b7280' },
+                    ticks: { callback: v => v + ' ml' }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
 }
 
 function renderMonthlyPie() {
@@ -1718,6 +1869,9 @@ window.triggerSyncWorkflow = triggerSyncWorkflow;
 window.showDisabledMaterialsModal = showDisabledMaterialsModal;
 window.closeDisabledMaterialsModal = closeDisabledMaterialsModal;
 window.restoreMaterial = restoreMaterial;
+window.setTrendType = setTrendType;
+window.trendPrevYear = trendPrevYear;
+window.trendNextYear = trendNextYear;
 window.renderHistory = renderHistory;
 window.renderMonthly = renderMonthly;
 window.renderMonthlyPie = renderMonthlyPie;
