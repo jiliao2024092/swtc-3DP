@@ -244,7 +244,14 @@ inv.setdefault('stock', {})
 inv.setdefault('safety', {})
 inv.setdefault('last_processed_prints', [])
 
-processed = set(inv['last_processed_prints'])
+# ── 模式判斷 ──
+BACKFILL_MODE = os.environ.get('BACKFILL_MODE', '').lower() in ('true', '1', 'yes')
+if BACKFILL_MODE:
+    print('\n[Part 2] ⚙ BACKFILL 模式：忽略 last_processed_prints，寫紀錄但不扣材料')
+    processed = set()  # 全部當作沒處理過
+else:
+    processed = set(inv['last_processed_prints'])
+
 new_entries = []
 now_str = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 
@@ -273,11 +280,131 @@ for r in result:
         serial_to_alias[r['serial']] = r['alias']
 
 DONE_STATUSES = ('FINISHED', 'SUCCESS', 'COMPLETE', 'DONE', 'COMPLETED', 'PRINTED')
-# 已知會「不該扣材料」的狀態（進行中/未完成/取消）
 NON_DEDUCT_STATUSES = ('IN_PROGRESS', 'QUEUED', 'CANCELED', 'CANCELLED', 'NOT_STARTED', 'PREPRINT', 'PREHEAT')
-
-# 列出所有出現過的 status，方便日後調整
+FAIL_STATUSES = ('FAILED', 'ERROR', 'ABORTED', 'ABORTING')
 seen_statuses = {}
+
+# 診斷計數
+skip_already_processed = 0
+skip_not_done          = 0
+skip_not_tracked       = 0
+skip_no_data           = 0
+write_consume          = 0
+write_aborted          = 0
+
+for pr in prints_sorted:
+    guid = pr.get('guid', '')
+    if not guid:
+        skip_no_data += 1
+        continue
+    if guid in processed:
+        skip_already_processed += 1
+        continue
+
+    status = (pr.get('status') or '').upper()
+    seen_statuses[status] = seen_statuses.get(status, 0) + 1
+
+    # 過濾「未消耗材料」狀態（進行中、排隊、取消等）
+    if status in NON_DEDUCT_STATUSES:
+        skip_not_done += 1
+        continue
+
+    volume   = pr.get('volume_ml')
+    material = canon_material(pr.get('material_name') or pr.get('material', ''))
+    finished = valid_time(pr.get('created_at')) or valid_time(pr.get('print_finished_at')) or now_str
+
+    printer_field = pr.get('printer', '')
+    alias = serial_to_alias.get(printer_field, printer_field)
+
+    if not any(t in alias for t in TRACKED_PRINTERS):
+        skip_not_tracked += 1
+        continue
+
+    # 分類
+    is_done    = status in DONE_STATUSES
+    is_failed  = status in FAIL_STATUSES
+
+    if not (is_done or is_failed):
+        print(f'  ⚠ 未知 status: {status}（guid={guid[:8]}），暫時當作 aborted 處理')
+        is_failed = True
+
+    # FINISHED 必須有 volume + material 才扣
+    if is_done and (not volume or not material):
+        skip_no_data += 1
+        continue
+
+    # ml 為實際消耗量；失敗的列印也可能有 volume_ml（已部分消耗）
+    volume_num = round(float(volume), 1) if volume else 0
+    record_type = 'consume' if is_done else 'aborted'
+
+    # 扣材料：僅 FINISHED 且非 backfill 才扣
+    if is_done and not BACKFILL_MODE:
+        # 1. 扣樹脂罐
+        slots = inv['cartridges'].get(alias, [])
+        remaining_to_deduct = volume_num
+        for slot in slots:
+            if slot.get('material') == material and remaining_to_deduct > 0:
+                current = slot.get('remaining_ml', 0) or 0
+                deduct  = min(current, remaining_to_deduct)
+                slot['remaining_ml']  = round(current - deduct, 1)
+                slot['updated_at']    = now_str
+                slot['updated_by']    = 'auto'
+                remaining_to_deduct  -= deduct
+        # 2. 樹脂罐不夠時，扣備料
+        if remaining_to_deduct > 0 and material in inv['stock']:
+            stock_ml = inv['stock'][material].get('total_ml', 0) or 0
+            deduct   = min(stock_ml, remaining_to_deduct)
+            inv['stock'][material]['total_ml'] = round(stock_ml - deduct, 1)
+            inv['stock'][material]['updated_at'] = now_str
+            inv['stock'][material]['updated_by'] = 'auto'
+
+    # 寫紀錄
+    try:
+        ts_dt = datetime.datetime.fromisoformat(finished.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        ts_dt = datetime.datetime.utcnow()
+
+    new_entries.append({
+        'ts':         finished or now_str,
+        'tsDate':     ts_dt,
+        'type':       record_type,
+        'material':   material or '未知',
+        'printer':    alias,
+        'ml':         volume_num,
+        'note':       pr.get('name', '') or ('列印完成 ' + guid[:8]),
+        'print_guid': guid,
+        'apiStatus':  status,
+        'createdBy':       'system',
+        'createdByEmail':  'github-actions@bot',
+    })
+
+    if is_done:
+        write_consume += 1
+        print(f'  ✓ 消耗：{alias} - {material} - {volume_num} ml  ({status}, guid={guid[:8]})')
+    else:
+        write_aborted += 1
+        print(f'  ✗ 失敗：{alias} - {material or "未知"} - {volume_num} ml  ({status}, guid={guid[:8]})')
+
+    processed.add(guid)
+
+print(f'\n[Part 2] 處理統計：')
+print(f'  寫入消耗紀錄 (FINISHED)：  {write_consume} 筆')
+print(f'  寫入失敗紀錄 (ABORTED/ERROR)：{write_aborted} 筆')
+print(f'  已處理過跳過：              {skip_already_processed} 筆')
+print(f'  狀態進行中等跳過：          {skip_not_done} 筆')
+print(f'  非追蹤機台跳過：            {skip_not_tracked} 筆（只追蹤 {TRACKED_PRINTERS}）')
+print(f'  缺資料跳過：                {skip_no_data} 筆')
+if seen_statuses:
+    print(f'\n[Part 2] raw-prints.json 中出現過的 status 分布：')
+    all_known = DONE_STATUSES + FAIL_STATUSES + NON_DEDUCT_STATUSES
+    for s, c in sorted(seen_statuses.items(), key=lambda x: -x[1]):
+        mark = '✓' if s in DONE_STATUSES else ('✗' if s in FAIL_STATUSES else ('-' if s in NON_DEDUCT_STATUSES else '?'))
+        print(f'    {mark} {s:25s} {c} 筆')
+
+if BACKFILL_MODE:
+    print('\n[Part 2] BACKFILL 模式完成：cartridges 和 stock 未變動')
+
+inv['last_processed_prints'] = list(processed)[-1000:]
 
 def valid_time(t):
     if not t or t.startswith('1969') or t.startswith('1970'):
@@ -292,107 +419,6 @@ prints_sorted = sorted(
     key=print_finish_key
 )
 
-# 診斷計數
-skip_already_processed = 0
-skip_not_done          = 0
-skip_not_tracked       = 0
-skip_no_data           = 0
-
-for pr in prints_sorted:
-    guid = pr.get('guid', '')
-    if not guid or guid in processed:
-        skip_already_processed += 1
-        continue
-
-    status = (pr.get('status') or '').upper()
-    seen_statuses[status] = seen_statuses.get(status, 0) + 1
-
-    # 過濾掉「明確未消耗材料」的狀態
-    if status in NON_DEDUCT_STATUSES:
-        skip_not_done += 1
-        continue
-
-    # 過濾掉「明確失敗/錯誤」的狀態（材料可能已消耗但結果不算）
-    # 暫不扣這些，避免重複；如要扣，改 DONE_STATUSES 即可
-    if status in ('FAILED', 'ERROR', 'ABORTED', 'ABORTING'):
-        skip_not_done += 1
-        continue
-
-    # 未列入已知清單的，印警告但仍嘗試處理（保守地當作可能消耗了）
-    if status not in DONE_STATUSES:
-        print(f'  ⚠ 未知 status: {status}（guid={guid[:8]}），暫時當作完成處理')
-
-    volume   = pr.get('volume_ml')
-    material = canon_material(pr.get('material_name') or pr.get('material', ''))
-    finished = valid_time(pr.get('created_at')) or valid_time(pr.get('print_finished_at')) or now_str
-
-    printer_field = pr.get('printer', '')
-    alias = serial_to_alias.get(printer_field, printer_field)
-
-    if not any(t in alias for t in TRACKED_PRINTERS):
-        skip_not_tracked += 1
-        continue
-    if not volume or not material:
-        skip_no_data += 1
-        continue
-
-    volume = round(float(volume), 1)
-    print(f'  新消耗：{alias} - {material} - {volume} ml (guid={guid[:8]})')
-
-    # 1. 扣除機台樹脂罐剩餘量
-    slots = inv['cartridges'].get(alias, [])
-    remaining_to_deduct = volume
-    for slot in slots:
-        if slot.get('material') == material and remaining_to_deduct > 0:
-            current = slot.get('remaining_ml', 0) or 0
-            deduct  = min(current, remaining_to_deduct)
-            slot['remaining_ml']  = round(current - deduct, 1)
-            slot['updated_at']    = now_str
-            slot['updated_by']    = 'auto'
-            remaining_to_deduct  -= deduct
-
-    # 2. 若樹脂罐不夠，從備料扣除
-    if remaining_to_deduct > 0 and material in inv['stock']:
-        stock_ml = inv['stock'][material].get('total_ml', 0) or 0
-        deduct   = min(stock_ml, remaining_to_deduct)
-        inv['stock'][material]['total_ml'] = round(stock_ml - deduct, 1)
-        inv['stock'][material]['updated_at'] = now_str
-        inv['stock'][material]['updated_by'] = 'auto'
-
-    # 3. 暫存消耗紀錄（稍後 batch 寫入）
-    try:
-        ts_dt = datetime.datetime.fromisoformat(finished.replace('Z', '+00:00'))
-    except (ValueError, AttributeError):
-        ts_dt = datetime.datetime.utcnow()
-
-    new_entries.append({
-        'ts':         finished or now_str,
-        'tsDate':     ts_dt,
-        'type':       'consume',
-        'material':   material,
-        'printer':    alias,
-        'ml':         volume,
-        'note':       pr.get('name', '') or ('列印完成 ' + guid[:8]),
-        'print_guid': guid,
-        'createdBy':       'system',
-        'createdByEmail':  'github-actions@bot',
-    })
-
-    processed.add(guid)
-
-print(f'\n[Part 2] 處理統計：')
-print(f'  新消耗：              {len(new_entries)} 筆')
-print(f'  已處理過跳過：        {skip_already_processed} 筆')
-print(f'  狀態非完成跳過：      {skip_not_done} 筆')
-print(f'  非追蹤機台跳過：      {skip_not_tracked} 筆（只追蹤 {TRACKED_PRINTERS}）')
-print(f'  缺資料跳過：          {skip_no_data} 筆')
-if seen_statuses:
-    print(f'\n[Part 2] raw-prints.json 中出現過的 status 分布：')
-    for s, c in sorted(seen_statuses.items(), key=lambda x: -x[1]):
-        mark = '✓' if s in DONE_STATUSES else ('✗' if s in NON_DEDUCT_STATUSES + ('FAILED','ERROR','ABORTED','ABORTING') else '?')
-        print(f'    {mark} {s:25s} {c} 筆')
-
-inv['last_processed_prints'] = list(processed)[-1000:]
 
 # ── 寫回 Firestore ──
 if new_entries:
