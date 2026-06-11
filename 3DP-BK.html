@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D列印機預約與任務追蹤系統</title>
+    <title>3D列印機預約系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -13,87 +13,62 @@
         @keyframes spin { to { transform:rotate(360deg); } }
         .toast { position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease; }
         @keyframes slideIn { from{transform:translateX(100px);opacity:0} to{transform:translateX(0);opacity:1} }
-        .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center; }
+        .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem; }
         .toggle-btn { padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;border:1px solid #d1d5db;cursor:pointer;transition:all 0.15s;background:white;color:#6b7280; }
         .toggle-btn.active-yes { background:#dbeafe;color:#1d4ed8;border-color:#93c5fd; }
         .toggle-btn.active-no  { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
-        .progress-bar { height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden; }
-        .progress-fill { height:100%;border-radius:3px;transition:width 0.5s ease; }
         .page-btn { padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #d1d5db;background:white;color:#374151;cursor:pointer;transition:all 0.15s; }
         .page-btn:hover { background:#f3f4f6; }
         .page-btn.active { background:#2563eb;color:white;border-color:#2563eb; }
         .page-btn:disabled { opacity:0.4;cursor:not-allowed; }
-        /* 材料欄滑動 */
-        .printer-panel { transition: transform 0.35s cubic-bezier(.4,0,.2,1), opacity 0.3s; }
-        .read-only-overlay { pointer-events:none; opacity:0.6; }
         .role-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px; }
+        .role-admin  { background:#fee2e2;color:#b91c1c; }
+        .role-editor { background:#dcfce7;color:#166534; }
+        .role-viewer { background:#dbeafe;color:#1d4ed8; }
+        .page-btn { padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #d1d5db;background:white;color:#374151;cursor:pointer;transition:all 0.15s; }
+        .page-btn:hover { background:#f3f4f6; }
+        .page-btn.active { background:#2563eb;color:white;border-color:#2563eb; }
+        .page-btn:disabled { opacity:0.4;cursor:not-allowed; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 
 <div id="toast" class="toast hidden"></div>
 
-<!-- ══ 設定 / 角色選擇 Modal ══════════════════ -->
-<div id="settings-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+<!-- ══ 登入畫面 ════════════════════════════════════ -->
+<div id="login-screen" class="modal-overlay">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
         <div class="flex items-center gap-3 mb-2">
-            <div class="bg-slate-100 p-2.5 rounded-lg"><i data-lucide="settings-2" class="w-5 h-5 text-slate-600"></i></div>
-            <h2 class="text-xl font-bold text-gray-800">系統設定</h2>
+            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="printer" class="w-5 h-5 text-blue-600"></i></div>
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">3D列印機預約系統</h2>
+                <p class="text-xs text-gray-400">預約機台使用日期</p>
+            </div>
         </div>
-        <p class="text-sm text-gray-500 mb-6">輸入 GitHub Token 後可新增/編輯/刪除，不輸入則為唯讀模式（業務查看）。</p>
-
-        <div class="space-y-4">
+        <p class="text-sm text-gray-500 mb-6">請使用您的帳號登入。</p>
+        <form id="login-form" class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">GitHub Personal Access Token（選填）</label>
-                <div class="relative">
-                    <input id="modal-token" type="password" placeholder="ghp_xxxxxxxxxxxx（留空為唯讀模式）"
-                        class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono">
-                    <button onclick="toggleTokenVisibility()" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
-                        <i data-lucide="eye" id="eye-icon" class="w-4 h-4"></i>
-                    </button>
-                </div>
+                <label class="text-sm font-medium text-gray-700">電子郵件</label>
+                <input id="login-email" type="email" required autocomplete="email" placeholder="your@email.com"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
-            <div class="grid grid-cols-2 gap-3 pt-1">
-                <button onclick="applySettings(false)" class="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer group">
-                    <i data-lucide="eye" class="w-6 h-6 text-gray-400 group-hover:text-blue-500"></i>
-                    <span class="text-sm font-medium text-gray-600 group-hover:text-blue-600">唯讀模式</span>
-                    <span class="text-xs text-gray-400">業務查看狀態</span>
-                </button>
-                <button onclick="applySettings(true)" class="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 transition-colors cursor-pointer group">
-                    <i data-lucide="pencil" class="w-6 h-6 text-gray-400 group-hover:text-green-500"></i>
-                    <span class="text-sm font-medium text-gray-600 group-hover:text-green-600">編輯模式</span>
-                    <span class="text-xs text-gray-400">工程師操作</span>
-                </button>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">密碼</label>
+                <input id="login-password" type="password" required autocomplete="current-password"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
-        </div>
-
-        <div class="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
-            <p class="font-medium">如何取得 Token：</p>
-            <p>GitHub → Settings → Developer settings → Personal access tokens (classic) → 勾選 <strong>repo</strong></p>
-        </div>
+            <div id="login-error" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5"></div>
+            <button id="login-btn" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium disabled:opacity-60">
+                登入
+            </button>
+        </form>
+        <p class="mt-6 text-xs text-gray-400 text-center">沒有帳號？請聯絡系統管理員建立帳號。</p>
     </div>
 </div>
 
-<!-- ══ 密碼驗證 Modal ════════════════════════ -->
-<div id="password-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm mx-4">
-        <div class="flex items-center gap-3 mb-2">
-            <div class="bg-amber-100 p-2.5 rounded-lg text-amber-600"><i data-lucide="shield-check" class="w-6 h-6"></i></div>
-            <h2 class="text-xl font-bold text-gray-800">安全權限驗證</h2>
-        </div>
-        <p class="text-sm text-gray-500 mb-4">執行此操作需要輸入管理密碼：</p>
-        <input id="modal-password" type="password" placeholder="請輸入管理密碼"
-            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm mb-4">
-        <div class="flex gap-3">
-            <button onclick="closePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
-            <button onclick="verifyPasswordAction()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">驗證並執行</button>
-        </div>
-    </div>
-</div>
-
-<!-- ══ 編輯 Modal ═════════════════════════════ -->
+<!-- ══ 編輯預約 Modal ═════════════════════════════ -->
 <div id="edit-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xl mx-4">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xl">
         <div class="flex items-center gap-3 mb-6">
             <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="pencil" class="w-5 h-5 text-blue-600"></i></div>
             <h2 class="text-xl font-bold text-gray-800">編輯預約單</h2>
@@ -142,8 +117,75 @@
     </div>
 </div>
 
-<!-- ══ 主體 ══════════════════════════════════ -->
-<div class="p-4 md:p-8">
+<!-- ══ 使用者管理 Modal (僅 admin) ═══════════════ -->
+<div id="users-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <div class="bg-red-100 p-2.5 rounded-lg"><i data-lucide="users" class="w-5 h-5 text-red-600"></i></div>
+                <h2 class="text-xl font-bold text-gray-800">使用者管理</h2>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="showAddUserForm()" class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-1.5">
+                    <i data-lucide="user-plus" class="w-4 h-4"></i> 新增使用者
+                </button>
+                <button onclick="closeUsersModal()" class="text-gray-400 hover:text-gray-600 px-2"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+        </div>
+        <!-- 新增使用者表單（預設隱藏）-->
+        <div id="add-user-form" class="hidden border border-blue-200 bg-blue-50 rounded-lg p-4 mb-4 space-y-3">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1">
+                    <label class="text-xs font-medium text-gray-700">電子郵件</label>
+                    <input id="new-user-email" type="email" placeholder="user@example.com" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-medium text-gray-700">顯示名稱</label>
+                    <input id="new-user-name" type="text" placeholder="John Doe" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-medium text-gray-700">初始密碼（至少 6 字元）</label>
+                    <input id="new-user-password" type="password" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-medium text-gray-700">角色</label>
+                    <select id="new-user-role" class="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="viewer">查看者（業務）</option>
+                        <option value="editor">編輯者（工程師）</option>
+                        <option value="admin">管理員</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex gap-2 justify-end">
+                <button onclick="hideAddUserForm()" class="px-3 py-1.5 text-sm border border-gray-300 rounded-md hover:bg-gray-50">取消</button>
+                <button onclick="createNewUser()" id="create-user-btn" class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-60">建立帳號</button>
+            </div>
+        </div>
+        <!-- 使用者列表 -->
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-sm">
+                <thead>
+                    <tr class="bg-gray-100 text-gray-600">
+                        <th class="p-3 border-b font-medium">電子郵件</th>
+                        <th class="p-3 border-b font-medium">顯示名稱</th>
+                        <th class="p-3 border-b font-medium w-32">角色</th>
+                        <th class="p-3 border-b font-medium w-32">建立時間</th>
+                        <th class="p-3 border-b font-medium w-20 text-center">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="users-tbody" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+        <div class="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
+            <p class="font-medium mb-1">💡 提醒：</p>
+            <p>· 刪除使用者只會移除其權限資料，Firebase Authentication 帳號需另至 Console 刪除。</p>
+            <p>· 無法刪除自己的帳號。</p>
+        </div>
+    </div>
+</div>
+
+<!-- ══ 主介面 ════════════════════════════════════════ -->
+<div id="main-app" class="hidden p-4 md:p-8">
     <div class="max-w-7xl mx-auto space-y-6">
 
         <!-- Header -->
@@ -152,76 +194,57 @@
                 <div class="bg-blue-100 p-3 rounded-lg text-blue-600"><i data-lucide="printer" class="w-7 h-7"></i></div>
                 <div>
                     <div class="flex items-center gap-2">
-                        <h1 class="text-2xl font-bold text-gray-800">3D列印機預約與任務分配表</h1>
-                        <span id="role-badge" class="role-badge bg-gray-100 text-gray-500">
-                            <i data-lucide="eye" class="w-3 h-3"></i> 唯讀
-                        </span>
+                        <h1 class="text-2xl font-bold text-gray-800">3D列印機預約系統</h1>
+                        <span id="role-badge" class="role-badge"></span>
                     </div>
-                    <p class="text-sm text-gray-500">供業務單位預約設備，並由工程師追蹤與執行任務狀態。</p>
+                    <p class="text-sm text-gray-500">預約機台使用日期</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
                 <a href="inventory.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
                     <i data-lucide="package" class="w-4 h-4"></i> 庫存管理
                 </a>
-                <div class="flex items-center gap-2 text-sm text-gray-400">
-                    <i data-lucide="cloud" class="w-4 h-4"></i>
-                    <span id="sync-status">連線中...</span>
+                <div class="text-right mr-2">
+                    <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
+                    <p id="user-email" class="text-xs text-gray-400">—</p>
                 </div>
-                <button onclick="loadFromGitHub()" title="重新整理" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                <button id="users-mgmt-btn" onclick="showUsersModal()" title="使用者管理" class="hidden p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                    <i data-lucide="users" class="w-4 h-4"></i>
                 </button>
-                <button onclick="showSettingsModal()" title="設定" class="p-2 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
-                    <i data-lucide="settings-2" class="w-4 h-4"></i>
+                <button onclick="doSignOut()" title="登出" class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
             </div>
         </div>
 
         <!-- 列印機即時狀態 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
                 <div class="flex items-center gap-2">
                     <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i>
                     <h2 class="text-base font-semibold text-gray-800">列印機即時狀態</h2>
                 </div>
                 <div class="flex items-center gap-3">
-                    <!-- 切換按鈕 -->
                     <div class="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-                        <button id="view-status-btn" onclick="switchPrinterView('status')"
-                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700 transition-all">
-                            機台狀態
-                        </button>
-                        <button id="view-material-btn" onclick="switchPrinterView('material')"
-                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500 transition-all">
-                            材料用量
-                        </button>
+                        <button id="view-status-btn" onclick="switchPrinterView('status')" class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700">機台狀態</button>
+                        <button id="view-material-btn" onclick="switchPrinterView('material')" class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500">材料用量</button>
                     </div>
-                    <button onclick="manualRefreshPrinters()" id="printer-refresh-btn" title="立即刷新機台狀態"
-                        class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors">
+                    <button onclick="manualRefreshPrinters()" id="printer-refresh-btn" title="立即刷新" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="printer-refresh-icon"></i> 刷新
                     </button>
                     <span id="printer-updated" class="text-xs text-gray-400">載入中...</span>
                 </div>
             </div>
-
-            <!-- 狀態面板 -->
-            <div id="panel-status" class="printer-panel p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <div class="col-span-full text-center text-gray-400 text-sm py-6">
-                    <div style="width:24px;height:24px;border:2px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto 8px;"></div>
-                    從 GitHub 載入列印機狀態...
-                </div>
+            <div id="panel-status" class="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div class="col-span-full text-center text-gray-400 text-sm py-6">載入中...</div>
             </div>
-
-            <!-- 材料用量面板 -->
-            <div id="panel-material" class="printer-panel p-4 hidden">
+            <div id="panel-material" class="p-4 hidden">
                 <p class="text-xs text-gray-400 mb-3">僅顯示 Form 4 機台（AluminumBowfin、AdroitSauropod）材料使用量</p>
-                <div id="material-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="col-span-full text-center text-gray-400 text-sm py-4">載入中...</div>
-                </div>
+                <div id="material-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
             </div>
         </div>
 
-        <!-- 新增預約單（工程師才顯示） -->
+        <!-- 新增預約（僅 editor/admin）-->
         <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
             <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
@@ -272,52 +295,35 @@
 
         <!-- 執行清單 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                <h2 class="text-lg font-semibold text-gray-800">總覽表單 (工程師執行清單)</h2>
+            <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+                <h2 class="text-lg font-semibold text-gray-800">預約清單</h2>
                 <div class="flex items-center gap-2">
-                    <span id="total-count" class="text-sm text-gray-500">共 0 筆資料</span>
-                    <!-- 表格/甘特圖切換 -->
+                    <span id="total-count" class="text-sm text-gray-500">共 0 筆</span>
                     <div class="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
                         <button id="view-table-btn" onclick="switchListView('table')"
-                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700 transition-all">
+                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700">
                             <i data-lucide="table" class="w-3.5 h-3.5 inline"></i> 表格
                         </button>
                         <button id="view-gantt-btn" onclick="switchListView('gantt')"
-                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500 transition-all">
+                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500">
                             <i data-lucide="calendar-range" class="w-3.5 h-3.5 inline"></i> 甘特圖
                         </button>
                     </div>
-                    <button onclick="exportExcel()" title="匯出 Excel"
-                        class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
+                    <button onclick="exportExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700">
                         <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出 Excel
                     </button>
-                </div>
-            </div>
-            <div id="loading-state" class="p-12 text-center text-gray-400 hidden">
-                <div class="flex flex-col items-center gap-3">
-                    <div style="width:28px;height:28px;border:3px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
-                    <span class="text-sm">從 GitHub 載入資料中...</span>
                 </div>
             </div>
 
             <!-- 表格檢視 -->
             <div id="list-table-view">
-                <!-- 篩選工具列 -->
                 <div class="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center gap-2">
                     <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
-                    <select id="filter-engineer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
-                        <option value="">所有工程師</option>
-                    </select>
-                    <select id="filter-status" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
-                        <option value="">所有狀態</option>
-                    </select>
-                    <select id="filter-printer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
-                        <option value="">所有設備</option>
-                    </select>
-                    <select id="filter-sales" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
-                        <option value="">所有業務</option>
-                    </select>
-                    <select id="filter-special" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                    <select id="filter-engineer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"><option value="">所有工程師</option></select>
+                    <select id="filter-status" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"><option value="">所有狀態</option></select>
+                    <select id="filter-printer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"><option value="">所有設備</option></select>
+                    <select id="filter-sales" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"><option value="">所有業務</option></select>
+                    <select id="filter-special" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white">
                         <option value="">全部</option>
                         <option value="overdue">僅逾期</option>
                         <option value="active">僅未完成</option>
@@ -331,12 +337,12 @@
                             <tr class="bg-gray-100 text-gray-600 text-sm">
                                 <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('date')">預約日期<span id="sort-date" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-20 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('slot')">時段<span id="sort-slot" class="ml-1 text-gray-300"></span></th>
-                                <th class="p-3 border-b font-medium w-24 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('sales')">申請業務<span id="sort-sales" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-24 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('sales')">業務<span id="sort-sales" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('printer')">設備<span id="sort-printer" class="ml-1 text-gray-300"></span></th>
-                                <th class="p-3 border-b font-medium w-16 text-center">有單號</th>
-                                <th class="p-3 border-b font-medium">單號 / 原因</th>
-                                <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('engineer')">負責工程師<span id="sort-engineer" class="ml-1 text-gray-300"></span></th>
-                                <th class="p-3 border-b font-medium w-40 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('status')">任務狀態<span id="sort-status" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium">單號 / 備註</th>
+                                <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('engineer')">工程師<span id="sort-engineer" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-32 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('status')">狀態<span id="sort-status" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-32">最後變更</th>
                                 <th id="ops-col" class="p-3 border-b font-medium w-24 text-center hidden">操作</th>
                             </tr>
                         </thead>
@@ -351,7 +357,7 @@
 
             <!-- 甘特圖檢視 -->
             <div id="list-gantt-view" class="hidden p-4">
-                <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <div class="flex items-center gap-2">
                         <button onclick="ganttShiftWeek(-1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
                         <span id="gantt-range" class="text-sm font-medium text-gray-700"></span>
@@ -369,567 +375,220 @@
             </div>
         </div>
 
-
-
     </div>
 </div>
 
-<script>
-// ══ 設定 ══════════════════════════════════════
-const GITHUB_OWNER  = 'jiliao2024092';
-const GITHUB_REPO   = 'swtc-3DP';
-const BOOKINGS_FILE = 'bookings.json';
-const STATUS_FILE   = 'printer-status.json';
-const TOKEN_KEY     = 'gh_3dp_token';
-const ADMIN_PASSWORD = '100';
-const PAGE_SIZE     = 10;
-// Form 4 機台名稱（材料用量顯示用）
-const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+<!-- ══ Firebase + 應用程式 JS ══════════════════════ -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+import {
+    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+    createUserWithEmailAndPassword
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+import {
+    getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
+    getDoc, getDocs, onSnapshot, serverTimestamp, query, orderBy
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
-// 材料代碼 → 顯示名稱
-const CODE_TO_NAME = {
-    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
-    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
-    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
-    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
-    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
-    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+// ══ Firebase 配置 ══════════════════════════════
+const firebaseConfig = {
+    apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
+    authDomain: "swtc-3dp-poc.firebaseapp.com",
+    projectId: "swtc-3dp-poc",
+    storageBucket: "swtc-3dp-poc.firebasestorage.app",
+    messagingSenderId: "1074210451221",
+    appId: "1:1074210451221:web:30e84a3f501e90e612831c"
 };
-function matName(code){ return CODE_TO_NAME[code] || code; }
-// 機台代號 → 顯示名稱
-const PRINTER_DISPLAY = { 'AluminumBowfin':'Form4', 'AdroitSauropod':'Form4L' };
-function printerDisplay(name){
-    if(!name) return name;
-    for(const [k,v] of Object.entries(PRINTER_DISPLAY)){ if(name.includes(k)) return v; }
-    return name;
-}
 
+// 主 app 用於登入/讀寫資料
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+// secondary app 用於 admin 新增使用者（避免覆蓋自己的 session）
+const secondaryApp = initializeApp(firebaseConfig, 'Secondary');
+const secondaryAuth = getAuth(secondaryApp);
+
+// 預設 admin（首次登入時自動設為 admin）
+const DEFAULT_ADMIN_EMAIL = 'jiliao@swtc.com';
+
+// 應用程式常數
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
-const PRINTERS  = ['Form4','Form4L','MarkTwo','Other'];
+const PRINTERS  = ['Form4','Form4L','MarkTwo','UR','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 const DONE_STATUSES = new Set(['已完成','異常/取消']);
+const GANTT_PRINTERS = ['Form4','Form4L','UR'];
 
-let bookings=[], fileSHA='', isSaving=false;
-let hasOrder=null, editHasOrder=null, editingId=null;
-let pendingAction=null, pendingData=null;
-let currentPage=1;
-let isEditor=false;       // 是否為編輯模式
-let printerView='status'; // 'status' | 'material'
-let listView='table';     // 'table' | 'gantt'
-let ganttWeekStart=null;  // 甘特圖週起始日（Date）
-const GANTT_PRINTERS=['Form4','Form4L'];  // 甘特圖排的兩台
-let sortField='date';     // 排序欄位
-let sortDir='asc';        // asc | desc
-let cachedPrinters=[];
+// 應用程式狀態
+let currentUser = null;            // {uid, email, displayName, role}
+let bookings = [];                 // 即時同步來的預約清單
+let unsubscribeBookings = null;
+let hasOrder = null, editHasOrder = null, editingId = null;
+let listView = 'table';
+let ganttWeekStart = null;
+let sortField = 'date', sortDir = 'asc';
+const PAGE_SIZE = 10;
+let currentPage = 1;
 
-// ══ 設定 / 角色 ══════════════════════════════
-function showSettingsModal() {
-    document.getElementById('settings-modal').classList.remove('hidden');
-    document.getElementById('modal-token').value = getToken();
-    lucide.createIcons();
-}
+// ══════════════════════════════════════════════
+// ══ 1. Auth 監聽 ══════════════════════════════
+// ══════════════════════════════════════════════
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        try {
+            // 讀取使用者角色；首次登入則建立
+            const userRef = doc(db, 'users', user.uid);
+            const snap = await getDoc(userRef);
+            let role, displayName;
 
-function applySettings(wantEdit) {
-    const token = document.getElementById('modal-token').value.trim();
-    if (wantEdit) {
-        if (!token) { showToast('編輯模式需要輸入 Token','error'); return; }
-        if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
-            showToast('Token 格式不正確，應以 ghp_ 開頭','error'); return;
+            if (!snap.exists()) {
+                role = (user.email === DEFAULT_ADMIN_EMAIL) ? 'admin' : 'viewer';
+                displayName = user.email.split('@')[0];
+                await setDoc(userRef, {
+                    email: user.email,
+                    displayName,
+                    role,
+                    createdAt: serverTimestamp()
+                });
+            } else {
+                const d = snap.data();
+                role = d.role || 'viewer';
+                displayName = d.displayName || user.email.split('@')[0];
+            }
+
+            currentUser = { uid: user.uid, email: user.email, displayName, role };
+            showApp();
+            subscribeBookings();
+        } catch (err) {
+            console.error('讀取/建立使用者資料失敗', err);
+            showLoginError('讀取使用者資料失敗：' + err.message);
+            await signOut(auth);
         }
-        localStorage.setItem(TOKEN_KEY, token);
-        isEditor = true;
     } else {
-        isEditor = false;
+        currentUser = null;
+        if (unsubscribeBookings) { unsubscribeBookings(); unsubscribeBookings = null; }
+        showLogin();
     }
-    document.getElementById('settings-modal').classList.add('hidden');
-    applyRoleUI();
-    loadFromGitHub();
-}
+});
 
-function applyRoleUI() {
-    const badge    = document.getElementById('role-badge');
-    const bookSec  = document.getElementById('booking-section');
-    const opsCol   = document.getElementById('ops-col');
-
-    if (isEditor) {
-        badge.innerHTML = '<i data-lucide="pencil" class="w-3 h-3"></i> 編輯模式';
-        badge.className = 'role-badge bg-green-100 text-green-700';
-        bookSec.classList.remove('hidden');
-        opsCol.classList.remove('hidden');
-    } else {
-        badge.innerHTML = '<i data-lucide="eye" class="w-3 h-3"></i> 唯讀';
-        badge.className = 'role-badge bg-gray-100 text-gray-500';
-        bookSec.classList.add('hidden');
-        opsCol.classList.add('hidden');
-    }
-    lucide.createIcons();
-    renderTable();
-}
-
-function toggleTokenVisibility() {
-    const input=document.getElementById('modal-token');
-    const icon =document.getElementById('eye-icon');
-    if (input.type==='password'){input.type='text';icon.setAttribute('data-lucide','eye-off');}
-    else{input.type='password';icon.setAttribute('data-lucide','eye');}
-    lucide.createIcons();
-}
-
-// ══ 手動刷新機台狀態 ══════════════════════════
-async function manualRefreshPrinters() {
-    const btn  = document.getElementById('printer-refresh-btn');
-    const icon = document.getElementById('printer-refresh-icon');
-    btn.disabled = true;
-    icon.style.animation = 'spin 0.7s linear infinite';
-    document.getElementById('printer-updated').textContent = '刷新中...';
-    await loadPrinterStatus();
-    btn.disabled = false;
-    icon.style.animation = '';
-}
-
-// ══ 列印機狀態 ════════════════════════════════
-const PRINTER_STATUS_MAP = {
-    'IDLE':                  {label:'閒置',    color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
-    'PRINTING':              {label:'列印中',  color:'bg-blue-100 text-blue-700',    dot:'bg-blue-500'},
-    'PAUSED':                {label:'已暫停',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-500'},
-    'PAUSING':               {label:'暫停中',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-400'},
-    'FINISHED':              {label:'已完成',  color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
-    'ERROR':                 {label:'異常',    color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
-    'ABORTED':               {label:'已中止',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
-    'ABORTING':              {label:'中止中',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
-    'PREPRINT':              {label:'準備列印',color:'bg-indigo-100 text-indigo-700',dot:'bg-indigo-500'},
-    'PREHEAT':               {label:'預熱中',  color:'bg-orange-100 text-orange-700',dot:'bg-orange-400'},
-    'WAITING_FOR_RESOLUTION':{label:'待處理',  color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
-    'OFFLINE':               {label:'離線',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
-    'UNKNOWN':               {label:'未知',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
-};
-const MACHINE_TYPE_MAP = {
-    'form-4':'Form 4','form-4l':'Form 4L','form-4b':'Form 4B',
-    'form-3':'Form 3','form-3l':'Form 3L','form-3-plus':'Form 3+',
-    'fuse-1':'Fuse 1','fuse-1-plus':'Fuse 1+',
-};
-function getMachineLabel(id) {
-    if (!id) return '';
-    const k=id.toLowerCase().replace(/[\s\-]/g,'');   // 去掉空白和連字號
-    for(const[mk,mv] of Object.entries(MACHINE_TYPE_MAP)) if(mk.replace(/-/g,'')===k) return mv;
-    if(k.includes('frml40')||k.includes('form4l')) return 'Form 4L';
-    if(k.includes('frml30')||k.includes('form3l')) return 'Form 3L';
-    if(k.includes('form40')||k.includes('form4'))  return 'Form 4';
-    if(k.includes('form32')||k.includes('form3plus')) return 'Form 3+';
-    if(k.includes('form3')) return 'Form 3';
-    if(k.includes('fs30')||k.includes('fuse1plus')) return 'Fuse 1+';
-    if(k.includes('fuse1')) return 'Fuse 1';
-    return id;
-}
-
-function switchPrinterView(v) {
-    printerView = v;
-    document.getElementById('panel-status').classList.toggle('hidden', v!=='status');
-    document.getElementById('panel-material').classList.toggle('hidden', v!=='material');
-    document.getElementById('view-status-btn').className   = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='status'  ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
-    document.getElementById('view-material-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='material'? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
-    if (v==='material' && cachedPrinters.length) renderMaterialPanel(cachedPrinters);
-}
-
-async function loadPrinterStatus() {
+// ══════════════════════════════════════════════
+// ══ 2. 登入流程 ═══════════════════════════════
+// ══════════════════════════════════════════════
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> 登入中...';
+    hideLoginError();
     try {
-        const url=`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${STATUS_FILE}?t=${Date.now()}`;
-        const res=await fetch(url);
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        const printers=await res.json();
-        cachedPrinters=Array.isArray(printers)?printers:[];
-
-        const updatedAt=cachedPrinters[0]?.updated_at;
-        if(updatedAt){
-            const d=new Date(updatedAt);
-            document.getElementById('printer-updated').textContent=
-                `資料時間：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
-        }
-
-        if(!cachedPrinters.length){
-            document.getElementById('panel-status').innerHTML='<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
-            return;
-        }
-
-        renderStatusPanel(cachedPrinters);
-        if(printerView==='material') renderMaterialPanel(cachedPrinters);
-    } catch(err) {
-        document.getElementById('panel-status').innerHTML=`<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入：${err.message}</div>`;
+        await signInWithEmailAndPassword(auth, email, password);
+        // 成功後 onAuthStateChanged 會自動跳轉
+    } catch (err) {
+        const msg = {
+            'auth/invalid-credential': '電子郵件或密碼錯誤',
+            'auth/invalid-email': '電子郵件格式錯誤',
+            'auth/user-disabled': '此帳號已停用',
+            'auth/too-many-requests': '嘗試次數過多，請稍後再試',
+            'auth/network-request-failed': '網路連線失敗',
+        }[err.code] || ('登入失敗：' + err.message);
+        showLoginError(msg);
+        btn.disabled = false; btn.innerHTML = '登入';
     }
-}
+});
 
-function renderStatusPanel(printers) {
-    const grid=document.getElementById('panel-status');
-    grid.innerHTML='';
-    printers.forEach(p=>{
-        const s=PRINTER_STATUS_MAP[p.status]||PRINTER_STATUS_MAP['UNKNOWN'];
-        const isPrinting=['PRINTING','PAUSED','PAUSING'].includes(p.status);
-        const ml=getMachineLabel(p.machine_type);
-        const card=document.createElement('div');
-        card.className='border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
-        card.innerHTML=`
-            <div class="flex items-start justify-between">
-                <div>
-                    <p class="font-semibold text-gray-800 text-sm">${printerDisplay(p.alias)||p.serial}</p>
-                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
-                </div>
-                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
-                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
-                </span>
-            </div>
-            ${isPrinting&&p.print_name?`
-            <div class="space-y-1.5">
-                <div class="flex justify-between items-center">
-                    <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
-                    <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
-                </div>
-                <div class="progress-bar"><div class="progress-fill ${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'}" style="width:${p.progress}%"></div></div>
-                <div class="flex justify-between text-xs text-gray-400">
-                    <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
-                    <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
-                </div>
-            </div>`:''}
-            ${p.material?`<p class="text-xs text-gray-400">材料：${matName(p.material)}</p>`:''}
-        `;
-        grid.appendChild(card);
-    });
-}
+window.doSignOut = async function() {
+    if (!confirm('確定要登出嗎？')) return;
+    await signOut(auth);
+};
 
-function renderMaterialPanel(printers) {
-    const grid=document.getElementById('material-grid');
-    const targets=printers.filter(p=>MATERIAL_PRINTERS.some(name=>(p.alias||'').includes(name)));
-    if(!targets.length){
-        grid.innerHTML='<div class="col-span-full text-center text-gray-400 text-sm py-4">找不到指定機台（AluminumBowfin、AdroitSauropod）資料</div>';
-        return;
-    }
-    grid.innerHTML='';
-    targets.forEach(p=>{
-        const s=PRINTER_STATUS_MAP[p.status]||PRINTER_STATUS_MAP['UNKNOWN'];
-        const ml=getMachineLabel(p.machine_type);
-        const cartridges = p.cartridges || [];
-
-        // 主要進度條：優先用 material_level（已是 0~100），無則用 FRONT 樹脂罐
-        const levelPct = p.material_level != null ? Math.round(p.material_level) : null;
-
-        // 樹脂罐資料顯示
-        function levelColor(pct) {
-            return pct < 20 ? 'text-red-500' : pct < 40 ? 'text-yellow-600' : 'text-green-600';
-        }
-        function barColor(pct) {
-            return pct < 20 ? 'bg-red-400' : pct < 40 ? 'bg-yellow-400' : 'bg-green-500';
-        }
-
-        // 每個樹脂罐的詳細區塊
-        const cartridgeHTML = cartridges.length ? cartridges.map(c => {
-            const pct = c.remaining_pct;
-            const remMl = c.remaining_ml;
-            const slotLabel = c.slot === 'FRONT' ? '前匣' : c.slot === 'BACK' ? '後匣' : c.slot === 'SINGLE' ? '單匣' : c.slot || '樹脂罐';
-            const emptyBadge = c.is_empty ? '<span class="ml-1 text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">已空</span>' : '';
-            return `
-            <div class="bg-gray-50 rounded-lg p-3 space-y-2">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-1.5">
-                        <span class="text-xs font-medium text-gray-600">${slotLabel}</span>
-                        ${emptyBadge}
-                    </div>
-                    <span class="text-xs font-semibold text-gray-800">${matName(c.material)||'—'}</span>
-                </div>
-                ${pct != null ? `
-                <div class="space-y-1">
-                    <div class="flex justify-between text-xs">
-                        <span class="text-gray-400">${remMl != null ? remMl + ' ml 剩餘' : ''}</span>
-                        <span class="font-medium ${levelColor(pct)}">${pct}%</span>
-                    </div>
-                    <div class="progress-bar h-2.5 rounded-md">
-                        <div class="progress-fill rounded-md ${barColor(pct)}" style="width:${Math.min(pct,100)}%"></div>
-                    </div>
-                </div>` : `<p class="text-xs text-amber-600">容量待補登 · 可至庫存管理手動輸入</p>`}
-            </div>`;
-        }).join('') : `
-            <div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">
-                樹脂罐用量資料由 Formlabs API 提供<br>需 GitHub Actions 同步後顯示
-            </div>`;
-
-        const card=document.createElement('div');
-        card.className='border border-gray-200 rounded-xl p-5 space-y-3';
-        card.innerHTML=`
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="font-semibold text-gray-800">${printerDisplay(p.alias)||p.serial}</p>
-                    <p class="text-xs text-gray-400">${ml?ml+' · ':''}${p.alias||p.serial||''}</p>
-                </div>
-                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
-                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
-                </span>
-            </div>
-            ${levelPct != null ? `
-            <div class="space-y-1">
-                <div class="flex justify-between text-xs text-gray-500">
-                    <span class="font-medium">整體用料</span>
-                    <span class="font-medium ${levelColor(levelPct)}">${levelPct}%</span>
-                </div>
-                <div class="progress-bar h-2 rounded-full">
-                    <div class="progress-fill rounded-full ${barColor(levelPct)}" style="width:${Math.min(levelPct,100)}%"></div>
-                </div>
-            </div>` : ''}
-            <div class="space-y-2">${cartridgeHTML}</div>
-        `;
-        grid.appendChild(card);
-    });
-}
-
-// ══ 密碼驗證 ══════════════════════════════════
-function showPasswordModal(action,data){
-    pendingAction=action;pendingData=data;
-    document.getElementById('modal-password').value='';
-    document.getElementById('password-modal').classList.remove('hidden');
-    setTimeout(()=>document.getElementById('modal-password').focus(),100);
-}
-function closePasswordModal(){
-    pendingAction=null;pendingData=null;
-    document.getElementById('password-modal').classList.add('hidden');
-}
-async function verifyPasswordAction(){
-    if(document.getElementById('modal-password').value.trim()!==ADMIN_PASSWORD){
-        showToast('密碼錯誤！','error');
-        document.getElementById('modal-password').focus();return;
-    }
-    const action=pendingAction,data=pendingData;
-    closePasswordModal();
-    if(action==='delete') await executeDeleteBooking(data);
-}
-
-// ══ 編輯 Modal ════════════════════════════════
-function openEditModal(id){
-    const b=bookings.find(x=>x.id===id);
-    if(!b) return;
-    editingId=id; editHasOrder=b.hasOrder??null;
-    document.getElementById('edit-date').value   =b.date||'';
-    document.getElementById('edit-slot').value   =b.slot||'AM';
-    document.getElementById('edit-purpose').value=b.purpose||'';
-    document.getElementById('edit-sales').value   =b.sales;
-    document.getElementById('edit-printer').value =b.printer;
-    document.getElementById('edit-engineer').value=b.engineer;
-    const btnY=document.getElementById('edit-btn-yes');
-    const btnN=document.getElementById('edit-btn-no');
-    const lbl =document.getElementById('edit-purpose-label');
-    if(editHasOrder===true){btnY.className='toggle-btn active-yes';btnN.className='toggle-btn';lbl.textContent='單號';}
-    else if(editHasOrder===false){btnY.className='toggle-btn';btnN.className='toggle-btn active-no';lbl.textContent='無單號原因';}
-    else{btnY.className='toggle-btn';btnN.className='toggle-btn';lbl.textContent='備註說明';}
-    document.getElementById('edit-modal').classList.remove('hidden');
+function showLogin() {
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.add('hidden');
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+    hideLoginError();
     lucide.createIcons();
 }
-function closeEditModal(){editingId=null;editHasOrder=null;document.getElementById('edit-modal').classList.add('hidden');}
-function setEditHasOrder(val){
-    editHasOrder=val;
-    document.getElementById('edit-btn-yes').className='toggle-btn'+(val===true?' active-yes':'');
-    document.getElementById('edit-btn-no').className ='toggle-btn'+(val===false?' active-no':'');
-    document.getElementById('edit-purpose-label').textContent=val?'單號':'無單號原因';
+function showApp() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    applyRoleUI();
+    lucide.createIcons();
 }
-async function saveEdit(){
-    const purpose=document.getElementById('edit-purpose').value.trim();
-    const date   =document.getElementById('edit-date').value;
-    if(!date)              {showToast('請選擇預約日期！','error');return;}
-    if(editHasOrder===null){showToast('請選擇是否有單號！','error');return;}
-    if(!purpose)           {showToast(editHasOrder?'請填寫單號！':'請填寫無單號原因！','error');return;}
-    const idx=bookings.findIndex(b=>b.id===editingId);
-    if(idx===-1) return;
-    bookings[idx]={...bookings[idx],date,slot:document.getElementById('edit-slot').value,sales:document.getElementById('edit-sales').value,printer:document.getElementById('edit-printer').value,engineer:document.getElementById('edit-engineer').value,hasOrder:editHasOrder,purpose};
-    closeEditModal();renderTable();
-    await saveToGitHub(`編輯預約 #${editingId}`);
+function showLoginError(msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+}
+function hideLoginError() {
+    document.getElementById('login-error').classList.add('hidden');
 }
 
-// ══ GitHub API ════════════════════════════════
-function getToken(){return localStorage.getItem(TOKEN_KEY)||'';}
-function githubHeaders(){return{'Authorization':`token ${getToken()}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'};}
-function githubFileURL(file){return`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${file}`;}
+// ══════════════════════════════════════════════
+// ══ 3. 角色 UI ════════════════════════════════
+// ══════════════════════════════════════════════
+function applyRoleUI() {
+    const u = currentUser;
+    document.getElementById('user-name').textContent  = u.displayName;
+    document.getElementById('user-email').textContent = u.email;
+    const badge = document.getElementById('role-badge');
+    const roleMap = {
+        admin:  { label:'管理員', cls:'role-admin',  icon:'shield-alert' },
+        editor: { label:'編輯者', cls:'role-editor', icon:'pencil' },
+        viewer: { label:'查看者', cls:'role-viewer', icon:'eye' },
+    };
+    const r = roleMap[u.role] || roleMap.viewer;
+    badge.className = 'role-badge ' + r.cls;
+    badge.innerHTML = `<i data-lucide="${r.icon}" class="w-3 h-3"></i> ${r.label}`;
 
-async function loadFromGitHub(){
-    setSyncStatus('loading');
-    try{
-        const url = isEditor
-            ? githubFileURL(BOOKINGS_FILE)
-            : `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${BOOKINGS_FILE}?t=${Date.now()}`;
-        const opts = isEditor ? {headers:githubHeaders()} : {};
-        const res=await fetch(url,opts);
-        if(res.status===401){setSyncStatus('error');showToast('Token 無效，請重新設定','error');return;}
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        if(isEditor){
-            const data=await res.json();
-            fileSHA=data.sha;
-            const raw=atob(data.content.replace(/\n/g,''));
-            const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
-            bookings=JSON.parse(new TextDecoder('utf-8').decode(bytes));
-        } else {
-            bookings=await res.json();
-        }
-        currentPage=1;renderTable();setSyncStatus('ok');
-    }catch(err){setSyncStatus('error');showToast('載入失敗：'+err.message,'error');}
+    // 顯示/隱藏編輯功能
+    const canEdit = u.role === 'admin' || u.role === 'editor';
+    document.getElementById('booking-section').classList.toggle('hidden', !canEdit);
+    document.getElementById('ops-col').classList.toggle('hidden', !canEdit);
+    document.getElementById('users-mgmt-btn').classList.toggle('hidden', u.role !== 'admin');
+    lucide.createIcons();
 }
 
-async function saveToGitHub(commitMsg){
-    if(isSaving) return;
-    isSaving=true;setSyncStatus('saving');
-    try{
-        const jsonStr=JSON.stringify(bookings,null,2);
-        const encoded=new TextEncoder().encode(jsonStr);
-        // 分段轉 base64，避免大資料 spread 爆掉 call stack
-        let binary = '';
-        const CHUNK = 0x8000;
-        for (let i = 0; i < encoded.length; i += CHUNK) {
-            binary += String.fromCharCode.apply(null, encoded.subarray(i, i + CHUNK));
-        }
-        const b64 = btoa(binary);
-        const body={message:commitMsg||'更新預約資料',content:b64,sha:fileSHA};
-        const res=await fetch(githubFileURL(BOOKINGS_FILE),{method:'PUT',headers:githubHeaders(),body:JSON.stringify(body)});
-        if(res.status===401){showToast('Token 無效，請重新設定','error');return;}
-        if(!res.ok){const e=await res.json();throw new Error(e.message||`HTTP ${res.status}`);}
-        const data=await res.json();
-        fileSHA=data.content.sha;
-        setSyncStatus('ok');showToast('✓ 已儲存至 GitHub','success');
-    }catch(err){setSyncStatus('error');showToast('儲存失敗：'+err.message,'error');}
-    finally{isSaving=false;}
+// ══════════════════════════════════════════════
+// ══ 4. Firestore 即時訂閱 bookings ════════════
+// ══════════════════════════════════════════════
+function subscribeBookings() {
+    if (unsubscribeBookings) unsubscribeBookings();
+    const q = query(collection(db, 'bookings'), orderBy('date', 'asc'));
+    unsubscribeBookings = onSnapshot(q, (snap) => {
+        bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderTable();
+    }, (err) => {
+        console.error('訂閱 bookings 失敗', err);
+        showToast('讀取資料失敗：' + err.message, 'error');
+    });
 }
 
-// ══ UI 工具 ═══════════════════════════════════
-function setSyncStatus(state){
-    const text=document.getElementById('sync-status');
-    const loading=document.getElementById('loading-state');
-    const map={loading:['載入中...',true],saving:['儲存中...',false],ok:['已同步 GitHub',false],error:['連線失敗',false]};
-    const [label,showLoad]=map[state]||['--',false];
-    text.textContent=label;loading.classList.toggle('hidden',!showLoad);
-}
-function showToast(msg,type){
-    const toast=document.getElementById('toast');
-    toast.textContent=msg;
-    toast.className=`toast ${type==='error'?'bg-red-600 text-white':'bg-green-600 text-white'}`;
-    toast.classList.remove('hidden');clearTimeout(toast._timer);
-    toast._timer=setTimeout(()=>toast.classList.add('hidden'),3500);
-}
+// ══════════════════════════════════════════════
+// ══ 5. 表格與甘特圖渲染 ═══════════════════════
+// ══════════════════════════════════════════════
 function getStatusColor(status){
-    return{'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
+    return {'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
 }
-function populateSelect(id,options){
-    const sel=document.getElementById(id);
-    options.forEach(o=>{const opt=document.createElement('option');opt.value=opt.textContent=o;sel.appendChild(opt);});
-}
-
-// ══ 單號切換 ══════════════════════════════════
-function setHasOrder(val){
-    hasOrder=val;
-    const label=document.getElementById('purpose-label');
-    const input=document.getElementById('purpose-input');
-    document.getElementById('btn-yes').className='toggle-btn'+(val===true?' active-yes':'');
-    document.getElementById('btn-no').className ='toggle-btn'+(val===false?' active-no':'');
-    label.textContent=val?'單號':'無單號原因';
-    input.placeholder=val?'請輸入單號':'請說明無單號的原因';
-    input.disabled=false;input.value='';input.focus();
-}
-
-// ══ 匯出 Excel ════════════════════════════════
-function exportExcel(){
-    if(!bookings.length){showToast('沒有資料可以匯出','error');return;}
-    const rows=bookings.map(b=>({
-        '預約日期': b.date||b.timestamp||'',
-        '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='ALL'?'全天':'',
-        '申請業務': b.sales||'',
-        '設備':     b.printer||'',
-        '有單號':   b.hasOrder?'有':'無',
-        '單號/原因':b.purpose||'',
-        '負責工程師':b.engineer||'',
-        '任務狀態': b.status||'',
-    }));
-    const ws=XLSX.utils.json_to_sheet(rows);
-    // 欄位寬度
-    ws['!cols']=[{wch:14},{wch:8},{wch:10},{wch:10},{wch:8},{wch:30},{wch:12},{wch:10}];
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,ws,'預約清單');
-    const now=new Date();
-    const fname=`3DP預約清單_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.xlsx`;
-    XLSX.writeFile(wb,fname);
-    showToast('✓ 已匯出 '+fname,'success');
-}
-
-// ══ 分頁 ══════════════════════════════════════
-function renderPagination(total){
-    const totalPages=Math.ceil(total/PAGE_SIZE);
-    const pagination=document.getElementById('pagination');
-    const pageInfo  =document.getElementById('page-info');
-    const pageBtns  =document.getElementById('page-btns');
-    if(totalPages<=1){pagination.classList.add('hidden');return;}
-    pagination.classList.remove('hidden');
-    const start=(currentPage-1)*PAGE_SIZE+1;
-    const end=Math.min(currentPage*PAGE_SIZE,total);
-    pageInfo.textContent=`第 ${start}–${end} 筆，共 ${total} 筆`;
-    pageBtns.innerHTML='';
-    const prev=document.createElement('button');
-    prev.className='page-btn';prev.textContent='‹';
-    if(currentPage===1) prev.disabled=true;
-    prev.onclick=()=>{currentPage--;renderTable();};
-    pageBtns.appendChild(prev);
-    let sp=Math.max(1,currentPage-2),ep=Math.min(totalPages,sp+4);
-    if(ep-sp<4) sp=Math.max(1,ep-4);
-    for(let i=sp;i<=ep;i++){
-        const btn=document.createElement('button');
-        btn.className='page-btn'+(i===currentPage?' active':'');
-        btn.textContent=i;
-        btn.onclick=(()=>{const p=i;return()=>{currentPage=p;renderTable();};})();
-        pageBtns.appendChild(btn);
-    }
-    const next=document.createElement('button');
-    next.className='page-btn';next.textContent='›';
-    if(currentPage===totalPages) next.disabled=true;
-    next.onclick=()=>{currentPage++;renderTable();};
-    pageBtns.appendChild(next);
-}
-
-// ══ 衝突偵測：同機台+同日期+同時段 出現多筆 ══
-// 「全天」會佔上下午兩個時段，因此與任何 AM/PM/ALL 都算衝突
-function getOccupiedSlots(b) {
-    if(b.slot === 'ALL') return ['AM','PM'];
-    return [b.slot || 'AM'];
-}
+function getOccupiedSlots(b) { return b.slot==='ALL' ? ['AM','PM'] : [b.slot||'AM']; }
 function getConflictKeys() {
     const counts = {};
     bookings.forEach(b=>{
         if(!b.date || !b.printer) return;
-        getOccupiedSlots(b).forEach(slot=>{
-            const key = `${b.printer}|${b.date}|${slot}`;
-            counts[key] = (counts[key]||0) + 1;
+        getOccupiedSlots(b).forEach(s=>{
+            const k = `${b.printer}|${b.date}|${s}`;
+            counts[k] = (counts[k]||0) + 1;
         });
     });
-    const conflicts = new Set();
-    Object.entries(counts).forEach(([k,c])=>{ if(c>1) conflicts.add(k); });
-    return conflicts;
+    const cs = new Set();
+    Object.entries(counts).forEach(([k,c])=>{ if(c>1) cs.add(k); });
+    return cs;
 }
-function bookingHasConflict(b, conflictSet) {
-    return getOccupiedSlots(b).some(slot =>
-        conflictSet.has(`${b.printer}|${b.date||''}|${slot}`)
-    );
+function bookingHasConflict(b, cs) {
+    return getOccupiedSlots(b).some(s => cs.has(`${b.printer}|${b.date||''}|${s}`));
 }
-
-// ══ 排序與篩選 ══════════════════════════════════
-function sortBy(field) {
-    if(sortField === field){
-        sortDir = sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortField = field;
-        sortDir = 'asc';
-    }
-    renderTable();
-}
-
-function resetFilters() {
-    ['filter-engineer','filter-status','filter-printer','filter-sales','filter-special'].forEach(id=>{
-        const el=document.getElementById(id);
-        if(el) el.value='';
-    });
-    renderTable();
-}
-
 function populateFilterSelects() {
-    // 動態填入「工程師」「狀態」「設備」「業務」選項（保留目前選的值）
     const fills = [
         ['filter-engineer','所有工程師', ENGINEERS],
         ['filter-status',  '所有狀態',   STATUSES],
@@ -944,24 +603,16 @@ function populateFilterSelects() {
             opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('');
     });
 }
-
 function updateSortIndicators() {
     ['date','slot','sales','printer','engineer','status'].forEach(f=>{
         const el = document.getElementById('sort-'+f);
         if(!el) return;
-        if(f === sortField){
-            el.textContent = sortDir==='asc' ? '↑' : '↓';
-            el.className = 'ml-1 text-blue-600 font-bold';
-        } else {
-            el.textContent = '';
-            el.className = 'ml-1 text-gray-300';
-        }
+        if(f === sortField){ el.textContent = sortDir==='asc' ? '↑' : '↓'; el.className = 'ml-1 text-blue-600 font-bold'; }
+        else { el.textContent = ''; el.className = 'ml-1 text-gray-300'; }
     });
 }
-
-// 排序鍵：依欄位回傳可比較的值
 function getSortKey(b, field) {
-    if(field==='date')     return b.date || b.timestamp || '';
+    if(field==='date')     return b.date || '';
     if(field==='slot')     return ({'AM':1,'PM':2,'ALL':0}[b.slot]) ?? 9;
     if(field==='sales')    return b.sales || '';
     if(field==='printer')  return b.printer || '';
@@ -972,34 +623,51 @@ function getSortKey(b, field) {
     }
     return '';
 }
+function fmtDateLocal(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function fmtRelTime(ts) {
+    if(!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
 
-// ══ 表格渲染 ══════════════════════════════════
-function renderTable(){
-    const tbody=document.getElementById('table-body');
-    tbody.innerHTML='';
+window.sortBy = function(field) {
+    if(sortField === field) sortDir = sortDir==='asc' ? 'desc' : 'asc';
+    else { sortField = field; sortDir = 'asc'; }
+    renderTable();
+};
+window.resetFilters = function() {
+    ['filter-engineer','filter-status','filter-printer','filter-sales','filter-special'].forEach(id=>{
+        const el = document.getElementById(id); if(el) el.value = '';
+    });
+    renderTable();
+};
+
+window.renderTable = function() {
+    if (!currentUser) return;
+    const tbody = document.getElementById('table-body');
     populateFilterSelects();
     updateSortIndicators();
+    const canEdit = currentUser.role === 'admin' || currentUser.role === 'editor';
 
     if(!bookings.length){
-        document.getElementById('total-count').textContent='共 0 筆資料';
-        tbody.innerHTML='<tr><td colspan="9" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
+        document.getElementById('total-count').textContent = '共 0 筆';
+        tbody.innerHTML = '<tr><td colspan="9" class="p-10 text-center text-gray-400">目前沒有任何預約紀錄</td></tr>';
         document.getElementById('pagination').classList.add('hidden');
         if(listView==='gantt') renderGantt();
         return;
     }
 
-    // 篩選條件
     const fEng     = document.getElementById('filter-engineer').value;
     const fStatus  = document.getElementById('filter-status').value;
     const fPrinter = document.getElementById('filter-printer').value;
     const fSales   = document.getElementById('filter-sales').value;
     const fSpecial = document.getElementById('filter-special').value;
+    const today = fmtDateLocal(new Date());
+    const conflicts = getConflictKeys();
 
-    const _d=new Date();
-    const today=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
-    const conflicts=getConflictKeys();
-
-    let filtered = bookings.filter(b=>{
+    let filtered = bookings.filter(b => {
         if(fEng     && b.engineer !== fEng)     return false;
         if(fStatus  && b.status   !== fStatus)  return false;
         if(fPrinter && b.printer  !== fPrinter) return false;
@@ -1010,25 +678,21 @@ function renderTable(){
         return true;
     });
 
-    // 顯示總數（已篩選/全部）
     document.getElementById('total-count').textContent =
-        filtered.length === bookings.length ? `共 ${bookings.length} 筆資料` : `已篩選 ${filtered.length} / ${bookings.length} 筆`;
+        filtered.length === bookings.length ? `共 ${bookings.length} 筆` : `已篩選 ${filtered.length} / ${bookings.length} 筆`;
 
     if(!filtered.length){
-        tbody.innerHTML='<tr><td colspan="9" class="p-10 text-center text-gray-400">'+(bookings.length?'沒有符合篩選條件的資料':'目前沒有任何預約紀錄')+'</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="p-10 text-center text-gray-400">沒有符合篩選條件的資料</td></tr>';
         document.getElementById('pagination').classList.add('hidden');
         if(listView==='gantt') renderGantt();
         return;
     }
 
-    // 排序：先依使用者選擇的欄位，未完成優先
     const dir = sortDir==='asc' ? 1 : -1;
     const sorted = filtered.slice().sort((a,b)=>{
-        // 主要：完成的排後（不論排序欄位都是這樣）
         const aDone = DONE_STATUSES.has(a.status) ? 1 : 0;
         const bDone = DONE_STATUSES.has(b.status) ? 1 : 0;
         if(aDone !== bDone) return aDone - bDone;
-        // 次要：依使用者選擇的欄位
         const ka = getSortKey(a, sortField);
         const kb = getSortKey(b, sortField);
         if(ka < kb) return -1*dir;
@@ -1036,58 +700,67 @@ function renderTable(){
         return 0;
     });
 
-    const totalPages=Math.ceil(sorted.length/PAGE_SIZE);
-    if(currentPage>totalPages) currentPage=Math.max(1,totalPages);
-    const pageData=sorted.slice((currentPage-1)*PAGE_SIZE,currentPage*PAGE_SIZE);
+    // 分頁
+    const totalPages = Math.ceil(sorted.length / PAGE_SIZE);
+    if(currentPage > totalPages) currentPage = Math.max(1, totalPages);
+    const pageData = sorted.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
 
-    pageData.forEach((b,idx)=>{
-        const tr=document.createElement('tr');
-        const isDone=DONE_STATUSES.has(b.status);
-        const isConflict=bookingHasConflict(b, conflicts);
-        tr.className='hover:bg-gray-50 transition-colors'+(isDone?' opacity-60':'')+(isConflict?' bg-orange-50':'');
-        const opts=STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
-        const orderBadge=b.hasOrder
-            ?'<span class="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-medium">有</span>'
-            :'<span class="bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-medium">無</span>';
-        const displayDate=b.date
-            ?new Date(b.date).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
-            :(b.timestamp||'-');
-        const isOverdue=b.date&&b.date<today&&!DONE_STATUSES.has(b.status);
+    tbody.innerHTML = '';
+    pageData.forEach(b => {
+        const tr = document.createElement('tr');
+        const isDone = DONE_STATUSES.has(b.status);
+        const isConflict = bookingHasConflict(b, conflicts);
+        tr.className = 'hover:bg-gray-50 transition-colors' + (isDone?' opacity-60':'') + (isConflict?' bg-orange-50':'');
+        const opts = STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
+        const displayDate = b.date
+            ? new Date(b.date+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
+            : '—';
+        const isOverdue = b.date && b.date<today && !DONE_STATUSES.has(b.status);
         const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='ALL' ? '全天' : '—';
         const slotColor = isConflict ? 'bg-orange-200 text-orange-800' : (b.slot==='PM' ? 'bg-orange-100 text-orange-700' : b.slot==='ALL' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700');
         const printerCell = isConflict
-            ? `<span class="text-orange-700 font-medium">${b.printer}</span> <span class="text-xs bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full" title="同機台同時段重複預約">衝突</span>`
+            ? `<span class="text-orange-700 font-medium">${b.printer}</span> <span class="text-xs bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">衝突</span>`
             : b.printer;
 
-        tr.innerHTML=`
+        // 單號 / 備註：依 hasOrder 區分樣式（有單號 = 綠框 badge；無 = 灰色備註文字）
+        const purposeCell = b.hasOrder
+            ? `<span class="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded text-xs font-medium">${b.purpose||'—'}</span>`
+            : `<span class="text-gray-500 text-xs">${b.purpose||'—'}</span>`;
+
+        const lastEdit = b.updatedAt ? fmtRelTime(b.updatedAt) : (b.createdAt ? fmtRelTime(b.createdAt) : '—');
+        const lastBy = b.updatedByEmail || b.createdByEmail || '';
+        const lastByShort = lastBy ? lastBy.split('@')[0] : '';
+
+        tr.innerHTML = `
             <td class="p-3 font-medium ${isOverdue?'text-red-500':'text-gray-800'}">
                 ${displayDate}${isOverdue?' <span class="text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>':''}
             </td>
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
             <td class="p-3">${printerCell}</td>
-            <td class="p-3 text-center">${orderBadge}</td>
-            <td class="p-3 text-gray-600">${b.purpose}</td>
+            <td class="p-3">${purposeCell}</td>
             <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${b.engineer}</span></td>
             <td class="p-3">
-                <select ${isEditor?'':'disabled'} onchange="updateStatus(${b.id},this.value)"
-                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${isEditor?'cursor-pointer':''} ${getStatusColor(b.status)}">
+                <select ${canEdit?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
+                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit?'cursor-pointer':''} ${getStatusColor(b.status)}">
                     ${opts}
                 </select>
             </td>
-            ${isEditor?`
+            <td class="p-3 text-xs text-gray-400">
+                ${lastEdit}
+                ${lastByShort?`<div class="text-gray-400">by ${lastByShort}</div>`:''}
+            </td>
+            ${canEdit ? `
             <td class="p-3 text-center">
                 <div class="flex items-center justify-center gap-1">
-                    <button onclick="openEditModal(${b.id})" title="編輯"
-                        class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
+                    <button onclick="openEditModal('${b.id}')" title="編輯" class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md">
                         <i data-lucide="pencil" class="w-4 h-4"></i>
                     </button>
-                    <button onclick="triggerDeleteBooking(${b.id})" title="刪除"
-                        class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                    <button onclick="deleteBooking('${b.id}')" title="刪除" class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                     </button>
                 </div>
-            </td>`:'<td></td>'}
+            </td>` : '<td></td>'}
         `;
         tbody.appendChild(tr);
     });
@@ -1095,10 +768,45 @@ function renderTable(){
     renderPagination(sorted.length);
     lucide.createIcons();
     if(listView==='gantt') renderGantt();
+};
+
+// ══ 分頁 ══
+function renderPagination(total) {
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const pagination = document.getElementById('pagination');
+    const pageInfo   = document.getElementById('page-info');
+    const pageBtns   = document.getElementById('page-btns');
+    if(totalPages <= 1){ pagination.classList.add('hidden'); return; }
+    pagination.classList.remove('hidden');
+    const start = (currentPage-1)*PAGE_SIZE + 1;
+    const end   = Math.min(currentPage*PAGE_SIZE, total);
+    pageInfo.textContent = `第 ${start}–${end} 筆，共 ${total} 筆`;
+    pageBtns.innerHTML = '';
+    const prev = document.createElement('button');
+    prev.className = 'page-btn'; prev.textContent = '‹';
+    if(currentPage===1) prev.disabled = true;
+    prev.onclick = () => { currentPage--; renderTable(); };
+    pageBtns.appendChild(prev);
+
+    let sp = Math.max(1, currentPage-2), ep = Math.min(totalPages, sp+4);
+    if(ep-sp < 4) sp = Math.max(1, ep-4);
+    for(let i=sp; i<=ep; i++){
+        const btn = document.createElement('button');
+        btn.className = 'page-btn' + (i===currentPage ? ' active' : '');
+        btn.textContent = i;
+        btn.onclick = (() => { const p = i; return () => { currentPage = p; renderTable(); }; })();
+        pageBtns.appendChild(btn);
+    }
+
+    const next = document.createElement('button');
+    next.className = 'page-btn'; next.textContent = '›';
+    if(currentPage===totalPages) next.disabled = true;
+    next.onclick = () => { currentPage++; renderTable(); };
+    pageBtns.appendChild(next);
 }
 
-// ══ 表格/甘特圖切換 ════════════════════════════
-function switchListView(v) {
+// 甘特圖
+window.switchListView = function(v) {
     listView = v;
     document.getElementById('list-table-view').classList.toggle('hidden', v!=='table');
     document.getElementById('list-gantt-view').classList.toggle('hidden', v!=='gantt');
@@ -1106,77 +814,52 @@ function switchListView(v) {
     document.getElementById('view-gantt-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='gantt' ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
     lucide.createIcons();
     if(v==='gantt') renderGantt();
-}
-
-// ══ 甘特圖 ════════════════════════════════════
+};
 function startOfWeek(d) {
-    // 以週一為一週開始
     const date = new Date(d);
-    const day = date.getDay();            // 0=日,1=一...
+    const day = date.getDay();
     const diff = (day === 0 ? -6 : 1 - day);
     date.setDate(date.getDate() + diff);
     date.setHours(0,0,0,0);
     return date;
 }
-function ganttToday() { ganttWeekStart = startOfWeek(new Date()); renderGantt(); }
-function ganttShiftWeek(n) {
+window.ganttToday = function() { ganttWeekStart = startOfWeek(new Date()); renderGantt(); };
+window.ganttShiftWeek = function(n) {
     if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
     ganttWeekStart.setDate(ganttWeekStart.getDate() + n*7);
     renderGantt();
-}
-
+};
 function ganttStatusColor(status) {
-    return {
-        '待確認':'bg-yellow-300 text-yellow-900',
-        '執行中':'bg-blue-400 text-white',
-        '已完成':'bg-green-400 text-white',
-        '異常/取消':'bg-red-300 text-red-900'
-    }[status] || 'bg-gray-300 text-gray-700';
+    return {'待確認':'bg-yellow-300 text-yellow-900','執行中':'bg-blue-400 text-white','已完成':'bg-green-400 text-white','異常/取消':'bg-red-300 text-red-900'}[status] || 'bg-gray-300 text-gray-700';
 }
-
 function renderGantt() {
     if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
     const container = document.getElementById('gantt-container');
-
-    // 本地時區的 yyyy-mm-dd（不可用 toISOString，會跨時區跑掉一天）
-    const fmtKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-
-    // 7 天日期
     const days = [];
-    for(let i=0;i<7;i++){
-        const d = new Date(ganttWeekStart);
-        d.setDate(d.getDate()+i);
-        days.push(d);
-    }
+    for(let i=0;i<7;i++){ const d=new Date(ganttWeekStart); d.setDate(d.getDate()+i); days.push(d); }
     const weekdayNames = ['週一','週二','週三','週四','週五','週六','週日'];
+    document.getElementById('gantt-range').textContent =
+        `${ganttWeekStart.getMonth()+1}/${ganttWeekStart.getDate()} – ${days[6].getMonth()+1}/${days[6].getDate()}`;
+    const todayKey = fmtDateLocal(new Date());
+    const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
 
-    // 範圍標題
-    const rangeStr = `${ganttWeekStart.getMonth()+1}/${ganttWeekStart.getDate()} – ${days[6].getMonth()+1}/${days[6].getDate()}`;
-    document.getElementById('gantt-range').textContent = rangeStr;
-
-    const todayKey = fmtKey(new Date());
-
-    // 表頭：機台 | 日×7（每日分上午/下午）
     let html = '<table class="w-full border-collapse text-xs" style="min-width:760px"><thead>';
-    html += '<tr class="bg-gray-100 text-gray-600">';
-    html += '<th class="p-2 border border-gray-200 w-24 sticky left-0 bg-gray-100">機台</th>';
-    days.forEach((d,i)=>{
-        const isToday = fmtKey(d)===todayKey;
+    html += '<tr class="bg-gray-100 text-gray-600"><th class="p-2 border border-gray-200 w-24 sticky left-0 bg-gray-100">機台</th>';
+    days.forEach(d=>{
+        const isToday = fmtDateLocal(d)===todayKey;
         html += `<th class="p-2 border border-gray-200 ${isToday?'bg-blue-50':''}" colspan="2">
             <div class="font-medium ${isToday?'text-blue-600':''}">${d.getMonth()+1}/${d.getDate()}</div>
-            <div class="text-gray-400 font-normal">${weekdayNames[i]}</div>
+            <div class="text-gray-400 font-normal">${weekdayNames[d.getDay()===0?6:d.getDay()-1]}</div>
         </th>`;
     });
-    html += '</tr><tr class="bg-gray-50 text-gray-400">';
-    html += '<th class="p-1 border border-gray-200 sticky left-0 bg-gray-50"></th>';
+    html += '</tr><tr class="bg-gray-50 text-gray-400"><th class="p-1 border border-gray-200 sticky left-0 bg-gray-50"></th>';
     days.forEach(()=>{ html += '<th class="p-1 border border-gray-200 font-normal">上午</th><th class="p-1 border border-gray-200 font-normal">下午</th>'; });
     html += '</tr></thead><tbody>';
 
-    // 每台機台一列
     GANTT_PRINTERS.forEach(printer=>{
         html += `<tr><td class="p-2 border border-gray-200 font-medium text-gray-700 sticky left-0 bg-white">${printer}</td>`;
         days.forEach(d=>{
-            const dayKey = fmtKey(d);
+            const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
             const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
@@ -1184,22 +867,24 @@ function renderGantt() {
             const pmItems     = dayBookings.filter(b=>b.slot==='PM');
             const todayBg = isToday?'bg-blue-50/40':'';
 
+            // 衝突偵測：AM 格 = amItems + allDay；PM 格 = pmItems + allDay
             const amCombined = [...amItems, ...allDayItems];
             const pmCombined = [...pmItems, ...allDayItems];
             const amConflict = amCombined.length > 1;
             const pmConflict = pmCombined.length > 1;
 
+            // 渲染一個預約色塊
             const renderItem = (b) => {
                 const color = ganttStatusColor(b.status);
                 const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
                 const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${isEditor?`onclick="openEditModal(${b.id})"`:''}>
+                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
                     ${text}${allDayMark}
                 </div>`;
             };
             const renderConflictBadge = (n) => `<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
 
-            // 情境 A：當天只有全天 → colspan=2 橫跨
+            // 情境 A：當天只有全天預約，無 AM/PM 單獨預約 → 用 colspan=2 橫跨
             if(allDayItems.length && !amItems.length && !pmItems.length){
                 const isConflict = allDayItems.length > 1;
                 const bg = isConflict ? 'bg-orange-100' : todayBg;
@@ -1207,8 +892,12 @@ function renderGantt() {
                 const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
                 const content = allDayItems.map(renderItem).join('');
                 html += `<td colspan="2" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:140px">${badge}${content}</td>`;
-                return;
+                return;  // 跳過下面 AM/PM 兩格
             }
+
+            // 情境 B：同時有全天 + AM/PM 單獨預約（衝突情況）→ 仍分兩格但兩格都顯示全天那筆
+            // 情境 C：只有 AM/PM 單獨預約，無全天 → 標準兩格
+            // 情境 D：完全沒預約 → 空兩格
 
             // AM 格
             if(amCombined.length){
@@ -1236,71 +925,501 @@ function renderGantt() {
     lucide.createIcons();
 }
 
-// ══ CRUD ══════════════════════════════════════
-document.getElementById('booking-form').addEventListener('submit',async function(e){
+// ══════════════════════════════════════════════
+// ══ 6. CRUD bookings ══════════════════════════
+// ══════════════════════════════════════════════
+window.setHasOrder = function(val){
+    hasOrder=val;
+    document.getElementById('btn-yes').className='toggle-btn'+(val===true?' active-yes':'');
+    document.getElementById('btn-no').className ='toggle-btn'+(val===false?' active-no':'');
+    document.getElementById('purpose-label').textContent = val?'單號':'無單號原因';
+    const input = document.getElementById('purpose-input');
+    input.placeholder = val?'請輸入單號/客戶名稱':'請填寫備註';
+    input.disabled = false; input.value=''; input.focus();
+};
+
+document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     e.preventDefault();
-    const purpose=document.getElementById('purpose-input').value.trim();
-    const date   =document.getElementById('date-input').value;
-    if(!date)           {showToast('請選擇預約日期！','error');return;}
-    if(hasOrder===null) {showToast('請選擇是否有單號！','error');return;}
-    if(!purpose)        {showToast(hasOrder?'請填寫單號！':'請填寫無單號原因！','error');return;}
-    // 衝突檢查：同機台+同日+同時段已有預約
-    const newPrinter = document.getElementById('printer-select').value;
-    const newSlot    = document.getElementById('slot-input').value;
-    const dupCount   = bookings.filter(b=>b.printer===newPrinter && b.date===date && (b.slot||'AM')===newSlot).length;
+    const purpose = document.getElementById('purpose-input').value.trim();
+    const date    = document.getElementById('date-input').value;
+    if(!date){ showToast('請選擇預約日期','error'); return; }
+    if(hasOrder===null){ showToast('請選擇是否有單號','error'); return; }
+    if(!purpose){ showToast(hasOrder?'請填寫單號':'請填寫備註','error'); return; }
+
+    const printer = document.getElementById('printer-select').value;
+    const slot    = document.getElementById('slot-input').value;
+    // 衝突檢查
+    const dupCount = bookings.filter(b=>b.printer===printer && b.date===date && (b.slot||'AM')===slot).length;
     if(dupCount > 0){
-        const slotTxt = newSlot==='PM'?'下午':'上午';
-        if(!confirm(`注意：${newPrinter} 在 ${date} ${slotTxt} 已有 ${dupCount} 筆預約。\n確定仍要新增嗎？（會標示為衝突）`)) return;
+        const slotTxt = slot==='ALL'?'全天':slot==='PM'?'下午':'上午';
+        if(!confirm(`注意：${printer} 在 ${date} ${slotTxt} 已有 ${dupCount} 筆預約。\n確定仍要新增嗎？`)) return;
     }
-    const btn=document.getElementById('submit-btn');
-    btn.disabled=true;btn.innerHTML='<span class="spinner"></span> 儲存中...';
-    const newBooking={id:Date.now(),date,slot:document.getElementById('slot-input').value,sales:document.getElementById('sales-select').value,printer:document.getElementById('printer-select').value,hasOrder,purpose,engineer:document.getElementById('engineer-select').value,status:'待確認',timestamp:new Date().toLocaleDateString('zh-TW')};
-    bookings.unshift(newBooking);currentPage=1;renderTable();
-    await saveToGitHub(`新增預約：${newBooking.sales} - ${newBooking.printer}`);
-    document.getElementById('date-input').value='';
-    document.getElementById('purpose-input').value='';
-    document.getElementById('purpose-input').disabled=true;
-    document.getElementById('purpose-input').placeholder='請先選擇是否有單號';
-    document.getElementById('purpose-label').textContent='備註說明';
-    document.getElementById('btn-yes').className='toggle-btn';
-    document.getElementById('btn-no').className ='toggle-btn';
-    hasOrder=null;btn.disabled=false;btn.innerHTML='<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
-    lucide.createIcons();
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 儲存中...';
+    try {
+        await addDoc(collection(db,'bookings'), {
+            date,
+            slot,
+            sales:    document.getElementById('sales-select').value,
+            printer,
+            hasOrder,
+            purpose,
+            engineer: document.getElementById('engineer-select').value,
+            status:  '待確認',
+            createdBy:       currentUser.uid,
+            createdByEmail:  currentUser.email,
+            createdByName:   currentUser.displayName,
+            createdAt:       serverTimestamp(),
+            updatedBy:       currentUser.uid,
+            updatedByEmail:  currentUser.email,
+            updatedAt:       serverTimestamp(),
+        });
+        showToast('✓ 預約已新增','success');
+        // 重置表單
+        document.getElementById('date-input').value = fmtDateLocal(new Date());
+        document.getElementById('purpose-input').value = '';
+        document.getElementById('purpose-input').disabled = true;
+        document.getElementById('purpose-input').placeholder = '請先選擇是否有單號';
+        document.getElementById('purpose-label').textContent = '備註說明';
+        document.getElementById('btn-yes').className = 'toggle-btn';
+        document.getElementById('btn-no').className  = 'toggle-btn';
+        hasOrder = null;
+    } catch(err){
+        showToast('新增失敗：'+err.message,'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="plus" class="w-4 h-4"></i> 送出預約';
+        lucide.createIcons();
+    }
 });
 
-window.updateStatus=async function(id,newStatus){
-    const idx=bookings.findIndex(b=>b.id===id);
-    if(idx===-1) return;
-    bookings[idx].status=newStatus;renderTable();
-    await saveToGitHub(`更新狀態：#${id} → ${newStatus}`);
+window.updateStatus = async function(id, newStatus){
+    try {
+        await updateDoc(doc(db,'bookings',id), {
+            status: newStatus,
+            updatedBy:      currentUser.uid,
+            updatedByEmail: currentUser.email,
+            updatedByName:  currentUser.displayName,
+            updatedAt:      serverTimestamp(),
+        });
+    } catch(err){ showToast('更新狀態失敗：'+err.message,'error'); }
 };
-window.triggerDeleteBooking=async function(id){
-    const b=bookings.find(x=>x.id===id);
+
+window.deleteBooking = async function(id){
+    const b = bookings.find(x=>x.id===id);
     if(!b) return;
-    const desc=`${b.date||'—'} · ${b.printer} · ${b.sales} · ${b.purpose||''}`;
-    if(!confirm(`確定要刪除這筆預約嗎？\n\n${desc}`)) return;
-    bookings=bookings.filter(x=>x.id!==id);renderTable();
-    await saveToGitHub(`刪除預約 #${id}`);
+    if(!confirm(`確定要刪除這筆預約？\n\n${b.date} · ${b.printer} · ${b.sales} · ${b.purpose||''}`)) return;
+    try {
+        await deleteDoc(doc(db,'bookings',id));
+        showToast('✓ 已刪除','success');
+    } catch(err){ showToast('刪除失敗：'+err.message,'error'); }
 };
 
-// ══ 初始化 ════════════════════════════════════
-window.onload=function(){
-    [['sales-select',SALES],['printer-select',PRINTERS],['engineer-select',ENGINEERS],
-     ['edit-sales',SALES],['edit-printer',PRINTERS],['edit-engineer',ENGINEERS]]
-        .forEach(([id,opts])=>populateSelect(id,opts));
-    const _today=new Date();
-    document.getElementById('date-input').value=`${_today.getFullYear()}-${String(_today.getMonth()+1).padStart(2,'0')}-${String(_today.getDate()).padStart(2,'0')}`;
-    document.getElementById('modal-password').addEventListener('keydown',e=>{if(e.key==='Enter') verifyPasswordAction();});
-    ganttWeekStart = startOfWeek(new Date());
+// 編輯 Modal
+window.openEditModal = function(id){
+    const b = bookings.find(x=>x.id===id);
+    if(!b) return;
+    editingId = id; editHasOrder = b.hasOrder ?? null;
+    document.getElementById('edit-date').value = b.date || '';
+    document.getElementById('edit-slot').value = b.slot || 'AM';
+    document.getElementById('edit-purpose').value = b.purpose || '';
+    document.getElementById('edit-sales').value = b.sales;
+    document.getElementById('edit-printer').value = b.printer;
+    document.getElementById('edit-engineer').value = b.engineer;
+    const btnY=document.getElementById('edit-btn-yes');
+    const btnN=document.getElementById('edit-btn-no');
+    const lbl =document.getElementById('edit-purpose-label');
+    if(editHasOrder===true){ btnY.className='toggle-btn active-yes'; btnN.className='toggle-btn'; lbl.textContent='單號'; }
+    else if(editHasOrder===false){ btnY.className='toggle-btn'; btnN.className='toggle-btn active-no'; lbl.textContent='備註'; }
+    else{ btnY.className='toggle-btn'; btnN.className='toggle-btn'; lbl.textContent='備註說明'; }
+    document.getElementById('edit-modal').classList.remove('hidden');
     lucide.createIcons();
-
-    // 列印機狀態（不需 token）
-    loadPrinterStatus();
-    setInterval(loadPrinterStatus,5*60*1000);
-
-    // 第一次進入：直接顯示設定 Modal
-    showSettingsModal();
 };
+window.closeEditModal = function(){ editingId=null; editHasOrder=null; document.getElementById('edit-modal').classList.add('hidden'); };
+window.setEditHasOrder = function(val){
+    editHasOrder = val;
+    document.getElementById('edit-btn-yes').className = 'toggle-btn'+(val===true?' active-yes':'');
+    document.getElementById('edit-btn-no').className  = 'toggle-btn'+(val===false?' active-no':'');
+    document.getElementById('edit-purpose-label').textContent = val?'單號':'備註';
+};
+window.saveEdit = async function(){
+    const purpose = document.getElementById('edit-purpose').value.trim();
+    const date    = document.getElementById('edit-date').value;
+    if(!date){ showToast('請選擇日期','error'); return; }
+    if(editHasOrder===null){ showToast('請選擇是否有單號','error'); return; }
+    if(!purpose){ showToast(editHasOrder?'請填寫單號':'請填寫備註','error'); return; }
+    try {
+        await updateDoc(doc(db,'bookings',editingId), {
+            date,
+            slot:     document.getElementById('edit-slot').value,
+            sales:    document.getElementById('edit-sales').value,
+            printer:  document.getElementById('edit-printer').value,
+            engineer: document.getElementById('edit-engineer').value,
+            hasOrder: editHasOrder,
+            purpose,
+            updatedBy:      currentUser.uid,
+            updatedByEmail: currentUser.email,
+            updatedByName:  currentUser.displayName,
+            updatedAt:      serverTimestamp(),
+        });
+        showToast('✓ 已儲存','success');
+        closeEditModal();
+    } catch(err){ showToast('儲存失敗：'+err.message,'error'); }
+};
+
+// ══════════════════════════════════════════════
+// ══ 7. 使用者管理 ═════════════════════════════
+// ══════════════════════════════════════════════
+window.showUsersModal = async function(){
+    if(currentUser.role !== 'admin'){ showToast('僅管理員可使用此功能','error'); return; }
+    document.getElementById('users-modal').classList.remove('hidden');
+    hideAddUserForm();
+    await loadUsersList();
+    lucide.createIcons();
+};
+window.closeUsersModal = function(){ document.getElementById('users-modal').classList.add('hidden'); };
+
+async function loadUsersList() {
+    const tbody = document.getElementById('users-tbody');
+    tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-gray-400">載入中...</td></tr>';
+    try {
+        const snap = await getDocs(collection(db,'users'));
+        const users = snap.docs.map(d=>({id:d.id, ...d.data()}));
+        if(!users.length){ tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-gray-400">尚無使用者</td></tr>'; return; }
+        tbody.innerHTML = '';
+        users.sort((a,b)=>(a.email||'').localeCompare(b.email||'')).forEach(u=>{
+            const isSelf = u.id === currentUser.uid;
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50';
+            const roleSel = `<select onchange="changeUserRole('${u.id}', this.value)" ${isSelf?'disabled':''} class="text-xs border border-gray-300 rounded px-2 py-1 ${isSelf?'bg-gray-100 cursor-not-allowed':''}">
+                <option value="admin"  ${u.role==='admin'?'selected':''}>管理員</option>
+                <option value="editor" ${u.role==='editor'?'selected':''}>編輯者</option>
+                <option value="viewer" ${u.role==='viewer'?'selected':''}>查看者</option>
+            </select>`;
+            tr.innerHTML = `
+                <td class="p-3 text-sm">${u.email||'—'}${isSelf?' <span class="text-xs text-blue-500">(你)</span>':''}</td>
+                <td class="p-3 text-sm text-gray-600">${u.displayName||'—'}</td>
+                <td class="p-3">${roleSel}</td>
+                <td class="p-3 text-xs text-gray-400">${u.createdAt?fmtRelTime(u.createdAt):'—'}</td>
+                <td class="p-3 text-center">
+                    ${isSelf?'<span class="text-xs text-gray-300">—</span>':
+                    `<button onclick="deleteUser('${u.id}','${u.email||''}')" class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        lucide.createIcons();
+    } catch(err){
+        tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-red-500">載入失敗：${err.message}</td></tr>`;
+    }
+}
+
+window.showAddUserForm = function(){
+    document.getElementById('add-user-form').classList.remove('hidden');
+    ['new-user-email','new-user-name','new-user-password'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('new-user-role').value='viewer';
+};
+window.hideAddUserForm = function(){ document.getElementById('add-user-form').classList.add('hidden'); };
+
+window.createNewUser = async function(){
+    const email = document.getElementById('new-user-email').value.trim();
+    const name  = document.getElementById('new-user-name').value.trim();
+    const pwd   = document.getElementById('new-user-password').value;
+    const role  = document.getElementById('new-user-role').value;
+    if(!email || !pwd){ showToast('請填寫 email 和密碼','error'); return; }
+    if(pwd.length < 6){ showToast('密碼至少 6 字元','error'); return; }
+    const btn = document.getElementById('create-user-btn');
+    btn.disabled = true; btn.textContent = '建立中...';
+    try {
+        // 用 secondary auth 建立新 user，不影響主 session
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pwd);
+        const newUid = cred.user.uid;
+        await signOut(secondaryAuth);
+        // 在主 db 建立 users 文件
+        await setDoc(doc(db,'users',newUid), {
+            email,
+            displayName: name || email.split('@')[0],
+            role,
+            createdAt: serverTimestamp(),
+            createdBy: currentUser.uid,
+        });
+        showToast(`✓ 已建立 ${email} (${role})`,'success');
+        hideAddUserForm();
+        await loadUsersList();
+    } catch(err){
+        const msg = {
+            'auth/email-already-in-use': '此 email 已被使用',
+            'auth/invalid-email': 'email 格式錯誤',
+            'auth/weak-password': '密碼強度不足（至少 6 字元）',
+        }[err.code] || ('建立失敗：' + err.message);
+        showToast(msg,'error');
+    } finally {
+        btn.disabled = false; btn.textContent = '建立帳號';
+    }
+};
+
+window.changeUserRole = async function(uid, newRole){
+    try {
+        await updateDoc(doc(db,'users',uid), { role: newRole });
+        showToast('✓ 角色已更新','success');
+    } catch(err){
+        showToast('更新失敗：'+err.message,'error');
+        await loadUsersList();
+    }
+};
+
+window.deleteUser = async function(uid, email){
+    if(!confirm(`確定要移除使用者「${email}」？\n\n注意：這只會移除其權限資料，登入帳號仍存在於 Authentication，需另至 Firebase Console 刪除。`)) return;
+    try {
+        await deleteDoc(doc(db,'users',uid));
+        showToast('✓ 已移除權限','success');
+        await loadUsersList();
+    } catch(err){
+        showToast('移除失敗：'+err.message,'error');
+    }
+};
+
+// ══════════════════════════════════════════════
+// ══ 8. 匯出 Excel ═════════════════════════════
+// ══════════════════════════════════════════════
+window.exportExcel = function(){
+    if(!bookings.length){ showToast('沒有資料可以匯出','error'); return; }
+    const rows = bookings.map(b=>({
+        '預約日期': b.date||'',
+        '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='ALL'?'全天':'',
+        '申請業務': b.sales||'',
+        '設備':     b.printer||'',
+        '類型':     b.hasOrder?'單號':'備註',
+        '內容':     b.purpose||'',
+        '負責工程師':b.engineer||'',
+        '任務狀態': b.status||'',
+        '建立者':   b.createdByEmail||'',
+        '最後修改': b.updatedAt ? fmtRelTime(b.updatedAt) : '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = [{wch:14},{wch:8},{wch:10},{wch:10},{wch:8},{wch:30},{wch:12},{wch:10},{wch:25},{wch:18}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '預約清單');
+    const now = new Date();
+    XLSX.writeFile(wb, `3DP預約清單_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.xlsx`);
+    showToast('✓ 已匯出','success');
+};
+
+// ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+// ══ 9. 列印機即時狀態（讀 GitHub raw URL）═════
+// ══════════════════════════════════════════════
+const STATUS_URL = `https://raw.githubusercontent.com/jiliao2024092/swtc-3DP/main/printer-status.json`;
+const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+const CODE_TO_NAME = {
+    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
+    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
+    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
+    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+};
+function matNameFE(code){ return CODE_TO_NAME[code] || code; }
+const PRINTER_DISPLAY_MAP = { 'AluminumBowfin':'Form4', 'AdroitSauropod':'Form4L' };
+function printerDisplayFE(name){
+    if(!name) return name;
+    for(const [k,v] of Object.entries(PRINTER_DISPLAY_MAP)){ if(name.includes(k)) return v; }
+    return name;
+}
+const PRINTER_STATUS_MAP = {
+    'IDLE':                  {label:'閒置',    color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
+    'PRINTING':              {label:'列印中',  color:'bg-blue-100 text-blue-700',    dot:'bg-blue-500'},
+    'PAUSED':                {label:'已暫停',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-500'},
+    'PAUSING':               {label:'暫停中',  color:'bg-yellow-100 text-yellow-700',dot:'bg-yellow-400'},
+    'FINISHED':              {label:'已完成',  color:'bg-green-100 text-green-700',  dot:'bg-green-500'},
+    'ERROR':                 {label:'異常',    color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
+    'ABORTED':               {label:'已中止',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
+    'ABORTING':              {label:'中止中',  color:'bg-red-100 text-red-600',      dot:'bg-red-400'},
+    'PREPRINT':              {label:'準備列印',color:'bg-indigo-100 text-indigo-700',dot:'bg-indigo-500'},
+    'PREHEAT':               {label:'預熱中',  color:'bg-orange-100 text-orange-700',dot:'bg-orange-400'},
+    'WAITING_FOR_RESOLUTION':{label:'待處理',  color:'bg-red-100 text-red-700',      dot:'bg-red-500'},
+    'OFFLINE':               {label:'離線',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
+    'UNKNOWN':               {label:'未知',    color:'bg-gray-100 text-gray-500',    dot:'bg-gray-300'},
+};
+const MACHINE_TYPE_MAP_FE = {
+    'form-4':'Form 4','form-4l':'Form 4L','form-3':'Form 3','form-3l':'Form 3L',
+    'fuse-1':'Fuse 1','fuse-1-plus':'Fuse 1+',
+};
+function getMachineLabelFE(id) {
+    if (!id) return '';
+    const k=id.toLowerCase().replace(/[\s\-]/g,'');
+    for(const[mk,mv] of Object.entries(MACHINE_TYPE_MAP_FE)) if(mk.replace(/-/g,'')===k) return mv;
+    if(k.includes('frml40')||k.includes('form4l')) return 'Form 4L';
+    if(k.includes('frml30')||k.includes('form3l')) return 'Form 3L';
+    if(k.includes('form40')||k.includes('form4'))  return 'Form 4';
+    if(k.includes('form3')) return 'Form 3';
+    return id;
+}
+
+let printerView = 'status';
+let cachedPrinters = [];
+
+window.switchPrinterView = function(v){
+    printerView = v;
+    document.getElementById('panel-status').classList.toggle('hidden', v!=='status');
+    document.getElementById('panel-material').classList.toggle('hidden', v!=='material');
+    document.getElementById('view-status-btn').className   = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='status'  ? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    document.getElementById('view-material-btn').className = 'text-xs font-medium px-3 py-1.5 rounded-md transition-all ' + (v==='material'? 'bg-white shadow-sm text-gray-700' : 'text-gray-500');
+    if(v==='material' && cachedPrinters.length) renderMaterialPanel(cachedPrinters);
+};
+window.manualRefreshPrinters = async function() {
+    const btn = document.getElementById('printer-refresh-btn');
+    const icon = document.getElementById('printer-refresh-icon');
+    btn.disabled = true;
+    icon.style.animation = 'spin 0.7s linear infinite';
+    document.getElementById('printer-updated').textContent = '刷新中...';
+    await loadPrinterStatus();
+    btn.disabled = false;
+    icon.style.animation = '';
+};
+
+async function loadPrinterStatus() {
+    try {
+        const res = await fetch(STATUS_URL + '?t=' + Date.now());
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const printers = await res.json();
+        cachedPrinters = Array.isArray(printers) ? printers : [];
+        const updatedAt = cachedPrinters[0]?.updated_at;
+        if(updatedAt){
+            const d = new Date(updatedAt);
+            document.getElementById('printer-updated').textContent =
+                `資料時間：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
+        }
+        if(!cachedPrinters.length){
+            document.getElementById('panel-status').innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
+            return;
+        }
+        renderStatusPanel(cachedPrinters);
+        if(printerView==='material') renderMaterialPanel(cachedPrinters);
+    } catch(err){
+        document.getElementById('panel-status').innerHTML = `<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入：${err.message}</div>`;
+    }
+}
+
+function renderStatusPanel(printers) {
+    const grid = document.getElementById('panel-status');
+    grid.innerHTML = '';
+    printers.forEach(p=>{
+        const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
+        const isPrinting = ['PRINTING','PAUSED','PAUSING'].includes(p.status);
+        const ml = getMachineLabelFE(p.machine_type);
+        const card = document.createElement('div');
+        card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
+        card.innerHTML = `
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800 text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
+                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
+                </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
+                </span>
+            </div>
+            ${isPrinting&&p.print_name?`
+            <div class="space-y-1.5">
+                <div class="flex justify-between items-center">
+                    <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
+                    <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
+                </div>
+                <div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>
+                <div class="flex justify-between text-xs text-gray-400">
+                    <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
+                    <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
+                </div>
+            </div>`:''}
+            ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function renderMaterialPanel(printers) {
+    const grid = document.getElementById('material-grid');
+    const targets = printers.filter(p=>MATERIAL_PRINTERS.some(name=>(p.alias||'').includes(name)));
+    if(!targets.length){
+        grid.innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-4">找不到指定機台資料</div>';
+        return;
+    }
+    grid.innerHTML = '';
+    targets.forEach(p=>{
+        const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
+        const ml = getMachineLabelFE(p.machine_type);
+        const cartridges = p.cartridges || [];
+        const levelColor = pct => pct < 20 ? 'text-red-500' : pct < 40 ? 'text-yellow-600' : 'text-green-600';
+        const barColor   = pct => pct < 20 ? 'bg-red-400'   : pct < 40 ? 'bg-yellow-400'   : 'bg-green-500';
+        const cartridgeHTML = cartridges.length ? cartridges.map(c=>{
+            const slotLabel = c.slot==='FRONT'?'前匣':c.slot==='BACK'?'後匣':c.slot==='SINGLE'?'單匣':c.slot||'樹脂罐';
+            const pct = c.remaining_pct;
+            return `
+            <div class="bg-gray-50 rounded-lg p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-medium text-gray-600">${slotLabel}</span>
+                    <span class="text-xs font-semibold text-gray-800">${matNameFE(c.material)||'—'}</span>
+                </div>
+                ${pct!=null?`
+                <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-gray-400">${c.remaining_ml!=null?c.remaining_ml+' ml':''}</span>
+                        <span class="font-medium ${levelColor(pct)}">${pct}%</span>
+                    </div>
+                    <div class="bg-gray-200 rounded-md h-2.5 overflow-hidden"><div class="${barColor(pct)} h-full" style="width:${Math.min(pct,100)}%"></div></div>
+                </div>`:`<p class="text-xs text-amber-600">容量待補登</p>`}
+            </div>`;
+        }).join('') : `<div class="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 text-center">尚無樹脂罐資料</div>`;
+        const card = document.createElement('div');
+        card.className = 'border border-gray-200 rounded-xl p-5 space-y-3';
+        card.innerHTML = `
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="font-semibold text-gray-800">${printerDisplayFE(p.alias)||p.serial}</p>
+                    <p class="text-xs text-gray-400">${ml?ml+' · ':''}${p.alias||''}</p>
+                </div>
+                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                    <span class="w-1.5 h-1.5 rounded-full ${s.dot}"></span>${s.label}
+                </span>
+            </div>
+            <div class="space-y-2">${cartridgeHTML}</div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+// 啟動列印機狀態載入
+loadPrinterStatus();
+setInterval(loadPrinterStatus, 5*60*1000);
+
+// ══════════════════════════════════════════════
+// ══ 10. 工具 ══════════════════════════════════
+// ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+window.showToast = function(msg,type){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `toast ${type==='error'?'bg-red-600 text-white':'bg-green-600 text-white'}`;
+    t.classList.remove('hidden');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(()=>t.classList.add('hidden'), 3500);
+};
+
+function populateSelect(id, options){
+    const sel = document.getElementById(id);
+    options.forEach(o=>{ const opt=document.createElement('option'); opt.value=opt.textContent=o; sel.appendChild(opt); });
+}
+
+// ══ 初始化 ═══════════════════════════════════
+[['sales-select',SALES],['printer-select',PRINTERS],['engineer-select',ENGINEERS],
+ ['edit-sales',SALES],['edit-printer',PRINTERS],['edit-engineer',ENGINEERS]]
+    .forEach(([id,opts])=>populateSelect(id,opts));
+document.getElementById('date-input').value = fmtDateLocal(new Date());
+ganttWeekStart = startOfWeek(new Date());
+lucide.createIcons();
 </script>
 </body>
 </html>
