@@ -243,7 +243,7 @@
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">罐數<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">估計剩餘(ml)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right w-32">安全庫存(罐)</th>
+                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存(罐)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium w-40">備註</th>
                             <th class="p-3 border-b font-medium">最後更新</th>
@@ -802,8 +802,15 @@ function getSafetyStock(material) {
     return inv.safety[material] ?? DEFAULT_SAFETY;
 }
 
+// 總庫存（樹脂罐 + 備料）低於安全 → 用於庫存總覽 / 叫料提醒
 function isLowStock(material) {
     return getTotalInventory(material) < getSafetyStock(material);
+}
+
+// 備料本身低於安全 → 用於備料庫存表的「狀態」欄
+// 即使機台樹脂罐還有，備料不夠也要叫料補充
+function isStockLow(material) {
+    return getStockTotal(material) < getSafetyStock(material);
 }
 
 // ══ 叫料提醒 ══
@@ -823,8 +830,21 @@ function renderAlerts() {
 // ══ 總覽 ══
 function renderOverview() {
     const grid=document.getElementById('overview-grid');
-    const mats=getAllMaterials();
+    let mats=getAllMaterials();
     if(!mats.length){ grid.innerHTML='<div class="col-span-full text-center text-gray-400 py-8">尚無庫存資料，請先在「機台樹脂罐」頁面手動輸入樹脂罐資訊。</div>'; return; }
+    // 排序：需叫料優先（依嚴重程度：總庫存缺口大者在前），其次依備料庫存高到低
+    mats = mats.slice().sort((a,b)=>{
+        const aLow = isLowStock(a), bLow = isLowStock(b);
+        if(aLow !== bLow) return aLow ? -1 : 1;   // 需叫料在前
+        if(aLow && bLow){
+            // 兩者都缺料：缺口比例越大越前面
+            const aGap = getSafetyStock(a) - getTotalInventory(a);
+            const bGap = getSafetyStock(b) - getTotalInventory(b);
+            if(aGap !== bGap) return bGap - aGap;
+        }
+        // 都不缺料 或 缺口同：備料庫存高的在前
+        return getStockTotal(b) - getStockTotal(a);
+    });
     grid.innerHTML='';
     mats.forEach(m=>{
         const total=getTotalInventory(m);
@@ -1015,7 +1035,7 @@ function resetStockFilters(){
     renderStockTable();
 }
 function updateStockSortIndicators(){
-    ['material','bottles','total_ml','status'].forEach(f=>{
+    ['material','bottles','total_ml','safety','status'].forEach(f=>{
         const el=document.getElementById('stock-sort-'+f);
         if(!el) return;
         if(f===stockSortField){
@@ -1046,7 +1066,8 @@ function renderStockTable() {
         if(stockSortField==='material'){ ka=matName(a); kb=matName(b); }
         else if(stockSortField==='bottles'){ ka=(inv.stock[a]?.bottles||0); kb=(inv.stock[b]?.bottles||0); }
         else if(stockSortField==='total_ml'){ ka=(inv.stock[a]?.total_ml||0); kb=(inv.stock[b]?.total_ml||0); }
-        else if(stockSortField==='status'){ ka=isLowStock(a)?0:1; kb=isLowStock(b)?0:1; }
+        else if(stockSortField==='safety'){ ka=getSafetyStock(a); kb=getSafetyStock(b); }
+        else if(stockSortField==='status'){ ka=isStockLow(a)?0:1; kb=isStockLow(b)?0:1; }
         const dir = stockSortDir==='asc'?1:-1;
         if(ka<kb) return -1*dir;
         if(ka>kb) return  1*dir;
@@ -1058,7 +1079,7 @@ function renderStockTable() {
     mats.forEach(m=>{
         const s=inv.stock[m]||{bottles:0,total_ml:0};
         const safety=getSafetyStock(m);
-        const low=isLowStock(m);
+        const low=isStockLow(m);   // 只看備料 vs 安全（不含機台樹脂罐）
         const bottles=s.bottles||0;
         const me=m.replace(/'/g,"\\'");
         const tr=document.createElement('tr');
@@ -1086,7 +1107,6 @@ function renderStockTable() {
             </td>
             <td class="p-3 text-xs text-gray-400">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
-                <span class="ml-1 ${s.updated_by==='auto'?'text-blue-400':'text-gray-400'}">${s.updated_by==='auto'?'🤖':'✏️'}</span>
             </td>
             <td class="p-3 text-center">
                 ${isEditor?`<button onclick="deleteStock('${me}')" title="刪除此材料"
