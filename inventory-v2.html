@@ -273,6 +273,7 @@
                     <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
                         <option value="">全部類型</option>
                         <option value="consume">列印消耗</option>
+                        <option value="aborted">列印失敗/中止</option>
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
@@ -544,6 +545,7 @@ function subscribeAll() {
                     ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
                     type: data.type, material: data.material, printer: data.printer,
                     ml: data.ml, note: data.note, print_guid: data.print_guid,
+                    apiStatus: data.apiStatus,
                 };
             });
             renderHistory();
@@ -1306,16 +1308,30 @@ function renderHistory() {
     if(!filtered.length){ tbody.innerHTML='<tr><td colspan="6" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
-        const typeMap={consume:{label:'列印消耗',color:'text-red-600 bg-red-50'},stockin:{label:'備料入庫',color:'text-green-700 bg-green-50'},manual:{label:'手動調整',color:'text-blue-600 bg-blue-50'}};
+        const typeMap={
+            consume:{label:'列印消耗', color:'text-red-600 bg-red-50'},
+            stockin:{label:'備料入庫', color:'text-green-700 bg-green-50'},
+            manual: {label:'手動調整', color:'text-blue-600 bg-blue-50'},
+            aborted:{label:'列印失敗', color:'text-orange-700 bg-orange-50 border border-orange-200'},
+            error:  {label:'列印錯誤', color:'text-orange-700 bg-orange-50 border border-orange-200'},
+        };
         const t=typeMap[h.type]||{label:h.type,color:'bg-gray-100 text-gray-600'};
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
+        // 失敗/錯誤的列印不算進實際消耗，ml 顯示為灰色括號標註
+        const isFail = h.type==='aborted' || h.type==='error';
+        const mlCell = isFail
+            ? `<span class="text-orange-500">⚠</span> <span class="text-gray-400 text-xs">(${Math.abs(Math.round(h.ml||0))} ml 未計)</span>`
+            : `${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml`;
+        const mlColor = isFail ? '' : (h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':'');
+        // 失敗紀錄附 apiStatus
+        const apiStatusHint = (isFail && h.apiStatus) ? ` <span class="text-xs text-orange-400">[${h.apiStatus}]</span>` : '';
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
             <td class="p-3 text-sm text-gray-600">${printerDisplay(h.printer)||'—'}</td>
-            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
-            <td class="p-3 text-right font-medium text-sm ${h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':''}">${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml</td>
+            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span>${apiStatusHint}</td>
+            <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
             <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
         `;
         tbody.appendChild(tr);
@@ -1476,7 +1492,20 @@ function exportInventoryExcel() {
     const ovRows=getAllMaterials().map(m=>({'材料':matName(m),'機台樹脂罐(ml)':Math.round(getCartridgeTotal(m)),'備料庫存(ml)':Math.round(getStockTotal(m)),'總庫存(ml)':Math.round(getTotalInventory(m)),'安全庫存(ml)':getSafetyStock(m),'狀態':isLowStock(m)?'需叫料':'充足'}));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovRows),'庫存總覽');
     // 歷史
-    const hRows=inv.history.map(h=>({'時間':new Date(h.ts).toLocaleString('zh-TW'),'材料':matName(h.material)||'','機台':printerDisplay(h.printer)||'','類型':h.type==='consume'?'列印消耗':h.type==='stockin'?'備料入庫':'手動調整','數量(ml)':h.type==='consume'?-Math.round(h.ml||0):Math.round(h.ml||0),'備註':h.note||''}));
+    const hRows=inv.history.map(h=>{
+        const typeLabels = { consume:'列印消耗', stockin:'備料入庫', manual:'手動調整', aborted:'列印失敗', error:'列印錯誤' };
+        const isFail = h.type==='aborted' || h.type==='error';
+        return {
+            '時間':   new Date(h.ts).toLocaleString('zh-TW'),
+            '材料':   matName(h.material)||'',
+            '機台':   printerDisplay(h.printer)||'',
+            '類型':   typeLabels[h.type] || h.type,
+            '數量(ml)': isFail ? 0 : (h.type==='consume' ? -Math.round(h.ml||0) : Math.round(h.ml||0)),
+            '原始ml': Math.round(h.ml||0),
+            'API狀態': h.apiStatus || '',
+            '備註':   h.note||'',
+        };
+    });
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hRows),'消耗記錄');
     const fname=`庫存記錄_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb,fname);
