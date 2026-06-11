@@ -3,8 +3,8 @@
     "serial": "Form4-AluminumBowfin",
     "alias": "AluminumBowfin",
     "machine_type": "FORM-4-0",
-    "status": "UNKNOWN",
-    "print_name": "",
+    "status": "IDLE",
+    "print_name": "達理測試",
     "material": "FLGPCL05",
     "material_level": 60.0,
     "cartridges": [
@@ -18,13 +18,13 @@
         "is_empty": false
       }
     ],
-    "progress": 0,
-    "layer_now": 0,
-    "layer_total": 0,
-    "volume_ml": null,
-    "time_left": "-",
-    "last_pinged": "2026-06-10T07:59:54.952619-04:00",
-    "updated_at": "2026-06-10T21:26:24Z",
+    "progress": 53.9,
+    "layer_now": 2042,
+    "layer_total": 3785,
+    "volume_ml": 143.3420361771926,
+    "time_left": "3h 9m",
+    "last_pinged": "2026-06-10T21:13:30.087799-04:00",
+    "updated_at": "2026-06-11T01:15:00Z",
     "last_completed_print": {
       "guid": "0ba5bc0b-4934-4624-a4bb-e008d26e18d8",
       "material": "Clear V5",
@@ -67,7 +67,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-06-03T22:20:43.862977-04:00",
-    "updated_at": "2026-06-10T21:26:24Z",
+    "updated_at": "2026-06-11T01:15:00Z",
     "last_completed_print": {
       "guid": "722bfabf-a01d-4675-afba-5106d4155776",
       "material": "Tough 2000 V2",
@@ -91,7 +91,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-05-28T07:59:43.924502-04:00",
-    "updated_at": "2026-06-10T21:26:24Z",
+    "updated_at": "2026-06-11T01:15:00Z",
     "last_completed_print": {
       "guid": "883a1bec-598f-40f3-92f8-c0a56f9e6b91",
       "material": "Nylon 12",
@@ -115,7 +115,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-10T21:26:24Z",
+    "updated_at": "2026-06-11T01:15:00Z",
     "last_completed_print": {
       "guid": "7bd7c604-a011-4eba-a73a-a5a9374b0292",
       "material": "Flexible 80A V1",
@@ -158,7 +158,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-10T21:26:24Z",
+    "updated_at": "2026-06-11T01:15:00Z",
     "last_completed_print": {
       "guid": "6143c037-4268-4f29-8068-65492806ed60",
       "material": "Grey V5",
@@ -171,18 +171,18 @@
     "serial": "CreativeDragon",
     "alias": "FORM-3-2",
     "machine_type": "FORM-3-2",
-    "status": "UNKNOWN",
+    "status": "IDLE",
     "print_name": "",
     "material": "FLELCL01",
-    "material_level": 83.3,
+    "material_level": 82.6,
     "cartridges": [
       {
         "slot": "SINGLE",
         "material": "FLELCL01",
         "initial_ml": 1000.0,
-        "dispensed_ml": 167.1,
-        "remaining_ml": 832.9,
-        "remaining_pct": 83.3,
+        "dispensed_ml": 174.0,
+        "remaining_ml": 826.0,
+        "remaining_pct": 82.6,
         "is_empty": false
       }
     ],
@@ -191,14 +191,14 @@
     "layer_total": 0,
     "volume_ml": null,
     "time_left": "-",
-    "last_pinged": "2026-06-10T09:29:59.233872-04:00",
-    "updated_at": "2026-06-10T21:26:24Z",
+    "last_pinged": "2026-06-10T21:13:47.573272-04:00",
+    "updated_at": "2026-06-11T01:15:00Z",
     "last_completed_print": {
-      "guid": "220d4c09-5032-4e0b-af08-208fe5b86b48",
+      "guid": "cefb246b-7d66-4899-bf3e-4292e09c3974",
       "material": "Flex 50A V1",
       "volume_ml": 36.44917334040013,
       "status": "FINISHED",
-      "finished": "2026-06-10T02:02:39-04:00"
+      "finished": "2026-06-10T10:24:21-04:00"
     }
   }
 ]
