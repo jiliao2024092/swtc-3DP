@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
+    inputs:
+      backfill:
+        description: '回填模式 (重跑所有 prints 寫紀錄但不扣材料)'
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -88,6 +93,7 @@ jobs:
         continue-on-error: true
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BACKFILL_MODE: ${{ inputs.backfill }}
         run: python3 process_printers.py
 
       - name: Check process result
