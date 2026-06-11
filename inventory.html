@@ -21,51 +21,44 @@
         .tab-btn.active { background:white;color:#1d4ed8;box-shadow:0 1px 4px rgba(0,0,0,0.1); }
         input[type=number]::-webkit-inner-spin-button { opacity:1; }
         .role-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px; }
+        details[open] .detail-chevron { transform: rotate(90deg); }
+        details summary::-webkit-details-marker { display: none; }
+        details summary::marker { content: ''; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 <div id="toast" class="toast hidden"></div>
 
 <!-- ══ 設定 / 角色選擇 Modal ══ -->
-<div id="settings-modal" class="modal-overlay hidden">
+<!-- ══ 登入畫面 ══════════════════════════════ -->
+<div id="login-screen" class="modal-overlay">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-2">
-            <div class="bg-slate-100 p-2.5 rounded-lg"><i data-lucide="settings-2" class="w-5 h-5 text-slate-600"></i></div>
-            <h2 class="text-xl font-bold text-gray-800">系統設定</h2>
+            <div class="bg-teal-100 p-2.5 rounded-lg"><i data-lucide="package" class="w-5 h-5 text-teal-600"></i></div>
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">材料庫存管理</h2>
+                <p class="text-xs text-gray-400">追蹤樹脂罐與備料</p>
+            </div>
         </div>
-        <p class="text-sm text-gray-500 mb-6">輸入 GitHub Token 後可新增/編輯/刪除，不輸入則為唯讀模式（業務查看）。</p>
-        <div class="space-y-4">
+        <p class="text-sm text-gray-500 mb-6">請使用您的帳號登入。</p>
+        <form id="login-form" class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">GitHub Personal Access Token（選填）</label>
-                <div class="relative">
-                    <input id="modal-token" type="password" placeholder="ghp_xxxxxxxxxxxx（留空為唯讀模式）"
-                        class="w-full p-3 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm font-mono">
-                    <button onclick="toggleTokenVis()" class="absolute right-3 top-3 text-gray-400 hover:text-gray-600">
-                        <i data-lucide="eye" id="eye-icon" class="w-4 h-4"></i>
-                    </button>
-                </div>
+                <label class="text-sm font-medium text-gray-700">電子郵件</label>
+                <input id="login-email" type="email" required autocomplete="email" placeholder="your@email.com"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm">
             </div>
-            <div class="grid grid-cols-2 gap-3 pt-1">
-                <button onclick="applySettings(false)" class="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer group">
-                    <i data-lucide="eye" class="w-6 h-6 text-gray-400 group-hover:text-blue-500"></i>
-                    <span class="text-sm font-medium text-gray-600 group-hover:text-blue-600">唯讀模式</span>
-                    <span class="text-xs text-gray-400">業務查看狀態</span>
-                </button>
-                <button onclick="applySettings(true)" class="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-green-300 hover:bg-green-50 transition-colors cursor-pointer group">
-                    <i data-lucide="pencil" class="w-6 h-6 text-gray-400 group-hover:text-green-500"></i>
-                    <span class="text-sm font-medium text-gray-600 group-hover:text-green-600">編輯模式</span>
-                    <span class="text-xs text-gray-400">工程師操作</span>
-                </button>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">密碼</label>
+                <input id="login-password" type="password" required autocomplete="current-password"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm">
             </div>
-        </div>
-        <div class="mt-4 bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
-            <p class="font-medium">如何取得 Token：</p>
-            <p>GitHub → Settings → Developer settings → Personal access tokens (classic) → 勾選 <strong>repo</strong></p>
-        </div>
+            <div id="login-error" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5"></div>
+            <button id="login-btn" type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">登入</button>
+        </form>
+        <p class="mt-6 text-xs text-gray-400 text-center">沒有帳號？請聯絡系統管理員。</p>
     </div>
 </div>
 
-<!-- ══ 編輯樹脂罐 Modal ══ -->
 <div id="cartridge-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
@@ -99,7 +92,7 @@
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-gray-700">數量（罐）</label>
-                <input type="number" id="stock-qty" min="0" step="0.1" value="1" placeholder="例：1.2 = 1.2罐 = 1200ml"
+                <input type="number" id="stock-qty" min="0" step="1" value="1" placeholder="例：1.2 = 1.2罐 = 1200ml"
                     class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 <p class="text-xs text-gray-400">1 罐 = 1000ml，可輸入小數（如 1.2 罐 = 1200ml）</p>
             </div>
@@ -136,8 +129,37 @@
     </div>
 </div>
 
+<!-- ══ 已停用材料 Modal ══════════════════════════ -->
+<div id="disabled-materials-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xl mx-4 max-h-screen overflow-y-auto">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-100 p-2.5 rounded-lg"><i data-lucide="eye-off" class="w-5 h-5 text-amber-600"></i></div>
+                <h2 class="text-xl font-bold">已停用材料</h2>
+            </div>
+            <button onclick="closeDisabledMaterialsModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+            <p class="font-semibold mb-1">💡 停用機制說明</p>
+            <ul class="list-disc list-inside ml-1 space-y-0.5">
+                <li>停用的材料不會在「庫存總覽」、「備料庫存」、「月度分析」中顯示</li>
+                <li>使用者刪除材料後會自動加入此清單</li>
+                <li>系統預設停用部分舊版本材料（如 V1.1 等）</li>
+                <li>「機台樹脂罐」頁仍會顯示（即時同步自 Formlabs API）</li>
+                <li>點下方「恢復顯示」可重新讓某個材料出現在統計中</li>
+            </ul>
+        </div>
+        <div class="space-y-2" id="disabled-modal-body">
+            <!-- 動態填充 -->
+        </div>
+        <div class="mt-6">
+            <button onclick="closeDisabledMaterialsModal()" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">關閉</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══ 主體 ══ -->
-<div class="p-4 md:p-8">
+<div id="main-app" class="hidden p-4 md:p-8">
 <div class="max-w-7xl mx-auto space-y-6">
 
     <!-- Header -->
@@ -148,9 +170,7 @@
                 <div class="flex items-center gap-3">
                     <h1 class="text-2xl font-bold text-gray-800">材料庫存管理</h1>
                     <span class="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">Form 4 / Form 4L</span>
-                    <span id="role-badge" class="role-badge bg-gray-100 text-gray-500">
-                        <i data-lucide="eye" class="w-3 h-3"></i> 唯讀
-                    </span>
+                    <span id="role-badge" class="role-badge"></span>
                 </div>
                 <p class="text-sm text-gray-500">追蹤機台樹脂罐 + 備料庫存，自動計算列印消耗。</p>
             </div>
@@ -159,15 +179,22 @@
             <a href="3DP-BK.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 px-3 py-2 rounded-md hover:bg-blue-50 transition-colors">
                 <i data-lucide="calendar-check" class="w-4 h-4"></i> 預約系統
             </a>
-            <div class="flex items-center gap-2 text-sm text-gray-400">
-                <i data-lucide="cloud" class="w-4 h-4"></i>
-                <span id="sync-status">連線中...</span>
-            </div>
-            <button onclick="loadAll()" title="重新整理" class="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
-                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            <button onclick="triggerSyncWorkflow()" title="觸發 GitHub workflow 重新同步消耗資料（會開新分頁）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-700 transition-colors">
+                <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> 觸發同步
             </button>
-            <button onclick="showSettingsModal()" title="設定" class="p-2 text-gray-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors">
-                <i data-lucide="settings-2" class="w-4 h-4"></i>
+            <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="reload-icon"></i> 重新載入
+            </button>
+            <div class="text-right mr-2">
+                <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
+                <p id="user-email" class="text-xs text-gray-400">—</p>
+            </div>
+            <div class="flex items-center gap-1 text-xs text-gray-400">
+                <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+                <span id="sync-status">同步中</span>
+            </div>
+            <button onclick="doSignOut()" title="登出" class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <i data-lucide="log-out" class="w-4 h-4"></i>
             </button>
         </div>
     </div>
@@ -239,6 +266,9 @@
                 </select>
                 <input type="text" id="stock-filter-name" oninput="renderStockTable()" placeholder="搜尋材料名稱..." class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white w-40">
                 <button onclick="resetStockFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
+                <button data-editor-only onclick="showDisabledMaterialsModal()" class="ml-auto text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1 px-2 py-1 rounded border border-gray-200 hover:border-amber-400">
+                    <i data-lucide="eye-off" class="w-3.5 h-3.5"></i> 已停用材料 (<span id="disabled-count">0</span>)
+                </button>
             </div>
             <div id="stock-table-wrap" class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
@@ -247,7 +277,7 @@
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">罐數<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">估計剩餘(ml)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right w-32">安全庫存(罐)</th>
+                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存(罐)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium w-40">備註</th>
                             <th class="p-3 border-b font-medium">最後更新</th>
@@ -277,6 +307,7 @@
                     <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
                         <option value="">全部類型</option>
                         <option value="consume">列印消耗</option>
+                        <option value="aborted">列印失敗/中止</option>
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
@@ -335,35 +366,76 @@
                     <div id="pie-legend" class="space-y-2"></div>
                 </div>
             </div>
-            <div id="monthly-content"></div>
+
+            <!-- 月度趨勢圖 -->
+            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="trend-title" class="text-sm font-semibold text-gray-700">月度消耗趨勢</h3>
+                    <div class="flex items-center gap-1">
+                        <button onclick="trendPrevYear()" title="前一年" class="p-1.5 border border-gray-300 hover:bg-gray-50 rounded-md text-gray-500">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="trendNextYear()" title="後一年" class="p-1.5 border border-gray-300 hover:bg-gray-50 rounded-md text-gray-500">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                        <div class="ml-2 inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                            <button onclick="setTrendType('line')" id="trend-line-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">折線圖</button>
+                            <button onclick="setTrendType('bar')" id="trend-bar-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">長條圖</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="position:relative; height:300px;">
+                    <canvas id="monthly-trend"></canvas>
+                </div>
+                <p id="trend-empty" class="text-center text-gray-400 text-sm py-8 hidden">本年度尚無消耗紀錄</p>
+            </div>
+
+            <!-- 詳細統計（可折疊）-->
+            <details class="border border-gray-200 rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 font-medium text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span id="detail-title">詳細統計（當年每月各材料）</span>
+                </summary>
+                <div id="monthly-content" class="p-4 border-t border-gray-100"></div>
+            </details>
         </div>
     </div>
 
 </div>
 </div>
 
-<script>
+<script type="module">
 // ══ 設定 ══
-const GITHUB_OWNER   = 'jiliao2024092';
-const GITHUB_REPO    = 'swtc-3DP';
-const INVENTORY_FILE = 'inventory.json';
-const TOKEN_KEY      = 'gh_3dp_token';
 const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 const DEFAULT_CARTRIDGE_ML = 1000;
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
+const GITHUB_OWNER   = 'jiliao2024092';
+const GITHUB_REPO    = 'swtc-3DP';
+// printer-status.json 仍從 GitHub raw 讀（公開即時資料，不需 token）
 
 // 預設安全庫存（ml）
 const DEFAULT_SAFETY = 1000;
 
+// 預設停用的舊版本材料（除非使用者主動恢復顯示）
+// 使用者要求不抓取以下材料
+const DEFAULT_DISABLED_NAMES = [
+    'Durable V2.1',
+    'Tough 1500 V1.1', 'FLTO1501',
+    'Tough 2000 V1', 'Tough 2000 V1.1', 'FLTO2001',
+    'Open Material V1',
+    'Flexible 80A V1', 'FLFL8001',
+    'Rigid 4000 V1',  // 已被 FLRG4001 取代
+];
+
 let inv = {
-    cartridges: {},   // { printerAlias: [ {slot, material, remaining_ml, updated_at, updated_by}, ...] }
-    stock: {},        // { material: { bottles, total_ml, safety_ml, updated_at, updated_by } }
-    history: [],      // [ {id, ts, type:'consume'|'stockin'|'manual', material, printer, ml, note} ]
-    safety: {},       // { material: safety_ml }
-    last_processed_prints: []  // 已處理的 print_run guid，避免重複扣除
+    cartridges: {},
+    stock: {},
+    history: [],
+    safety: {},
+    last_processed_prints: [],
+    disabled_materials: [],  // 使用者主動停用的材料代碼
+    disabled_overrides: []   // 使用者覆寫「預設停用」的清單（讓系統預設停用的材料重新顯示）
 };
-let fileSHA = '';
-let isSaving = false;
 let currentTab = 'overview';
 let historyPage = 1;
 const HISTORY_PAGE_SIZE = 20;
@@ -372,91 +444,200 @@ let isEditor = false;
 let stockSortField='material', stockSortDir='asc';
 let histSortField='ts', histSortDir='desc';
 
-// ══ Token / 角色 ══
-function getToken() { return localStorage.getItem(TOKEN_KEY)||''; }
-function showSettingsModal() {
-    document.getElementById('settings-modal').classList.remove('hidden');
-    document.getElementById('modal-token').value = getToken();
-    lucide.createIcons();
-}
-function toggleTokenVis() {
-    const i=document.getElementById('modal-token');
-    const ic=document.getElementById('eye-icon');
-    if(i.type==='password'){i.type='text';ic.setAttribute('data-lucide','eye-off');}
-    else{i.type='password';ic.setAttribute('data-lucide','eye');}
-    lucide.createIcons();
-}
-function applySettings(wantEdit) {
-    const token = document.getElementById('modal-token').value.trim();
-    if(wantEdit){
-        if(!token){ showToast('編輯模式需要輸入 Token','error'); return; }
-        if(!token.startsWith('ghp_')&&!token.startsWith('github_pat_')){ showToast('Token 格式不正確','error'); return; }
-        localStorage.setItem(TOKEN_KEY, token);
-        isEditor = true;
+// ══ Firebase 初始化 ══
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+
+const firebaseConfig = {
+    apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
+    authDomain: "swtc-3dp-poc.firebaseapp.com",
+    projectId: "swtc-3dp-poc",
+    storageBucket: "swtc-3dp-poc.firebasestorage.app",
+    messagingSenderId: "1074210451221",
+    appId: "1:1074210451221:web:30e84a3f501e90e612831c"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let currentUser = null;          // {uid, email, displayName, role}
+let unsubscribeInv = null;
+let unsubscribeHist = null;
+
+// ══ Auth 監聽 ══
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        try {
+            const userRef = doc(db, 'users', user.uid);
+            const { getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js');
+            const snap = await getDoc(userRef);
+            let role, displayName;
+            if (!snap.exists()) {
+                role = (user.email === 'jiliao@swtc.com') ? 'admin' : 'viewer';
+                displayName = user.email.split('@')[0];
+                await setDoc(userRef, { email: user.email, displayName, role, createdAt: serverTimestamp() });
+            } else {
+                const d = snap.data();
+                role = d.role || 'viewer';
+                displayName = d.displayName || user.email.split('@')[0];
+            }
+            currentUser = { uid: user.uid, email: user.email, displayName, role };
+            isEditor = (role === 'admin' || role === 'editor');
+            showApp();
+            subscribeAll();
+        } catch (err) {
+            showLoginError('讀取使用者資料失敗：' + err.message);
+            await signOut(auth);
+        }
     } else {
-        isEditor = false;
+        currentUser = null; isEditor = false;
+        if (unsubscribeInv)  { unsubscribeInv();  unsubscribeInv  = null; }
+        if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
+        showLogin();
     }
-    document.getElementById('settings-modal').classList.add('hidden');
+});
+
+// ══ 登入流程 ══
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true; btn.textContent = '登入中...';
+    hideLoginError();
+    try {
+        await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+        const msg = {
+            'auth/invalid-credential': '電子郵件或密碼錯誤',
+            'auth/invalid-email': '電子郵件格式錯誤',
+            'auth/user-disabled': '此帳號已停用',
+            'auth/too-many-requests': '嘗試次數過多，請稍後再試',
+        }[err.code] || ('登入失敗：' + err.message);
+        showLoginError(msg);
+        btn.disabled = false; btn.textContent = '登入';
+    }
+});
+
+window.doSignOut = async function() {
+    if (!confirm('確定要登出嗎？')) return;
+    await signOut(auth);
+};
+
+function showLogin() {
+    document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('main-app').classList.add('hidden');
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+    hideLoginError();
+    lucide.createIcons();
+}
+function showApp() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
     applyRoleUI();
-    loadAll();
+    lucide.createIcons();
 }
+function showLoginError(msg) {
+    const el = document.getElementById('login-error');
+    el.textContent = msg; el.classList.remove('hidden');
+}
+function hideLoginError() { document.getElementById('login-error').classList.add('hidden'); }
+
+// ══ 角色 UI ══
 function applyRoleUI() {
+    document.getElementById('user-name').textContent  = currentUser.displayName;
+    document.getElementById('user-email').textContent = currentUser.email;
     const badge = document.getElementById('role-badge');
-    if(isEditor){
-        badge.innerHTML = '<i data-lucide="pencil" class="w-3 h-3"></i> 編輯模式';
-        badge.className = 'role-badge bg-green-100 text-green-700';
-    } else {
-        badge.innerHTML = '<i data-lucide="eye" class="w-3 h-3"></i> 唯讀';
-        badge.className = 'role-badge bg-gray-100 text-gray-500';
-    }
-    // 唯讀模式：禁用所有編輯按鈕
+    const map = {
+        admin:  { label:'管理員', cls:'bg-red-100 text-red-700',     icon:'shield-alert' },
+        editor: { label:'編輯者', cls:'bg-green-100 text-green-700', icon:'pencil' },
+        viewer: { label:'查看者', cls:'bg-blue-100 text-blue-700',   icon:'eye' },
+    };
+    const r = map[currentUser.role] || map.viewer;
+    badge.className = 'role-badge ' + r.cls;
+    badge.innerHTML = `<i data-lucide="${r.icon}" class="w-3 h-3"></i> ${r.label}`;
     document.querySelectorAll('[data-editor-only]').forEach(el=>{
         el.style.display = isEditor ? '' : 'none';
     });
     lucide.createIcons();
-    renderAll();
 }
 
-// ══ GitHub API ══
-function ghHeaders() {
-    return {'Authorization':`token ${getToken()}`,'Content-Type':'application/json','Accept':'application/vnd.github+json'};
-}
-function ghURL(f) { return `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${f}`; }
+// ══ Firestore 即時訂閱 ══
+function subscribeAll() {
+    console.log('[subscribeAll] 開始訂閱，user:', currentUser?.email, 'role:', currentUser?.role);
+    if (unsubscribeInv)  unsubscribeInv();
+    if (unsubscribeHist) unsubscribeHist();
 
-async function loadAll() {
-    setSyncStatus('loading');
-    try {
-        let data, raw;
-        if(isEditor){
-            const res = await fetch(ghURL(INVENTORY_FILE),{headers:ghHeaders()});
-            if(res.status===401){setSyncStatus('error');showToast('Token 無效，請重新設定','error');setTimeout(()=>showSettingsModal(),1500);return;}
-            if(res.status===404){ inv=initEmptyInv(); fileSHA=''; setSyncStatus('ok'); renderAll(); return; }
-            if(!res.ok) throw new Error(`HTTP ${res.status}`);
-            const d=await res.json();
-            fileSHA=d.sha;
-            raw=atob(d.content.replace(/\n/g,''));
-            const bytes=Uint8Array.from(raw,c=>c.charCodeAt(0));
-            inv=JSON.parse(new TextDecoder('utf-8').decode(bytes));
-        } else {
-            // 唯讀：用公開 raw URL，不需 token
-            const url=`https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/${INVENTORY_FILE}?t=${Date.now()}`;
-            const res=await fetch(url);
-            if(res.status===404){ inv=initEmptyInv(); setSyncStatus('ok'); renderAll(); return; }
-            if(!res.ok) throw new Error(`HTTP ${res.status}`);
-            inv=await res.json();
+    // 訂閱 inventory/main（單一文件）
+    console.log('[subscribeAll] 訂閱 inventory/main...');
+    unsubscribeInv = onSnapshot(doc(db, 'inventory', 'main'), (snap) => {
+        console.log('[inventory snapshot] 觸發，exists:', snap.exists());
+        try {
+            if (snap.exists()) {
+                const d = snap.data();
+                console.log('[inventory snapshot] 資料欄位:', Object.keys(d));
+                inv.cartridges = d.cartridges || {};
+                inv.stock      = d.stock      || {};
+                inv.safety     = d.safety     || {};
+                inv.last_processed_prints = d.last_processed_prints || [];
+                inv.disabled_materials    = d.disabled_materials    || [];
+                inv.disabled_overrides    = d.disabled_overrides    || [];
+            } else {
+                // 文件不存在（首次使用或還沒匯入）
+                console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
+            }
+            mergeMaterialAliases();
+            // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
+            autoSyncCartridges().catch(e => console.warn('autoSyncCartridges 失敗:', e.message));
+            setSyncStatus('ok');
+            console.log('[inventory snapshot] 呼叫 renderAll()');
+            renderAll();
+            console.log('[inventory snapshot] renderAll 完成');
+        } catch (err) {
+            console.error('[inventory snapshot] 渲染錯誤:', err);
+            setSyncStatus('error');
+            showToast('渲染失敗：' + err.message, 'error');
+            try { renderAll(); } catch(_) {}
         }
-        inv.cartridges   = inv.cartridges   || {};
-        inv.stock        = inv.stock        || {};
-        inv.history      = inv.history      || [];
-        inv.safety       = inv.safety       || {};
-        inv.last_processed_prints = inv.last_processed_prints || [];
-        // 合併重複材料名稱（如 FLTO2002 → Tough 2000 V2）
-        mergeMaterialAliases();
-        // 從 printer-status.json 自動同步樹脂罐資料（僅編輯模式會寫回）
-        await autoSyncCartridges();
-        setSyncStatus('ok');
-        renderAll();
-    } catch(err) { setSyncStatus('error'); showToast('載入失敗：'+err.message,'error'); }
+    }, (err) => {
+        console.error('[inventory snapshot] 訂閱失敗:', err.code, err.message);
+        setSyncStatus('error');
+        if (err.code === 'permission-denied') {
+            showToast('權限被拒絕：請確認 Firestore Security Rules 已部署', 'error');
+        } else {
+            showToast('訂閱庫存失敗：' + err.message, 'error');
+        }
+    });
+
+    // 訂閱 inventory_history（消耗紀錄 collection）
+    console.log('[subscribeAll] 訂閱 inventory_history...');
+    const q = query(collection(db, 'inventory_history'), orderBy('tsDate', 'desc'));
+    unsubscribeHist = onSnapshot(q, (snap) => {
+        console.log('[history snapshot] 觸發，筆數:', snap.docs.length);
+        try {
+            inv.history = snap.docs.map(d => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
+                    type: data.type, material: data.material, printer: data.printer,
+                    ml: data.ml, note: data.note, print_guid: data.print_guid,
+                    apiStatus: data.apiStatus,
+                };
+            });
+            renderHistory();
+        } catch (err) {
+            console.error('[history snapshot] 渲染錯誤:', err);
+        }
+    }, (err) => {
+        console.error('[history snapshot] 訂閱失敗:', err.code, err.message);
+        if (err.code === 'failed-precondition') {
+            console.warn('需要 Firestore index（tsDate desc），請看錯誤訊息中的連結建立 index');
+        }
+    });
 }
 
 // ══ 材料代碼 → 顯示名稱對照 ══
@@ -470,7 +651,7 @@ const CODE_TO_NAME = {
 };
 const NAME_TO_CODE_FE = {};
 Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
-NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';
+NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
 
 function matName(code) {
@@ -492,6 +673,8 @@ function printerDisplay(name) {
     for(const [k,v] of Object.entries(PRINTER_DISPLAY)){ if(name.includes(k)) return v; }
     return name;
 }
+
+// ══ 合併重複材料名稱（如 FLTO2002 → Tough 2000 V2）══
 function mergeMaterialAliases() {
     let changed = false;
     // 合併備料
@@ -516,8 +699,8 @@ function mergeMaterialAliases() {
             changed = true;
         }
     });
-    // 合併歷史材料名稱
-    inv.history.forEach(h=>{
+    // 合併歷史材料名稱（注意：v2 的 inv.history 由 onSnapshot 維護，此處改名不會持久化）
+    (inv.history || []).forEach(h=>{
         const canon = matCode(h.material);
         if(canon !== h.material){ h.material = canon; changed = true; }
     });
@@ -529,95 +712,119 @@ function mergeMaterialAliases() {
     return changed;
 }
 
-// ══ 自動從 printer-status.json 抓取樹脂罐資料 ══
-async function autoSyncCartridges() {
+// ══ 寫入：inventory/main ══
+let isSaving = false;
+async function saveAll(reason) {
+    if (!isEditor) { showToast('唯讀模式無法修改', 'error'); return; }
+    if (isSaving) return;
+    isSaving = true; setSyncStatus('saving');
     try {
-        const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/printer-status.json?t=${Date.now()}`;
-        const res = await fetch(url);
-        if(!res.ok) return;
-        const printers = await res.json();
-        if(!Array.isArray(printers)) return;
+        await setDoc(doc(db, 'inventory', 'main'), {
+            cartridges: inv.cartridges || {},
+            stock:      inv.stock      || {},
+            safety:     inv.safety     || {},
+            last_processed_prints: inv.last_processed_prints || [],
+            disabled_materials: inv.disabled_materials || [],
+            disabled_overrides: inv.disabled_overrides || [],
+            updatedAt:      serverTimestamp(),
+            updatedBy:      currentUser.uid,
+            updatedByEmail: currentUser.email,
+            lastReason:     reason || '',
+        }, { merge: true });
+        setSyncStatus('ok');
+        showToast('✓ 已儲存','success');
+    } catch (err) {
+        setSyncStatus('error');
+        showToast('儲存失敗：' + err.message, 'error');
+    } finally { isSaving = false; }
+}
 
-        let changed = false;
-        printers.forEach(p => {
-            const alias = p.alias || '';
-            if(!TRACKED_PRINTERS.some(t => alias.includes(t))) return;
-            const apiCartridges = p.cartridges || [];
-            if(!apiCartridges.length) return;
-
-            // 找到對應的追蹤名稱
-            const key = TRACKED_PRINTERS.find(t => alias.includes(t)) || alias;
-            const existing = inv.cartridges[key] || [];
-
-            apiCartridges.forEach(ac => {
-                // 沒有材料名稱也沒有容量，完全沒資料才跳過
-                if(!ac.material && ac.remaining_ml == null) return;
-                // 找現有同 slot 的樹脂罐
-                let slot = existing.find(s => s.slot === ac.slot);
-                if(!slot) {
-                    // 新增（API 自動帶入）。若 API 無容量，remaining_ml 保持 null 等待手動補登
-                    slot = {
-                        slot: ac.slot || 'FRONT',
-                        material: ac.material || '',
-                        remaining_ml: ac.remaining_ml,   // 可能為 null（API 未提供容量）
-                        initial_ml: ac.initial_ml || DEFAULT_CARTRIDGE_ML,
-                        updated_at: new Date().toISOString(),
-                        updated_by: 'auto'
-                    };
-                    existing.push(slot);
-                    changed = true;
-                } else if(slot.updated_by !== 'manual' || slot.material !== ac.material) {
-                    // 材料換了代表換了新罐，直接覆蓋
-                    if(slot.material !== ac.material) {
-                        slot.material = ac.material || slot.material;
-                        if(ac.remaining_ml != null) slot.remaining_ml = ac.remaining_ml;
-                        slot.initial_ml = ac.initial_ml || DEFAULT_CARTRIDGE_ML;
-                        slot.updated_at = new Date().toISOString();
-                        slot.updated_by = 'auto';
-                        changed = true;
-                    } else if(slot.updated_by === 'auto' && ac.remaining_ml != null) {
-                        // 同材料且原本就是自動的，API 有提供容量才更新剩餘量
-                        if(slot.remaining_ml !== ac.remaining_ml) {
-                            slot.remaining_ml = ac.remaining_ml;
-                            slot.initial_ml = ac.initial_ml || slot.initial_ml;
-                            slot.updated_at = new Date().toISOString();
-                            changed = true;
-                        }
-                    }
-                }
-            });
-            inv.cartridges[key] = existing;
+// ══ 寫入：歷史紀錄（addDoc）══
+async function persistHistoryEntry(entry) {
+    if (!isEditor) return;
+    try {
+        const ts = entry.ts || new Date().toISOString();
+        await addDoc(collection(db,'inventory_history'), {
+            ts,
+            tsDate: Timestamp.fromDate(new Date(ts)),
+            type: entry.type || 'manual',
+            material: entry.material || '',
+            printer: entry.printer || '',
+            ml: entry.ml || 0,
+            note: entry.note || '',
+            print_guid: entry.print_guid || null,
+            createdBy: currentUser.uid,
+            createdByEmail: currentUser.email,
         });
-
-        if(changed && isEditor) {
-            await saveAll('自動同步樹脂罐資料（API）');
-        }
-    } catch(err) {
-        console.warn('autoSyncCartridges failed:', err);
+    } catch (err) {
+        showToast('紀錄失敗：' + err.message, 'error');
     }
 }
 
-async function saveAll(commitMsg) {
-    if(!isEditor){ showToast('唯讀模式無法修改，請在設定切換為編輯模式','error'); return; }
-    if(isSaving) return;
-    isSaving=true; setSyncStatus('saving');
-    try {
-        const jsonStr=JSON.stringify(inv,null,2);
-        const encoded=new TextEncoder().encode(jsonStr);
-        const b64=btoa(String.fromCharCode(...encoded));
-        const body={message:commitMsg||'更新庫存資料',content:b64};
-        if(fileSHA) body.sha=fileSHA;
-        const res=await fetch(ghURL(INVENTORY_FILE),{method:'PUT',headers:ghHeaders(),body:JSON.stringify(body)});
-        if(!res.ok){const e=await res.json();throw new Error(e.message||`HTTP ${res.status}`);}
-        const data=await res.json();
-        fileSHA=data.content.sha;
-        setSyncStatus('ok'); showToast('✓ 已儲存至 GitHub','success');
-    } catch(err){ setSyncStatus('error'); showToast('儲存失敗：'+err.message,'error'); }
-    finally { isSaving=false; }
+// 沿用舊有 addHistory 介面（同步呼叫），但內部改為非同步寫 Firestore
+// 注意：unshift inv.history 由 onSnapshot 自動處理，這裡只做寫入
+function addHistory(entry) {
+    persistHistoryEntry(entry);
 }
 
 function initEmptyInv() {
     return { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[] };
+}
+
+// loadAll 在這個版本由 onSnapshot 取代，但保留為手動觸發 fallback
+async function loadAll() {
+    // onSnapshot 已自動同步，此函式僅作為手動重新渲染用
+    renderAll();
+    showToast('資料已是最新（即時同步中）', 'success');
+}
+
+// ══ 從 GitHub printer-status.json 自動同步樹脂罐資料 ══
+async function autoSyncCartridges() {
+    try {
+        const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/printer-status.json?t=${Date.now()}`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const printers = await res.json();
+        if (!Array.isArray(printers)) return;
+
+        let changed = false;
+        printers.forEach(p => {
+            if (!TRACKED_PRINTERS.some(name => (p.alias||'').includes(name))) return;
+            const key = TRACKED_PRINTERS.find(n => (p.alias||'').includes(n));
+            if (!key) return;
+            const apiCartridges = p.cartridges || [];
+            if (!apiCartridges.length) return;
+
+            const old = inv.cartridges[key] || [];
+            const merged = apiCartridges.map(c => {
+                const existing = old.find(o => o.slot === c.slot);
+                return {
+                    slot: c.slot,
+                    material: c.material || existing?.material || '',
+                    remaining_ml: c.remaining_ml != null ? c.remaining_ml : (existing?.remaining_ml || 0),
+                    initial_ml: existing?.initial_ml || DEFAULT_CARTRIDGE_ML,
+                    updated_at: c.updated_at || new Date().toISOString(),
+                    source: 'api',
+                };
+            });
+
+            // 與舊資料比對，只有真的有改變才標記
+            const oldStr = JSON.stringify(old.map(o=>({slot:o.slot,material:o.material,remaining_ml:o.remaining_ml})));
+            const newStr = JSON.stringify(merged.map(o=>({slot:o.slot,material:o.material,remaining_ml:o.remaining_ml})));
+            if (oldStr !== newStr) {
+                inv.cartridges[key] = merged;
+                changed = true;
+            }
+        });
+
+        // 只有 editor 且資料有變才寫回 Firestore
+        if (changed && isEditor) {
+            await saveAll('自動同步樹脂罐（從 Formlabs API）');
+        }
+    } catch (err) {
+        // 靜默失敗，不阻斷主要流程
+        console.warn('autoSyncCartridges 失敗:', err.message);
+    }
 }
 
 // ══ UI 工具 ══
@@ -645,6 +852,20 @@ function switchTab(tab) {
 }
 
 // ══ 計算函式 ══
+// 判斷材料是否被停用（從 UI 與抓取流程隱藏）
+function isDisabled(material) {
+    if (!material) return false;
+    // 使用者明確恢復顯示的，永遠不算停用
+    const overrides = new Set(inv.disabled_overrides || []);
+    if (overrides.has(material)) return false;
+    // 使用者主動停用
+    const userDisabled = new Set(inv.disabled_materials || []);
+    if (userDisabled.has(material)) return true;
+    // 預設停用清單：比對代碼或顯示名稱
+    const name = matName(material);
+    return DEFAULT_DISABLED_NAMES.includes(material) || DEFAULT_DISABLED_NAMES.includes(name);
+}
+
 function getAllMaterials() {
     const mats=new Set();
     // 從樹脂罐
@@ -653,7 +874,8 @@ function getAllMaterials() {
     Object.keys(inv.stock).forEach(m=>mats.add(m));
     // 從歷史
     inv.history.forEach(h=>{ if(h.material) mats.add(h.material); });
-    return [...mats].sort();
+    // 過濾掉停用的材料
+    return [...mats].filter(m => !isDisabled(m)).sort();
 }
 
 function getCartridgeTotal(material) {
@@ -698,8 +920,21 @@ function renderAlerts() {
 // ══ 總覽 ══
 function renderOverview() {
     const grid=document.getElementById('overview-grid');
-    const mats=getAllMaterials();
+    let mats=getAllMaterials();
     if(!mats.length){ grid.innerHTML='<div class="col-span-full text-center text-gray-400 py-8">尚無庫存資料，請先在「機台樹脂罐」頁面手動輸入樹脂罐資訊。</div>'; return; }
+    // 排序：需叫料優先（依嚴重程度：總庫存缺口大者在前），其次依備料庫存高到低
+    mats = mats.slice().sort((a,b)=>{
+        const aLow = isLowStock(a), bLow = isLowStock(b);
+        if(aLow !== bLow) return aLow ? -1 : 1;   // 需叫料在前
+        if(aLow && bLow){
+            // 兩者都缺料：缺口比例越大越前面
+            const aGap = getSafetyStock(a) - getTotalInventory(a);
+            const bGap = getSafetyStock(b) - getTotalInventory(b);
+            if(aGap !== bGap) return bGap - aGap;
+        }
+        // 都不缺料 或 缺口同：備料庫存高的在前
+        return getStockTotal(b) - getStockTotal(a);
+    });
     grid.innerHTML='';
     mats.forEach(m=>{
         const total=getTotalInventory(m);
@@ -890,7 +1125,7 @@ function resetStockFilters(){
     renderStockTable();
 }
 function updateStockSortIndicators(){
-    ['material','bottles','total_ml','status'].forEach(f=>{
+    ['material','bottles','total_ml','safety','status'].forEach(f=>{
         const el=document.getElementById('stock-sort-'+f);
         if(!el) return;
         if(f===stockSortField){
@@ -921,6 +1156,7 @@ function renderStockTable() {
         if(stockSortField==='material'){ ka=matName(a); kb=matName(b); }
         else if(stockSortField==='bottles'){ ka=(inv.stock[a]?.bottles||0); kb=(inv.stock[b]?.bottles||0); }
         else if(stockSortField==='total_ml'){ ka=(inv.stock[a]?.total_ml||0); kb=(inv.stock[b]?.total_ml||0); }
+        else if(stockSortField==='safety'){ ka=getSafetyStock(a); kb=getSafetyStock(b); }
         else if(stockSortField==='status'){ ka=isLowStock(a)?0:1; kb=isLowStock(b)?0:1; }
         const dir = stockSortDir==='asc'?1:-1;
         if(ka<kb) return -1*dir;
@@ -941,14 +1177,14 @@ function renderStockTable() {
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="0.1" value="${bottles}" ${isEditor?'':'disabled'}
+                <input type="number" min="0" step="1" value="${bottles}" ${isEditor?'':'disabled'}
                     onchange="updateStockBottles('${me}', this.value)"
                     class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
                 <span class="text-xs text-gray-400 ml-1">罐</span>
             </td>
             <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${Math.round(s.total_ml||0)}</td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="0.1" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" ${isEditor?'':'disabled'}
+                <input type="number" min="0" step="1" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" ${isEditor?'':'disabled'}
                     onchange="updateSafety('${me}', this.value)"
                     class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
                 <span class="text-xs text-gray-400 ml-1">罐</span>
@@ -961,7 +1197,6 @@ function renderStockTable() {
             </td>
             <td class="p-3 text-xs text-gray-400">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
-                <span class="ml-1 ${s.updated_by==='auto'?'text-blue-400':'text-gray-400'}">${s.updated_by==='auto'?'🤖':'✏️'}</span>
             </td>
             <td class="p-3 text-center">
                 ${isEditor?`<button onclick="deleteStock('${me}')" title="刪除此材料"
@@ -1017,8 +1252,8 @@ async function updateStockNote(material, value) {
 
 async function deleteStock(material) {
     const onMachine = getCartridgeTotal(material) > 0;
-    let msg = `確定要刪除「${matName(material)}」嗎？`;
-    if(onMachine) msg += `\n\n注意：此材料目前仍裝載在機台樹脂罐上，刪除後僅清除備料與安全庫存設定，機台樹脂罐資料不受影響。`;
+    let msg = `確定要刪除「${matName(material)}」嗎？\n\n刪除後此材料會從備料庫存、庫存總覽、月度分析中完全隱藏，且不會被消耗紀錄自動加回。`;
+    if(onMachine) msg += `\n\n⚠️ 此材料目前裝載在機台樹脂罐上，刪除後機台樹脂罐頁仍會顯示（即時同步自 Formlabs API）。如要徹底隱藏，請先換掉機台上的樹脂罐。`;
     if(!confirm(msg)) return;
 
     // 清除備料、安全庫存
@@ -1026,10 +1261,15 @@ async function deleteStock(material) {
     delete inv.safety[material];
     // 清除與此材料相關的「備料/手動」歷史（保留列印消耗紀錄供月度分析）
     inv.history = inv.history.filter(h => !(h.material===material && (h.type==='stockin'||h.type==='manual')));
+    // 加入黑名單，這樣即使後續 history/cartridges 還有相關紀錄，UI 也不會再撈進來
+    if (!inv.disabled_materials) inv.disabled_materials = [];
+    if (!inv.disabled_materials.includes(material)) {
+        inv.disabled_materials.push(material);
+    }
 
     renderAll();
-    await saveAll(`刪除備料：${matName(material)}`);
-    showToast(`已刪除 ${matName(material)} 的備料資料`,'success');
+    await saveAll(`刪除並停用：${matName(material)}`);
+    showToast(`已刪除 ${matName(material)}（已加入停用清單）`,'success');
 }
 
 
@@ -1093,7 +1333,7 @@ function showSafetyModal() {
         row.className='flex items-center gap-3';
         row.innerHTML=`
             <label class="flex-1 text-sm font-medium text-gray-700">${matName(m)}</label>
-            <input type="number" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" min="0" step="0.1" data-material="${m}"
+            <input type="number" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" min="0" step="1" data-material="${m}"
                 class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> 罐
         `;
         body.appendChild(row);
@@ -1111,9 +1351,67 @@ async function saveSafetyStock() {
     await saveAll('更新安全庫存設定');
 }
 
-// ══ 歷史記錄 ══
-function addHistory(entry) {
-    inv.history.unshift({id:Date.now(),...entry,ts:new Date().toISOString()});
+// ══ 已停用材料管理 ══
+function getAllDisabledMaterials() {
+    // 結合：使用者停用 + 預設停用
+    // 但只列出「實際出現在資料中」的（避免列出根本沒人用過的預設材料）
+    const userDisabled = new Set(inv.disabled_materials || []);
+    const inDataAndDisabled = new Set();
+    const collect = (m) => {
+        if (m && isDisabled(m)) inDataAndDisabled.add(m);
+    };
+    Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>collect(s.material)));
+    Object.keys(inv.stock).forEach(collect);
+    inv.history.forEach(h=>collect(h.material));
+    // 也加上使用者主動停用但目前沒資料的（避免它消失無法管理）
+    userDisabled.forEach(m => inDataAndDisabled.add(m));
+    return [...inDataAndDisabled].sort();
+}
+
+function showDisabledMaterialsModal() {
+    const body = document.getElementById('disabled-modal-body');
+    const list = getAllDisabledMaterials();
+    if (!list.length) {
+        body.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">目前沒有停用的材料</p>';
+    } else {
+        body.innerHTML = list.map(m => {
+            const userBlocked = (inv.disabled_materials || []).includes(m);
+            const defaultBlocked = DEFAULT_DISABLED_NAMES.includes(m) || DEFAULT_DISABLED_NAMES.includes(matName(m));
+            const me = m.replace(/'/g, "\\'");
+            return `
+                <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                    <div>
+                        <p class="text-sm font-medium text-gray-800">${matName(m)}</p>
+                        <p class="text-xs text-gray-400">${m}${userBlocked && defaultBlocked ? '（系統 + 手動）' : userBlocked ? '（手動停用）' : '（系統預設停用）'}</p>
+                    </div>
+                    <button onclick="restoreMaterial('${me}')" class="text-xs px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-md flex items-center gap-1">
+                        <i data-lucide="eye" class="w-3.5 h-3.5"></i> 恢復顯示
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+    document.getElementById('disabled-materials-modal').classList.remove('hidden');
+    lucide.createIcons();
+}
+
+function closeDisabledMaterialsModal() {
+    document.getElementById('disabled-materials-modal').classList.add('hidden');
+}
+
+async function restoreMaterial(material) {
+    if (!confirm(`恢復顯示「${matName(material)}」？\n\n此材料將重新出現在備料庫存、庫存總覽中。`)) return;
+    // 從使用者停用清單移除
+    inv.disabled_materials = (inv.disabled_materials || []).filter(m => m !== material);
+    // 如果是預設停用的，也加進「使用者覆寫白名單」inv.disabled_overrides
+    if (!inv.disabled_overrides) inv.disabled_overrides = [];
+    if (!inv.disabled_overrides.includes(material)) {
+        inv.disabled_overrides.push(material);
+    }
+    showToast(`已恢復「${matName(material)}」`, 'success');
+    closeDisabledMaterialsModal();
+    renderAll();
+    await saveAll(`恢復材料：${matName(material)}`);
 }
 
 // ══ 消耗記錄排序/篩選 ══
@@ -1188,16 +1486,30 @@ function renderHistory() {
     if(!filtered.length){ tbody.innerHTML='<tr><td colspan="6" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
-        const typeMap={consume:{label:'列印消耗',color:'text-red-600 bg-red-50'},stockin:{label:'備料入庫',color:'text-green-700 bg-green-50'},manual:{label:'手動調整',color:'text-blue-600 bg-blue-50'}};
+        const typeMap={
+            consume:{label:'列印消耗', color:'text-red-600 bg-red-50'},
+            stockin:{label:'備料入庫', color:'text-green-700 bg-green-50'},
+            manual: {label:'手動調整', color:'text-blue-600 bg-blue-50'},
+            aborted:{label:'列印失敗', color:'text-orange-700 bg-orange-50 border border-orange-200'},
+            error:  {label:'列印錯誤', color:'text-orange-700 bg-orange-50 border border-orange-200'},
+        };
         const t=typeMap[h.type]||{label:h.type,color:'bg-gray-100 text-gray-600'};
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
+        // 失敗/錯誤的列印不算進實際消耗，ml 顯示為灰色括號標註
+        const isFail = h.type==='aborted' || h.type==='error';
+        const mlCell = isFail
+            ? `<span class="text-orange-500">⚠</span> <span class="text-gray-400 text-xs">(${Math.abs(Math.round(h.ml||0))} ml 未計)</span>`
+            : `${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml`;
+        const mlColor = isFail ? '' : (h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':'');
+        // 失敗紀錄附 apiStatus
+        const apiStatusHint = (isFail && h.apiStatus) ? ` <span class="text-xs text-orange-400">[${h.apiStatus}]</span>` : '';
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
             <td class="p-3 text-sm text-gray-600">${printerDisplay(h.printer)||'—'}</td>
-            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
-            <td class="p-3 text-right font-medium text-sm ${h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':''}">${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml</td>
+            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span>${apiStatusHint}</td>
+            <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
             <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
         `;
         tbody.appendChild(tr);
@@ -1280,7 +1592,124 @@ function renderMonthly() {
     html+='</tbody></table>';
     content.innerHTML=`<div class="overflow-x-auto">${html}</div>`;
 
+    // 更新詳細統計 summary 標題
+    const dt = document.getElementById('detail-title');
+    if (dt) dt.textContent = `詳細統計（${curYear}年 每月各材料消耗，點此展開）`;
+
     renderMonthlyPie();
+    renderMonthlyTrend();
+}
+
+// ══ 月度趨勢圖（折線/長條切換）══
+let monthlyTrendChart = null;
+let trendChartType = 'line';
+
+function setTrendType(t) {
+    trendChartType = t;
+    document.getElementById('trend-line-btn').className = 'px-3 py-1.5 transition-colors ' + (t==='line' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+    document.getElementById('trend-bar-btn').className  = 'px-3 py-1.5 transition-colors ' + (t==='bar'  ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+    renderMonthlyTrend();
+}
+
+function trendShiftYear(delta) {
+    const yearSel = document.getElementById('monthly-year');
+    const curYear = parseInt(yearSel.value);
+    const newYear = curYear + delta;
+    // 若 select 已有此選項就切換；沒有就新增（讓使用者可看「無資料的年份」也行）
+    let found = false;
+    for (const o of yearSel.options) {
+        if (parseInt(o.value) === newYear) { yearSel.value = newYear; found = true; break; }
+    }
+    if (!found) {
+        const opt = document.createElement('option');
+        opt.value = newYear; opt.textContent = newYear + '年';
+        // 插入到正確位置（年份由大到小）
+        let inserted = false;
+        for (let i = 0; i < yearSel.options.length; i++) {
+            if (parseInt(yearSel.options[i].value) < newYear) {
+                yearSel.insertBefore(opt, yearSel.options[i]);
+                inserted = true; break;
+            }
+        }
+        if (!inserted) yearSel.appendChild(opt);
+        yearSel.value = newYear;
+    }
+    renderMonthly();
+}
+
+function trendPrevYear() { trendShiftYear(-1); }
+function trendNextYear() { trendShiftYear(1); }
+
+function renderMonthlyTrend() {
+    const curYear = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const printerFilter = document.getElementById('monthly-printer').value;
+    const matchPrinter = h => !printerFilter || (h.printer||'').includes(printerFilter);
+
+    // 計算每月總消耗（type='consume' 且不在停用清單）
+    const monthlyTotals = Array.from({length:12}, (_,i) => {
+        const mo = i + 1;
+        return inv.history
+            .filter(h => h.type==='consume' && matchPrinter(h)
+                && new Date(h.ts).getFullYear() === curYear
+                && new Date(h.ts).getMonth() + 1 === mo
+                && !isDisabled(h.material))
+            .reduce((s, h) => s + (h.ml||0), 0);
+    });
+
+    const totalForYear = monthlyTotals.reduce((s,v)=>s+v, 0);
+    const printerLabel = printerFilter ? ` · ${printerFilter}` : '';
+    document.getElementById('trend-title').textContent = `${curYear}年 月度消耗趨勢${printerLabel}（年計 ${Math.round(totalForYear)} ml）`;
+
+    const empty = document.getElementById('trend-empty');
+    const canvas = document.getElementById('monthly-trend');
+    if (totalForYear === 0) {
+        canvas.style.display = 'none';
+        empty.classList.remove('hidden');
+        if (monthlyTrendChart) { monthlyTrendChart.destroy(); monthlyTrendChart = null; }
+        return;
+    }
+    canvas.style.display = '';
+    empty.classList.add('hidden');
+
+    const ctx = canvas.getContext('2d');
+    if (monthlyTrendChart) monthlyTrendChart.destroy();
+
+    monthlyTrendChart = new Chart(ctx, {
+        type: trendChartType,
+        data: {
+            labels: Array.from({length:12}, (_,i) => (i+1)+'月'),
+            datasets: [{
+                label: '當月總消耗 (ml)',
+                data: monthlyTotals.map(v => Math.round(v)),
+                borderColor: '#378ADD',
+                backgroundColor: trendChartType==='bar' ? '#85B7EB' : 'rgba(55,138,221,0.15)',
+                borderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                pointBackgroundColor: '#378ADD',
+                fill: trendChartType === 'line',
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => Math.round(c.raw) + ' ml' } }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: '消耗量 (ml)', color: '#6b7280' },
+                    ticks: { callback: v => v + ' ml' }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
 }
 
 function renderMonthlyPie() {
@@ -1358,7 +1787,20 @@ function exportInventoryExcel() {
     const ovRows=getAllMaterials().map(m=>({'材料':matName(m),'機台樹脂罐(ml)':Math.round(getCartridgeTotal(m)),'備料庫存(ml)':Math.round(getStockTotal(m)),'總庫存(ml)':Math.round(getTotalInventory(m)),'安全庫存(ml)':getSafetyStock(m),'狀態':isLowStock(m)?'需叫料':'充足'}));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovRows),'庫存總覽');
     // 歷史
-    const hRows=inv.history.map(h=>({'時間':new Date(h.ts).toLocaleString('zh-TW'),'材料':matName(h.material)||'','機台':printerDisplay(h.printer)||'','類型':h.type==='consume'?'列印消耗':h.type==='stockin'?'備料入庫':'手動調整','數量(ml)':h.type==='consume'?-Math.round(h.ml||0):Math.round(h.ml||0),'備註':h.note||''}));
+    const hRows=inv.history.map(h=>{
+        const typeLabels = { consume:'列印消耗', stockin:'備料入庫', manual:'手動調整', aborted:'列印失敗', error:'列印錯誤' };
+        const isFail = h.type==='aborted' || h.type==='error';
+        return {
+            '時間':   new Date(h.ts).toLocaleString('zh-TW'),
+            '材料':   matName(h.material)||'',
+            '機台':   printerDisplay(h.printer)||'',
+            '類型':   typeLabels[h.type] || h.type,
+            '數量(ml)': isFail ? 0 : (h.type==='consume' ? -Math.round(h.ml||0) : Math.round(h.ml||0)),
+            '原始ml': Math.round(h.ml||0),
+            'API狀態': h.apiStatus || '',
+            '備註':   h.note||'',
+        };
+    });
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hRows),'消耗記錄');
     const fname=`庫存記錄_${new Date().toISOString().slice(0,10)}.xlsx`;
     XLSX.writeFile(wb,fname);
@@ -1373,15 +1815,73 @@ function renderAll() {
     renderStockTable();
     if(currentTab==='history') renderHistory();
     if(currentTab==='monthly') renderMonthly();
+    // 更新「已停用材料」按鈕計數
+    const cnt = document.getElementById('disabled-count');
+    if (cnt) cnt.textContent = getAllDisabledMaterials().length;
     lucide.createIcons();
 }
 
+// ══ 重新載入資料（unsubscribe → subscribe 強制重拉）══
+function reloadData() {
+    const icon = document.getElementById('reload-icon');
+    if(icon) icon.style.animation = 'spin 0.7s linear infinite';
+    setSyncStatus('loading');
+    if (unsubscribeInv)  { unsubscribeInv(); unsubscribeInv = null; }
+    if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
+    // 重置 inv 物件
+    inv = { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[] };
+    // 延遲一點再訂閱，讓 UI 有重新整理感
+    setTimeout(() => {
+        subscribeAll();
+        if(icon) icon.style.animation = '';
+        showToast('✓ 已重新載入', 'success');
+    }, 300);
+}
+
+// ══ 觸發 GitHub workflow（開新分頁到 Actions 頁，使用者手動點 Run workflow）══
+function triggerSyncWorkflow() {
+    const url = 'https://github.com/jiliao2024092/swtc-3DP/actions/workflows/sync-printers.yml';
+    if(confirm('將開啟 GitHub Actions 頁面。\n請於頁面右上點「Run workflow」按鈕觸發同步，約 30 秒後再點「重新載入」查看結果。\n\n要繼續嗎？')){
+        window.open(url, '_blank');
+    }
+}
+
+// ══ 暴露給 HTML inline event handlers ══
+window.closeCartridgeModal = closeCartridgeModal;
+window.closeSafetyModal = closeSafetyModal;
+window.closeStockModal = closeStockModal;
+window.deleteStock = deleteStock;
+window.exportInventoryExcel = exportInventoryExcel;
+window.historySortBy = historySortBy;
+window.openCartridgeModal = openCartridgeModal;
+window.resetHistoryFilters = resetHistoryFilters;
+window.resetStockFilters = resetStockFilters;
+window.saveCartridgeEdit = saveCartridgeEdit;
+window.saveSafetyStock = saveSafetyStock;
+window.saveStockIn = saveStockIn;
+window.showSafetyModal = showSafetyModal;
+window.showStockModal = showStockModal;
+window.stockSortBy = stockSortBy;
+window.switchTab = switchTab;
+window.reloadData = reloadData;
+window.triggerSyncWorkflow = triggerSyncWorkflow;
+window.showDisabledMaterialsModal = showDisabledMaterialsModal;
+window.closeDisabledMaterialsModal = closeDisabledMaterialsModal;
+window.restoreMaterial = restoreMaterial;
+window.setTrendType = setTrendType;
+window.trendPrevYear = trendPrevYear;
+window.trendNextYear = trendNextYear;
+window.renderHistory = renderHistory;
+window.renderMonthly = renderMonthly;
+window.renderMonthlyPie = renderMonthlyPie;
+window.renderStockTable = renderStockTable;
+window.updateSafety = updateSafety;
+window.updateStockBottles = updateStockBottles;
+window.updateStockNote = updateStockNote;
+
 // ══ 初始化 ══
-window.onload=function(){
-    lucide.createIcons();
-    applyRoleUI();
-    showSettingsModal();
-};
+// Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
+lucide.createIcons();
 </script>
 </body>
 </html>
