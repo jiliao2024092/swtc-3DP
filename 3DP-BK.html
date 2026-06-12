@@ -301,11 +301,11 @@
                     <span id="total-count" class="text-sm text-gray-500">共 0 筆</span>
                     <div class="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
                         <button id="view-table-btn" onclick="switchListView('table')"
-                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700">
+                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500">
                             <i data-lucide="table" class="w-3.5 h-3.5 inline"></i> 表格
                         </button>
                         <button id="view-gantt-btn" onclick="switchListView('gantt')"
-                            class="text-xs font-medium px-3 py-1.5 rounded-md text-gray-500">
+                            class="text-xs font-medium px-3 py-1.5 rounded-md bg-white shadow-sm text-gray-700">
                             <i data-lucide="calendar-range" class="w-3.5 h-3.5 inline"></i> 甘特圖
                         </button>
                     </div>
@@ -316,7 +316,7 @@
             </div>
 
             <!-- 表格檢視 -->
-            <div id="list-table-view">
+            <div id="list-table-view" class="hidden">
                 <div class="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-center gap-2">
                     <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
                     <select id="filter-engineer" onchange="renderTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white"><option value="">所有工程師</option></select>
@@ -356,7 +356,7 @@
             </div>
 
             <!-- 甘特圖檢視 -->
-            <div id="list-gantt-view" class="hidden p-4">
+            <div id="list-gantt-view" class="p-4">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <div class="flex items-center gap-2">
                         <button onclick="ganttShiftWeek(-1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
@@ -424,7 +424,7 @@ let currentUser = null;            // {uid, email, displayName, role}
 let bookings = [];                 // 即時同步來的預約清單
 let unsubscribeBookings = null;
 let hasOrder = null, editHasOrder = null, editingId = null;
-let listView = 'table';
+let listView = 'gantt';
 let ganttWeekStart = null;
 let sortField = 'date', sortDir = 'asc';
 const PAGE_SIZE = 10;
