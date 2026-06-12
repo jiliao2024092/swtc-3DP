@@ -92,7 +92,7 @@
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-gray-700">數量 (L)</label>
-                <input type="number" id="stock-qty" min="0" step="0.1" value="1" placeholder="例：1.5 = 1500 ml"
+                <input type="number" id="stock-qty" min="0" step="1" value="1" placeholder="例：1.5 = 1500 ml"
                     class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 <p class="text-xs text-gray-400">可輸入小數（如 1.5 L = 1500 ml）</p>
             </div>
@@ -1077,12 +1077,12 @@ function openCartridgeModal() {
                     </div>
                     <div class="space-y-1">
                         <label class="text-xs text-gray-600">剩餘 (L)</label>
-                        <input type="number" value="${((s.remaining_ml||0)/1000).toFixed(2)}" min="0" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
+                        <input type="number" value="${((s.remaining_ml||0)/1000).toFixed(2)}" min="0" step="1" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                     </div>
                     <div class="space-y-1">
                         <label class="text-xs text-gray-600">初始容量 (L)</label>
-                        <input type="number" value="${((s.initial_ml||DEFAULT_CARTRIDGE_ML)/1000).toFixed(2)}" min="0.01" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
+                        <input type="number" value="${((s.initial_ml||DEFAULT_CARTRIDGE_ML)/1000).toFixed(2)}" min="0.01" step="1" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                     </div>
                     <div class="space-y-1">
@@ -1207,7 +1207,7 @@ function renderStockTable() {
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="0.1" value="${bottles}" ${isEditor?'':'disabled'}
+                <input type="number" min="0" step="1" value="${bottles}" ${isEditor?'':'disabled'}
                     onchange="updateStockBottles('${me}', this.value)"
                     class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
                 <span class="text-xs text-gray-400 ml-1">L</span>
@@ -1363,7 +1363,7 @@ function showSafetyModal() {
         row.className='flex items-center gap-3';
         row.innerHTML=`
             <label class="flex-1 text-sm font-medium text-gray-700">${matName(m)}</label>
-            <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="0.1" data-material="${m}"
+            <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="1" data-material="${m}"
                 class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> L
         `;
         body.appendChild(row);
