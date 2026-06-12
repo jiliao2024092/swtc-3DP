@@ -238,19 +238,22 @@
 
         <!-- 材料庫存（樹脂罐 + 備料）-->
         <div id="panel-stock" class="p-6 hidden">
-            <!-- 機台樹脂罐區塊 -->
-            <div class="mb-6 pb-6 border-b border-gray-200">
-                <div class="flex items-center justify-between mb-3">
-                    <div>
-                        <h3 class="text-base font-semibold text-gray-800">機台樹脂罐</h3>
-                        <p class="text-xs text-gray-500">自動從 Formlabs API 抓取；若 API 未提供容量，可手動補登。</p>
+            <!-- 機台樹脂罐區塊（可摺疊，預設隱藏）-->
+            <details class="mb-6 border border-gray-200 rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 hover:bg-gray-50 flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span class="font-semibold text-gray-800">機台樹脂罐</span>
+                    <span class="text-xs text-gray-400 ml-2">自動從 Formlabs API 抓取；點此展開查看 / 編輯</span>
+                </summary>
+                <div class="p-4 border-t border-gray-100">
+                    <div class="flex items-center justify-end mb-3">
+                        <button data-editor-only onclick="openCartridgeModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors">
+                            <i data-lucide="pencil" class="w-4 h-4"></i> 手動更新樹脂罐
+                        </button>
                     </div>
-                    <button data-editor-only onclick="openCartridgeModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors">
-                        <i data-lucide="pencil" class="w-4 h-4"></i> 手動更新樹脂罐
-                    </button>
+                    <div id="cartridges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
-                <div id="cartridges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-            </div>
+            </details>
 
             <!-- 備料庫存區塊 -->
             <div class="flex items-center justify-between mb-4">
@@ -282,7 +285,8 @@
                         <tr class="bg-gray-100 text-gray-600">
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">數量 (L)<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">估計剩餘 (L)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">備料 (L)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('on_machine')">機台上 (L)<span id="stock-sort-on_machine" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium w-40">備註</th>
@@ -1150,7 +1154,7 @@ function resetStockFilters(){
     renderStockTable();
 }
 function updateStockSortIndicators(){
-    ['material','bottles','total_ml','safety','status'].forEach(f=>{
+    ['material','bottles','total_ml','on_machine','safety','status'].forEach(f=>{
         const el=document.getElementById('stock-sort-'+f);
         if(!el) return;
         if(f===stockSortField){
@@ -1181,6 +1185,7 @@ function renderStockTable() {
         if(stockSortField==='material'){ ka=matName(a); kb=matName(b); }
         else if(stockSortField==='bottles'){ ka=(inv.stock[a]?.bottles||0); kb=(inv.stock[b]?.bottles||0); }
         else if(stockSortField==='total_ml'){ ka=(inv.stock[a]?.total_ml||0); kb=(inv.stock[b]?.total_ml||0); }
+        else if(stockSortField==='on_machine'){ ka=getCartridgeTotal(a); kb=getCartridgeTotal(b); }
         else if(stockSortField==='safety'){ ka=getSafetyStock(a); kb=getSafetyStock(b); }
         else if(stockSortField==='status'){ ka=isLowStock(a)?0:1; kb=isLowStock(b)?0:1; }
         const dir = stockSortDir==='asc'?1:-1;
@@ -1208,6 +1213,7 @@ function renderStockTable() {
                 <span class="text-xs text-gray-400 ml-1">L</span>
             </td>
             <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${(((s.total_ml||0))/1000).toFixed(1)} L</td>
+            <td class="p-3 text-right text-gray-700">${getCartridgeTotal(m) > 0 ? `<span class="text-sm">${(getCartridgeTotal(m)/1000).toFixed(2)} L</span>` : '<span class="text-gray-300 text-xs">—</span>'}</td>
             <td class="p-3 text-right text-gray-700">
                 <span class="font-medium">${(safety/1000).toFixed(1)}</span>
                 <span class="text-xs text-gray-400 ml-1">L</span>
