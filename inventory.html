@@ -91,10 +91,10 @@
                 <datalist id="material-options"></datalist>
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">數量（罐）</label>
-                <input type="number" id="stock-qty" min="0" step="1" value="1" placeholder="例：1.2 = 1.2罐 = 1200ml"
+                <label class="text-sm font-medium text-gray-700">數量 (L)</label>
+                <input type="number" id="stock-qty" min="0" step="0.1" value="1" placeholder="例：1.5 = 1500 ml"
                     class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                <p class="text-xs text-gray-400">1 罐 = 1000ml，可輸入小數（如 1.2 罐 = 1200ml）</p>
+                <p class="text-xs text-gray-400">可輸入小數（如 1.5 L = 1500 ml）</p>
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-gray-700">備註</label>
@@ -120,7 +120,7 @@
             </div>
             <button onclick="closeSafetyModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
-        <p class="text-sm text-gray-500 mb-4">設定每種材料的安全庫存量（ml），低於此量時會顯示叫料提醒。</p>
+        <p class="text-sm text-gray-500 mb-4">設定每種材料的安全庫存量（L），低於此量時會顯示叫料提醒。</p>
         <div class="space-y-3" id="safety-modal-body"></div>
         <div class="flex gap-3 mt-6">
             <button onclick="closeSafetyModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
@@ -215,13 +215,12 @@
         <div class="bg-gray-50 px-4 py-2 flex items-center gap-1 border-b border-gray-100">
             <div class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
                 <button class="tab-btn active" id="tab-overview" onclick="switchTab('overview')">庫存總覽</button>
-                <button class="tab-btn" id="tab-cartridges" onclick="switchTab('cartridges')">機台樹脂罐</button>
-                <button class="tab-btn" id="tab-stock" onclick="switchTab('stock')">備料庫存</button>
+                <button class="tab-btn" id="tab-stock" onclick="switchTab('stock')">材料庫存</button>
                 <button class="tab-btn" id="tab-history" onclick="switchTab('history')">消耗記錄</button>
                 <button class="tab-btn" id="tab-monthly" onclick="switchTab('monthly')">月度分析</button>
             </div>
             <div class="ml-auto flex gap-2">
-                <button data-editor-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
+                <button data-admin-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
                     <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
                 </button>
                 <button onclick="exportInventoryExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
@@ -237,21 +236,28 @@
             </div>
         </div>
 
-        <!-- 機台樹脂罐 -->
-        <div id="panel-cartridges" class="p-6 hidden">
-            <div class="flex items-center justify-between mb-4">
-                <p class="text-sm text-gray-500">系統會自動從 Formlabs API 抓取樹脂罐資料；若 API 未提供容量，可手動補登。</p>
-                <button data-editor-only onclick="openCartridgeModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors">
-                    <i data-lucide="pencil" class="w-4 h-4"></i> 手動更新樹脂罐
-                </button>
-            </div>
-            <div id="cartridges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-        </div>
-
-        <!-- 備料庫存 -->
+        <!-- 材料庫存（樹脂罐 + 備料）-->
         <div id="panel-stock" class="p-6 hidden">
+            <!-- 機台樹脂罐區塊 -->
+            <div class="mb-6 pb-6 border-b border-gray-200">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="text-base font-semibold text-gray-800">機台樹脂罐</h3>
+                        <p class="text-xs text-gray-500">自動從 Formlabs API 抓取；若 API 未提供容量，可手動補登。</p>
+                    </div>
+                    <button data-editor-only onclick="openCartridgeModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white transition-colors">
+                        <i data-lucide="pencil" class="w-4 h-4"></i> 手動更新樹脂罐
+                    </button>
+                </div>
+                <div id="cartridges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            </div>
+
+            <!-- 備料庫存區塊 -->
             <div class="flex items-center justify-between mb-4">
-                <p class="text-sm text-gray-500">尚未放入機器的備用料罐庫存。</p>
+                <div>
+                    <h3 class="text-base font-semibold text-gray-800">備料庫存</h3>
+                    <p class="text-xs text-gray-500">尚未放入機器的備用料罐庫存。</p>
+                </div>
                 <button data-editor-only onclick="showStockModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
                     <i data-lucide="package-plus" class="w-4 h-4"></i> 新增入庫
                 </button>
@@ -275,9 +281,9 @@
                     <thead>
                         <tr class="bg-gray-100 text-gray-600">
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">罐數<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">估計剩餘(ml)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存(罐)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">數量 (L)<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">估計剩餘 (L)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium w-40">備註</th>
                             <th class="p-3 border-b font-medium">最後更新</th>
@@ -307,7 +313,7 @@
                     <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
                         <option value="">全部類型</option>
                         <option value="consume">列印消耗</option>
-                        <option value="aborted">列印失敗/中止</option>
+                        <option value="aborted">列印中止</option>
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
@@ -325,7 +331,7 @@
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">類型</th>
-                            <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量(ml)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">備註</th>
                         </tr>
                     </thead>
@@ -466,6 +472,8 @@ let unsubscribeInv = null;
 let unsubscribeHist = null;
 
 // ══ Auth 監聽 ══
+let autoRefreshTimer = null;
+
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         try {
@@ -486,6 +494,13 @@ onAuthStateChanged(auth, async (user) => {
             isEditor = (role === 'admin' || role === 'editor');
             showApp();
             subscribeAll();
+
+            // 每 5 分鐘自動拉一次 printer-status.json 並重新渲染（從 Formlabs API 同步樹脂罐）
+            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            autoRefreshTimer = setInterval(() => {
+                console.log('[auto-refresh] 每 5 分鐘觸發 autoSyncCartridges');
+                autoSyncCartridges().catch(e => console.warn('auto-refresh 失敗:', e.message));
+            }, 5 * 60 * 1000);
         } catch (err) {
             showLoginError('讀取使用者資料失敗：' + err.message);
             await signOut(auth);
@@ -494,6 +509,7 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = null; isEditor = false;
         if (unsubscribeInv)  { unsubscribeInv();  unsubscribeInv  = null; }
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
+        if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
         showLogin();
     }
 });
@@ -845,10 +861,12 @@ function showToast(msg,type) {
 }
 
 function switchTab(tab) {
+    if (tab === 'cartridges') tab = 'stock';  // 舊版相容：cartridges 已合併到 stock
     currentTab=tab;
-    ['overview','cartridges','stock','history','monthly'].forEach(t=>{
+    ['overview','stock','history','monthly'].forEach(t=>{
         document.getElementById('panel-'+t).classList.toggle('hidden',t!==tab);
-        document.getElementById('tab-'+t).classList.toggle('active',t===tab);
+        const btn = document.getElementById('tab-'+t);
+        if (btn) btn.classList.toggle('active',t===tab);
     });
     if(tab==='history') renderHistory();
     if(tab==='monthly') renderMonthly();
@@ -916,7 +934,7 @@ function renderAlerts() {
     items.innerHTML=mats.map(m=>{
         const total=getTotalInventory(m);
         const safety=getSafetyStock(m);
-        return `<div class="text-sm text-red-600">• <strong>${matName(m)}</strong>：總庫存 ${Math.round(total)} ml，低於安全庫存 ${safety} ml</div>`;
+        return `<div class="text-sm text-red-600">• <strong>${matName(m)}</strong>：總庫存 ${(total/1000).toFixed(1)} L，低於安全庫存 ${(safety/1000).toFixed(1)} L</div>`;
     }).join('');
 }
 
@@ -957,10 +975,10 @@ function renderOverview() {
                 </div>
                 ${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> 需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">庫存充足</span>'}
             </div>
-            <div class="text-2xl font-bold text-gray-800">${Math.round(total)} <span class="text-sm font-normal text-gray-400">ml</span></div>
+            <div class="text-2xl font-bold text-gray-800">${(total/1000).toFixed(1)} <span class="text-sm font-normal text-gray-400">L</span></div>
             <div class="space-y-1">
                 <div class="flex justify-between text-xs text-gray-500">
-                    <span>安全庫存：${Math.round(safety/ML_PER_BOTTLE*10)/10} 罐（${safety} ml）</span>
+                    <span>安全庫存：${(safety/1000).toFixed(1)} L</span>
                     <span class="${low?'text-red-500 font-medium':''}">${pct}%</span>
                 </div>
                 <div class="progress-bar"><div class="progress-fill ${barColor}" style="width:${Math.min(pct,100)}%"></div></div>
@@ -968,11 +986,11 @@ function renderOverview() {
             <div class="grid grid-cols-2 gap-2 pt-1">
                 <div class="bg-gray-50 rounded-lg p-2 text-center">
                     <p class="text-xs text-gray-400">機台樹脂罐</p>
-                    <p class="text-sm font-semibold text-gray-700">${Math.round(cartTotal)} ml</p>
+                    <p class="text-sm font-semibold text-gray-700">${(cartTotal/1000).toFixed(1)} L</p>
                 </div>
                 <div class="bg-gray-50 rounded-lg p-2 text-center">
                     <p class="text-xs text-gray-400">備料庫存</p>
-                    <p class="text-sm font-semibold text-gray-700">${Math.round(stockTotal)} ml</p>
+                    <p class="text-sm font-semibold text-gray-700">${(stockTotal/1000).toFixed(1)} L</p>
                 </div>
             </div>
         `;
@@ -1003,7 +1021,7 @@ function renderCartridges() {
                     <div class="text-right">
                         ${noCapacity
                             ? '<p class="text-xs text-amber-600 font-medium">容量待補登</p>'
-                            : `<p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${Math.round(s.remaining_ml||0)} ml</p>${pct!=null?`<p class="text-xs text-gray-400">${pct}%</p>`:''}`}
+                            : `<p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${((s.remaining_ml||0)/1000).toFixed(2)} L</p>${pct!=null?`<p class="text-xs text-gray-400">${pct}%</p>`:''}`}
                     </div>
                 </div>
                 ${pct!=null?`<div class="progress-bar h-2"><div class="progress-fill ${pct<20?'bg-red-400':pct<40?'bg-yellow-400':'bg-teal-500'}" style="width:${pct}%"></div></div>`:''}
@@ -1054,13 +1072,13 @@ function openCartridgeModal() {
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none" placeholder="e.g. Clear V5">
                     </div>
                     <div class="space-y-1">
-                        <label class="text-xs text-gray-600">剩餘(ml)</label>
-                        <input type="number" value="${s.remaining_ml||0}" min="0" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
+                        <label class="text-xs text-gray-600">剩餘 (L)</label>
+                        <input type="number" value="${((s.remaining_ml||0)/1000).toFixed(2)}" min="0" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                     </div>
                     <div class="space-y-1">
-                        <label class="text-xs text-gray-600">初始容量(ml)</label>
-                        <input type="number" value="${s.initial_ml||DEFAULT_CARTRIDGE_ML}" min="1" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
+                        <label class="text-xs text-gray-600">初始容量 (L)</label>
+                        <input type="number" value="${((s.initial_ml||DEFAULT_CARTRIDGE_ML)/1000).toFixed(2)}" min="0.01" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                     </div>
                     <div class="space-y-1">
@@ -1103,6 +1121,10 @@ async function saveCartridgeEdit() {
         let val;
         if(field==='material') val = matCode(el.value.trim());  // 名稱→代碼
         else if(field==='slot') val = el.value;
+        else if(field==='remaining_ml' || field==='initial_ml') {
+            // 介面顯示 L，內部存 ml
+            val = Math.round((parseFloat(el.value)||0) * 1000);
+        }
         else val = parseFloat(el.value)||0;
         inv.cartridges[printer][idx][field]=val;
         inv.cartridges[printer][idx].updated_at=new Date().toISOString();
@@ -1180,17 +1202,15 @@ function renderStockTable() {
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="1" value="${bottles}" ${isEditor?'':'disabled'}
+                <input type="number" min="0" step="0.1" value="${bottles}" ${isEditor?'':'disabled'}
                     onchange="updateStockBottles('${me}', this.value)"
                     class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
-                <span class="text-xs text-gray-400 ml-1">罐</span>
+                <span class="text-xs text-gray-400 ml-1">L</span>
             </td>
-            <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${Math.round(s.total_ml||0)}</td>
-            <td class="p-3 text-right">
-                <input type="number" min="0" step="1" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" ${isEditor?'':'disabled'}
-                    onchange="updateSafety('${me}', this.value)"
-                    class="w-20 px-2 py-1 text-right rounded-md border border-gray-200 hover:border-amber-400 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
-                <span class="text-xs text-gray-400 ml-1">罐</span>
+            <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${(((s.total_ml||0))/1000).toFixed(1)} L</td>
+            <td class="p-3 text-right text-gray-700">
+                <span class="font-medium">${(safety/1000).toFixed(1)}</span>
+                <span class="text-xs text-gray-400 ml-1">L</span>
             </td>
             <td class="p-3">${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
             <td class="p-3">
@@ -1306,11 +1326,12 @@ async function saveStockIn() {
     if(!matInput){ showToast('請輸入材料種類','error'); return; }
     const mat = matCode(matInput);  // 名稱→代碼
 
-    const bottles = parseFloat(document.getElementById('stock-qty').value);
-    if(isNaN(bottles) || bottles <= 0){ showToast('請輸入有效的罐數','error'); return; }
+    const liters = parseFloat(document.getElementById('stock-qty').value);
+    if(isNaN(liters) || liters <= 0){ showToast('請輸入有效的數量 (L)','error'); return; }
 
     const note = document.getElementById('stock-note').value.trim() || '備料入庫';
-    const totalMl = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;  // 罐 → ml
+    const totalMl = Math.round(liters * 1000 * 10) / 10;  // L → ml
+    const bottles = liters;  // 罐數欄位仍以「相同數字」存（1 罐 = 1 L），方便回算
 
     if(!inv.stock[mat]) inv.stock[mat] = { bottles:0, total_ml:0 };
     inv.stock[mat].bottles  = Math.round(((inv.stock[mat].bottles||0) + bottles) * 10) / 10;
@@ -1318,10 +1339,10 @@ async function saveStockIn() {
     inv.stock[mat].updated_at = new Date().toISOString();
     inv.stock[mat].updated_by = 'manual';
 
-    addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${bottles} 罐）` });
+    addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${liters.toFixed(1)} L）` });
     closeStockModal();
     renderAll();
-    await saveAll(`備料入庫：${matName(mat)} ${bottles} 罐`);
+    await saveAll(`備料入庫：${matName(mat)} ${liters.toFixed(1)} L`);
 }
 
 // ══ 安全庫存設定 ══
@@ -1336,8 +1357,8 @@ function showSafetyModal() {
         row.className='flex items-center gap-3';
         row.innerHTML=`
             <label class="flex-1 text-sm font-medium text-gray-700">${matName(m)}</label>
-            <input type="number" value="${Math.round(safety/ML_PER_BOTTLE*10)/10}" min="0" step="1" data-material="${m}"
-                class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> 罐
+            <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="0.1" data-material="${m}"
+                class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> L
         `;
         body.appendChild(row);
     });
@@ -1346,8 +1367,8 @@ function showSafetyModal() {
 function closeSafetyModal() { document.getElementById('safety-modal').classList.add('hidden'); }
 async function saveSafetyStock() {
     document.querySelectorAll('.safety-input').forEach(el=>{
-        const bottles = parseFloat(el.value)||0;
-        inv.safety[el.dataset.material] = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;
+        const liters = parseFloat(el.value)||0;
+        inv.safety[el.dataset.material] = Math.round(liters * 1000 * 10) / 10;
     });
     closeSafetyModal();
     renderAll();
@@ -1493,25 +1514,22 @@ function renderHistory() {
             consume:{label:'列印消耗', color:'text-red-600 bg-red-50'},
             stockin:{label:'備料入庫', color:'text-green-700 bg-green-50'},
             manual: {label:'手動調整', color:'text-blue-600 bg-blue-50'},
-            aborted:{label:'列印失敗', color:'text-orange-700 bg-orange-50 border border-orange-200'},
-            error:  {label:'列印錯誤', color:'text-orange-700 bg-orange-50 border border-orange-200'},
+            aborted:{label:'列印中止', color:'text-orange-700 bg-orange-50 border border-orange-200'},
         };
         const t=typeMap[h.type]||{label:h.type,color:'bg-gray-100 text-gray-600'};
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
-        // 失敗/錯誤的列印不算進實際消耗，ml 顯示為灰色括號標註
-        const isFail = h.type==='aborted' || h.type==='error';
-        const mlCell = isFail
-            ? `<span class="text-orange-500">⚠</span> <span class="text-gray-400 text-xs">(${Math.abs(Math.round(h.ml||0))} ml 未計)</span>`
-            : `${h.type==='consume'?'−':'+'} ${Math.abs(Math.round(h.ml||0))} ml`;
-        const mlColor = isFail ? '' : (h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':'');
-        // 失敗紀錄附 apiStatus
-        const apiStatusHint = (isFail && h.apiStatus) ? ` <span class="text-xs text-orange-400">[${h.apiStatus}]</span>` : '';
+        // 中止的列印不算進實際消耗
+        const isAbort = h.type==='aborted';
+        const mlCell = isAbort
+            ? `<span class="text-orange-500">⚠</span> <span class="text-gray-400 text-xs">(${(Math.abs(h.ml||0)/1000).toFixed(2)} L 未計)</span>`
+            : `${h.type==='consume'?'−':'+'} ${(Math.abs(h.ml||0)/1000).toFixed(2)} L`;
+        const mlColor = isAbort ? '' : (h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':'');
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
             <td class="p-3 text-sm text-gray-600">${printerDisplay(h.printer)||'—'}</td>
-            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span>${apiStatusHint}</td>
+            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
             <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
         `;
@@ -1661,7 +1679,7 @@ function renderMonthlyTrend() {
 
     const totalForYear = monthlyTotals.reduce((s,v)=>s+v, 0);
     const printerLabel = printerFilter ? ` · ${printerFilter}` : '';
-    document.getElementById('trend-title').textContent = `${curYear}年 月度消耗趨勢${printerLabel}（年計 ${Math.round(totalForYear)} ml）`;
+    document.getElementById('trend-title').textContent = `${curYear}年 月度消耗趨勢${printerLabel}（年計 ${(totalForYear/1000).toFixed(1)} L）`;
 
     const empty = document.getElementById('trend-empty');
     const canvas = document.getElementById('monthly-trend');
@@ -1682,8 +1700,8 @@ function renderMonthlyTrend() {
         data: {
             labels: Array.from({length:12}, (_,i) => (i+1)+'月'),
             datasets: [{
-                label: '當月總消耗 (ml)',
-                data: monthlyTotals.map(v => Math.round(v)),
+                label: '當月總消耗 (L)',
+                data: monthlyTotals.map(v => +(v/1000).toFixed(2)),
                 borderColor: '#378ADD',
                 backgroundColor: trendChartType==='bar' ? '#85B7EB' : 'rgba(55,138,221,0.15)',
                 borderWidth: 2,
@@ -1699,13 +1717,13 @@ function renderMonthlyTrend() {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: c => Math.round(c.raw) + ' ml' } }
+                tooltip: { callbacks: { label: c => c.raw + ' L' } }
             },
             scales: {
                 y: {
                     beginAtZero: true,
-                    title: { display: true, text: '消耗量 (ml)', color: '#6b7280' },
-                    ticks: { callback: v => v + ' ml' }
+                    title: { display: true, text: '消耗量 (L)', color: '#6b7280' },
+                    ticks: { callback: v => v + ' L' }
                 },
                 x: {
                     grid: { display: false }
@@ -1762,7 +1780,7 @@ function renderMonthlyPie() {
                 legend:{ display:false },
                 tooltip:{ callbacks:{ label:(ctx)=>{
                     const v=ctx.parsed; const pct=Math.round(v/total*100);
-                    return ` ${ctx.label}: ${v} ml (${pct}%)`;
+                    return ` ${ctx.label}: ${(v/1000).toFixed(2)} L (${pct}%)`;
                 }}}
             }
         }
@@ -1776,30 +1794,37 @@ function renderMonthlyPie() {
                 <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colors[i]}"></span>
                 <span class="text-gray-700">${matName(mat)}</span>
             </div>
-            <div class="text-gray-500"><span class="font-medium text-gray-800">${Math.round(ml)}</span> ml · ${pct}%</div>
+            <div class="text-gray-500"><span class="font-medium text-gray-800">${(ml/1000).toFixed(2)}</span> L · ${pct}%</div>
         </div>`;
     }).join('') + `<div class="flex items-center justify-between text-sm pt-2 mt-2 border-t border-gray-100">
         <span class="font-medium text-gray-700">當月總計</span>
-        <span class="font-bold text-gray-800">${total} ml</span></div>`;
+        <span class="font-bold text-gray-800">${(total/1000).toFixed(2)} L</span></div>`;
 }
 
 // ══ 匯出 ══
 function exportInventoryExcel() {
     const wb=XLSX.utils.book_new();
     // 總覽
-    const ovRows=getAllMaterials().map(m=>({'材料':matName(m),'機台樹脂罐(ml)':Math.round(getCartridgeTotal(m)),'備料庫存(ml)':Math.round(getStockTotal(m)),'總庫存(ml)':Math.round(getTotalInventory(m)),'安全庫存(ml)':getSafetyStock(m),'狀態':isLowStock(m)?'需叫料':'充足'}));
+    const ovRows=getAllMaterials().map(m=>({
+        '材料':matName(m),
+        '機台樹脂罐 (L)':+(getCartridgeTotal(m)/1000).toFixed(2),
+        '備料庫存 (L)':+(getStockTotal(m)/1000).toFixed(2),
+        '總庫存 (L)':+(getTotalInventory(m)/1000).toFixed(2),
+        '安全庫存 (L)':+(getSafetyStock(m)/1000).toFixed(2),
+        '狀態':isLowStock(m)?'需叫料':'充足'
+    }));
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovRows),'庫存總覽');
     // 歷史
     const hRows=inv.history.map(h=>{
-        const typeLabels = { consume:'列印消耗', stockin:'備料入庫', manual:'手動調整', aborted:'列印失敗', error:'列印錯誤' };
-        const isFail = h.type==='aborted' || h.type==='error';
+        const typeLabels = { consume:'列印消耗', stockin:'備料入庫', manual:'手動調整', aborted:'列印中止' };
+        const isAbort = h.type==='aborted';
+        const mlL = +((h.ml||0)/1000).toFixed(2);
         return {
             '時間':   new Date(h.ts).toLocaleString('zh-TW'),
             '材料':   matName(h.material)||'',
             '機台':   printerDisplay(h.printer)||'',
             '類型':   typeLabels[h.type] || h.type,
-            '數量(ml)': isFail ? 0 : (h.type==='consume' ? -Math.round(h.ml||0) : Math.round(h.ml||0)),
-            '原始ml': Math.round(h.ml||0),
+            '數量 (L)': isAbort ? 0 : (h.type==='consume' ? -mlL : mlL),
             'API狀態': h.apiStatus || '',
             '備註':   h.note||'',
         };
