@@ -1598,12 +1598,12 @@ function renderHistory() {
         const t=typeMap[h.type]||{label:h.type,color:'bg-gray-100 text-gray-600'};
         const tr=document.createElement('tr');
         tr.className='hover:bg-gray-50';
-        // 中止的列印不算進實際消耗
-        const isAbort = h.type==='aborted';
-        const mlCell = isAbort
-            ? `<span class="text-orange-500">⚠</span> <span class="text-gray-400 text-xs">(${(Math.abs(h.ml||0)/1000).toFixed(2)} L 未計)</span>`
-            : `${h.type==='consume'?'−':'+'} ${(Math.abs(h.ml||0)/1000).toFixed(2)} L`;
-        const mlColor = isAbort ? '' : (h.type==='consume'?'text-red-500':h.type==='stockin'?'text-green-600':'');
+        // consume / aborted 都算實際消耗（負值），stockin/manual 加減視 ml 正負
+        const isConsumeLike = (h.type==='consume' || h.type==='aborted');
+        const mlCell = isConsumeLike
+            ? `− ${(Math.abs(h.ml||0)/1000).toFixed(2)} L`
+            : `${(h.ml||0)>=0?'+':'−'} ${(Math.abs(h.ml||0)/1000).toFixed(2)} L`;
+        const mlColor = isConsumeLike ? 'text-red-500' : (h.type==='stockin'?'text-green-600':'');
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
@@ -1678,7 +1678,7 @@ function renderMonthly() {
     mats.forEach(mat=>{
         const monthly=MONTHS.map(mo=>{
             return inv.history
-                .filter(h=>h.type==='consume'&&h.material===mat&&matchPrinter(h)&&new Date(h.ts).getFullYear()===curYear&&new Date(h.ts).getMonth()+1===mo)
+                .filter(h=>(h.type==='consume'||h.type==='aborted')&&h.material===mat&&matchPrinter(h)&&new Date(h.ts).getFullYear()===curYear&&new Date(h.ts).getMonth()+1===mo)
                 .reduce((s,h)=>s+(h.ml||0),0);
         });
         const total=monthly.reduce((s,v)=>s+v,0);
@@ -1749,7 +1749,7 @@ function renderMonthlyTrend() {
     const monthlyTotals = Array.from({length:12}, (_,i) => {
         const mo = i + 1;
         return inv.history
-            .filter(h => h.type==='consume' && matchPrinter(h)
+            .filter(h => (h.type==='consume' || h.type==='aborted') && matchPrinter(h)
                 && new Date(h.ts).getFullYear() === curYear
                 && new Date(h.ts).getMonth() + 1 === mo
                 && !isDisabled(h.material))
@@ -1823,7 +1823,7 @@ function renderMonthlyPie() {
     // 統計當月各材料消耗（依機台篩選）
     const byMaterial = {};
     inv.history
-        .filter(h=>h.type==='consume'
+        .filter(h=>(h.type==='consume'||h.type==='aborted')
             && (!printerFilter || (h.printer||'').includes(printerFilter))
             && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth)
         .forEach(h=>{ byMaterial[h.material]=(byMaterial[h.material]||0)+(h.ml||0); });
@@ -1896,14 +1896,14 @@ function exportInventoryExcel() {
     // 歷史
     const hRows=inv.history.map(h=>{
         const typeLabels = { consume:'列印消耗', stockin:'備料入庫', manual:'手動調整', aborted:'列印中止' };
-        const isAbort = h.type==='aborted';
         const mlL = +((h.ml||0)/1000).toFixed(2);
+        const isConsumeLike = (h.type==='consume' || h.type==='aborted');
         return {
             '時間':   new Date(h.ts).toLocaleString('zh-TW'),
             '材料':   matName(h.material)||'',
             '機台':   printerDisplay(h.printer)||'',
             '類型':   typeLabels[h.type] || h.type,
-            '數量 (L)': isAbort ? 0 : (h.type==='consume' ? -mlL : mlL),
+            '數量 (L)': isConsumeLike ? -Math.abs(mlL) : mlL,
             'API狀態': h.apiStatus || '',
             '備註':   h.note||'',
         };
