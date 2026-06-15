@@ -2,7 +2,7 @@ name: Sync Formlabs Printer Status
 
 on:
   schedule:
-    - cron: '*/20 * * * *'   # 每 20 分鐘觸發一次（GitHub Actions schedule 為 best-effort，實際可能延遲）
+    - cron: '*/5 * * * *'   # 每 5 分鐘觸發（GitHub Actions best-effort，實際可能延遲 5-15 分鐘）
   workflow_dispatch:
     inputs:
       backfill:
