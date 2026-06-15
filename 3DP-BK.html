@@ -1282,10 +1282,13 @@ window.manualRefreshPrinters = async function() {
 
 async function loadPrinterStatus() {
     try {
-        const res = await fetch(STATUS_URL + '?t=' + Date.now(), { cache: 'no-store' });
+        const url = STATUS_URL + '?t=' + Date.now();
+        console.log(`[loadPrinterStatus ${new Date().toLocaleTimeString()}] fetch`, url.slice(0, 90) + '...');
+        const res = await fetch(url, { cache: 'no-store' });
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
         const printers = await res.json();
         cachedPrinters = Array.isArray(printers) ? printers : [];
+        console.log(`[loadPrinterStatus] 收到 ${cachedPrinters.length} 台列印機資料`);
         const updatedAt = cachedPrinters[0]?.updated_at;
         if(updatedAt){
             const d = new Date(updatedAt);
@@ -1391,9 +1394,22 @@ function renderMaterialPanel(printers) {
     });
 }
 
-// 啟動列印機狀態載入
+// 啟動列印機狀態載入：初始 + 每 5 分鐘 + 視窗回到前景時
 loadPrinterStatus();
-setInterval(loadPrinterStatus, 20*60*1000);
+setInterval(() => {
+    console.log(`[printer-status ${new Date().toLocaleTimeString()}] 每 5 分鐘觸發 loadPrinterStatus`);
+    loadPrinterStatus();
+}, 5*60*1000);
+
+// 視窗回到前景時主動刷新（瀏覽器會 throttle 背景 tab 的 setInterval）
+let lastPSRefresh = 0;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastPSRefresh < 30000) return;
+    lastPSRefresh = Date.now();
+    console.log(`[printer-status ${new Date().toLocaleTimeString()}] tab 回到前景，主動刷新`);
+    loadPrinterStatus();
+});
 
 // ══════════════════════════════════════════════
 // ══ 10. 工具 ══════════════════════════════════
