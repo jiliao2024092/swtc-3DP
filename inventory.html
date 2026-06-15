@@ -267,9 +267,24 @@
                     <h3 class="text-base font-semibold text-gray-800">備料庫存</h3>
                     <p class="text-xs text-gray-500">尚未放入機器的備用料罐庫存。</p>
                 </div>
-                <button data-editor-only onclick="showStockModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                    <i data-lucide="package-plus" class="w-4 h-4"></i> 新增入庫
-                </button>
+                <div class="flex items-center gap-2">
+                    <!-- 整頁編輯按鈕：點擊後所有列的 input 啟用，編輯完一次儲存 -->
+                    <button id="stock-edit-btn" data-editor-only onclick="startStockEdit()"
+                        class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
+                        <i data-lucide="pencil" class="w-4 h-4"></i> 編輯
+                    </button>
+                    <button id="stock-save-btn" onclick="saveStockEdits()" style="display:none;"
+                        class="items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors flex">
+                        <i data-lucide="check" class="w-4 h-4"></i> 儲存全部
+                    </button>
+                    <button id="stock-cancel-btn" onclick="cancelStockEdit()" style="display:none;"
+                        class="items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 transition-colors flex">
+                        <i data-lucide="x" class="w-4 h-4"></i> 取消
+                    </button>
+                    <button data-editor-only onclick="showStockModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                        <i data-lucide="package-plus" class="w-4 h-4"></i> 新增入庫
+                    </button>
+                </div>
             </div>
             <!-- 篩選工具列 -->
             <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -468,8 +483,8 @@ let isEditor = false;
 let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
 // 消耗紀錄載入範圍：預設只訂閱最近 30 天，使用者點「載入更早」按鈕往前推一個月
 let historySinceDate = null;  // Date 物件 - 訂閱起點
-// 備料庫存編輯中的材料代碼（null = 沒人在編輯）；同時只能編輯一列以簡化邏輯
-let editingStockMaterial = null;
+// 備料庫存整頁編輯模式（true 時所有 input 啟用，點儲存才一次寫入 Firestore）
+let isStockEditMode = false;
 let stockSortField='material', stockSortDir='asc';
 let histSortField='ts', histSortDir='desc';
 
@@ -911,8 +926,8 @@ function showToast(msg,type) {
 
 function switchTab(tab) {
     if (tab === 'cartridges') tab = 'stock';  // 舊版相容：cartridges 已合併到 stock
-    // 切換分頁時若正在編輯備料，自動取消編輯（避免狀態殘留）
-    if (editingStockMaterial && tab !== 'stock') editingStockMaterial = null;
+    // 切換分頁時若正在編輯備料，自動取消（避免狀態殘留）
+    if (isStockEditMode && tab !== 'stock') isStockEditMode = false;
     currentTab=tab;
     ['overview','stock','history','monthly'].forEach(t=>{
         document.getElementById('panel-'+t).classList.toggle('hidden',t!==tab);
@@ -1249,17 +1264,16 @@ function renderStockTable() {
         const low=isLowStock(m);
         const bottles=s.bottles||0;
         const me=m.replace(/'/g,"\\'");
-        const isEditing = (editingStockMaterial === m);
-        // 編輯狀態下 input 啟用，否則 disabled
-        const inputDisabled = !isEditor || !isEditing;
+        // 編輯模式下所有列的 input 啟用
+        const inputDisabled = !isEditor || !isStockEditMode;
         const tr=document.createElement('tr');
-        tr.className = isEditing ? 'bg-blue-50' : 'hover:bg-gray-50';
+        tr.className = isStockEditMode ? 'bg-blue-50/30 hover:bg-blue-50' : 'hover:bg-gray-50';
         tr.setAttribute('data-material', m);
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
             <td class="p-3 text-right">
                 <input type="number" min="0" step="1" value="${bottles}" ${inputDisabled?'disabled':''}
-                    class="stock-bottles-input w-20 px-2 py-1 text-right rounded-md border ${isEditing?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
+                    class="stock-bottles-input w-20 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
                 <span class="text-xs text-gray-400 ml-1">L</span>
             </td>
             <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${(((s.total_ml||0))/1000).toFixed(1)} L</td>
@@ -1271,35 +1285,18 @@ function renderStockTable() {
             <td class="p-3">${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
             <td class="p-3">
                 <input type="text" value="${(s.note||'').replace(/"/g,'&quot;')}" placeholder="備註" ${inputDisabled?'disabled':''}
-                    class="stock-note-input w-full px-2 py-1 rounded-md border ${isEditing?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
+                    class="stock-note-input w-full px-2 py-1 rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
             </td>
             <td class="p-3 text-xs text-gray-400">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
             </td>
             <td class="p-3 text-center">
-                ${!isEditor ? '<span class="text-gray-300">—</span>' : (isEditing
-                    ? `<div class="flex items-center justify-center gap-1">
-                        <button onclick="saveEditStock('${me}')" title="儲存修改"
-                            class="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors">
-                            <i data-lucide="check" class="w-4 h-4"></i>
-                        </button>
-                        <button onclick="cancelEditStock()" title="取消編輯"
-                            class="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-                            <i data-lucide="x" class="w-4 h-4"></i>
-                        </button>
-                       </div>`
-                    : `<div class="flex items-center justify-center gap-1">
-                        <button onclick="startEditStock('${me}')" title="編輯此材料"
-                            class="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                            ${editingStockMaterial?'disabled':''}>
-                            <i data-lucide="pencil" class="w-4 h-4"></i>
-                        </button>
-                        <button onclick="deleteStock('${me}')" title="刪除此材料"
-                            class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                            ${editingStockMaterial?'disabled':''}>
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                       </div>`)}
+                ${!isEditor ? '<span class="text-gray-300">—</span>'
+                    : `<button onclick="deleteStock('${me}')" title="刪除此材料"
+                        class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        ${isStockEditMode?'disabled':''}>
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                       </button>`}
             </td>
         `;
         tbody.appendChild(tr);
@@ -1307,68 +1304,104 @@ function renderStockTable() {
     lucide.createIcons();
 }
 
-// ══ 備料庫存編輯（進入編輯模式 → 修改 → 儲存/取消）══
-function startEditStock(material) {
+// ══ 備料庫存「整頁編輯」模式 ══
+function startStockEdit() {
     if (!isEditor) return;
-    if (editingStockMaterial && editingStockMaterial !== material) {
-        if (!confirm('目前正在編輯其他材料，未儲存的修改將遺失。要切換到此列編輯嗎？')) return;
-    }
-    editingStockMaterial = material;
+    isStockEditMode = true;
     renderStockTable();
-    // focus 到罐數 input
-    setTimeout(() => {
-        const row = document.querySelector(`tr[data-material="${material.replace(/"/g, '\\"')}"]`);
-        const inp = row?.querySelector('.stock-bottles-input');
-        if (inp) { inp.focus(); inp.select(); }
-    }, 50);
+    updateStockEditButtons();
 }
 
-function cancelEditStock() {
-    editingStockMaterial = null;
+function cancelStockEdit() {
+    if (!isStockEditMode) return;
+    // 若有可能改動，提示確認
+    if (!confirm('取消編輯？未儲存的修改會遺失。')) return;
+    isStockEditMode = false;
     renderStockTable();
+    updateStockEditButtons();
 }
 
-async function saveEditStock(material) {
+async function saveStockEdits() {
+    if (!isStockEditMode) return;
     if (!isEditor) return;
-    const row = document.querySelector(`tr[data-material="${material.replace(/"/g, '\\"')}"]`);
-    if (!row) { showToast('找不到該列', 'error'); return; }
-    const bottlesInput = row.querySelector('.stock-bottles-input');
-    const noteInput    = row.querySelector('.stock-note-input');
 
-    const bottles = parseFloat(bottlesInput.value);
-    if (isNaN(bottles) || bottles < 0) {
-        showToast('請輸入有效的數量', 'error');
-        bottlesInput.focus();
-        return;
-    }
+    // 收集所有 row 的 input 值
+    const rows = document.querySelectorAll('#stock-table-body tr[data-material]');
+    let changedCount = 0;
+    const historyEntries = [];
+    const summaryLines = [];
 
-    if (!inv.stock[material]) inv.stock[material] = { bottles:0, total_ml:0 };
-    const oldMl  = inv.stock[material].total_ml || 0;
-    const oldNote = inv.stock[material].note || '';
-    const newMl  = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;
-    const diff   = Math.round((newMl - oldMl) * 10) / 10;
-    const newNote = noteInput.value.trim();
+    rows.forEach(row => {
+        const material = row.getAttribute('data-material');
+        const bottlesInput = row.querySelector('.stock-bottles-input');
+        const noteInput = row.querySelector('.stock-note-input');
+        if (!bottlesInput || !noteInput) return;
 
-    // 沒任何變更：直接退出編輯模式，不寫 Firestore（省一次讀寫）
-    if (diff === 0 && newNote === oldNote) {
-        editingStockMaterial = null;
+        const bottles = parseFloat(bottlesInput.value);
+        if (isNaN(bottles) || bottles < 0) {
+            showToast(`「${matName(material)}」數量無效，已跳過`, 'error');
+            return;
+        }
+
+        if (!inv.stock[material]) inv.stock[material] = { bottles:0, total_ml:0 };
+        const oldMl   = inv.stock[material].total_ml || 0;
+        const oldNote = inv.stock[material].note || '';
+        const newMl   = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;
+        const diff    = Math.round((newMl - oldMl) * 10) / 10;
+        const newNote = noteInput.value.trim();
+
+        if (diff === 0 && newNote === oldNote) return;  // 此列無變更
+
+        inv.stock[material].bottles    = bottles;
+        inv.stock[material].total_ml   = newMl;
+        inv.stock[material].note       = newNote;
+        inv.stock[material].updated_at = new Date().toISOString();
+        inv.stock[material].updated_by = 'manual';
+
+        if (diff !== 0) {
+            historyEntries.push({
+                type:'manual', material, printer:'備料庫存',
+                ml: diff, note: `批次調整為 ${bottles.toFixed(1)} L`
+            });
+        }
+        changedCount++;
+        summaryLines.push(`${matName(material)} → ${bottles.toFixed(1)} L`);
+    });
+
+    if (changedCount === 0) {
+        isStockEditMode = false;
         renderStockTable();
+        updateStockEditButtons();
+        showToast('沒有任何變更', 'success');
         return;
     }
 
-    inv.stock[material].bottles    = bottles;
-    inv.stock[material].total_ml   = newMl;
-    inv.stock[material].note       = newNote;
-    inv.stock[material].updated_at = new Date().toISOString();
-    inv.stock[material].updated_by = 'manual';
-
-    if (diff !== 0) {
-        addHistory({ type:'manual', material, printer:'備料庫存', ml:diff, note:`調整為 ${bottles.toFixed(1)} L` });
-    }
-
-    editingStockMaterial = null;
+    isStockEditMode = false;
     renderAll();
-    await saveAll(`調整備料：${matName(material)} → ${bottles.toFixed(1)} L`);
+    // 一次性寫入 stock + safety（saveAll），歷史紀錄分別 addDoc
+    await saveAll(`批次調整備料 ${changedCount} 項：${summaryLines.slice(0,3).join('、')}${summaryLines.length>3?` 等`:''}`);
+    for (const entry of historyEntries) {
+        addHistory(entry);
+    }
+    updateStockEditButtons();
+    showToast(`✓ 已儲存 ${changedCount} 項變更`, 'success');
+}
+
+// 切換頂部按鈕（編輯庫存 / 儲存全部 + 取消）顯示
+function updateStockEditButtons() {
+    const editBtn   = document.getElementById('stock-edit-btn');
+    const saveBtn   = document.getElementById('stock-save-btn');
+    const cancelBtn = document.getElementById('stock-cancel-btn');
+    if (!editBtn || !saveBtn || !cancelBtn) return;
+    if (isStockEditMode) {
+        editBtn.style.display   = 'none';
+        saveBtn.style.display   = 'flex';
+        cancelBtn.style.display = 'flex';
+    } else {
+        editBtn.style.display   = '';   // 還原預設（依 class 決定）
+        saveBtn.style.display   = 'none';
+        cancelBtn.style.display = 'none';
+    }
 }
 
 async function deleteStock(material) {
@@ -2165,9 +2198,9 @@ window.renderHistory = renderHistory;
 window.renderMonthly = renderMonthly;
 window.renderMonthlyPie = renderMonthlyPie;
 window.renderStockTable = renderStockTable;
-window.startEditStock = startEditStock;
-window.cancelEditStock = cancelEditStock;
-window.saveEditStock = saveEditStock;
+window.startStockEdit = startStockEdit;
+window.cancelStockEdit = cancelStockEdit;
+window.saveStockEdits = saveStockEdits;
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
