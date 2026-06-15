@@ -499,12 +499,12 @@ onAuthStateChanged(auth, async (user) => {
             showApp();
             subscribeAll();
 
-            // 每 5 分鐘自動拉一次 printer-status.json 並重新渲染（從 Formlabs API 同步樹脂罐）
+            // 每 20 分鐘自動拉一次 printer-status.json 並重新渲染（從 Formlabs API 同步樹脂罐）
             if (autoRefreshTimer) clearInterval(autoRefreshTimer);
             autoRefreshTimer = setInterval(() => {
-                console.log('[auto-refresh] 每 5 分鐘觸發 autoSyncCartridges');
+                console.log('[auto-refresh] 每 20 分鐘觸發 autoSyncCartridges');
                 autoSyncCartridges().catch(e => console.warn('auto-refresh 失敗:', e.message));
-            }, 5 * 60 * 1000);
+            }, 20 * 60 * 1000);
         } catch (err) {
             showLoginError('讀取使用者資料失敗：' + err.message);
             await signOut(auth);
@@ -805,20 +805,23 @@ async function loadAll() {
 async function autoSyncCartridges() {
     try {
         const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/printer-status.json?t=${Date.now()}`;
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) return;
         const printers = await res.json();
         if (!Array.isArray(printers)) return;
 
         let changed = false;
+        // 收集 API 中有的 tracked printers，沒在 API 中出現的也要清空（避免顯示舊資料）
+        const seenInApi = new Set();
         printers.forEach(p => {
             if (!TRACKED_PRINTERS.some(name => (p.alias||'').includes(name))) return;
             const key = TRACKED_PRINTERS.find(n => (p.alias||'').includes(n));
             if (!key) return;
+            seenInApi.add(key);
             const apiCartridges = p.cartridges || [];
-            if (!apiCartridges.length) return;
 
             const old = inv.cartridges[key] || [];
+            // 即使 API 回傳空陣列也要覆寫（同步以 API 為準）
             const merged = apiCartridges.map(c => {
                 const existing = old.find(o => o.slot === c.slot);
                 return {
@@ -831,7 +834,6 @@ async function autoSyncCartridges() {
                 };
             });
 
-            // 與舊資料比對，只有真的有改變才標記
             const oldStr = JSON.stringify(old.map(o=>({slot:o.slot,material:o.material,remaining_ml:o.remaining_ml})));
             const newStr = JSON.stringify(merged.map(o=>({slot:o.slot,material:o.material,remaining_ml:o.remaining_ml})));
             if (oldStr !== newStr) {
@@ -844,8 +846,8 @@ async function autoSyncCartridges() {
         if (changed && isEditor) {
             await saveAll('自動同步樹脂罐（從 Formlabs API）');
         }
+        renderAll();  // 即使沒變也重新渲染，確保「最後更新」時間刷新
     } catch (err) {
-        // 靜默失敗，不阻斷主要流程
         console.warn('autoSyncCartridges 失敗:', err.message);
     }
 }
@@ -1855,21 +1857,26 @@ function renderAll() {
     lucide.createIcons();
 }
 
-// ══ 重新載入資料（unsubscribe → subscribe 強制重拉）══
-function reloadData() {
+// ══ 重新載入資料（unsubscribe → 同步 cartridges → 重新訂閱）══
+async function reloadData() {
     const icon = document.getElementById('reload-icon');
     if(icon) icon.style.animation = 'spin 0.7s linear infinite';
     setSyncStatus('loading');
     if (unsubscribeInv)  { unsubscribeInv(); unsubscribeInv = null; }
     if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
     // 重置 inv 物件
-    inv = { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[] };
-    // 延遲一點再訂閱，讓 UI 有重新整理感
-    setTimeout(() => {
-        subscribeAll();
+    inv = { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[], disabled_materials:[], disabled_overrides:[] };
+    // 先重新訂閱（會把 Firestore 最新資料拉回來）
+    subscribeAll();
+    // 再從 printer-status.json 強制同步樹脂罐（覆寫 Firestore 中可能過時的 cartridges）
+    try {
+        await autoSyncCartridges();
+        showToast('✓ 已重新載入並同步樹脂罐', 'success');
+    } catch (e) {
+        showToast('已重新載入（樹脂罐同步失敗）', 'success');
+    } finally {
         if(icon) icon.style.animation = '';
-        showToast('✓ 已重新載入', 'success');
-    }, 300);
+    }
 }
 
 // ══ 觸發 GitHub workflow（開新分頁到 Actions 頁，使用者手動點 Run workflow）══
