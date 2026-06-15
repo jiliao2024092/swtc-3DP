@@ -1282,7 +1282,7 @@ window.manualRefreshPrinters = async function() {
 
 async function loadPrinterStatus() {
     try {
-        const res = await fetch(STATUS_URL + '?t=' + Date.now());
+        const res = await fetch(STATUS_URL + '?t=' + Date.now(), { cache: 'no-store' });
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
         const printers = await res.json();
         cachedPrinters = Array.isArray(printers) ? printers : [];
@@ -1393,7 +1393,7 @@ function renderMaterialPanel(printers) {
 
 // 啟動列印機狀態載入
 loadPrinterStatus();
-setInterval(loadPrinterStatus, 5*60*1000);
+setInterval(loadPrinterStatus, 20*60*1000);
 
 // ══════════════════════════════════════════════
 // ══ 10. 工具 ══════════════════════════════════
