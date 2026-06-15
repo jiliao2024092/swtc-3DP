@@ -361,24 +361,27 @@ for pr in prints_sorted:
         # 分類
         is_done       = status in DONE_STATUSES
         is_error      = status in ERROR_AS_CONSUME_STATUSES   # ERROR/FAILED：算消耗
-        is_abort      = status in ABORT_STATUSES               # ABORTED/ABORTING：不扣
-        is_consume    = is_done or is_error                    # 兩者都扣材料
+        is_abort      = status in ABORT_STATUSES               # ABORTED/ABORTING：也算消耗（保留 'aborted' 標籤）
+        # 三者都會扣材料；type 仍區分以便顯示「列印中止」標籤
+        is_consume    = is_done or is_error or is_abort
 
-        if not (is_consume or is_abort):
+        if not is_consume:
             print(f'  ⚠ 未知 status: {status}（guid={guid[:8]}），暫時當作 aborted 處理')
             is_abort = True
+            is_consume = True
 
         # 必須有 volume + material 才能扣
         if is_consume and (not volume or not material):
             skip_no_data += 1
             continue
 
-        # ml 為實際消耗量；ABORTED 也可能有 volume_ml（已部分消耗），但不扣
+        # ml 為實際消耗量（ABORTED 通常 volume_ml < FINISHED 的設計用量，反映實際打印到一半）
         volume_num = round(float(volume), 1) if volume else 0
-        record_type = 'consume' if is_consume else 'aborted'
+        # type='consume' 給 FINISHED/ERROR/FAILED；type='aborted' 給 ABORTED/ABORTING（兩者都扣材料）
+        record_type = 'aborted' if is_abort else 'consume'
 
-        # 扣材料：consume 類型（含 FINISHED + ERROR/FAILED）且非 backfill 才扣
-        if is_consume and not BACKFILL_MODE:
+        # 扣材料：FINISHED + ERROR/FAILED + ABORTED 都扣（除非 backfill 模式）
+        if not BACKFILL_MODE:
             # 1. 扣樹脂罐
             slots = inv['cartridges'].get(alias, [])
             remaining_to_deduct = volume_num
@@ -418,14 +421,16 @@ for pr in prints_sorted:
             'createdByEmail':  'github-actions@bot',
         })
 
-        if is_consume:
+        # 寫紀錄並 log
+        if is_done:
             write_consume += 1
-            # ERROR/FAILED 加 ⚠ 標示，但仍計入消耗
-            mark = '✓' if is_done else '⚠'
-            print(f'  {mark} 消耗：{alias} - {material} - {volume_num} ml  ({status}, guid={guid[:8]})')
-        else:
+            print(f'  ✓ 消耗：{alias} - {material} - {volume_num} ml  ({status}, guid={guid[:8]})')
+        elif is_error:
+            write_consume += 1
+            print(f'  ⚠ 消耗 (ERROR)：{alias} - {material} - {volume_num} ml  ({status}, guid={guid[:8]})')
+        else:  # is_abort
             write_aborted += 1
-            print(f'  ✗ 中止：{alias} - {material or "未知"} - {volume_num} ml  ({status}, guid={guid[:8]})')
+            print(f'  ✗ 消耗 (ABORTED)：{alias} - {material or "未知"} - {volume_num} ml  ({status}, guid={guid[:8]})')
 
         processed.add(guid)
 
@@ -434,8 +439,8 @@ for pr in prints_sorted:
         skip_no_data += 1
         continue
 print(f'\n[Part 2] 處理統計：')
-print(f'  寫入消耗紀錄 (FINISHED + ERROR/FAILED)：{write_consume} 筆')
-print(f'  寫入中止紀錄 (ABORTED/ABORTING)：       {write_aborted} 筆')
+print(f'  寫入消耗紀錄 (FINISHED + ERROR/FAILED)：{write_consume} 筆 ← 已扣材料')
+print(f'  寫入中止紀錄 (ABORTED/ABORTING)：       {write_aborted} 筆 ← 已扣材料（顯示為「列印中止」）')
 print(f'  已處理過跳過：                          {skip_already_processed} 筆')
 print(f'  狀態進行中等跳過：                      {skip_not_done} 筆')
 print(f'  非追蹤機台跳過：                        {skip_not_tracked} 筆（只追蹤 {TRACKED_PRINTERS}）')
@@ -445,7 +450,7 @@ if seen_statuses:
     for s, c in sorted(seen_statuses.items(), key=lambda x: -x[1]):
         if s in DONE_STATUSES:                mark, hint = '✓', '消耗'
         elif s in ERROR_AS_CONSUME_STATUSES:  mark, hint = '⚠', '錯誤(算消耗)'
-        elif s in ABORT_STATUSES:             mark, hint = '✗', '中止(不算)'
+        elif s in ABORT_STATUSES:             mark, hint = '✗', '中止(也扣)'
         elif s in NON_DEDUCT_STATUSES:        mark, hint = '-', '跳過'
         else:                                  mark, hint = '?', '未知'
         print(f'    {mark} {s:25s} {c:4d} 筆  ({hint})')
