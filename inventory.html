@@ -454,6 +454,7 @@ let historyPage = 1;
 const HISTORY_PAGE_SIZE = 20;
 let editingCartridge = null;
 let isEditor = false;
+let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
 let stockSortField='material', stockSortDir='asc';
 let histSortField='ts', histSortDir='desc';
 
@@ -514,6 +515,7 @@ onAuthStateChanged(auth, async (user) => {
         }
     } else {
         currentUser = null; isEditor = false;
+        invLoadedFromFirestore = false;
         if (unsubscribeInv)  { unsubscribeInv();  unsubscribeInv  = null; }
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
         if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
@@ -610,10 +612,12 @@ function subscribeAll() {
                 inv.last_processed_prints = d.last_processed_prints || [];
                 inv.disabled_materials    = d.disabled_materials    || [];
                 inv.disabled_overrides    = d.disabled_overrides    || [];
+                invLoadedFromFirestore = true;
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
                 inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
+                invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
             mergeMaterialAliases();
             // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
@@ -742,6 +746,11 @@ function mergeMaterialAliases() {
 let isSaving = false;
 async function saveAll(reason) {
     if (!isEditor) { showToast('唯讀模式無法修改', 'error'); return; }
+    if (!invLoadedFromFirestore) {
+        // 防呆：onSnapshot 還沒回應前，inv 是空的，這時 saveAll 會覆寫 Firestore 真實資料
+        console.warn('[saveAll skipped] inv 尚未從 Firestore 載入完成，原因:', reason);
+        return;
+    }
     if (isSaving) return;
     isSaving = true; setSyncStatus('saving');
     try {
@@ -845,9 +854,11 @@ async function autoSyncCartridges() {
             }
         });
 
-        // 只有 editor 且資料有變才寫回 Firestore
-        if (changed && isEditor) {
+        // 只有 editor 且資料有變且 inv 已從 Firestore 載入才寫回 Firestore
+        if (changed && isEditor && invLoadedFromFirestore) {
             await saveAll('自動同步樹脂罐（從 Formlabs API）');
+        } else if (changed && !invLoadedFromFirestore) {
+            console.warn('[autoSyncCartridges] inv 尚未從 Firestore 載入完成，跳過寫入 Firestore（僅本地更新）');
         }
         renderAll();  // 即使沒變也重新渲染，確保「最後更新」時間刷新
     } catch (err) {
@@ -1860,26 +1871,23 @@ function renderAll() {
     lucide.createIcons();
 }
 
-// ══ 重新載入資料（unsubscribe → 同步 cartridges → 重新訂閱）══
-async function reloadData() {
+// ══ 重新載入資料（unsubscribe → 重新訂閱，讓 onSnapshot 拉最新資料回來）══
+function reloadData() {
     const icon = document.getElementById('reload-icon');
     if(icon) icon.style.animation = 'spin 0.7s linear infinite';
     setSyncStatus('loading');
     if (unsubscribeInv)  { unsubscribeInv(); unsubscribeInv = null; }
     if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
-    // 重置 inv 物件
-    inv = { cartridges:{}, stock:{}, history:[], safety:{}, last_processed_prints:[], disabled_materials:[], disabled_overrides:[] };
-    // 先重新訂閱（會把 Firestore 最新資料拉回來）
+    // 重置 flag：要等下次 onSnapshot 觸發後才能寫入
+    invLoadedFromFirestore = false;
+    // 注意：不 reset inv 物件、不立即 autoSyncCartridges
+    // 這樣可避免 onSnapshot 還沒回應前 autoSyncCartridges 用空 inv 寫入 Firestore（會覆寫 stock/safety/history）
     subscribeAll();
-    // 再從 printer-status.json 強制同步樹脂罐（覆寫 Firestore 中可能過時的 cartridges）
-    try {
-        await autoSyncCartridges();
-        showToast('✓ 已重新載入並同步樹脂罐', 'success');
-    } catch (e) {
-        showToast('已重新載入（樹脂罐同步失敗）', 'success');
-    } finally {
+    setTimeout(() => {
         if(icon) icon.style.animation = '';
-    }
+        setSyncStatus('ok');
+        showToast('✓ 已重新載入', 'success');
+    }, 700);
 }
 
 // ══ 觸發 GitHub workflow（開新分頁到 Actions 頁，使用者手動點 Run workflow）══
