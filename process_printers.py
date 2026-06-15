@@ -248,7 +248,25 @@ inv.setdefault('last_processed_prints', [])
 BACKFILL_MODE = os.environ.get('BACKFILL_MODE', '').lower() in ('true', '1', 'yes')
 if BACKFILL_MODE:
     print('\n[Part 2] ⚙ BACKFILL 模式：忽略 last_processed_prints，寫紀錄但不扣材料')
+    print('[Part 2] 先清空現有 inventory_history（避免重複紀錄）...')
+    purged = 0
+    # Firestore 批次刪除（每批 500 筆是 batch 上限）
+    while True:
+        docs = list(db.collection('inventory_history').limit(500).stream())
+        if not docs:
+            break
+        batch = db.batch()
+        for d in docs:
+            batch.delete(d.reference)
+        batch.commit()
+        purged += len(docs)
+        print(f'  已刪除 {purged} 筆...')
+        if len(docs) < 500:
+            break
+    print(f'[Part 2] ✓ 共清空 {purged} 筆舊紀錄')
     processed = set()  # 全部當作沒處理過
+    # 順便清空 last_processed_prints（之後寫回 Firestore 時會被覆蓋）
+    inv['last_processed_prints'] = []
 else:
     processed = set(inv['last_processed_prints'])
 
