@@ -485,6 +485,9 @@ let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 t
 let historySinceDate = null;  // Date 物件 - 訂閱起點
 // 備料庫存整頁編輯模式（true 時所有 input 啟用，點儲存才一次寫入 Firestore）
 let isStockEditMode = false;
+// 列印機即時狀態（從 printer-status.json 拉，僅用於 UI 邊框色，不存 Firestore）
+// key = alias（如 'AluminumBowfin'），value = { status, raw }
+let printerStatus = {};
 let stockSortField='material', stockSortDir='asc';
 let histSortField='ts', histSortDir='desc';
 
@@ -869,11 +872,14 @@ async function autoSyncCartridges() {
         let changed = false;
         // 收集 API 中有的 tracked printers，沒在 API 中出現的也要清空（避免顯示舊資料）
         const seenInApi = new Set();
+        const newPrinterStatus = {};
         printers.forEach(p => {
             if (!TRACKED_PRINTERS.some(name => (p.alias||'').includes(name))) return;
             const key = TRACKED_PRINTERS.find(n => (p.alias||'').includes(n));
             if (!key) return;
             seenInApi.add(key);
+            // 紀錄列印機狀態（用於卡片邊框顏色）
+            newPrinterStatus[key] = (p.status || '').toUpperCase();
             const apiCartridges = p.cartridges || [];
 
             const old = inv.cartridges[key] || [];
@@ -897,6 +903,9 @@ async function autoSyncCartridges() {
                 changed = true;
             }
         });
+
+        // 更新列印機即時狀態（同步以 API 為準）
+        printerStatus = newPrinterStatus;
 
         // 只有 editor 且資料有變且 inv 已從 Firestore 載入才寫回 Firestore
         if (changed && isEditor && invLoadedFromFirestore) {
@@ -1071,8 +1080,28 @@ function renderCartridges() {
     grid.innerHTML='';
     TRACKED_PRINTERS.forEach(printer=>{
         const slots=inv.cartridges[printer]||[];
+        // 依列印機狀態決定卡片邊框色與狀態標籤
+        const status = (printerStatus[printer] || '').toUpperCase();
+        let borderClass, headerBg, badge;
+        if (status === 'IDLE' || status === 'READY') {
+            borderClass = 'border-2 border-green-400';
+            headerBg = 'bg-green-50';
+            badge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">閒置</span>';
+        } else if (status === 'PRINTING' || status === 'IN_PROGRESS' || status === 'PRE_PRINT' || status === 'PREPRINT' || status === 'PRE_HEAT' || status === 'PREHEAT' || status === 'WAITING_FOR_RESOLUTION') {
+            borderClass = 'border-2 border-blue-400';
+            headerBg = 'bg-blue-50';
+            badge = '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">列印中</span>';
+        } else if (status === 'ERROR' || status === 'FAILED' || status === 'ABORTED' || status === 'ABORTING') {
+            borderClass = 'border-2 border-red-400';
+            headerBg = 'bg-red-50';
+            badge = `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">異常 ${status}</span>`;
+        } else {
+            borderClass = 'border-2 border-gray-300';
+            headerBg = 'bg-gray-50';
+            badge = '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">未知</span>';
+        }
         const card=document.createElement('div');
-        card.className='border border-gray-200 rounded-xl overflow-hidden';
+        card.className=`${borderClass} rounded-xl overflow-hidden`;
         const slotsHTML=slots.length?slots.map(s=>{
             const noCapacity = s.remaining_ml == null;
             const pct=(!noCapacity && s.initial_ml>0)?Math.round(s.remaining_ml/s.initial_ml*100):null;
@@ -1098,11 +1127,12 @@ function renderCartridges() {
             </div>`;
         }).join('') : '<div class="p-4 border-t border-gray-100 text-center text-gray-400 text-sm">尚無樹脂罐資料<br><span class="text-xs">系統會在 API 同步後自動帶入，或點上方按鈕手動補登</span></div>';
         card.innerHTML=`
-            <div class="bg-gray-50 px-4 py-3 flex items-center justify-between">
+            <div class="${headerBg} px-4 py-3 flex items-center justify-between">
                 <div class="flex items-center gap-2">
                     <i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>
                     <span class="font-semibold text-gray-800">${printerDisplay(printer)}</span>
                     <span class="text-xs text-gray-400">(${printer})</span>
+                    ${badge}
                 </div>
                 <span class="text-xs text-gray-400">${slots.length} 個樹脂罐</span>
             </div>
