@@ -185,6 +185,9 @@
             <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清除並重建
             </button>
+            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除重複的消耗紀錄（按 print_guid 去重，保留每組第一筆）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
+                <i data-lucide="copy-x" class="w-3.5 h-3.5"></i> 去除重複
+            </button>
             <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="reload-icon"></i> 重新載入
             </button>
@@ -2028,7 +2031,80 @@ window.stockSortBy = stockSortBy;
 window.switchTab = switchTab;
 window.reloadData = reloadData;
 window.triggerSyncWorkflow = triggerSyncWorkflow;
-window.purgeAndRebuildHistory = purgeAndRebuildHistory;
+// ══ 去除重複紀錄 (admin only) ══
+async function deduplicateHistory() {
+    if (!currentUser || currentUser.role !== 'admin') {
+        showToast('僅 admin 可執行此操作', 'error');
+        return;
+    }
+    const msg = `掃描所有消耗紀錄，刪除有相同 print_guid 的重複項（保留每組第一筆）。\n\n要繼續嗎？`;
+    if (!confirm(msg)) return;
+
+    const btn = event.target.closest('button');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> 掃描中...'; lucide.createIcons(); }
+
+    try {
+        // 1. 撈所有 inventory_history（不能用 since filter，要看全部）
+        const histRef = collection(db, 'inventory_history');
+        const allDocs = await getDocs(histRef);
+        console.log(`[dedupe] 共 ${allDocs.size} 筆紀錄`);
+
+        // 2. 按 print_guid 分組，找出重複
+        const guidMap = new Map();  // guid -> [docSnap, docSnap, ...]
+        allDocs.docs.forEach(d => {
+            const guid = d.data().print_guid;
+            if (!guid) return;  // 沒 guid 的（如 stockin/manual）不處理
+            if (!guidMap.has(guid)) guidMap.set(guid, []);
+            guidMap.get(guid).push(d);
+        });
+
+        // 3. 找出有重複的 guid（>1 筆）
+        const dupes = [];
+        guidMap.forEach((docs, guid) => {
+            if (docs.length > 1) {
+                // 排序（按 ts 升序），保留第一筆，刪除其他
+                docs.sort((a, b) => {
+                    const aTs = a.data().ts || '';
+                    const bTs = b.data().ts || '';
+                    return aTs.localeCompare(bTs);
+                });
+                // 加到 dupes 列表（除了第一筆）
+                dupes.push(...docs.slice(1));
+            }
+        });
+
+        if (dupes.length === 0) {
+            showToast('沒有發現重複紀錄', 'success');
+            return;
+        }
+
+        if (!confirm(`發現 ${dupes.length} 筆重複紀錄，將刪除這些（保留每組第一筆）。\n\n確定執行？`)) {
+            return;
+        }
+
+        // 4. 批次刪除
+        let deleted = 0;
+        for (let i = 0; i < dupes.length; i += 500) {
+            const chunk = dupes.slice(i, i + 500);
+            const batch = writeBatch(db);
+            chunk.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            deleted += chunk.length;
+            if (btn) { btn.innerHTML = `<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> 已刪 ${deleted}...`; lucide.createIcons(); }
+        }
+
+        showToast(`✓ 已刪除 ${deleted} 筆重複紀錄`, 'success');
+        console.log(`[dedupe] 完成，刪除 ${deleted} 筆`);
+    } catch (err) {
+        console.error('deduplicateHistory 失敗:', err);
+        showToast('去重失敗：' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; lucide.createIcons(); }
+    }
+}
+
+window.deduplicateHistory = deduplicateHistory;
 window.loadEarlierMonth = loadEarlierMonth;
 window.showDisabledMaterialsModal = showDisabledMaterialsModal;
 window.closeDisabledMaterialsModal = closeDisabledMaterialsModal;
