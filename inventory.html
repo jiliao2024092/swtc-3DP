@@ -483,6 +483,10 @@ let isEditor = false;
 let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
 // 消耗紀錄載入範圍：預設只訂閱最近 30 天，使用者點「載入更早」按鈕往前推一個月
 let historySinceDate = null;  // Date 物件 - 訂閱起點
+// 手動載入更早資料：本次 session 才有，F5 後自動清空（不訂閱、不寫 Firestore）
+let extraHistory = [];               // 手動撈回的更早紀錄（getDocs 一次性）
+let extraHistorySinceDate = null;    // extraHistory 已涵蓋到的最早日期
+let historyFromSubscription = [];    // 來自 onSnapshot 訂閱（30 天內）的原始資料
 // 備料庫存整頁編輯模式（true 時所有 input 啟用，點儲存才一次寫入 Firestore）
 let isStockEditMode = false;
 // 列印機即時狀態（從 printer-status.json 拉，僅用於 UI 邊框色，不存 Firestore）
@@ -536,12 +540,15 @@ onAuthStateChanged(auth, async (user) => {
             showApp();
             subscribeAll();
 
-            // 每 20 分鐘自動拉一次 printer-status.json 並重新渲染（從 Formlabs API 同步樹脂罐）
+            // 每 5 分鐘自動拉一次 printer-status.json 並重新渲染
             if (autoRefreshTimer) clearInterval(autoRefreshTimer);
             autoRefreshTimer = setInterval(() => {
-                console.log('[auto-refresh] 每 20 分鐘觸發 autoSyncCartridges');
+                console.log(`[auto-refresh ${new Date().toLocaleTimeString()}] 每 5 分鐘觸發 autoSyncCartridges`);
                 autoSyncCartridges().catch(e => console.warn('auto-refresh 失敗:', e.message));
-            }, 20 * 60 * 1000);
+            }, 5 * 60 * 1000);
+
+            // 視窗回到前景時立即刷新一次（避免 setInterval 在背景被瀏覽器 throttle）
+            document.addEventListener('visibilitychange', onVisibilityChange);
         } catch (err) {
             showLoginError('讀取使用者資料失敗：' + err.message);
             await signOut(auth);
@@ -552,6 +559,7 @@ onAuthStateChanged(auth, async (user) => {
         if (unsubscribeInv)  { unsubscribeInv();  unsubscribeInv  = null; }
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
         if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+        document.removeEventListener('visibilitychange', onVisibilityChange);
         showLogin();
     }
 });
@@ -691,7 +699,7 @@ function subscribeAll() {
     unsubscribeHist = onSnapshot(histQ, (snap) => {
         console.log('[history snapshot] 觸發，筆數:', snap.docs.length);
         try {
-            inv.history = snap.docs.map(d => {
+            historyFromSubscription = snap.docs.map(d => {
                 const data = d.data();
                 return {
                     id: d.id,
@@ -701,6 +709,7 @@ function subscribeAll() {
                     apiStatus: data.apiStatus,
                 };
             });
+            rebuildInvHistory();
             updateHistoryRangeLabel();
             renderHistory();
             renderOverview();
@@ -860,14 +869,33 @@ async function loadAll() {
     showToast('資料已是最新（即時同步中）', 'success');
 }
 
+// 視窗回到前景時主動刷新（瀏覽器會 throttle 背景 tab 的 setInterval，造成等很久才更新）
+let lastVisibilityRefresh = 0;
+function onVisibilityChange() {
+    if (document.visibilityState !== 'visible') return;
+    // 防抖：上次 refresh 不到 30 秒就 skip
+    if (Date.now() - lastVisibilityRefresh < 30000) return;
+    lastVisibilityRefresh = Date.now();
+    console.log(`[visibility ${new Date().toLocaleTimeString()}] tab 回到前景，觸發 autoSyncCartridges`);
+    autoSyncCartridges().catch(e => console.warn('visibility-refresh 失敗:', e.message));
+}
+
 // ══ 從 GitHub printer-status.json 自動同步樹脂罐資料 ══
 async function autoSyncCartridges() {
     try {
         const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/printer-status.json?t=${Date.now()}`;
+        console.log(`[autoSyncCartridges ${new Date().toLocaleTimeString()}] fetch`, url.slice(0, 90) + '...');
         const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) return;
+        if (!res.ok) {
+            console.warn('[autoSyncCartridges] fetch 失敗 HTTP', res.status);
+            return;
+        }
         const printers = await res.json();
-        if (!Array.isArray(printers)) return;
+        if (!Array.isArray(printers)) {
+            console.warn('[autoSyncCartridges] 回傳不是陣列');
+            return;
+        }
+        console.log(`[autoSyncCartridges] 收到 ${printers.length} 台列印機資料`);
 
         let changed = false;
         // 收集 API 中有的 tracked printers，沒在 API 中出現的也要清空（避免顯示舊資料）
@@ -1618,33 +1646,72 @@ function updateHistoryRangeLabel() {
     const lab = document.getElementById('history-range-label');
     if (!lab) return;
     if (!historySinceDate) { lab.textContent = '資料範圍：—'; return; }
-    const since = historySinceDate.toLocaleDateString('zh-TW');
+    const earliest = extraHistorySinceDate || historySinceDate;
+    const since = earliest.toLocaleDateString('zh-TW');
     const today = new Date().toLocaleDateString('zh-TW');
-    const days = Math.round((Date.now() - historySinceDate.getTime()) / 86400000);
-    lab.textContent = `資料範圍：${since} ~ ${today}（${days} 天，${inv.history.length} 筆）`;
+    const days = Math.round((Date.now() - earliest.getTime()) / 86400000);
+    const extraNote = extraHistory.length > 0 ? ` · 已額外載入 ${extraHistory.length} 筆` : '';
+    lab.textContent = `資料範圍：${since} ~ ${today}（${days} 天，共 ${inv.history.length} 筆${extraNote}）`;
+}
+
+// 合併 onSnapshot 即時資料 + 手動載入的 extraHistory（去重 by id）
+function rebuildInvHistory() {
+    const map = new Map();
+    historyFromSubscription.forEach(h => map.set(h.id, h));
+    extraHistory.forEach(h => { if (!map.has(h.id)) map.set(h.id, h); });
+    inv.history = [...map.values()].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
 }
 
 async function loadEarlierMonth() {
     if (!historySinceDate) return;
-    // 將起點往前推一個月
-    const newSince = new Date(historySinceDate);
-    newSince.setMonth(newSince.getMonth() - 1);
-    historySinceDate = newSince;
+    // 計算新範圍：從 extraHistorySinceDate（或 historySinceDate，首次點擊時）往前推一個月
+    const upperBound = extraHistorySinceDate || historySinceDate;
+    const lowerBound = new Date(upperBound);
+    lowerBound.setMonth(lowerBound.getMonth() - 1);
 
-    // 顯示載入狀態
     const loadIcon = document.getElementById('history-loading');
     if (loadIcon) loadIcon.classList.remove('hidden');
 
-    // 解除舊訂閱，subscribeAll 會用新的 historySinceDate 重訂閱
-    if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
-    // 直接呼叫 subscribeAll 中 history 部分的訂閱邏輯（為了簡化，整個 subscribeAll 重訂閱兩個都是 OK 的）
-    if (unsubscribeInv) { unsubscribeInv(); unsubscribeInv = null; }
-    invLoadedFromFirestore = false;
-    subscribeAll();
+    try {
+        // 只 query 這一個月的範圍（[lowerBound, upperBound)），用 getDocs 一次性，不訂閱
+        const q = query(
+            collection(db, 'inventory_history'),
+            where('tsDate', '>=', Timestamp.fromDate(lowerBound)),
+            where('tsDate', '<',  Timestamp.fromDate(upperBound)),
+            orderBy('tsDate', 'desc')
+        );
+        const snap = await getDocs(q);
+        const newEntries = snap.docs.map(d => {
+            const data = d.data();
+            return {
+                id: d.id,
+                ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
+                type: data.type, material: data.material, printer: data.printer,
+                ml: data.ml, note: data.note, print_guid: data.print_guid,
+                apiStatus: data.apiStatus,
+            };
+        });
 
-    setTimeout(() => {
+        // 去重後追加到 extraHistory
+        const existingIds = new Set(extraHistory.map(e => e.id));
+        const addedCount = newEntries.filter(e => !existingIds.has(e.id)).length;
+        extraHistory = [...extraHistory, ...newEntries.filter(e => !existingIds.has(e.id))];
+        extraHistorySinceDate = lowerBound;
+
+        rebuildInvHistory();
+        updateHistoryRangeLabel();
+        renderHistory();
+        renderOverview();
+        if (currentTab === 'monthly') renderMonthly();
+
+        const dateStr = `${lowerBound.toLocaleDateString('zh-TW')} ~ ${upperBound.toLocaleDateString('zh-TW')}`;
+        showToast(`✓ 已載入 ${dateStr}：新增 ${addedCount} 筆（本次 session 暫存）`, 'success');
+    } catch (err) {
+        console.error('loadEarlierMonth 失敗:', err);
+        showToast('載入失敗：' + err.message, 'error');
+    } finally {
         if (loadIcon) loadIcon.classList.add('hidden');
-    }, 1500);
+    }
 }
 function updateHistorySortIndicators(){
     ['ts','material','printer','ml'].forEach(f=>{
