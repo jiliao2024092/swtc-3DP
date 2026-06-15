@@ -329,6 +329,14 @@
                     <input type="date" id="history-filter-to" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="結束日期">
                     <button onclick="resetHistoryFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
                 </div>
+                <!-- 載入範圍指示 -->
+                <div class="mt-2 flex items-center gap-3 text-xs">
+                    <span id="history-range-label" class="text-gray-500">資料範圍：載入中...</span>
+                    <button onclick="loadEarlierMonth()" class="flex items-center gap-1 px-2 py-1 border border-gray-300 rounded-md hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-gray-600">
+                        <i data-lucide="rewind" class="w-3 h-3"></i> 載入更早一個月
+                    </button>
+                    <span id="history-loading" class="text-blue-500 hidden">⏳ 載入中...</span>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
@@ -455,13 +463,15 @@ const HISTORY_PAGE_SIZE = 20;
 let editingCartridge = null;
 let isEditor = false;
 let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
+// 消耗紀錄載入範圍：預設只訂閱最近 30 天，使用者點「載入更早」按鈕往前推一個月
+let historySinceDate = null;  // Date 物件 - 訂閱起點
 let stockSortField='material', stockSortDir='asc';
 let histSortField='ts', histSortDir='desc';
 
 // ══ Firebase 初始化 ══
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit, where } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
@@ -642,10 +652,20 @@ function subscribeAll() {
         }
     });
 
-    // 訂閱 inventory_history（消耗紀錄 collection）
-    console.log('[subscribeAll] 訂閱 inventory_history...');
-    const q = query(collection(db, 'inventory_history'), orderBy('tsDate', 'desc'));
-    unsubscribeHist = onSnapshot(q, (snap) => {
+    // 訂閱 inventory_history（消耗紀錄 collection）— 預設只取最近 30 天，省 Firestore 讀取
+    if (!historySinceDate) {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        d.setHours(0, 0, 0, 0);
+        historySinceDate = d;
+    }
+    console.log('[subscribeAll] 訂閱 inventory_history since', historySinceDate.toISOString());
+    const histQ = query(
+        collection(db, 'inventory_history'),
+        where('tsDate', '>=', Timestamp.fromDate(historySinceDate)),
+        orderBy('tsDate', 'desc')
+    );
+    unsubscribeHist = onSnapshot(histQ, (snap) => {
         console.log('[history snapshot] 觸發，筆數:', snap.docs.length);
         try {
             inv.history = snap.docs.map(d => {
@@ -658,7 +678,10 @@ function subscribeAll() {
                     apiStatus: data.apiStatus,
                 };
             });
+            updateHistoryRangeLabel();
             renderHistory();
+            renderOverview();
+            if(currentTab==='monthly') renderMonthly();
         } catch (err) {
             console.error('[history snapshot] 渲染錯誤:', err);
         }
@@ -666,6 +689,7 @@ function subscribeAll() {
         console.error('[history snapshot] 訂閱失敗:', err.code, err.message);
         if (err.code === 'failed-precondition') {
             console.warn('需要 Firestore index（tsDate desc），請看錯誤訊息中的連結建立 index');
+            showToast('需要建立 Firestore index，請看 console 中的連結', 'error');
         }
     });
 }
@@ -1474,6 +1498,39 @@ function resetHistoryFilters(){
     document.getElementById('history-filter-to').value='';
     renderHistory();
 }
+
+function updateHistoryRangeLabel() {
+    const lab = document.getElementById('history-range-label');
+    if (!lab) return;
+    if (!historySinceDate) { lab.textContent = '資料範圍：—'; return; }
+    const since = historySinceDate.toLocaleDateString('zh-TW');
+    const today = new Date().toLocaleDateString('zh-TW');
+    const days = Math.round((Date.now() - historySinceDate.getTime()) / 86400000);
+    lab.textContent = `資料範圍：${since} ~ ${today}（${days} 天，${inv.history.length} 筆）`;
+}
+
+async function loadEarlierMonth() {
+    if (!historySinceDate) return;
+    // 將起點往前推一個月
+    const newSince = new Date(historySinceDate);
+    newSince.setMonth(newSince.getMonth() - 1);
+    historySinceDate = newSince;
+
+    // 顯示載入狀態
+    const loadIcon = document.getElementById('history-loading');
+    if (loadIcon) loadIcon.classList.remove('hidden');
+
+    // 解除舊訂閱，subscribeAll 會用新的 historySinceDate 重訂閱
+    if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
+    // 直接呼叫 subscribeAll 中 history 部分的訂閱邏輯（為了簡化，整個 subscribeAll 重訂閱兩個都是 OK 的）
+    if (unsubscribeInv) { unsubscribeInv(); unsubscribeInv = null; }
+    invLoadedFromFirestore = false;
+    subscribeAll();
+
+    setTimeout(() => {
+        if (loadIcon) loadIcon.classList.add('hidden');
+    }, 1500);
+}
 function updateHistorySortIndicators(){
     ['ts','material','printer','ml'].forEach(f=>{
         const el=document.getElementById('hist-sort-'+f);
@@ -1880,13 +1937,13 @@ function reloadData() {
     if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
     // 重置 flag：要等下次 onSnapshot 觸發後才能寫入
     invLoadedFromFirestore = false;
-    // 注意：不 reset inv 物件、不立即 autoSyncCartridges
-    // 這樣可避免 onSnapshot 還沒回應前 autoSyncCartridges 用空 inv 寫入 Firestore（會覆寫 stock/safety/history）
+    // 重置消耗紀錄範圍回到預設 30 天（節省 Firestore 讀取）
+    historySinceDate = null;
     subscribeAll();
     setTimeout(() => {
         if(icon) icon.style.animation = '';
         setSyncStatus('ok');
-        showToast('✓ 已重新載入', 'success');
+        showToast('✓ 已重新載入（最近 30 天資料）', 'success');
     }, 700);
 }
 
@@ -1972,6 +2029,7 @@ window.switchTab = switchTab;
 window.reloadData = reloadData;
 window.triggerSyncWorkflow = triggerSyncWorkflow;
 window.purgeAndRebuildHistory = purgeAndRebuildHistory;
+window.loadEarlierMonth = loadEarlierMonth;
 window.showDisabledMaterialsModal = showDisabledMaterialsModal;
 window.closeDisabledMaterialsModal = closeDisabledMaterialsModal;
 window.restoreMaterial = restoreMaterial;
