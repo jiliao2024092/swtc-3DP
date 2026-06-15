@@ -182,6 +182,9 @@
             <button data-admin-only onclick="triggerSyncWorkflow()" title="觸發 GitHub workflow 重新同步消耗資料（會開新分頁）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-700 transition-colors">
                 <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> 觸發同步
             </button>
+            <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清除並重建
+            </button>
             <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="reload-icon"></i> 重新載入
             </button>
@@ -457,7 +460,7 @@ let histSortField='ts', histSortDir='desc';
 // ══ Firebase 初始化 ══
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
@@ -1887,6 +1890,60 @@ function triggerSyncWorkflow() {
     }
 }
 
+// ══ 清除所有消耗紀錄並重新匯入 (admin only) ══
+async function purgeAndRebuildHistory() {
+    if (!currentUser || currentUser.role !== 'admin') {
+        showToast('僅 admin 可執行此操作', 'error');
+        return;
+    }
+    const msg1 = `⚠️ 警告：此操作將完全清除所有消耗紀錄！\n\n` +
+        `目前 inventory_history 共 ${inv.history.length} 筆紀錄將被刪除。\n` +
+        `若預期重新匯入，請隨後到 GitHub Actions 觸發「回填模式」workflow。\n\n` +
+        `確定要繼續嗎？`;
+    if (!confirm(msg1)) return;
+    if (!confirm('再次確認：所有消耗紀錄即將被永久刪除，此操作無法復原！')) return;
+
+    const btn = event.target.closest('button');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> 清除中...'; lucide.createIcons(); }
+
+    try {
+        // 1. 批次刪除 inventory_history（每批 500 筆是 Firestore writeBatch 上限）
+        let totalDeleted = 0;
+        while (true) {
+            const histRef = collection(db, 'inventory_history');
+            const snap = await getDocs(query(histRef, limit(500)));
+            if (snap.empty) break;
+            const batch = writeBatch(db);
+            snap.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            totalDeleted += snap.size;
+            console.log(`[purge] 已刪除 ${totalDeleted} 筆...`);
+            if (btn) btn.innerHTML = `<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> 已刪 ${totalDeleted}...`;
+            lucide.createIcons();
+            if (snap.size < 500) break;
+        }
+
+        // 2. 清空 last_processed_prints，讓下次 sync workflow 重新處理所有 prints
+        inv.last_processed_prints = [];
+        await saveAll(`清除 ${totalDeleted} 筆消耗紀錄並重置 last_processed_prints`);
+
+        // 3. 提示使用者觸發 workflow
+        const url = 'https://github.com/jiliao2024092/swtc-3DP/actions/workflows/sync-printers.yml';
+        if (confirm(`✓ 已刪除 ${totalDeleted} 筆消耗紀錄，並重置 last_processed_prints。\n\n` +
+            `要立即開啟 GitHub Actions 頁面觸發回填嗎？\n\n` +
+            `（請在開啟的頁面右上點「Run workflow」→ 勾「回填模式」→ Run）`)) {
+            window.open(url, '_blank');
+        }
+        showToast(`✓ 已清除 ${totalDeleted} 筆紀錄`, 'success');
+    } catch (err) {
+        console.error('purgeAndRebuildHistory 失敗:', err);
+        showToast('清除失敗：' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; lucide.createIcons(); }
+    }
+}
+
 // ══ 暴露給 HTML inline event handlers ══
 window.closeCartridgeModal = closeCartridgeModal;
 window.closeSafetyModal = closeSafetyModal;
@@ -1906,6 +1963,7 @@ window.stockSortBy = stockSortBy;
 window.switchTab = switchTab;
 window.reloadData = reloadData;
 window.triggerSyncWorkflow = triggerSyncWorkflow;
+window.purgeAndRebuildHistory = purgeAndRebuildHistory;
 window.showDisabledMaterialsModal = showDisabledMaterialsModal;
 window.closeDisabledMaterialsModal = closeDisabledMaterialsModal;
 window.restoreMaterial = restoreMaterial;
