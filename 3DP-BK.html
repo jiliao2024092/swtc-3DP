@@ -1209,9 +1209,8 @@ window.exportExcel = function(){
 
 // ══════════════════════════════════════════════
 // ══════════════════════════════════════════════
-// ══ 9. 列印機即時狀態（讀 GitHub raw URL）═════
+// ══ 9. 列印機即時狀態（訂閱 Firestore printer_status/current）═════
 // ══════════════════════════════════════════════
-const STATUS_URL = `https://raw.githubusercontent.com/jiliao2024092/swtc-3DP/main/printer-status.json`;
 const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 const CODE_TO_NAME = {
     'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
@@ -1280,29 +1279,57 @@ window.manualRefreshPrinters = async function() {
     icon.style.animation = '';
 };
 
+// 訂閱 Firestore printer_status/current（Cloud Function 寫入、即時推送）
+let unsubscribePrinterStatus = null;
+
+function subscribePrinterStatus() {
+    if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
+    console.log(`[printer_status ${new Date().toLocaleTimeString()}] 訂閱 Firestore`);
+    unsubscribePrinterStatus = onSnapshot(
+        doc(db, 'printer_status', 'current'),
+        (snap) => {
+            if (!snap.exists()) {
+                document.getElementById('panel-status').innerHTML =
+                    '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料（Cloud Function 尚未首次寫入）</div>';
+                return;
+            }
+            const data = snap.data();
+            const printers = data.printers || [];
+            cachedPrinters = printers;
+            console.log(`[printer_status ${new Date().toLocaleTimeString()}] 收到 ${printers.length} 台`);
+
+            // 顯示 Cloud Function 上次寫入時間
+            const updatedAt = data.updated_at?.toDate?.() || (data.updated_at ? new Date(data.updated_at) : null);
+            if (updatedAt) {
+                document.getElementById('printer-updated').textContent =
+                    `資料時間：${updatedAt.toLocaleDateString('zh-TW')} ${updatedAt.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
+            }
+
+            if (!printers.length) {
+                document.getElementById('panel-status').innerHTML =
+                    '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
+                return;
+            }
+            renderStatusPanel(printers);
+            if (printerView === 'material') renderMaterialPanel(printers);
+        },
+        (err) => {
+            console.error('[printer_status] 訂閱失敗:', err);
+            document.getElementById('panel-status').innerHTML =
+                `<div class="col-span-full text-center text-red-400 text-sm py-6">訂閱失敗：${err.message}</div>`;
+        }
+    );
+}
+
+// 「刷新」按鈕：onSnapshot 已即時推送，這裡只強制 re-render
 async function loadPrinterStatus() {
-    try {
-        const url = STATUS_URL + '?t=' + Date.now();
-        console.log(`[loadPrinterStatus ${new Date().toLocaleTimeString()}] fetch`, url.slice(0, 90) + '...');
-        const res = await fetch(url, { cache: 'no-store' });
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        const printers = await res.json();
-        cachedPrinters = Array.isArray(printers) ? printers : [];
-        console.log(`[loadPrinterStatus] 收到 ${cachedPrinters.length} 台列印機資料`);
-        const updatedAt = cachedPrinters[0]?.updated_at;
-        if(updatedAt){
-            const d = new Date(updatedAt);
-            document.getElementById('printer-updated').textContent =
-                `資料時間：${d.toLocaleDateString('zh-TW')} ${d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
-        }
-        if(!cachedPrinters.length){
-            document.getElementById('panel-status').innerHTML = '<div class="col-span-full text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
-            return;
-        }
+    console.log(`[loadPrinterStatus ${new Date().toLocaleTimeString()}] 手動重新渲染`);
+    if (cachedPrinters.length) {
         renderStatusPanel(cachedPrinters);
-        if(printerView==='material') renderMaterialPanel(cachedPrinters);
-    } catch(err){
-        document.getElementById('panel-status').innerHTML = `<div class="col-span-full text-center text-red-400 text-sm py-6">無法載入：${err.message}</div>`;
+        if (printerView === 'material') renderMaterialPanel(cachedPrinters);
+    } else {
+        // 若還沒收到任何資料，重新訂閱觸發
+        subscribePrinterStatus();
     }
 }
 
@@ -1394,22 +1421,8 @@ function renderMaterialPanel(printers) {
     });
 }
 
-// 啟動列印機狀態載入：初始 + 每 5 分鐘 + 視窗回到前景時
-loadPrinterStatus();
-setInterval(() => {
-    console.log(`[printer-status ${new Date().toLocaleTimeString()}] 每 5 分鐘觸發 loadPrinterStatus`);
-    loadPrinterStatus();
-}, 5*60*1000);
-
-// 視窗回到前景時主動刷新（瀏覽器會 throttle 背景 tab 的 setInterval）
-let lastPSRefresh = 0;
-document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
-    if (Date.now() - lastPSRefresh < 30000) return;
-    lastPSRefresh = Date.now();
-    console.log(`[printer-status ${new Date().toLocaleTimeString()}] tab 回到前景，主動刷新`);
-    loadPrinterStatus();
-});
+// 訂閱 Firestore printer_status/current — Cloud Function 寫入時即時推送，不需 polling
+subscribePrinterStatus();
 
 // ══════════════════════════════════════════════
 // ══ 10. 工具 ══════════════════════════════════
