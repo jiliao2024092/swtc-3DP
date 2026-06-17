@@ -305,8 +305,7 @@
                     <thead>
                         <tr class="bg-gray-100 text-gray-600">
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('bottles')">數量 (L)<span id="stock-sort-bottles" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">備料 (L)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">庫存 (L)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('on_machine')">機台上 (L)<span id="stock-sort-on_machine" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
@@ -448,9 +447,7 @@
 const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 const DEFAULT_CARTRIDGE_ML = 1000;
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
-const GITHUB_OWNER   = 'jiliao2024092';
-const GITHUB_REPO    = 'swtc-3DP';
-// printer-status.json 仍從 GitHub raw 讀（公開即時資料，不需 token）
+// 列印機即時狀態與消耗紀錄全部由 Cloud Function 同步至 Firestore，前端 onSnapshot 訂閱
 
 // 預設安全庫存（ml）
 const DEFAULT_SAFETY = 1000;
@@ -489,7 +486,7 @@ let extraHistorySinceDate = null;    // extraHistory 已涵蓋到的最早日期
 let historyFromSubscription = [];    // 來自 onSnapshot 訂閱（30 天內）的原始資料
 // 備料庫存整頁編輯模式（true 時所有 input 啟用，點儲存才一次寫入 Firestore）
 let isStockEditMode = false;
-// 列印機即時狀態（從 printer-status.json 拉，僅用於 UI 邊框色，不存 Firestore）
+// 列印機即時狀態（從 Firestore printer_status/current 訂閱，僅用於 UI 邊框色）
 // key = alias（如 'AluminumBowfin'），value = { status, raw }
 let printerStatus = {};
 let stockSortField='material', stockSortDir='asc';
@@ -498,7 +495,8 @@ let histSortField='ts', histSortDir='desc';
 // ══ Firebase 初始化 ══
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
-import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit, where } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit, where, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
+import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
@@ -511,6 +509,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app, 'asia-east1');  // Cloud Function 部署在 asia-east1
 
 let currentUser = null;          // {uid, email, displayName, role}
 let unsubscribeInv = null;
@@ -539,16 +538,8 @@ onAuthStateChanged(auth, async (user) => {
             isEditor = (role === 'admin' || role === 'editor');
             showApp();
             subscribeAll();
-
-            // 每 5 分鐘自動拉一次 printer-status.json 並重新渲染
-            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
-            autoRefreshTimer = setInterval(() => {
-                console.log(`[auto-refresh ${new Date().toLocaleTimeString()}] 每 5 分鐘觸發 autoSyncCartridges`);
-                autoSyncCartridges().catch(e => console.warn('auto-refresh 失敗:', e.message));
-            }, 5 * 60 * 1000);
-
-            // 視窗回到前景時立即刷新一次（避免 setInterval 在背景被瀏覽器 throttle）
-            document.addEventListener('visibilitychange', onVisibilityChange);
+            // 訂閱 printer_status/current（Cloud Function 寫入時即時推送）
+            subscribePrinterStatus();
         } catch (err) {
             showLoginError('讀取使用者資料失敗：' + err.message);
             await signOut(auth);
@@ -558,8 +549,7 @@ onAuthStateChanged(auth, async (user) => {
         invLoadedFromFirestore = false;
         if (unsubscribeInv)  { unsubscribeInv();  unsubscribeInv  = null; }
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
-        if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
-        document.removeEventListener('visibilitychange', onVisibilityChange);
+        if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
         showLogin();
     }
 });
@@ -869,81 +859,62 @@ async function loadAll() {
     showToast('資料已是最新（即時同步中）', 'success');
 }
 
-// 視窗回到前景時主動刷新（瀏覽器會 throttle 背景 tab 的 setInterval，造成等很久才更新）
-let lastVisibilityRefresh = 0;
-function onVisibilityChange() {
-    if (document.visibilityState !== 'visible') return;
-    // 防抖：上次 refresh 不到 30 秒就 skip
-    if (Date.now() - lastVisibilityRefresh < 30000) return;
-    lastVisibilityRefresh = Date.now();
-    console.log(`[visibility ${new Date().toLocaleTimeString()}] tab 回到前景，觸發 autoSyncCartridges`);
-    autoSyncCartridges().catch(e => console.warn('visibility-refresh 失敗:', e.message));
+// ══ 從 Firestore printer_status/current 訂閱機台狀態 ══
+//    (Cloud Function 每 10 分鐘寫入；onSnapshot 自動即時推送，不需 polling)
+let unsubscribePrinterStatus = null;
+
+function subscribePrinterStatus() {
+    if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
+    console.log(`[printer_status ${new Date().toLocaleTimeString()}] 訂閱 Firestore`);
+    unsubscribePrinterStatus = onSnapshot(
+        doc(db, 'printer_status', 'current'),
+        (snap) => {
+            if (!snap.exists()) {
+                console.warn('[printer_status] 文件不存在，等待 Cloud Function 第一次寫入');
+                return;
+            }
+            const data = snap.data();
+            const printers = data.printers || [];
+            console.log(`[printer_status ${new Date().toLocaleTimeString()}] 收到 ${printers.length} 台`);
+
+            // 更新 printerStatus（用於 inventory 卡片邊框色）
+            const newPrinterStatus = {};
+            printers.forEach(p => {
+                if (!TRACKED_PRINTERS.some(name => (p.alias||'').includes(name))) return;
+                const key = TRACKED_PRINTERS.find(n => (p.alias||'').includes(n));
+                if (key) newPrinterStatus[key] = (p.status || '').toUpperCase();
+            });
+            printerStatus = newPrinterStatus;
+            renderAll();
+        },
+        (err) => console.error('[printer_status] 訂閱失敗:', err)
+    );
 }
 
-// ══ 從 GitHub printer-status.json 自動同步樹脂罐資料 ══
+// 舊版相容：保留 autoSyncCartridges 名稱但改為「強制重新 fetch」
+//  - Firestore onSnapshot 已即時推送，這個函式幾乎不需要被呼叫
+//  - 保留只是為了「重新載入」按鈕點下去仍有實際操作可做
 async function autoSyncCartridges() {
+    console.log(`[autoSyncCartridges] 強制 re-fetch printer_status/current`);
+    // 一次性讀取（不訂閱），純粹確保拿到最新值
     try {
-        const url = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/main/printer-status.json?t=${Date.now()}`;
-        console.log(`[autoSyncCartridges ${new Date().toLocaleTimeString()}] fetch`, url.slice(0, 90) + '...');
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) {
-            console.warn('[autoSyncCartridges] fetch 失敗 HTTP', res.status);
+        const snap = await getDoc(doc(db, 'printer_status', 'current'));
+        if (!snap.exists()) {
+            console.warn('[autoSyncCartridges] printer_status/current 不存在');
             return;
         }
-        const printers = await res.json();
-        if (!Array.isArray(printers)) {
-            console.warn('[autoSyncCartridges] 回傳不是陣列');
-            return;
-        }
-        console.log(`[autoSyncCartridges] 收到 ${printers.length} 台列印機資料`);
-
-        let changed = false;
-        // 收集 API 中有的 tracked printers，沒在 API 中出現的也要清空（避免顯示舊資料）
-        const seenInApi = new Set();
+        const data = snap.data();
+        const printers = data.printers || [];
         const newPrinterStatus = {};
         printers.forEach(p => {
             if (!TRACKED_PRINTERS.some(name => (p.alias||'').includes(name))) return;
             const key = TRACKED_PRINTERS.find(n => (p.alias||'').includes(n));
-            if (!key) return;
-            seenInApi.add(key);
-            // 紀錄列印機狀態（用於卡片邊框顏色）
-            newPrinterStatus[key] = (p.status || '').toUpperCase();
-            const apiCartridges = p.cartridges || [];
-
-            const old = inv.cartridges[key] || [];
-            // 即使 API 回傳空陣列也要覆寫（同步以 API 為準）
-            const merged = apiCartridges.map(c => {
-                const existing = old.find(o => o.slot === c.slot);
-                return {
-                    slot: c.slot,
-                    material: c.material || existing?.material || '',
-                    remaining_ml: c.remaining_ml != null ? c.remaining_ml : (existing?.remaining_ml || 0),
-                    initial_ml: existing?.initial_ml || DEFAULT_CARTRIDGE_ML,
-                    updated_at: c.updated_at || new Date().toISOString(),
-                    source: 'api',
-                };
-            });
-
-            const oldStr = JSON.stringify(old.map(o=>({slot:o.slot,material:o.material,remaining_ml:o.remaining_ml})));
-            const newStr = JSON.stringify(merged.map(o=>({slot:o.slot,material:o.material,remaining_ml:o.remaining_ml})));
-            if (oldStr !== newStr) {
-                inv.cartridges[key] = merged;
-                changed = true;
-            }
+            if (key) newPrinterStatus[key] = (p.status || '').toUpperCase();
         });
-
-        // 更新列印機即時狀態（同步以 API 為準）
         printerStatus = newPrinterStatus;
-
-        // 只有 editor 且資料有變且 inv 已從 Firestore 載入才寫回 Firestore
-        if (changed && isEditor && invLoadedFromFirestore) {
-            await saveAll('自動同步樹脂罐（從 Formlabs API）');
-        } else if (changed && !invLoadedFromFirestore) {
-            console.warn('[autoSyncCartridges] inv 尚未從 Firestore 載入完成，跳過寫入 Firestore（僅本地更新）');
-        }
-        renderAll();  // 即使沒變也重新渲染，確保「最後更新」時間刷新
+        renderAll();
     } catch (err) {
-        console.warn('autoSyncCartridges 失敗:', err.message);
+        console.warn('[autoSyncCartridges] 失敗:', err.message);
     }
 }
 
@@ -1320,7 +1291,7 @@ function renderStockTable() {
         const s=inv.stock[m]||{bottles:0,total_ml:0};
         const safety=getSafetyStock(m);
         const low=isLowStock(m);
-        const bottles=s.bottles||0;
+        const stockLiters = (s.total_ml||0) / 1000;
         const me=m.replace(/'/g,"\\'");
         // 編輯模式下所有列的 input 啟用
         const inputDisabled = !isEditor || !isStockEditMode;
@@ -1330,11 +1301,10 @@ function renderStockTable() {
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="1" value="${bottles}" ${inputDisabled?'disabled':''}
-                    class="stock-bottles-input w-20 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
+                <input type="number" min="0" step="0.1" value="${stockLiters.toFixed(1)}" ${inputDisabled?'disabled':''}
+                    class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400 ${low&&!isStockEditMode?'text-red-500 font-medium':''}">
                 <span class="text-xs text-gray-400 ml-1">L</span>
             </td>
-            <td class="p-3 text-right font-medium ${low?'text-red-500':'text-gray-700'}">${(((s.total_ml||0))/1000).toFixed(1)} L</td>
             <td class="p-3 text-right text-gray-700">${getCartridgeTotal(m) > 0 ? `<span class="text-sm">${(getCartridgeTotal(m)/1000).toFixed(2)} L</span>` : '<span class="text-gray-300 text-xs">—</span>'}</td>
             <td class="p-3 text-right text-gray-700">
                 <span class="font-medium">${(safety/1000).toFixed(1)}</span>
@@ -1391,12 +1361,12 @@ async function saveStockEdits() {
 
     rows.forEach(row => {
         const material = row.getAttribute('data-material');
-        const bottlesInput = row.querySelector('.stock-bottles-input');
-        const noteInput = row.querySelector('.stock-note-input');
-        if (!bottlesInput || !noteInput) return;
+        const litersInput = row.querySelector('.stock-liters-input');
+        const noteInput   = row.querySelector('.stock-note-input');
+        if (!litersInput || !noteInput) return;
 
-        const bottles = parseFloat(bottlesInput.value);
-        if (isNaN(bottles) || bottles < 0) {
+        const liters = parseFloat(litersInput.value);
+        if (isNaN(liters) || liters < 0) {
             showToast(`「${matName(material)}」數量無效，已跳過`, 'error');
             return;
         }
@@ -1404,13 +1374,14 @@ async function saveStockEdits() {
         if (!inv.stock[material]) inv.stock[material] = { bottles:0, total_ml:0 };
         const oldMl   = inv.stock[material].total_ml || 0;
         const oldNote = inv.stock[material].note || '';
-        const newMl   = Math.round(bottles * ML_PER_BOTTLE * 10) / 10;
+        // 直接用 L 算 ml（不再先用 bottles 中介，避免 0.1L 被四捨五入到整罐）
+        const newMl   = Math.round(liters * 1000 * 10) / 10;
         const diff    = Math.round((newMl - oldMl) * 10) / 10;
         const newNote = noteInput.value.trim();
 
         if (diff === 0 && newNote === oldNote) return;  // 此列無變更
 
-        inv.stock[material].bottles    = bottles;
+        inv.stock[material].bottles    = Math.round(liters * 10) / 10;  // 保留欄位，純記錄用
         inv.stock[material].total_ml   = newMl;
         inv.stock[material].note       = newNote;
         inv.stock[material].updated_at = new Date().toISOString();
@@ -1419,11 +1390,11 @@ async function saveStockEdits() {
         if (diff !== 0) {
             historyEntries.push({
                 type:'manual', material, printer:'備料庫存',
-                ml: diff, note: `批次調整為 ${bottles.toFixed(1)} L`
+                ml: diff, note: `批次調整為 ${liters.toFixed(1)} L`
             });
         }
         changedCount++;
-        summaryLines.push(`${matName(material)} → ${bottles.toFixed(1)} L`);
+        summaryLines.push(`${matName(material)} → ${liters.toFixed(1)} L`);
     });
 
     if (changedCount === 0) {
@@ -2111,29 +2082,57 @@ function renderAll() {
 }
 
 // ══ 重新載入資料（unsubscribe → 重新訂閱，讓 onSnapshot 拉最新資料回來）══
-function reloadData() {
+async function reloadData() {
+    console.log(`[reloadData ${new Date().toLocaleTimeString()}] 開始`);
     const icon = document.getElementById('reload-icon');
     if(icon) icon.style.animation = 'spin 0.7s linear infinite';
     setSyncStatus('loading');
-    if (unsubscribeInv)  { unsubscribeInv(); unsubscribeInv = null; }
-    if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
-    // 重置 flag：要等下次 onSnapshot 觸發後才能寫入
-    invLoadedFromFirestore = false;
-    // 重置消耗紀錄範圍回到預設 30 天（節省 Firestore 讀取）
-    historySinceDate = null;
-    subscribeAll();
-    setTimeout(() => {
+
+    try {
+        if (unsubscribeInv)  { unsubscribeInv(); unsubscribeInv = null; }
+        if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
+        invLoadedFromFirestore = false;
+        historySinceDate = null;
+        extraHistory = [];
+        extraHistorySinceDate = null;
+        historyFromSubscription = [];
+        subscribeAll();
+        // 主動從 Firestore 重新拉 printer_status 取得最新印機狀態
+        await autoSyncCartridges();
+        showToast('✓ 已重新載入', 'success');
+    } catch (err) {
+        console.error('[reloadData] 失敗:', err);
+        showToast('重新載入失敗：' + err.message, 'error');
+    } finally {
         if(icon) icon.style.animation = '';
         setSyncStatus('ok');
-        showToast('✓ 已重新載入（最近 30 天資料）', 'success');
-    }, 700);
+        console.log(`[reloadData ${new Date().toLocaleTimeString()}] 結束`);
+    }
 }
 
 // ══ 觸發 GitHub workflow（開新分頁到 Actions 頁，使用者手動點 Run workflow）══
-function triggerSyncWorkflow() {
-    const url = 'https://github.com/jiliao2024092/swtc-3DP/actions/workflows/sync-printers.yml';
-    if(confirm('將開啟 GitHub Actions 頁面。\n請於頁面右上點「Run workflow」按鈕觸發同步，約 30 秒後再點「重新載入」查看結果。\n\n要繼續嗎？')){
-        window.open(url, '_blank');
+async function triggerSyncWorkflow() {
+    if (!currentUser || currentUser.role !== 'admin') {
+        showToast('僅 admin 可手動觸發同步', 'error');
+        return;
+    }
+    if (!confirm('立即從 Formlabs API 同步機台狀態與消耗紀錄？\n（一般每 10 分鐘自動同步，可手動加速）')) return;
+
+    const btn = event.target.closest('button');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> 同步中...'; lucide.createIcons(); }
+
+    try {
+        const callable = httpsCallable(functions, 'sync_formlabs_manual');
+        const result = await callable({ backfill: false });
+        const stats = result.data || {};
+        console.log('[manual sync] stats:', stats);
+        showToast(`✓ 同步完成：新增 ${stats.processed_new || 0} 筆`, 'success');
+    } catch (err) {
+        console.error('manual sync 失敗:', err);
+        showToast('同步失敗：' + (err.message || err.code), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; lucide.createIcons(); }
     }
 }
 
