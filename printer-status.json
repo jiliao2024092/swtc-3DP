@@ -13,8 +13,8 @@
     "layer_total": 0,
     "volume_ml": null,
     "time_left": "-",
-    "last_pinged": "2026-06-17T21:26:13.199018-04:00",
-    "updated_at": "2026-06-18T01:27:15Z",
+    "last_pinged": "2026-06-17T21:31:05.567640-04:00",
+    "updated_at": "2026-06-18T01:31:57Z",
     "last_completed_print": {
       "guid": "dee3d0fa-05bb-40e0-9a26-d304e519d60c",
       "material": "Tough 2000 V2",
@@ -37,8 +37,8 @@
     "layer_total": 0,
     "volume_ml": null,
     "time_left": "-",
-    "last_pinged": "2026-06-17T21:26:17.869450-04:00",
-    "updated_at": "2026-06-18T01:27:15Z",
+    "last_pinged": "2026-06-17T21:31:09.615936-04:00",
+    "updated_at": "2026-06-18T01:31:57Z",
     "last_completed_print": {
       "guid": "883a1bec-598f-40f3-92f8-c0a56f9e6b91",
       "material": "Nylon 12",
@@ -62,7 +62,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-03-18T04:26:59.914487-04:00",
-    "updated_at": "2026-06-18T01:27:15Z",
+    "updated_at": "2026-06-18T01:31:57Z",
     "last_completed_print": {
       "guid": "7bd7c604-a011-4eba-a73a-a5a9374b0292",
       "material": "Flexible 80A V1",
@@ -85,8 +85,8 @@
     "layer_total": 0,
     "volume_ml": null,
     "time_left": "-",
-    "last_pinged": "2026-06-17T21:26:02.153895-04:00",
-    "updated_at": "2026-06-18T01:27:15Z",
+    "last_pinged": "2026-06-17T21:31:01.222309-04:00",
+    "updated_at": "2026-06-18T01:31:57Z",
     "last_completed_print": {
       "guid": "a9cb9481-6372-4e17-8be2-de1edc2b5ab4",
       "material": "Clear V5",
@@ -129,7 +129,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-02-10T03:27:54.064854-05:00",
-    "updated_at": "2026-06-18T01:27:15Z",
+    "updated_at": "2026-06-18T01:31:57Z",
     "last_completed_print": {
       "guid": "6143c037-4268-4f29-8068-65492806ed60",
       "material": "Grey V5",
@@ -163,7 +163,7 @@
     "volume_ml": null,
     "time_left": "-",
     "last_pinged": "2026-06-10T21:16:19.293790-04:00",
-    "updated_at": "2026-06-18T01:27:15Z",
+    "updated_at": "2026-06-18T01:31:57Z",
     "last_completed_print": {
       "guid": "cefb246b-7d66-4899-bf3e-4292e09c3974",
       "material": "Flex 50A V1",
