@@ -407,7 +407,7 @@ def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
     if not user_doc.exists or user_doc.to_dict().get("role") != "admin":
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            message="僅 admin 可手動觸發同步",
+            message="僅 admin 可觸發",
         )
 
     backfill = bool(req.data.get("backfill", False))
