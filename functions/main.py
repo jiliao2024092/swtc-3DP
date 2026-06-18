@@ -350,7 +350,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         }, merge=True)
 
         stats["finished_at"] = datetime.datetime.utcnow().isoformat() + "Z"
-        print(f"[sync] 完成: {json.dumps(stats, default=str, ensure_ascii=False)}")
+        print(f"[sync v2] 完成: {json.dumps(stats, default=str, ensure_ascii=False)}")
         return stats
 
     except Exception as e:
