@@ -78,10 +78,10 @@
 
 | 項目 | v1 | v2 |
 |------|----|----|
-| 同步機制 | GitHub Actions cron（不準時） | Cloud Scheduler（100% 準時） |
+| 同步機制 | GitHub Actions cron | Cloud Scheduler |
 | 中介資料 | printer-status.json（git commit） | Firestore printer_status/current |
 | 前端更新 | fetch + setInterval（被 throttle） | onSnapshot（即時推送） |
-| Cartridge 數值 | 從 prints 自行扣減（double deduct 風險） | 直接用 Formlabs API（API 為真相） |
+| Cartridge 數值 | 從 prints 自行扣減（double deduct 風險） | 直接用 Formlabs API（API 為主） |
 | 部署 | git push process_printers.py | git push functions/main.py → 自動部署 |
 | Schedule 延遲 | 30 分鐘 ~ 數小時 | < 5 秒 |
 
