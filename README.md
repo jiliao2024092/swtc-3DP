@@ -1,5 +1,5 @@
 # SWTC 3D 列印系統 — 文件中心
-https://jiliao2024092.github.io/swtc-3DP/#equipment-data
+入口網站 :　https://jiliao2024092.github.io/swtc-3DP/#equipment-data
 
 > **系統版本**：v2.0（Firebase Cloud Function 架構）
 > **更新日期**：2026/06/18
