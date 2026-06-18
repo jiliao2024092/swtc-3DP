@@ -140,19 +140,36 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         print(f"[sync] 取得 {len(printers)} 台 printers")
 
         # 簡化結構，寫入 printer_status/current 給前端用
+        # ★ Formlabs API 的欄位是 cartridge_status (array of PrinterCartridgeStatus)，不是 cartridges
+        # ★ 每個 PrinterCartridgeStatus 含 cartridge (Cartridge object) + cartridge_slot
         printers_summary = []
         for p in printers:
             alias = p.get("alias") or p.get("serial") or ""
             cartridges = []
-            for c in (p.get("cartridges") or []):
+            # 優先用 cartridge_status；舊版相容也試 cartridges
+            cart_list = p.get("cartridge_status") or p.get("cartridges") or []
+            for item in cart_list:
+                # item 可能是 PrinterCartridgeStatus（含 cartridge 子物件）或直接是 Cartridge
+                if isinstance(item, dict) and "cartridge" in item and isinstance(item.get("cartridge"), dict):
+                    c    = item.get("cartridge") or {}
+                    slot = item.get("cartridge_slot") or item.get("slot")
+                    last_mod = item.get("last_modified") or c.get("last_modified")
+                else:
+                    c    = item or {}
+                    slot = c.get("slot") or c.get("cartridge_slot")
+                    last_mod = c.get("last_modified")
+
+                initial    = c.get("initial_volume_ml")
+                dispensed  = c.get("volume_dispensed_ml", 0) or 0
+                remaining  = round(float(initial) - float(dispensed), 1) if initial is not None else None
+
                 cartridges.append({
-                    "slot":         c.get("slot"),
+                    "slot":         slot,
                     "material":     canon_material(c.get("material") or c.get("display_name")),
-                    "remaining_ml": (c.get("initial_volume_ml", 0) or 0) - (c.get("volume_dispensed_ml", 0) or 0)
-                                    if c.get("initial_volume_ml") is not None else None,
-                    "initial_ml":   c.get("initial_volume_ml"),
+                    "remaining_ml": remaining,
+                    "initial_ml":   initial,
                     "serial":       c.get("serial"),
-                    "updated_at":   c.get("last_modified") or datetime.datetime.utcnow().isoformat() + "Z",
+                    "updated_at":   last_mod or datetime.datetime.utcnow().isoformat() + "Z",
                 })
             printers_summary.append({
                 "alias":      alias,
@@ -350,7 +367,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         }, merge=True)
 
         stats["finished_at"] = datetime.datetime.utcnow().isoformat() + "Z"
-        print(f"[sync v2] 完成: {json.dumps(stats, default=str, ensure_ascii=False)}")
+        print(f"[sync] 完成: {json.dumps(stats, default=str, ensure_ascii=False)}")
         return stats
 
     except Exception as e:
@@ -407,7 +424,7 @@ def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
     if not user_doc.exists or user_doc.to_dict().get("role") != "admin":
         raise https_fn.HttpsError(
             code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
-            message="僅 admin 可觸發",
+            message="僅 admin 可手動觸發同步",
         )
 
     backfill = bool(req.data.get("backfill", False))
