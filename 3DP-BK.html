@@ -67,6 +67,38 @@
 </div>
 
 <!-- ══ 編輯預約 Modal ═════════════════════════════ -->
+<!-- ══ 變更密碼 Modal ══ -->
+<div id="change-password-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="key-round" class="w-5 h-5 text-blue-600"></i></div>
+            <h2 class="text-xl font-bold">變更密碼</h2>
+        </div>
+        <div class="space-y-4">
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">目前密碼</label>
+                <input type="password" id="cp-current" autocomplete="current-password" placeholder="輸入目前的密碼"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">新密碼</label>
+                <input type="password" id="cp-new" autocomplete="new-password" placeholder="至少 6 個字元"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">確認新密碼</label>
+                <input type="password" id="cp-confirm" autocomplete="new-password" placeholder="再次輸入新密碼"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <p id="cp-error" class="text-xs text-red-500 hidden"></p>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeChangePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button id="cp-submit" onclick="submitChangePassword()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認變更</button>
+        </div>
+    </div>
+</div>
+
 <div id="edit-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xl">
         <div class="flex items-center gap-3 mb-6">
@@ -210,6 +242,9 @@
                 </div>
                 <button id="users-mgmt-btn" onclick="showUsersModal()" title="使用者管理" class="hidden p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
                     <i data-lucide="users" class="w-4 h-4"></i>
+                </button>
+                <button onclick="showChangePasswordModal()" title="變更密碼" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
+                    <i data-lucide="key-round" class="w-4 h-4"></i>
                 </button>
                 <button onclick="doSignOut()" title="登出" class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
                     <i data-lucide="log-out" class="w-4 h-4"></i>
@@ -383,7 +418,8 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
     getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
-    createUserWithEmailAndPassword
+    createUserWithEmailAndPassword,
+    updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
     getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
@@ -500,6 +536,58 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 window.doSignOut = async function() {
     if (!confirm('確定要登出嗎？')) return;
     await signOut(auth);
+};
+
+// ══ 變更密碼 ══
+window.showChangePasswordModal = function() {
+    document.getElementById('cp-current').value = '';
+    document.getElementById('cp-new').value = '';
+    document.getElementById('cp-confirm').value = '';
+    const errEl = document.getElementById('cp-error');
+    errEl.classList.add('hidden');
+    errEl.textContent = '';
+    document.getElementById('change-password-modal').classList.remove('hidden');
+    lucide.createIcons();
+};
+
+window.closeChangePasswordModal = function() {
+    document.getElementById('change-password-modal').classList.add('hidden');
+};
+
+window.submitChangePassword = async function() {
+    const cur      = document.getElementById('cp-current').value;
+    const pw       = document.getElementById('cp-new').value;
+    const confirm2 = document.getElementById('cp-confirm').value;
+    const errEl    = document.getElementById('cp-error');
+    const showErr  = (m) => { errEl.textContent = m; errEl.classList.remove('hidden'); };
+
+    if (!cur || !pw || !confirm2) { showErr('請填寫所有欄位'); return; }
+    if (pw.length < 6) { showErr('新密碼至少 6 個字元'); return; }
+    if (pw !== confirm2) { showErr('兩次輸入的新密碼不一致'); return; }
+    if (pw === cur) { showErr('新密碼不可與目前密碼相同'); return; }
+
+    const btn = document.getElementById('cp-submit');
+    btn.disabled = true; btn.textContent = '變更中...';
+
+    try {
+        const user = auth.currentUser;
+        const cred = EmailAuthProvider.credential(user.email, cur);
+        await reauthenticateWithCredential(user, cred);
+        await updatePassword(user, pw);
+        closeChangePasswordModal();
+        showToast('✓ 密碼已變更', 'success');
+    } catch (err) {
+        const msg = {
+            'auth/wrong-password':        '目前密碼錯誤',
+            'auth/invalid-credential':    '目前密碼錯誤',
+            'auth/weak-password':         '新密碼太弱，請用更複雜的密碼',
+            'auth/requires-recent-login': '請重新登入後再變更密碼',
+            'auth/too-many-requests':     '嘗試次數過多，請稍後再試',
+        }[err.code] || ('變更失敗：' + err.message);
+        showErr(msg);
+    } finally {
+        btn.disabled = false; btn.textContent = '確認變更';
+    }
 };
 
 function showLogin() {
