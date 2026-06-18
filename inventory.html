@@ -110,6 +110,38 @@
 </div>
 
 
+<!-- ══ 變更密碼 Modal ══ -->
+<div id="change-password-modal" class="modal-overlay hidden">
+    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="key-round" class="w-5 h-5 text-blue-600"></i></div>
+            <h2 class="text-xl font-bold">變更密碼</h2>
+        </div>
+        <div class="space-y-4">
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">目前密碼</label>
+                <input type="password" id="cp-current" autocomplete="current-password" placeholder="輸入目前的密碼"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">新密碼</label>
+                <input type="password" id="cp-new" autocomplete="new-password" placeholder="至少 6 個字元"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-gray-700">確認新密碼</label>
+                <input type="password" id="cp-confirm" autocomplete="new-password" placeholder="再次輸入新密碼"
+                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <p id="cp-error" class="text-xs text-red-500 hidden"></p>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="closeChangePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button id="cp-submit" onclick="submitChangePassword()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認變更</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══ 安全庫存設定 Modal ══ -->
 <div id="safety-modal" class="modal-overlay hidden">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
@@ -179,9 +211,6 @@
             <a href="3DP-BK.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 px-3 py-2 rounded-md hover:bg-blue-50 transition-colors">
                 <i data-lucide="calendar-check" class="w-4 h-4"></i> 預約系統
             </a>
-            <button data-admin-only onclick="triggerSyncWorkflow()" title="觸發 GitHub workflow 重新同步消耗資料（會開新分頁）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-amber-50 hover:border-amber-400 hover:text-amber-700 transition-colors">
-                <i data-lucide="cloud-download" class="w-3.5 h-3.5"></i> 觸發同步
-            </button>
             <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清除並重建
             </button>
@@ -199,6 +228,9 @@
                 <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
                 <span id="sync-status">同步中</span>
             </div>
+            <button onclick="showChangePasswordModal()" title="變更密碼" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
+                <i data-lucide="key-round" class="w-4 h-4"></i>
+            </button>
             <button onclick="doSignOut()" title="登出" class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
                 <i data-lucide="log-out" class="w-4 h-4"></i>
             </button>
@@ -494,9 +526,8 @@ let histSortField='ts', histSortDir='desc';
 
 // ══ Firebase 初始化 ══
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit, where, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
-import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-functions.js';
 
 const firebaseConfig = {
     apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
@@ -509,7 +540,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app, 'asia-east1');  // Cloud Function 部署在 asia-east1
 
 let currentUser = null;          // {uid, email, displayName, role}
 let unsubscribeInv = null;
@@ -579,6 +609,60 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 window.doSignOut = async function() {
     if (!confirm('確定要登出嗎？')) return;
     await signOut(auth);
+};
+
+// ══ 變更密碼 ══
+window.showChangePasswordModal = function() {
+    document.getElementById('cp-current').value = '';
+    document.getElementById('cp-new').value = '';
+    document.getElementById('cp-confirm').value = '';
+    const errEl = document.getElementById('cp-error');
+    errEl.classList.add('hidden');
+    errEl.textContent = '';
+    document.getElementById('change-password-modal').classList.remove('hidden');
+    lucide.createIcons();
+};
+
+window.closeChangePasswordModal = function() {
+    document.getElementById('change-password-modal').classList.add('hidden');
+};
+
+window.submitChangePassword = async function() {
+    const cur     = document.getElementById('cp-current').value;
+    const pw      = document.getElementById('cp-new').value;
+    const confirm2 = document.getElementById('cp-confirm').value;
+    const errEl   = document.getElementById('cp-error');
+    const showErr = (m) => { errEl.textContent = m; errEl.classList.remove('hidden'); };
+
+    if (!cur || !pw || !confirm2) { showErr('請填寫所有欄位'); return; }
+    if (pw.length < 6) { showErr('新密碼至少 6 個字元'); return; }
+    if (pw !== confirm2) { showErr('兩次輸入的新密碼不一致'); return; }
+    if (pw === cur) { showErr('新密碼不可與目前密碼相同'); return; }
+
+    const btn = document.getElementById('cp-submit');
+    btn.disabled = true; btn.textContent = '變更中...';
+
+    try {
+        const user = auth.currentUser;
+        // 先用目前密碼重新驗證（Firebase 要求敏感操作前 re-auth）
+        const cred = EmailAuthProvider.credential(user.email, cur);
+        await reauthenticateWithCredential(user, cred);
+        // 再更新密碼
+        await updatePassword(user, pw);
+        closeChangePasswordModal();
+        showToast('✓ 密碼已變更', 'success');
+    } catch (err) {
+        const msg = {
+            'auth/wrong-password':     '目前密碼錯誤',
+            'auth/invalid-credential': '目前密碼錯誤',
+            'auth/weak-password':      '新密碼太弱，請用更複雜的密碼',
+            'auth/requires-recent-login': '請重新登入後再變更密碼',
+            'auth/too-many-requests':  '嘗試次數過多，請稍後再試',
+        }[err.code] || ('變更失敗：' + err.message);
+        showErr(msg);
+    } finally {
+        btn.disabled = false; btn.textContent = '確認變更';
+    }
 };
 
 function showLogin() {
@@ -2110,32 +2194,6 @@ async function reloadData() {
     }
 }
 
-// ══ 觸發 GitHub workflow（開新分頁到 Actions 頁，使用者手動點 Run workflow）══
-async function triggerSyncWorkflow() {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast('僅 admin 可手動觸發同步', 'error');
-        return;
-    }
-    if (!confirm('立即從 Formlabs API 同步機台狀態與消耗紀錄？\n（一般每 10 分鐘自動同步，可手動加速）')) return;
-
-    const btn = event.target.closest('button');
-    const origHtml = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> 同步中...'; lucide.createIcons(); }
-
-    try {
-        const callable = httpsCallable(functions, 'sync_formlabs_manual');
-        const result = await callable({ backfill: false });
-        const stats = result.data || {};
-        console.log('[manual sync] stats:', stats);
-        showToast(`✓ 同步完成：新增 ${stats.processed_new || 0} 筆`, 'success');
-    } catch (err) {
-        console.error('manual sync 失敗:', err);
-        showToast('同步失敗：' + (err.message || err.code), 'error');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = origHtml; lucide.createIcons(); }
-    }
-}
-
 // ══ 清除所有消耗紀錄並重新匯入 (admin only) ══
 async function purgeAndRebuildHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
@@ -2208,7 +2266,6 @@ window.showStockModal = showStockModal;
 window.stockSortBy = stockSortBy;
 window.switchTab = switchTab;
 window.reloadData = reloadData;
-window.triggerSyncWorkflow = triggerSyncWorkflow;
 // ══ 去除重複紀錄 (admin only) ══
 async function deduplicateHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
