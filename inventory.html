@@ -752,13 +752,18 @@ function subscribeAll() {
                 inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
-            mergeMaterialAliases();
+            const merged = mergeMaterialAliases();
             // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
             autoSyncCartridges().catch(e => console.warn('autoSyncCartridges 失敗:', e.message));
             setSyncStatus('ok');
             console.log('[inventory snapshot] 呼叫 renderAll()');
             renderAll();
             console.log('[inventory snapshot] renderAll 完成');
+            // 若合併過材料別名（如 FLRG1011→FLRG1002），把結果存回 Firestore 永久清除殘留
+            if (merged && isEditor && invLoadedFromFirestore) {
+                console.log('[merge] 偵測到材料別名，存回 Firestore 清除殘留');
+                saveAll('合併材料別名 (FLRG1011→FLRG1002 等)').catch(e=>console.warn('合併存回失敗:', e.message));
+            }
         } catch (err) {
             console.error('[inventory snapshot] 渲染錯誤:', err);
             setSyncStatus('error');
@@ -833,13 +838,24 @@ NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
 NAME_TO_CODE_FE['Rigid 10K V1.1'] = 'FLRG1002';  // 標準代碼固定為 FLRG1002（FLRG1011 為同材料別名）
 
+// ══ 代碼別名正規化：同材料的不同代碼統一成標準代碼 ══
+const CODE_ALIASES = {
+    'FLRG1011': 'FLRG1002',   // Rigid 10K V1.1 的另一個代碼
+    'FLRG1001': 'FLRG1002',   // 舊版 Rigid 10K
+};
+function canonCode(code) {
+    return CODE_ALIASES[code] || code;
+}
+
 function matName(code) {
-    return CODE_TO_NAME[code] || code;
+    return CODE_TO_NAME[canonCode(code)] || CODE_TO_NAME[code] || code;
 }
 function matCode(input) {
     if(!input) return input;
-    if(CODE_TO_NAME[input]) return input;
-    return NAME_TO_CODE_FE[input] || input;
+    // 已是代碼 → 先做別名正規化（FLRG1011 → FLRG1002）
+    if(CODE_TO_NAME[input]) return canonCode(input);
+    // 是名稱 → 轉代碼後也正規化
+    return canonCode(NAME_TO_CODE_FE[input] || input);
 }
 
 // ══ 機台代號 → 顯示名稱 ══
