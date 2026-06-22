@@ -822,7 +822,7 @@ function subscribeAll() {
 const CODE_TO_NAME = {
     'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
     'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
-    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLRG1011':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
     'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
     'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
     'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
@@ -831,6 +831,7 @@ const NAME_TO_CODE_FE = {};
 Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
 NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
+NAME_TO_CODE_FE['Rigid 10K V1.1'] = 'FLRG1002';  // 標準代碼固定為 FLRG1002（FLRG1011 為同材料別名）
 
 function matName(code) {
     return CODE_TO_NAME[code] || code;
@@ -1247,23 +1248,37 @@ function renderCartridges() {
         const slots=inv.cartridges[printer]||[];
         // 依列印機狀態決定卡片邊框色與狀態標籤
         const status = (printerStatus[printer] || '').toUpperCase();
+        if (status && status !== 'IDLE' && status !== 'READY') {
+            console.log(`[printer status] ${printer} = "${status}"`);  // debug：印出實際狀態值
+        }
         let borderClass, headerBg, badge;
-        if (status === 'IDLE' || status === 'READY') {
+        // 閒置類：IDLE / READY / ONLINE / FINISHED / DONE / SLEEPING / STANDBY
+        if (['IDLE','READY','ONLINE','FINISHED','DONE','SUCCESS','COMPLETE','SLEEPING','STANDBY','AVAILABLE'].includes(status)) {
             borderClass = 'border-2 border-green-400';
             headerBg = 'bg-green-50';
             badge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">閒置</span>';
-        } else if (status === 'PRINTING' || status === 'IN_PROGRESS' || status === 'PRE_PRINT' || status === 'PREPRINT' || status === 'PRE_HEAT' || status === 'PREHEAT' || status === 'WAITING_FOR_RESOLUTION') {
+        } else if (['PRINTING','IN_PROGRESS','PRE_PRINT','PREPRINT','PRE_HEAT','PREHEAT','WAITING_FOR_RESOLUTION','BUSY','QUEUED','STARTING'].includes(status)) {
             borderClass = 'border-2 border-blue-400';
             headerBg = 'bg-blue-50';
             badge = '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">列印中</span>';
-        } else if (status === 'ERROR' || status === 'FAILED' || status === 'ABORTED' || status === 'ABORTING') {
+        } else if (['ERROR','FAILED','ABORTED','ABORTING','FAULT'].includes(status)) {
             borderClass = 'border-2 border-red-400';
             headerBg = 'bg-red-50';
             badge = `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">異常 ${status}</span>`;
-        } else {
+        } else if (['OFFLINE','DISCONNECTED','UNREACHABLE'].includes(status)) {
             borderClass = 'border-2 border-gray-300';
             headerBg = 'bg-gray-50';
-            badge = '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">未知</span>';
+            badge = '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">離線</span>';
+        } else if (!status) {
+            // 完全沒有狀態值 → 視為閒置（多數情況機器是好的，只是 API 沒回 status）
+            borderClass = 'border-2 border-green-400';
+            headerBg = 'bg-green-50';
+            badge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">閒置</span>';
+        } else {
+            // 有值但無法分類 → 顯示原始狀態（方便辨識，不再籠統「未知」）
+            borderClass = 'border-2 border-gray-300';
+            headerBg = 'bg-gray-50';
+            badge = `<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">${status}</span>`;
         }
         const card=document.createElement('div');
         card.className=`${borderClass} rounded-xl overflow-hidden`;
