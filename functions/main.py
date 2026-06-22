@@ -73,13 +73,22 @@ NAME_TO_CODE = {
     "Open Material V1":  "FLOPEN01",
 }
 
+# 代碼別名正規化：Formlabs API 可能回傳同材料的不同代碼，統一成標準代碼
+CODE_ALIASES = {
+    "FLRG1011": "FLRG1002",   # Rigid 10K V1.1 的另一個代碼 → 標準代碼
+    "FLRG1001": "FLRG1002",   # 舊版 Rigid 10K
+    "FLTO2001": "FLTO2001",   # Tough 2000 V1.1（保留）
+}
+
 
 def canon_material(name_or_code: Optional[str]) -> Optional[str]:
-    """名稱→代碼；已是代碼就直接回傳。None safe."""
+    """名稱→代碼；已是代碼就正規化別名後回傳。None safe."""
     if not name_or_code:
         return None
     code = NAME_TO_CODE.get(name_or_code)
-    return code if code else name_or_code
+    result = code if code else name_or_code
+    # 別名正規化（FLRG1011 → FLRG1002 等）
+    return CODE_ALIASES.get(result, result)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -139,41 +148,84 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         stats["printers_count"] = len(printers)
         print(f"[sync] 取得 {len(printers)} 台 printers")
 
+        # 2.5 拉所有 cartridges（從 /cartridges/ 拿完整資料，因為 printers.cartridge_status 通常只是 serial 字串）
+        all_cartridges = []
+        try:
+            page = 1
+            while True:
+                cart_resp = api_get(f"{FORMLABS_API_BASE}/cartridges/", token, {
+                    "per_page": 100,
+                    "page":     page,
+                })
+                results = cart_resp.get("results", cart_resp.get("data", []))
+                all_cartridges.extend(results)
+                if not cart_resp.get("next"):
+                    break
+                page += 1
+                if page > 10:
+                    break
+            print(f"[sync] 取得 {len(all_cartridges)} 個 cartridges")
+        except Exception as e:
+            print(f"[sync] 取 /cartridges/ 失敗，將從 printers.cartridge_status 拉: {e}")
+
+        # 建立對應表：cartridge serial → cartridge 物件、inside_printer → [cartridges]
+        cart_by_serial = {c.get("serial"): c for c in all_cartridges if c.get("serial")}
+        carts_by_inside = {}
+        for c in all_cartridges:
+            inside = c.get("inside_printer")
+            if inside:
+                carts_by_inside.setdefault(inside, []).append(c)
+
+        # debug：dump 第一台 printer 結構（看 cartridge_status 真實型別）
+        if printers and not all_cartridges:
+            import json as _j
+            first = printers[0]
+            cs = first.get("cartridge_status")
+            print(f"[sync DEBUG] printer[0].alias={first.get('alias')}, "
+                  f"cartridge_status type={type(cs).__name__}, "
+                  f"sample={_j.dumps(cs, default=str)[:300] if cs else None}")
+
         # 簡化結構，寫入 printer_status/current 給前端用
-        # ★ Formlabs API 的欄位是 cartridge_status (array of PrinterCartridgeStatus)，不是 cartridges
-        # ★ 每個 PrinterCartridgeStatus 含 cartridge (Cartridge object) + cartridge_slot
         printers_summary = []
         for p in printers:
-            alias = p.get("alias") or p.get("serial") or ""
+            alias  = p.get("alias") or p.get("serial") or ""
+            serial = p.get("serial")
             cartridges = []
-            # 優先用 cartridge_status；舊版相容也試 cartridges
-            cart_list = p.get("cartridge_status") or p.get("cartridges") or []
-            for item in cart_list:
-                # item 可能是 PrinterCartridgeStatus（含 cartridge 子物件）或直接是 Cartridge
-                if isinstance(item, dict) and "cartridge" in item and isinstance(item.get("cartridge"), dict):
-                    c    = item.get("cartridge") or {}
-                    slot = item.get("cartridge_slot") or item.get("slot")
-                    last_mod = item.get("last_modified") or c.get("last_modified")
-                else:
-                    c    = item or {}
-                    slot = c.get("slot") or c.get("cartridge_slot")
-                    last_mod = c.get("last_modified")
 
+            # 取得這台機台目前裝著的 cartridges
+            # 優先：用 /cartridges/ 結果按 inside_printer 配對（serial 或 alias 都試）
+            mounted_carts = carts_by_inside.get(serial, []) + carts_by_inside.get(alias, [])
+
+            # 若 /cartridges/ 沒結果，退回從 cartridge_status 內 serial 字串組裝
+            if not mounted_carts:
+                cs_field = p.get("cartridge_status") or []
+                for item in cs_field:
+                    if isinstance(item, str):
+                        # 字串 = serial，從 cart_by_serial 查
+                        c = cart_by_serial.get(item)
+                        if c:
+                            mounted_carts.append(c)
+                    elif isinstance(item, dict):
+                        # 嵌套物件
+                        c = item.get("cartridge") if isinstance(item.get("cartridge"), dict) else item
+                        mounted_carts.append(c)
+
+            for c in mounted_carts:
                 initial    = c.get("initial_volume_ml")
                 dispensed  = c.get("volume_dispensed_ml", 0) or 0
                 remaining  = round(float(initial) - float(dispensed), 1) if initial is not None else None
-
                 cartridges.append({
-                    "slot":         slot,
+                    "slot":         c.get("cartridge_slot") or c.get("slot") or "SINGLE",
                     "material":     canon_material(c.get("material") or c.get("display_name")),
                     "remaining_ml": remaining,
                     "initial_ml":   initial,
                     "serial":       c.get("serial"),
-                    "updated_at":   last_mod or datetime.datetime.utcnow().isoformat() + "Z",
+                    "updated_at":   c.get("last_modified") or datetime.datetime.utcnow().isoformat() + "Z",
                 })
+
             printers_summary.append({
                 "alias":      alias,
-                "serial":     p.get("serial"),
+                "serial":     serial,
                 "status":     (p.get("printer_status", {}) or {}).get("status")
                               or p.get("status") or "",
                 "machine_type_id":  p.get("machine_type_id"),
