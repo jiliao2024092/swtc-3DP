@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { font-family: 'Noto Sans TC', 'Segoe UI', Tahoma, 'Microsoft JhengHei', sans-serif; font-size: 14px; }
+        body { font-family: 'Noto Sans TC', 'Segoe UI', Tahoma, 'Microsoft JhengHei', sans-serif; font-size: 14px; zoom: 0.8; }
         .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle; }
         @keyframes spin { to { transform:rotate(360deg); } }
         .toast { position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease; }
@@ -1445,41 +1445,100 @@ async function loadPrinterStatus() {
     }
 }
 
+// 台中組機台（其餘歸「其他」組）
+const TAICHUNG_PRINTERS = ['AdroitSauropod','AluminumBowfin'];
+const printerGroupCollapsed = {};  // { 台中:false, 其他:false }
+
+function buildStatusCard(p) {
+    const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
+    const isPrinting = ['PRINTING','PAUSED','PAUSING'].includes(p.status);
+    const ml = getMachineLabelFE(p.machine_type);
+    const card = document.createElement('div');
+    card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
+    card.innerHTML = `
+        <div class="flex items-start justify-between">
+            <div>
+                <p class="font-semibold text-gray-800 text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
+                <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
+            </div>
+            <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
+            </span>
+        </div>
+        ${isPrinting&&p.print_name?`
+        <div class="space-y-1.5">
+            <div class="flex justify-between items-center">
+                <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
+                <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
+            </div>
+            <div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>
+            <div class="flex justify-between text-xs text-gray-400">
+                <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
+                <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
+            </div>
+        </div>`:''}
+        ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
+    `;
+    return card;
+}
+
+function togglePrinterGroup(groupName) {
+    printerGroupCollapsed[groupName] = !printerGroupCollapsed[groupName];
+    renderStatusPanel(cachedPrinters || []);
+}
+
 function renderStatusPanel(printers) {
     const grid = document.getElementById('panel-status');
     grid.innerHTML = '';
-    printers.forEach(p=>{
-        const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
-        const isPrinting = ['PRINTING','PAUSED','PAUSING'].includes(p.status);
-        const ml = getMachineLabelFE(p.machine_type);
-        const card = document.createElement('div');
-        card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
-        card.innerHTML = `
-            <div class="flex items-start justify-between">
-                <div>
-                    <p class="font-semibold text-gray-800 text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
-                    <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
-                </div>
-                <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
-                    <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
-                </span>
-            </div>
-            ${isPrinting&&p.print_name?`
-            <div class="space-y-1.5">
-                <div class="flex justify-between items-center">
-                    <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
-                    <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
-                </div>
-                <div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>
-                <div class="flex justify-between text-xs text-gray-400">
-                    <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
-                    <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
-                </div>
-            </div>`:''}
-            ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
+    // 取消 grid 的格線排版，改由各組自行排版
+    grid.className = 'p-4 space-y-4';
+
+    // 分組：台中 / 其他
+    const taichung = printers.filter(p => TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n)));
+    const others   = printers.filter(p => !TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n)));
+
+    const groups = [
+        { name: '台中', printers: taichung },
+        { name: '其他', printers: others },
+    ];
+
+    groups.forEach(g => {
+        if (!g.printers.length) return;  // 該組沒有機台就不顯示
+        const collapsed = !!printerGroupCollapsed[g.name];
+
+        const section = document.createElement('div');
+        section.className = 'border border-gray-100 rounded-lg overflow-hidden';
+
+        // 組標題列（可點擊摺疊）
+        const header = document.createElement('button');
+        header.className = 'w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors';
+        header.onclick = () => togglePrinterGroup(g.name);
+        header.innerHTML = `
+            <span class="flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     style="transition:transform .15s;transform:rotate(${collapsed?-90:0}deg)" class="text-gray-400">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                <span class="text-sm font-semibold text-gray-700">${g.name}</span>
+                <span class="text-xs text-gray-400">${g.printers.length} 台</span>
+            </span>
+            <span class="text-xs text-gray-400">${collapsed?'已隱藏':'點此隱藏'}</span>
         `;
-        grid.appendChild(card);
+        section.appendChild(header);
+
+        // 組內容（卡片格線）
+        if (!collapsed) {
+            const body = document.createElement('div');
+            body.className = 'p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3';
+            g.printers.forEach(p => body.appendChild(buildStatusCard(p)));
+            section.appendChild(body);
+        }
+        grid.appendChild(section);
     });
+
+    if (!taichung.length && !others.length) {
+        grid.innerHTML = '<div class="text-center text-gray-400 text-sm py-6">尚無列印機資料</div>';
+    }
 }
 
 function renderMaterialPanel(printers) {
