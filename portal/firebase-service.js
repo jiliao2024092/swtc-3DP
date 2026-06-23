@@ -164,6 +164,40 @@
         return { _id: doc.id, ...d, permissions, active: d.active !== false };
       });
     },
+    // 即時訂閱使用者清單（儲存後畫面自動更新，不需 F5）
+    onUsersSnapshot(cb) {
+      return db.collection('users').onSnapshot(
+        snap => {
+          const rows = snap.docs.map(doc => {
+            const d = doc.data();
+            let permissions = d.permissions;
+            if (!permissions) {
+              const role = d.role || 'viewer';
+              permissions = window.ROLE_PRESETS[role] || window.ROLE_PRESETS.viewer;
+            }
+            return { _id: doc.id, ...d, permissions, active: d.active !== false };
+          });
+          cb(rows);
+        },
+        err => { console.error('[users] onSnapshot 失敗:', err); cb([]); }
+      );
+    },
+    // 即時訂閱單一使用者（用於更新目前登入者自己的權限）
+    onUserSnapshot(uid, cb) {
+      return db.collection('users').doc(uid).onSnapshot(
+        snap => {
+          if (!snap.exists) { cb(null); return; }
+          const d = snap.data();
+          let permissions = d.permissions;
+          if (!permissions) {
+            const role = d.role || 'viewer';
+            permissions = window.ROLE_PRESETS[role] || window.ROLE_PRESETS.viewer;
+          }
+          cb({ _id: snap.id, ...d, permissions, active: d.active !== false });
+        },
+        err => { console.error('[user] onSnapshot 失敗:', err); }
+      );
+    },
     // 建立新帳號：用第二個 Firebase app instance，避免把目前管理員登出
     async createUser(email, password, profile) {
       let secondaryApp;

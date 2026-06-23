@@ -1512,7 +1512,13 @@ function UserModal({ item, onClose, onSaved }) {
       }
       onSaved && onSaved();
       onClose();
-    } catch(e) { showToast(e.message||'失敗','err'); }
+    } catch(e) {
+      console.error('[UserModal save] 失敗:', e);
+      const msg = e.code === 'permission-denied'
+        ? '權限不足：請確認你的帳號是 admin，且 firestore.rules 已部署最新版'
+        : (e.message || '儲存失敗');
+      showToast(msg, 'err');
+    }
     finally { setBusy(false); }
   };
 
@@ -1595,9 +1601,10 @@ function AdminPanel({ user }) {
   const DEF_SALES = [{key:'Amber',label:'安柏'},{key:'Charlie',label:'查理'}];
 
   useEff(()=>{
+    // 使用者清單改為即時訂閱（儲存後自動更新，免 F5）
+    const unsubUsers = FBAuth.onUsersSnapshot(us => { setUsers(us); });
     (async()=>{
-      const [us, st] = await Promise.all([FBAuth.getUsers(), FBSettings.get()]);
-      setUsers(us);
+      const st = await FBSettings.get();
       if(st){
         setWbEng(st.engineers   || DEF_ENG);
         setWbMach(st.machines   || DEF_MACH);
@@ -1620,9 +1627,11 @@ function AdminPanel({ user }) {
       }
       setLoading(false);
     })();
+    return () => { if (unsubUsers) unsubUsers(); };
   },[]);
 
-  const refreshUsers = async()=>{ const us=await FBAuth.getUsers(); setUsers(us); };
+  // 保留 refreshUsers 介面（現在訂閱會自動更新，這裡僅作相容用）
+  const refreshUsers = async()=>{ /* onSnapshot 自動更新，無需手動重讀 */ };
 
   // 同步開關：打開時把 issues 設定複製成 workboard 的值
   const toggleSync = (val) => {
@@ -1954,16 +1963,29 @@ function App() {
     const unsubSettings = FBSettings.onSnapshot(s => {
       if (s) window.applySettings(s);
     });
+    let unsubUserDoc = null;
     // 監聽登入狀態
     const unsubAuth = FBAuth.onStateChanged(async fbUser => {
+      if (unsubUserDoc) { unsubUserDoc(); unsubUserDoc = null; }
       if (fbUser) {
         const u = await FBAuth.getUser(fbUser.uid);
-        if (u && u.active) { setUser(u); }
+        if (u && u.active) {
+          setUser(u);
+          // 即時訂閱自己的使用者文件：權限被改時左下角會即時更新，停用時自動登出
+          unsubUserDoc = FBAuth.onUserSnapshot(fbUser.uid, async (fresh) => {
+            if (!fresh || !fresh.active) {
+              await FBAuth.signOut();
+              setUser(null);
+            } else {
+              setUser(fresh);
+            }
+          });
+        }
         else { await FBAuth.signOut(); setUser(null); }
       } else { setUser(null); }
       setChecking(false);
     });
-    return () => { unsubAuth(); unsubSettings(); };
+    return () => { unsubAuth(); unsubSettings(); if (unsubUserDoc) unsubUserDoc(); };
   }, []);
 
   if (checking) return (
