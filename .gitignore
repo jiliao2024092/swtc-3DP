@@ -1,0 +1,33 @@
+# Python virtual environment（Firebase function 用，不該 commit）
+venv/
+functions/venv/
+**/venv/
+
+# Python 快取
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# 環境變數 / 密鑰（重要！不要外洩）
+.env
+*.env
+.runtimeconfig.json
+serviceAccountKey.json
+
+# 系統檔
+.DS_Store
+Thumbs.db
+
+# 編輯器
+.vscode/
+.idea/
+
+# Node（如果有用到）
+node_modules/
