@@ -329,9 +329,12 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 if not guid:
                     stats["skipped_invalid"] += 1
                     continue
+                # ★ 不再因 guid 在 last_processed_prints 就跳過
+                #   history doc_id = guid，set() 冪等覆蓋，重寫無害
+                #   這樣即使 guid 曾被誤記為「已處理」但實際沒寫成功，也能補回來
                 if guid in processed:
                     stats["skipped_old"] += 1
-                    continue
+                    # 不 continue：仍重新寫入確保紀錄存在（冪等）
 
                 status = (pr.get("status") or "").upper()
                 stats["skipped_status"][status] = stats["skipped_status"].get(status, 0) + 1
@@ -372,9 +375,26 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 is_abort  = status in ABORT_STATUSES
                 is_consume = is_done or is_error or is_abort
 
-                if status in NON_DEDUCT_STATUSES:
+                # 尚未完成的狀態（沒有最終用量）→ 完全跳過
+                NOT_FINISHED = ("IN_PROGRESS", "QUEUED", "NOT_STARTED", "PREPRINT", "PREHEAT")
+                if status in NOT_FINISHED:
                     continue
+
+                # 取得用量（先算出來，供 CANCELED 判斷用）
+                _vol_check = (pr.get("volume_ml") or pr.get("material_used_ml")
+                              or pr.get("print_volume_ml") or pr.get("volume")
+                              or pr.get("material_volume_ml") or 0)
+
+                # CANCELED/CANCELLED：若有實際用量則當「中止」記錄（比照舊系統的「列印中止 未計」）
+                if status in ("CANCELED", "CANCELLED"):
+                    if _vol_check and float(_vol_check) > 0:
+                        is_abort = True
+                        is_consume = True
+                    else:
+                        continue  # 沒用到材料的取消 → 跳過
+
                 if not is_consume:
+                    # 其他未知狀態但已結束 → 當中止記錄（保險，不漏抓）
                     is_abort = True
                     is_consume = True
 
