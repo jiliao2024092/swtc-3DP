@@ -1,0 +1,178 @@
+// firebase-service.js
+// 服務層：把 Coffee-Who 平台用到的 FB* 介面實作在 swtc-3dp-poc 上
+// 依賴 firebase-config.js 先初始化 window.fbAuth / window.fbDb
+
+(function () {
+  const auth = window.fbAuth;
+  const db   = window.fbDb;
+
+  // ════════════════════════════════════════════════
+  // 權限定義（Coffee-Who 7 種細權限）
+  // ════════════════════════════════════════════════
+  window.PERMS_MAP = {
+    view_board:    '查看工作看板',
+    edit_board:    '編輯工作看板',
+    delete_board:  '刪除工作看板',
+    view_issues:   '查看異常資源',
+    edit_issues:   '編輯異常資源',
+    delete_issues: '刪除異常資源',
+    admin:         '管理員（所有權限）',
+  };
+
+  window.ROLE_PRESETS = {
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','admin'],
+    manager:  ['view_board','edit_board','view_issues','edit_issues'],
+    operator: ['view_board','edit_board','view_issues','edit_issues'],
+    viewer:   ['view_board','view_issues'],
+  };
+
+  // admin 權限視為擁有一切
+  window.hasPerm = function (user, perm) {
+    if (!user || !user.permissions) return false;
+    if (user.permissions.includes('admin')) return true;
+    return user.permissions.includes(perm);
+  };
+
+  // ════════════════════════════════════════════════
+  // 通用 collection helper：onSnapshot / add / update / del
+  // ════════════════════════════════════════════════
+  function makeCollectionService(collName, orderField, orderDir) {
+    const ref = () => db.collection(collName);
+    return {
+      onSnapshot(cb) {
+        let q = ref();
+        if (orderField) q = q.orderBy(orderField, orderDir || 'asc');
+        return q.onSnapshot(
+          snap => {
+            const rows = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+            cb(rows);
+          },
+          err => {
+            console.error(`[${collName}] onSnapshot 失敗:`, err);
+            cb([]);
+          }
+        );
+      },
+      async add(data) {
+        const doc = await ref().add({
+          ...data,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        return doc.id;
+      },
+      async update(id, data) {
+        await ref().doc(id).update({
+          ...data,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      },
+      async del(id) {
+        await ref().doc(id).delete();
+      },
+    };
+  }
+
+  // ════════════════════════════════════════════════
+  // 工作看板工單 → collection: workboard_orders
+  //   （刻意不用 bookings，避免與 3DP-BK 預約系統的 bookings 撞名）
+  // ════════════════════════════════════════════════
+  window.FBOrders = makeCollectionService('workboard_orders', 'seq', 'asc');
+
+  // ════════════════════════════════════════════════
+  // 異常與資源 → collections: issues_anomalies / issues_ipa / issues_equipment
+  // ════════════════════════════════════════════════
+  window.FBAnomalies = makeCollectionService('issues_anomalies', 'seq', 'asc');
+  window.FBIPA       = makeCollectionService('issues_ipa',       'seq', 'asc');
+  window.FBEquipment = makeCollectionService('issues_equipment', 'seq', 'asc');
+
+  // ════════════════════════════════════════════════
+  // 平台設定 → settings/workspace
+  // ════════════════════════════════════════════════
+  window.FBSettings = {
+    async get() {
+      const snap = await db.collection('settings').doc('workspace').get();
+      return snap.exists ? snap.data() : null;
+    },
+    async save(data) {
+      await db.collection('settings').doc('workspace').set(data, { merge: true });
+    },
+    onSnapshot(cb) {
+      return db.collection('settings').doc('workspace').onSnapshot(
+        snap => cb(snap.exists ? snap.data() : null),
+        err => { console.error('[settings] onSnapshot 失敗:', err); cb(null); }
+      );
+    },
+  };
+
+  // ════════════════════════════════════════════════
+  // 使用者與認證 → users/{uid}
+  //   沿用現有 users collection；用 permissions array（取代舊的 role 欄位）
+  // ════════════════════════════════════════════════
+  window.FBAuth = {
+    async signIn(email, password) {
+      return auth.signInWithEmailAndPassword(email, password);
+    },
+    async signOut() {
+      return auth.signOut();
+    },
+    onStateChanged(cb) {
+      return auth.onAuthStateChanged(cb);
+    },
+    async getUser(uid) {
+      const snap = await db.collection('users').doc(uid).get();
+      if (!snap.exists) return null;
+      const d = snap.data();
+      // 相容舊資料：若只有 role 沒有 permissions，依 role 推導
+      let permissions = d.permissions;
+      if (!permissions) {
+        const role = d.role || 'viewer';
+        permissions = window.ROLE_PRESETS[role] || window.ROLE_PRESETS.viewer;
+      }
+      // active 預設 true（舊資料沒有 active 欄位時視為啟用）
+      const active = d.active !== false;
+      return { _id: snap.id, ...d, permissions, active };
+    },
+    async getUsers() {
+      const snap = await db.collection('users').get();
+      return snap.docs.map(doc => {
+        const d = doc.data();
+        let permissions = d.permissions;
+        if (!permissions) {
+          const role = d.role || 'viewer';
+          permissions = window.ROLE_PRESETS[role] || window.ROLE_PRESETS.viewer;
+        }
+        return { _id: doc.id, ...d, permissions, active: d.active !== false };
+      });
+    },
+    // 建立新帳號：用第二個 Firebase app instance，避免把目前管理員登出
+    async createUser(email, password, profile) {
+      let secondaryApp;
+      try {
+        secondaryApp = firebase.initializeApp(firebase.app().options, 'secondary-' + Date.now());
+        const cred = await secondaryApp.auth().createUserWithEmailAndPassword(email, password);
+        const uid = cred.user.uid;
+        await db.collection('users').doc(uid).set({
+          email:        profile.email || email,
+          displayName:  profile.displayName || '',
+          permissions:  profile.permissions || window.ROLE_PRESETS.viewer,
+          active:       profile.active !== false,
+          createdAt:    firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        await secondaryApp.auth().signOut();
+        return uid;
+      } finally {
+        if (secondaryApp) await secondaryApp.delete();
+      }
+    },
+    async updateUser(uid, data) {
+      await db.collection('users').doc(uid).update(data);
+    },
+    async deleteUser(uid) {
+      // 只刪 Firestore 使用者文件（Auth 帳號需在 Firebase Console 手動刪，或用 Admin SDK）
+      await db.collection('users').doc(uid).delete();
+    },
+  };
+
+  console.log('[firebase-service] FB* 服務層已就緒（swtc-3dp-poc）');
+})();

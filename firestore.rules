@@ -1,83 +1,117 @@
 rules_version = '2';
 
 // ════════════════════════════════════════════════════════
-// 3D 列印機預約系統 + 庫存管理 — Firestore Security Rules
+// SWTC Portal — Firestore Security Rules（統一 swtc-3dp-poc）
 //
-// Collections:
-//   users               - 使用者帳號與角色
-//   bookings            - 預約資料
-//   inventory/main      - 庫存單一文件（樹脂罐、備料、安全庫存、防重清單）
+// 整合後 Collections：
+//   users               - 使用者帳號（permissions array，相容舊 role）
+//   bookings            - 3D 列印機預約（swtc-3DP 原系統）
+//   inventory/main      - 庫存單一文件
 //   inventory_history   - 消耗/入庫/手動調整紀錄
+//   printer_status      - Cloud Function 寫入的機台狀態
+//   workboard_orders    - 工作看板工單（Coffee-Who 平台）
+//   issues_anomalies    - 客戶異常
+//   issues_ipa          - IPA 採購
+//   issues_equipment    - 設備清單
+//   settings/workspace  - 平台共用設定（工程師/機台/業務/借用人清單）
 //
-// 角色：
-//   admin  - 全部編輯、管理使用者
-//   editor - 新增/編輯/刪除預約與庫存
-//   viewer - 只能讀
-//
-// 預設 admin email: jiliao@swtc.com
+// 權限模型（7 種細權限，存在 users/{uid}.permissions array）：
+//   view_board edit_board delete_board
+//   view_issues edit_issues delete_issues
+//   admin（擁有一切）
 // ════════════════════════════════════════════════════════
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── 工具函式 ─────────────────────────────────
     function isLoggedIn() {
       return request.auth != null;
     }
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function perms() {
+      return isLoggedIn() ? userDoc().get('permissions', []) : [];
+    }
+    function legacyRole() {
+      return isLoggedIn() ? userDoc().get('role', 'viewer') : 'viewer';
+    }
+    function hasPerm(p) {
+      return isLoggedIn() && (
+        perms().hasAny(['admin', p])
+        || legacyRole() == 'admin'
+      );
     }
     function isAdmin() {
-      return isLoggedIn() && getUserRole() == 'admin';
+      return hasPerm('admin');
     }
-    function isEditorOrAdmin() {
-      return isLoggedIn() && (getUserRole() == 'editor' || getUserRole() == 'admin');
+    function isLegacyEditorOrAdmin() {
+      return isLoggedIn() && (
+        legacyRole() == 'editor' || legacyRole() == 'admin'
+        || perms().hasAny(['admin','edit_board','edit_issues'])
+      );
     }
     function isDefaultAdmin() {
       return isLoggedIn() && request.auth.token.email == 'jiliao@swtc.com';
     }
 
-    // ── users collection ────────────────────────
     match /users/{userId} {
       allow read: if isLoggedIn();
       allow create: if isLoggedIn() && (
-        (request.auth.uid == userId && (
-          request.resource.data.role == 'viewer'
-          || (isDefaultAdmin() && request.resource.data.role == 'admin')
-        ))
+        (request.auth.uid == userId)
         || isAdmin()
       );
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // ── bookings collection ─────────────────────
-    match /bookings/{bookingId} {
-      allow read: if isLoggedIn();
-      allow create, update, delete: if isEditorOrAdmin();
-    }
-
-    // ── inventory（單一文件，存樹脂罐/備料/安全庫存）─
-    match /inventory/{docId} {
-      allow read: if isLoggedIn();
-      allow write: if isEditorOrAdmin();
-    }
-
-    // ── inventory_history（消耗、入庫、調整紀錄）──
-    match /inventory_history/{logId} {
-      allow read: if isLoggedIn();
-      allow create: if isEditorOrAdmin();
-      // 歷史紀錄通常不該被修改，只 admin 可改/刪以便除錯
       allow update, delete: if isAdmin();
     }
 
-    // ── printer_status（單一 doc，Cloud Function 寫入、所有登入者讀）──
-    match /printer_status/{docId} {
+    match /bookings/{bookingId} {
       allow read: if isLoggedIn();
-      allow write: if false;  // 只允許 Cloud Function（用 admin SDK）寫入
+      allow create, update, delete: if isLegacyEditorOrAdmin();
     }
 
-    // ── 預設拒絕 ─────────────────────────────────
+    match /inventory/{docId} {
+      allow read: if isLoggedIn();
+      allow write: if isLegacyEditorOrAdmin();
+    }
+
+    match /inventory_history/{logId} {
+      allow read: if isLoggedIn();
+      allow create: if isLegacyEditorOrAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /printer_status/{docId} {
+      allow read: if isLoggedIn();
+      allow write: if false;
+    }
+
+    match /workboard_orders/{orderId} {
+      allow read: if hasPerm('view_board');
+      allow create, update: if hasPerm('edit_board');
+      allow delete: if hasPerm('delete_board');
+    }
+
+    match /issues_anomalies/{id} {
+      allow read: if hasPerm('view_issues');
+      allow create, update: if hasPerm('edit_issues');
+      allow delete: if hasPerm('delete_issues');
+    }
+    match /issues_ipa/{id} {
+      allow read: if hasPerm('view_issues');
+      allow create, update: if hasPerm('edit_issues');
+      allow delete: if hasPerm('delete_issues');
+    }
+    match /issues_equipment/{id} {
+      allow read: if hasPerm('view_issues');
+      allow create, update: if hasPerm('edit_issues');
+      allow delete: if hasPerm('delete_issues');
+    }
+
+    match /settings/{docId} {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
