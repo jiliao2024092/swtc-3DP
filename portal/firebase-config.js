@@ -18,5 +18,9 @@ firebase.initializeApp(firebaseConfig);
 window.fbAuth = firebase.auth();
 window.fbDb   = firebase.firestore();
 
-// Firestore asia-east1（與 Cloud Function 同區域，settings 已在主控台設定，不需在此指定）
-console.log('[firebase-config] 已連線 swtc-3dp-poc');
+// secondary app：admin 新增使用者時用（避免覆蓋自己的登入 session）
+// 一次性建立並重用，跟原本 3DP-BK / inventory 的做法一致
+window.fbSecondaryApp  = firebase.initializeApp(firebaseConfig, 'Secondary');
+window.fbSecondaryAuth = window.fbSecondaryApp.auth();
+
+console.log('[firebase-config] 已連線 swtc-3dp-poc（含 secondary app）');

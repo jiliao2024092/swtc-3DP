@@ -52,6 +52,18 @@
     return user.permissions.includes(perm);
   };
 
+  // 由 permissions 推導出舊系統用的 role（讓 3DP-BK / inventory 也能正確判斷權限）
+  //   有 admin            → 'admin'
+  //   有任一 edit_* 權限  → 'editor'
+  //   其餘                → 'viewer'
+  function roleFromPermissions(permissions) {
+    const p = permissions || [];
+    if (p.includes('admin')) return 'admin';
+    if (p.includes('edit_board') || p.includes('edit_issues')) return 'editor';
+    return 'viewer';
+  }
+  window.roleFromPermissions = roleFromPermissions;
+
   // ════════════════════════════════════════════════
   // 通用 collection helper：onSnapshot / add / update / del
   // ════════════════════════════════════════════════
@@ -179,7 +191,11 @@
           });
           cb(rows);
         },
-        err => { console.error('[users] onSnapshot 失敗:', err); cb([]); }
+        err => {
+          console.error('[users] onSnapshot 失敗:', err.code, err.message);
+          if (window.showToast) window.showToast('讀取使用者清單失敗：' + err.message, 'err');
+          cb([]);
+        }
       );
     },
     // 即時訂閱單一使用者（用於更新目前登入者自己的權限）
@@ -200,28 +216,40 @@
     },
     // 建立新帳號：用第二個 Firebase app instance，避免把目前管理員登出
     async createUser(email, password, profile) {
-      let secondaryApp;
+      const secondaryAuth = window.fbSecondaryAuth;
+      if (!secondaryAuth) {
+        throw new Error('secondary auth 未初始化（firebase-config.js）');
+      }
       try {
-        secondaryApp = firebase.initializeApp(firebase.app().options, 'secondary-' + Date.now());
-        const cred = await secondaryApp.auth().createUserWithEmailAndPassword(email, password);
+        // 用 secondary auth 建立新 user，不影響目前管理員的登入 session
+        const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
         const uid = cred.user.uid;
+        await secondaryAuth.signOut();
+        // 用主 app 的 db 寫 Firestore（仍以 admin 身分，符合 rules）
+        const permissions = profile.permissions || window.ROLE_PRESETS.viewer;
         await db.collection('users').doc(uid).set({
           email:        profile.email || email,
           displayName:  profile.displayName || '',
-          permissions:  profile.permissions || window.ROLE_PRESETS.viewer,
+          permissions:  permissions,
+          role:         roleFromPermissions(permissions),  // 同步寫 role 給 3DP-BK / inventory 用
           active:       profile.active !== false,
           createdAt:    firebase.firestore.FieldValue.serverTimestamp(),
         });
-        await secondaryApp.auth().signOut();
         return uid;
-      } finally {
-        if (secondaryApp) await secondaryApp.delete();
+      } catch (e) {
+        console.error('[createUser] 失敗:', e.code, e.message);
+        throw e;
       }
     },
     async updateUser(uid, data) {
+      // 若更新含 permissions，同步寫 role（讓 3DP-BK / inventory 也正確）
+      const payload = { ...data };
+      if (data.permissions) {
+        payload.role = roleFromPermissions(data.permissions);
+      }
       // 用 set + merge 取代 update：即使文件缺欄位或結構不同也不會失敗
       await db.collection('users').doc(uid).set({
-        ...data,
+        ...payload,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
     },
