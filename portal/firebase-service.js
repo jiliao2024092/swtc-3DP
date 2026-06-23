@@ -7,6 +7,25 @@
   const db   = window.fbDb;
 
   // ════════════════════════════════════════════════
+  // 全域 showToast（workboard.js / issues.js / portal.html 共用）
+  //   - type: 'ok' | 'err' | 'inf'（預設 ok）
+  //   - 對應 CSS：.toast-item.ok / .err / .inf，容器 #toasts
+  // ════════════════════════════════════════════════
+  window.showToast = function (msg, type) {
+    const wrap = document.getElementById('toasts');
+    if (!wrap) { console.log('[toast]', msg); return; }
+    const el = document.createElement('div');
+    el.className = 'toast-item ' + (type === 'err' ? 'err' : type === 'inf' ? 'inf' : 'ok');
+    el.textContent = msg;
+    wrap.appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity .3s';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 300);
+    }, 2800);
+  };
+
+  // ════════════════════════════════════════════════
   // 權限定義（Coffee-Who 7 種細權限）
   // ════════════════════════════════════════════════
   window.PERMS_MAP = {
@@ -166,7 +185,11 @@
       }
     },
     async updateUser(uid, data) {
-      await db.collection('users').doc(uid).update(data);
+      // 用 set + merge 取代 update：即使文件缺欄位或結構不同也不會失敗
+      await db.collection('users').doc(uid).set({
+        ...data,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
     },
     async deleteUser(uid) {
       // 只刪 Firestore 使用者文件（Auth 帳號需在 Firebase Console 手動刪，或用 Admin SDK）
