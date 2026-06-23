@@ -54,6 +54,8 @@ NAME_TO_CODE = {
     "Black V5":          "FLGPBK05",
     "Tough 1500 V1.1":   "FLTO1501",
     "Tough 1500 V2":     "FLTO1502",
+    "Tough 1000 V1":     "FLTO1001",
+    "Tough 1000 V2":     "FLTO1002",
     "Tough 2000 V1":     "FLTO2001",
     "Tough 2000 V1.1":   "FLTO2001",
     "Tough 2000 V2":     "FLTO2002",

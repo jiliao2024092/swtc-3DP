@@ -868,12 +868,15 @@ const CODE_TO_NAME = {
     'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
     'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
     'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+    'FLTO1001':'Tough 1000 V1','FLTO1002':'Tough 1000 V2',
 };
 const NAME_TO_CODE_FE = {};
 Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
 NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
 NAME_TO_CODE_FE['Rigid 10K V1.1'] = 'FLRG1002';  // 標準代碼固定為 FLRG1002（FLRG1011 為同材料別名）
+NAME_TO_CODE_FE['Tough 1000 V1'] = 'FLTO1001';
+NAME_TO_CODE_FE['Tough 1000 V2'] = 'FLTO1002';
 
 // ══ 代碼別名正規化：同材料的不同代碼統一成標準代碼 ══
 const CODE_ALIASES = {
