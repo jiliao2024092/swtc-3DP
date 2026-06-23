@@ -413,6 +413,22 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 
 <!-- 共用常數 / Helpers -->
 <script>
+// 全域 showToast（保險：直接定義在 portal.html，不依賴 firebase-service.js 載入順序）
+window.showToast = window.showToast || function (msg, type) {
+  const wrap = document.getElementById('toasts');
+  if (!wrap) { console.log('[toast]', msg); return; }
+  const el = document.createElement('div');
+  el.className = 'toast-item ' + (type === 'err' ? 'err' : type === 'inf' ? 'inf' : 'ok');
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.style.transition = 'opacity .3s';
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 2800);
+};
+</script>
+<script>
 (function () {
   const K = {};
   K.TODAY = new Date();
