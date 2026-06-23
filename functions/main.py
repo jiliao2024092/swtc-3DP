@@ -357,8 +357,15 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                               f"printer={printer_ref!r} material={pr.get('material')!r}（非追蹤機台或無法對應）")
                     continue  # 非追蹤機台
 
-                material = canon_material(pr.get("material"))
-                volume   = pr.get("volume_ml") or 0
+                # 材料：容錯多個可能的欄位名
+                raw_material = (pr.get("material") or pr.get("material_name")
+                                or pr.get("resin") or pr.get("material_code"))
+                material = canon_material(raw_material)
+
+                # 體積：容錯多個可能的欄位名（Formlabs 不同版本/端點欄位名不一）
+                volume = (pr.get("volume_ml") or pr.get("material_used_ml")
+                          or pr.get("print_volume_ml") or pr.get("volume")
+                          or pr.get("material_volume_ml") or 0)
 
                 is_done   = status in DONE_STATUSES
                 is_error  = status in ERROR_AS_CONSUME_STATUSES
@@ -373,6 +380,11 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
                 if not material or not volume:
                     stats["skipped_invalid"] += 1
+                    # debug：印出被當無效跳過的 DONE print 的關鍵欄位，方便排查
+                    if status in DONE_STATUSES:
+                        print(f"[sync] 無效跳過 guid={guid[:8]} status={status} "
+                              f"material={raw_material!r}→{material!r} volume={volume!r} "
+                              f"可用欄位={list(pr.keys())}")
                     continue
 
                 volume_num = round(float(volume), 1)
