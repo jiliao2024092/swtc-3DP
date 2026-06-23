@@ -11,7 +11,7 @@
   // ── 異常 Modal ──
   function AnomalyModal({ item, onClose, onSave }) {
     const engineers = window._settings_engineers || K.ENG_ORDER;
-    const empty = { customer:'', date:'', product:'', engineer: engineers[0]||K.ENG_ORDER[0], status:'處理中', progresses:[] };
+    const empty = { customer:'', date:'', product:'', engineer: engineers[0]||K.ENG_ORDER[0], status:'處理中', warranty:'', cause:'', progresses:[] };
     const [form, setForm] = useState(item ? { ...item, progresses:[...(item.progresses||[])].map(p=>({...p})) } : empty);
     const [busy, setBusy] = useState(false);
     const [note, setNote] = useState('');
@@ -46,6 +46,10 @@
             <div className="m-field"><label style={LBL}>狀態</label>
               <select style={S_INP} value={form.status} onChange={e=>set('status',e.target.value)}>
                 <option>處理中</option><option>已完成</option><option>暫停</option></select></div>
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>保固日期</label><input style={S_INP} type="date" value={form.warranty||''} onChange={e=>set('warranty',e.target.value)}/></div>
+              <div className="m-field"><label style={LBL}>異常原因</label><input style={S_INP} value={form.cause||''} onChange={e=>set('cause',e.target.value)} placeholder="例：材料受潮 / 參數錯誤"/></div>
+            </div>
             <div className="m-field">
               <label style={LBL}>後續進度</label>
               <div style={{background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:6,padding:10,marginBottom:8,minHeight:44}}>
@@ -472,6 +476,8 @@
         if(s.field==='seq'){ ka=a.seq||0; kb=b.seq||0; }
         else if(s.field==='date'){ ka=a.date||''; kb=b.date||''; }
         else if(s.field==='purchaseDate'){ ka=a.purchaseDate||''; kb=b.purchaseDate||''; }
+        else if(s.field==='warranty'){ ka=a.warranty||''; kb=b.warranty||''; }
+        else if(s.field==='cause'){ ka=a.cause||''; kb=b.cause||''; }
         else if(s.field==='pdate'){ ka=(a.progresses&&a.progresses[0])?a.progresses[0].date:''; kb=(b.progresses&&b.progresses[0])?b.progresses[0].date:''; }
         if(ka<kb) return -d; if(ka>kb) return d; return 0;
       });
@@ -556,7 +562,8 @@
                 <th>客戶</th>
                 <SortTh label="異常日期" field="date" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 <th>品名</th><th>工程師</th><th>狀態</th>
-                <SortTh label="進度日期" field="pdate" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
+                <SortTh label="保固日期" field="warranty" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
+                <SortTh label="異常原因" field="cause" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 <th>進度狀況</th>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
@@ -572,7 +579,8 @@
                       <td>{it.product}</td>
                       <td><span className="kt-eng"><span className="kt-eng-dot" style={{color:tone.fg,background:tone.bg}}>{K.ENG_INIT[it.engineer]||it.engineer.slice(0,2)}</span>{K.ENG_LABEL[it.engineer]||it.engineer}</span></td>
                       <td><span className={pillCls(it.status)}>{it.status}</span></td>
-                      <td className="col-date">{first.date}</td>
+                      <td className="col-date">{it.warranty||'—'}</td>
+                      <td>{it.cause||'—'}</td>
                       <td>{first.status}</td>
                       {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
                         {canE&&<button className="kt-actbtn" title="編輯" onClick={()=>{setEditItem(it);setModal('a');}}>✎</button>}
@@ -581,14 +589,14 @@
                     </tr>
                     {rest.map((p,i)=>(
                       <tr key={i} className="kt-anomaly-sub">
-                        <td colSpan={editMode?7:6}><span className="kt-anomaly-sub-marker">↳ 後續 #{i+2}</span></td>
+                        <td colSpan={editMode?8:7}><span className="kt-anomaly-sub-marker">↳ 後續 #{i+2}</span></td>
                         <td className="col-date">{p.date}</td><td>{p.status}</td>
                         {editMode&&<td></td>}
                       </tr>
                     ))}
                   </React.Fragment>);
                 })}
-                {!filtA.length&&<tr><td colSpan={editMode?9:8}><div className="kt-empty">無異常紀錄</div></td></tr>}
+                {!filtA.length&&<tr><td colSpan={editMode?10:9}><div className="kt-empty">無異常紀錄</div></td></tr>}
               </tbody></table>
             </div>
           </>}

@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>材料庫存管理</title>
     <link rel="icon" type="image/x-icon" href="/swtc-3DP/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif, 'Microsoft JhengHei'; }
+        body { font-family: 'Noto Sans TC', 'Segoe UI', Tahoma, 'Microsoft JhengHei', sans-serif; font-size: 14px; }
         .spinner { width:18px;height:18px;border:2px solid rgba(255,255,255,0.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;vertical-align:middle; }
         @keyframes spin { to{transform:rotate(360deg);} }
         .toast { position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease; }
@@ -32,7 +34,7 @@
 
 <!-- ══ 設定 / 角色選擇 Modal ══ -->
 <!-- ══ 登入畫面 ══════════════════════════════ -->
-<div id="login-screen" class="modal-overlay">
+<div id="login-screen" class="modal-overlay" style="display:none">
     <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-2">
             <div class="bg-teal-100 p-2.5 rounded-lg"><i data-lucide="package" class="w-5 h-5 text-teal-600"></i></div>
@@ -684,8 +686,25 @@ window.submitChangePassword = async function() {
     }
 };
 
+// 是否嵌在 portal 的 iframe 內（共用同一個 Firebase Auth session）
+const IS_EMBEDDED = (window.self !== window.top);
+
 function showLogin() {
+    if (IS_EMBEDDED) {
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('main-app').classList.add('hidden');
+        let note = document.getElementById('embedded-auth-note');
+        if (!note) {
+            note = document.createElement('div');
+            note.id = 'embedded-auth-note';
+            note.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#6b7280;font-size:14px;background:#f9fafb;';
+            note.textContent = '請從入口平台登入後再使用此頁面';
+            document.body.appendChild(note);
+        }
+        return;
+    }
     document.getElementById('login-screen').classList.remove('hidden');
+    document.getElementById('login-screen').style.display = '';
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
@@ -694,6 +713,8 @@ function showLogin() {
 }
 function showApp() {
     document.getElementById('login-screen').classList.add('hidden');
+    const note = document.getElementById('embedded-auth-note');
+    if (note) note.remove();
     document.getElementById('main-app').classList.remove('hidden');
     applyRoleUI();
     lucide.createIcons();

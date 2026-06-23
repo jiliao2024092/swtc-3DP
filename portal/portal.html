@@ -1923,8 +1923,15 @@ function Shell({ user, onLogout }) {
       show: canIssues },
     { key:'admin', label:'後台管理', sub:'ADMIN',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="6" r="3" stroke="currentColor" strokeWidth="1.4"/><path d="M3 15c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
-      show: true },
+      show: isAdmin },
   ].filter(n => n.show);
+
+  // 若目前頁面不在可見清單（例如非 admin 卻停在 admin），自動導到第一個可見頁
+  React.useEffect(() => {
+    if (NAV.length && !NAV.some(n => n.key === page)) {
+      setPage(NAV[0].key);
+    }
+  }, [page, NAV.length]);
 
   return (
     <div className="shell">
@@ -1962,7 +1969,7 @@ function Shell({ user, onLogout }) {
       <main className="shell-main">
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}
-        {page==='admin'     && <AdminPanel          user={user}/>}
+        {page==='admin'     && isAdmin && <AdminPanel          user={user}/>}
         {page==='booking'   && <iframe src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印機預約"/>}
         {page==='inventory' && <iframe src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
       </main>

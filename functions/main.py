@@ -297,6 +297,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
         # 6. 拉 prints（最近的；用 date__gt 縮小範圍）
         # 抓最近 60 天的 prints，避免單次拉太多
+        # ★ sort=-print_finished_at：最新完成的排前面，確保不漏抓剛完成的 print
         date_from = (datetime.datetime.utcnow() - datetime.timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
         all_prints = []
         page = 1
@@ -305,6 +306,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 "per_page": 100,
                 "page":     page,
                 "date__gt": date_from,
+                "sort":     "-print_finished_at",
             })
             results = r.get("results", [])
             all_prints.extend(results)
@@ -335,13 +337,24 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 stats["skipped_status"][status] = stats["skipped_status"].get(status, 0) + 1
 
                 # 對應的機台 alias
-                printer_serial = pr.get("printer") or ""
+                # ★ Formlabs prints API 的 printer 欄位可能是 serial 或 alias，兩者都比對
+                printer_ref = pr.get("printer") or ""
                 alias = None
                 for ps in printers_summary:
-                    if ps.get("serial") == printer_serial:
+                    if ps.get("serial") == printer_ref or ps.get("alias") == printer_ref:
                         alias = ps.get("alias")
                         break
+                # 還是找不到 → 退而求其次：printer_ref 本身若含追蹤機台名就直接用
+                if not alias and printer_ref:
+                    for a in TRACKED_ALIASES:
+                        if a in printer_ref:
+                            alias = printer_ref
+                            break
                 if not alias or not any(a in alias for a in TRACKED_ALIASES):
+                    # debug：印出找不到對應的 print（方便排查漏抓）
+                    if status in DONE_STATUSES:
+                        print(f"[sync] 跳過 print guid={guid[:8]} status={status} "
+                              f"printer={printer_ref!r} material={pr.get('material')!r}（非追蹤機台或無法對應）")
                     continue  # 非追蹤機台
 
                 material = canon_material(pr.get("material"))
