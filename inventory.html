@@ -1140,27 +1140,32 @@ function isDisabled(material) {
 
 function getAllMaterials() {
     const mats=new Set();
-    // 從樹脂罐
-    Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>{ if(s.material) mats.add(s.material); }));
-    // 從備料
-    Object.keys(inv.stock).forEach(m=>mats.add(m));
-    // 從歷史
-    inv.history.forEach(h=>{ if(h.material) mats.add(h.material); });
+    // 全部正規化成家族代碼後去重（FLRG1002/FLRG1011/'Rigid 10K V1.1' → FLRG10）
+    Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>{ if(s.material) mats.add(matCode(s.material)); }));
+    Object.keys(inv.stock).forEach(m=>mats.add(matCode(m)));
+    inv.history.forEach(h=>{ if(h.material) mats.add(matCode(h.material)); });
     // 過濾掉停用的材料
     return [...mats].filter(m => !isDisabled(m)).sort();
 }
 
 function getCartridgeTotal(material) {
-    // 機台上的樹脂罐剩餘量
+    // 機台上的樹脂罐剩餘量（加總所有同家族的 slot）
+    const fam = matCode(material);
     let total=0;
     Object.values(inv.cartridges).forEach(slots=>{
-        (slots||[]).forEach(s=>{ if(s.material===material && s.remaining_ml) total+=s.remaining_ml; });
+        (slots||[]).forEach(s=>{ if(matCode(s.material)===fam && s.remaining_ml) total+=s.remaining_ml; });
     });
     return total;
 }
 
 function getStockTotal(material) {
-    return inv.stock[material]?.total_ml || 0;
+    // 加總所有同家族的 stock key（FLRG1002 + FLRG10 + 'Rigid 10K V1.1' ...）
+    const fam = matCode(material);
+    let total = 0;
+    Object.keys(inv.stock).forEach(k=>{
+        if(matCode(k)===fam) total += (inv.stock[k]?.total_ml || 0);
+    });
+    return total;
 }
 
 function getTotalInventory(material) {
@@ -1170,7 +1175,16 @@ function getTotalInventory(material) {
 }
 
 function getSafetyStock(material) {
-    return inv.safety[material] ?? DEFAULT_SAFETY;
+    // 找同家族任一 key 的安全庫存（取最大），都沒有才用預設
+    const fam = matCode(material);
+    let found = null;
+    Object.keys(inv.safety).forEach(k=>{
+        if(matCode(k)===fam){
+            const v = inv.safety[k];
+            if(v != null) found = (found==null) ? v : Math.max(found, v);
+        }
+    });
+    return found != null ? found : DEFAULT_SAFETY;
 }
 
 function isLowStock(material) {
@@ -1527,8 +1541,8 @@ function renderStockTable() {
     mats.sort((a,b)=>{
         let ka, kb;
         if(stockSortField==='material'){ ka=matName(a); kb=matName(b); }
-        else if(stockSortField==='bottles'){ ka=(inv.stock[a]?.bottles||0); kb=(inv.stock[b]?.bottles||0); }
-        else if(stockSortField==='total_ml'){ ka=(inv.stock[a]?.total_ml||0); kb=(inv.stock[b]?.total_ml||0); }
+        else if(stockSortField==='bottles'){ ka=getStockTotal(a); kb=getStockTotal(b); }
+        else if(stockSortField==='total_ml'){ ka=getStockTotal(a); kb=getStockTotal(b); }
         else if(stockSortField==='on_machine'){ ka=getCartridgeTotal(a); kb=getCartridgeTotal(b); }
         else if(stockSortField==='safety'){ ka=getSafetyStock(a); kb=getSafetyStock(b); }
         else if(stockSortField==='status'){ ka=isLowStock(a)?0:1; kb=isLowStock(b)?0:1; }
@@ -1541,10 +1555,14 @@ function renderStockTable() {
     if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">'+(getAllMaterials().length?'沒有符合篩選條件的資料':'尚無庫存資料')+'</td></tr>'; return; }
     tbody.innerHTML='';
     mats.forEach(m=>{
-        const s=inv.stock[m]||{bottles:0,total_ml:0};
+        const fam = matCode(m);
+        // 取家族代表 entry（家族 key 優先，否則同家族任一）供 note/日期顯示用
+        let s = inv.stock[fam];
+        if(!s){ for(const k of Object.keys(inv.stock)){ if(matCode(k)===fam){ s = inv.stock[k]; break; } } }
+        s = s || {bottles:0,total_ml:0};
         const safety=getSafetyStock(m);
         const low=isLowStock(m);
-        const stockLiters = (s.total_ml||0) / 1000;
+        const stockLiters = getStockTotal(m) / 1000;   // 顯示家族加總值（不是單一 key）
         const me=m.replace(/'/g,"\\'");
         // 編輯模式下所有列的 input 啟用
         const inputDisabled = !isEditor || !isStockEditMode;
@@ -1624,9 +1642,9 @@ async function saveStockEdits() {
             return;
         }
 
-        if (!inv.stock[material]) inv.stock[material] = { bottles:0, total_ml:0 };
-        const oldMl   = inv.stock[material].total_ml || 0;
-        const oldNote = inv.stock[material].note || '';
+        const fam = matCode(material);
+        const oldMl   = getStockTotal(material);  // 使用者看到的是家族加總值
+        const oldNote = inv.stock[fam]?.note || '';
         // 直接用 L 算 ml（不再先用 bottles 中介，避免 0.1L 被四捨五入到整罐）
         const newMl   = Math.round(liters * 1000 * 10) / 10;
         const diff    = Math.round((newMl - oldMl) * 10) / 10;
@@ -1634,11 +1652,14 @@ async function saveStockEdits() {
 
         if (diff === 0 && newNote === oldNote) return;  // 此列無變更
 
-        inv.stock[material].bottles    = Math.round(liters * 10) / 10;  // 保留欄位，純記錄用
-        inv.stock[material].total_ml   = newMl;
-        inv.stock[material].note       = newNote;
-        inv.stock[material].updated_at = new Date().toISOString();
-        inv.stock[material].updated_by = 'manual';
+        // 合併：刪掉同家族其他 key，只保留家族代碼 key（避免加總時重複計算）
+        Object.keys(inv.stock).forEach(k=>{ if(matCode(k)===fam && k!==fam) delete inv.stock[k]; });
+        if (!inv.stock[fam]) inv.stock[fam] = { bottles:0, total_ml:0 };
+        inv.stock[fam].bottles    = Math.round(liters * 10) / 10;  // 保留欄位，純記錄用
+        inv.stock[fam].total_ml   = newMl;
+        inv.stock[fam].note       = newNote;
+        inv.stock[fam].updated_at = new Date().toISOString();
+        inv.stock[fam].updated_by = 'manual';
 
         if (diff !== 0) {
             historyEntries.push({
@@ -1692,9 +1713,10 @@ async function deleteStock(material) {
     if(onMachine) msg += `\n\n⚠️ 此材料目前裝載在機台樹脂罐上，刪除後機台樹脂罐頁仍會顯示（即時同步自 Formlabs API）。如要徹底隱藏，請先換掉機台上的樹脂罐。`;
     if(!confirm(msg)) return;
 
-    // 清除備料、安全庫存
-    delete inv.stock[material];
-    delete inv.safety[material];
+    // 清除備料、安全庫存（含所有同家族的 key）
+    const fam = matCode(material);
+    Object.keys(inv.stock).forEach(k=>{ if(matCode(k)===fam) delete inv.stock[k]; });
+    Object.keys(inv.safety).forEach(k=>{ if(matCode(k)===fam) delete inv.safety[k]; });
     // 清除與此材料相關的「備料/手動」歷史（保留列印消耗紀錄供月度分析）
     inv.history = inv.history.filter(h => !(h.material===material && (h.type==='stockin'||h.type==='manual')));
     // 加入黑名單，這樣即使後續 history/cartridges 還有相關紀錄，UI 也不會再撈進來
@@ -1965,7 +1987,7 @@ function renderHistory() {
     const fTo      = document.getElementById('history-filter-to').value;
 
     let filtered = inv.history.filter(h=>{
-        if(fMat     && h.material !== fMat) return false;
+        if(fMat     && matCode(h.material) !== matCode(fMat)) return false;
         if(fPrinter && !(h.printer||'').includes(fPrinter)) return false;
         if(fType    && h.type !== fType) return false;
         if(fFrom    && (h.ts||'').slice(0,10) < fFrom) return false;
@@ -2082,9 +2104,10 @@ function renderMonthly() {
     </tr></thead><tbody>`;
 
     mats.forEach(mat=>{
+        const fam = matCode(mat);
         const monthly=MONTHS.map(mo=>{
             return inv.history
-                .filter(h=>(h.type==='consume'||h.type==='aborted')&&h.material===mat&&matchPrinter(h)&&new Date(h.ts).getFullYear()===curYear&&new Date(h.ts).getMonth()+1===mo)
+                .filter(h=>(h.type==='consume'||h.type==='aborted')&&matCode(h.material)===fam&&matchPrinter(h)&&new Date(h.ts).getFullYear()===curYear&&new Date(h.ts).getMonth()+1===mo)
                 .reduce((s,h)=>s+(h.ml||0),0);
         });
         const total=monthly.reduce((s,v)=>s+v,0);
@@ -2232,7 +2255,7 @@ function renderMonthlyPie() {
         .filter(h=>(h.type==='consume'||h.type==='aborted')
             && (!printerFilter || (h.printer||'').includes(printerFilter))
             && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth)
-        .forEach(h=>{ byMaterial[h.material]=(byMaterial[h.material]||0)+(h.ml||0); });
+        .forEach(h=>{ const fam=matCode(h.material); byMaterial[fam]=(byMaterial[fam]||0)+(h.ml||0); });
 
     const entries = Object.entries(byMaterial).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
 
