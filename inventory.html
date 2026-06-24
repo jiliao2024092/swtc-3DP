@@ -1152,7 +1152,9 @@ function getStockTotal(material) {
 }
 
 function getTotalInventory(material) {
-    return getCartridgeTotal(material) + getStockTotal(material);
+    // 新模型：總庫存 = 備料庫存（唯一真實值）
+    // 機台樹脂罐純顯示，不計入總庫存（消耗由 Cloud Function 自動從備料扣除）
+    return getStockTotal(material);
 }
 
 function getSafetyStock(material) {

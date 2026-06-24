@@ -274,6 +274,16 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         else:
             processed = set(inv["last_processed_prints"])
 
+        # ── 消耗自動扣備料庫存（每筆 print 只扣一次）──
+        # 模型：總庫存 = 備料庫存；消耗（列印/中止）自動扣備料；樹脂罐純顯示不計入
+        if "deducted_prints" in inv:
+            deducted = set(inv["deducted_prints"])
+        else:
+            # 首次啟用：把現有 last_processed_prints 視為「已扣」，避免一次扣掉 60 天歷史
+            deducted = set(inv.get("last_processed_prints", []))
+            print(f"[sync] 首次啟用消耗扣庫存：種子 {len(deducted)} 筆歷史 print 視為已扣")
+        stock_deductions = {}   # material(code) -> 本次要扣的 ml 總和
+
         # 5. 同步機台樹脂罐到 inv.cartridges（給 inventory.html 用）
         # ★ 關鍵：cartridge 數值純粹以 API 為準（initial_ml - dispensed_ml），不再自行扣減
         # ★ serial 仍紀錄以供未來追蹤（換罐統計等），但不自動觸發 stock 扣減
@@ -434,6 +444,11 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 })
                 processed.add(guid)
                 stats["processed_new"] += 1
+
+                # ── 消耗扣備料庫存：每筆 print 只扣一次（backfill 模式不扣，避免重設時誤扣）──
+                if not backfill and guid not in deducted:
+                    stock_deductions[material] = stock_deductions.get(material, 0.0) + volume_num
+                    deducted.add(guid)
             except Exception as e:
                 print(f"[sync] 處理 guid={pr.get('guid','?')[:8]} 失敗: {e}")
                 stats["errors"].append(f"{type(e).__name__}: {e}")
@@ -450,13 +465,24 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     batch.set(ref, entry["data"])
                 batch.commit()
 
-        # 9. 更新 inv.last_processed_prints + 寫回 inventory/main
+        # 9. 套用消耗扣減到備料庫存（不扣到負）+ 更新 last_processed_prints
+        if stock_deductions:
+            print(f"[sync] 套用消耗扣備料庫存: {stock_deductions}")
+            for mat, amount in stock_deductions.items():
+                if mat not in inv["stock"]:
+                    inv["stock"][mat] = {"total_ml": 0, "bottles": 0}
+                cur = inv["stock"][mat].get("total_ml", 0) or 0
+                inv["stock"][mat]["total_ml"] = round(max(0, cur - amount), 1)
+            stats["stock_deducted"] = {m: round(v, 2) for m, v in stock_deductions.items()}
+
         inv["last_processed_prints"] = list(processed)[-2000:]  # 保留最近 2000 個
+        inv["deducted_prints"]       = list(deducted)[-2000:]   # 已扣庫存的 print
         inv_ref.set({
             "cartridges":            inv["cartridges"],
             "stock":                 inv["stock"],
             "safety":                inv["safety"],
             "last_processed_prints": inv["last_processed_prints"],
+            "deducted_prints":       inv["deducted_prints"],
             "disabled_materials":    inv["disabled_materials"],
             "disabled_overrides":    inv["disabled_overrides"],
             "updatedAt":             firestore.SERVER_TIMESTAMP,
