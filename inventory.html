@@ -862,7 +862,7 @@ function subscribeAll() {
     });
 }
 
-// ══ 材料代碼 → 顯示名稱對照 ══
+// ══ 材料代碼 → 顯示名稱對照（保留：名稱輸入轉代碼用）══
 const CODE_TO_NAME = {
     'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
     'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
@@ -876,28 +876,40 @@ const NAME_TO_CODE_FE = {};
 Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
 NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
-NAME_TO_CODE_FE['Rigid 10K V1.1'] = 'FLRG1002';  // 標準代碼固定為 FLRG1002（FLRG1011 為同材料別名）
-NAME_TO_CODE_FE['Tough 1000 V1'] = 'FLTO1001';
-NAME_TO_CODE_FE['Tough 1000 V2'] = 'FLTO1002';
 
-// ══ 代碼別名正規化：同材料的不同代碼統一成標準代碼 ══
-const CODE_ALIASES = {
-    'FLRG1011': 'FLRG1002',   // Rigid 10K V1.1 的另一個代碼
-    'FLRG1001': 'FLRG1002',   // 舊版 Rigid 10K
+// ══ 代碼家族正規化：取前 6 碼當家族代碼，把同材料的不同版本統一 ══
+//    （Formlabs 代碼末 2 碼通常是版本：FLTO1001/FLTO1002 → FLTO10）
+const FAMILY_TO_NAME = {
+    'FLGPCL':'Clear V5',      'FLGPWH':'White V5',      'FLGPGR':'Grey V5',
+    'FLGPBK':'Black V5',      'FLTO10':'Tough 1000',    'FLTO15':'Tough 1500',
+    'FLTO20':'Tough 2000',    'FLRG10':'Rigid 10K',     'FLRG40':'Rigid 4000',
+    'FLFL80':'Flexible 80A',  'FLHTAM':'High Temp',     'FLFLES':'Elastic 50A',
+    'FLESD0':'ESD Resin',     'FLSI40':'Silicone 40A',  'FLFAMD':'Fast Model',
+    'FLPRMD':'Precision Model','FLFRGR':'Flame Retardant','FLDU20':'Durable',
+    'FLCEBL':'Ceramic',       'FLPUBK':'Polyurethane',
 };
-function canonCode(code) {
-    return CODE_ALIASES[code] || code;
+// 取家族代碼（前 6 碼），統一版本
+function familyCode(code) {
+    if(!code) return code;
+    const c = String(code).toUpperCase();
+    if(c.startsWith('FL') && c.length >= 6) return c.slice(0,6);
+    return code;
 }
-
-function matName(code) {
-    return CODE_TO_NAME[canonCode(code)] || CODE_TO_NAME[code] || code;
+// 名稱或代碼 → 統一的家族代碼（canon）
+function canonCode(input) {
+    if(!input) return input;
+    // 若是名稱，先轉代碼
+    const code = NAME_TO_CODE_FE[input] || input;
+    return familyCode(code);
 }
 function matCode(input) {
+    // matCode 一律回傳家族代碼（統一版本，供合併/比對/儲存 key 用）
+    return canonCode(input);
+}
+function matName(input) {
     if(!input) return input;
-    // 已是代碼 → 先做別名正規化（FLRG1011 → FLRG1002）
-    if(CODE_TO_NAME[input]) return canonCode(input);
-    // 是名稱 → 轉代碼後也正規化
-    return canonCode(NAME_TO_CODE_FE[input] || input);
+    const fam = familyCode(canonCode(input));
+    return FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
 }
 
 // ══ 機台代號 → 顯示名稱 ══

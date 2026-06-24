@@ -75,22 +75,48 @@ NAME_TO_CODE = {
     "Open Material V1":  "FLOPEN01",
 }
 
-# 代碼別名正規化：Formlabs API 可能回傳同材料的不同代碼，統一成標準代碼
-CODE_ALIASES = {
-    "FLRG1011": "FLRG1002",   # Rigid 10K V1.1 的另一個代碼 → 標準代碼
-    "FLRG1001": "FLRG1002",   # 舊版 Rigid 10K
-    "FLTO2001": "FLTO2001",   # Tough 2000 V1.1（保留）
+# 代碼家族正規化：Formlabs 代碼結構為 FL + 材料類型 + 變體 + 版本（末 2 碼通常是版本）
+# 取前 6 碼當「家族代碼」，把同材料的不同版本統一（如 FLTO1001/FLTO1002 → FLTO10）
+# 家族代碼 → 顯示名稱
+FAMILY_TO_NAME = {
+    "FLGPCL": "Clear V5",      "FLGPWH": "White V5",      "FLGPGR": "Grey V5",
+    "FLGPBK": "Black V5",      "FLTO10": "Tough 1000",    "FLTO15": "Tough 1500",
+    "FLTO20": "Tough 2000",    "FLRG10": "Rigid 10K",     "FLRG40": "Rigid 4000",
+    "FLFL80": "Flexible 80A",  "FLHTAM": "High Temp",     "FLFLES": "Elastic 50A",
+    "FLESD0": "ESD Resin",     "FLSI40": "Silicone 40A",  "FLFAMD": "Fast Model",
+    "FLPRMD": "Precision Model","FLFRGR": "Flame Retardant","FLDU20": "Durable",
+    "FLCEBL": "Ceramic",       "FLPUBK": "Polyurethane",
 }
 
 
+def family_code(code: Optional[str]) -> Optional[str]:
+    """取 Formlabs 代碼的前 6 碼當家族代碼（統一版本）。非標準代碼則原樣回傳。"""
+    if not code:
+        return code
+    c = str(code).upper()
+    # 標準 Formlabs 代碼：FL 開頭、長度 >= 6
+    if c.startswith("FL") and len(c) >= 6:
+        return c[:6]
+    return code
+
+
 def canon_material(name_or_code: Optional[str]) -> Optional[str]:
-    """名稱→代碼；已是代碼就正規化別名後回傳。None safe."""
+    """名稱或代碼 → 統一的家族代碼。None safe.
+    例：'Tough 1000 V1'/'FLTO1001'/'FLTO1002' 全部 → 'FLTO10'"""
     if not name_or_code:
         return None
-    code = NAME_TO_CODE.get(name_or_code)
-    result = code if code else name_or_code
-    # 別名正規化（FLRG1011 → FLRG1002 等）
-    return CODE_ALIASES.get(result, result)
+    # 先把名稱轉代碼（若是名稱）
+    code = NAME_TO_CODE.get(name_or_code, name_or_code)
+    # 再取家族代碼（統一版本）
+    return family_code(code)
+
+
+def material_display_name(code: Optional[str]) -> Optional[str]:
+    """家族代碼 → 顯示名稱。"""
+    if not code:
+        return code
+    fam = family_code(code)
+    return FAMILY_TO_NAME.get(fam, code)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -307,28 +333,41 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     for c in ps["cartridges"]
                 ]
 
-        # 6. 拉 prints（最近的；用 date__gt 縮小範圍）
-        # 抓最近 60 天的 prints，避免單次拉太多
-        # ★ sort=-print_finished_at：最新完成的排前面，確保不漏抓剛完成的 print
-        date_from = (datetime.datetime.utcnow() - datetime.timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # 6. 拉 prints — ★ 比照舊版可正常運作的做法：
+        #    按機台 serial 過濾、不加 date 過濾、不加 sort，分頁抓每台追蹤機台的全部 prints
+        #    （之前用 date__gt + sort 全抓的方式會漏掉最新一筆，改回 per-printer 過濾）
+        tracked_serials = []
+        for ps in printers_summary:
+            ps_alias = ps.get("alias") or ""
+            if any(a in ps_alias for a in TRACKED_ALIASES) and ps.get("serial"):
+                tracked_serials.append(ps.get("serial"))
+        print(f"[sync] 追蹤機台 serials: {tracked_serials}")
+
         all_prints = []
-        page = 1
-        while True:
-            r = api_get(f"{FORMLABS_API_BASE}/prints/", token, {
-                "per_page": 100,
-                "page":     page,
-                "date__gt": date_from,
-                "sort":     "-print_finished_at",
-            })
-            results = r.get("results", [])
-            all_prints.extend(results)
-            if not r.get("next"):
-                break
-            page += 1
-            if page > 50:  # safety
-                break
+        seen_guids = set()
+        for serial in tracked_serials:
+            page = 1
+            while True:
+                r = api_get(f"{FORMLABS_API_BASE}/prints/", token, {
+                    "printer":  serial,
+                    "per_page": 100,
+                    "page":     page,
+                })
+                results = r.get("results", []) if isinstance(r, dict) else (r or [])
+                # 去重（同一筆 guid 只保留一次）
+                for pr in results:
+                    g = pr.get("guid")
+                    if g and g not in seen_guids:
+                        seen_guids.add(g)
+                        all_prints.append(pr)
+                has_next = bool(r.get("next")) if isinstance(r, dict) else (len(results) == 100)
+                if not has_next or not results:
+                    break
+                page += 1
+                if page > 50:
+                    break
         stats["prints_total"] = len(all_prints)
-        print(f"[sync] 取得 {len(all_prints)} 筆 prints (最近 60 天)")
+        print(f"[sync] 取得 {len(all_prints)} 筆 prints（按 {len(tracked_serials)} 台機台 serial 過濾）")
 
         # 7. 處理 prints — 只寫 history 紀錄，不再自行扣減 cartridges/stock
         # ★ cartridges 數值已由 step 5 從 API 同步（initial_ml - dispensed_ml），絕對準確
