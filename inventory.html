@@ -797,9 +797,11 @@ function subscribeAll() {
             renderAll();
             console.log('[inventory snapshot] renderAll 完成');
             // 若合併過材料別名（如 FLRG1011→FLRG1002），把結果存回 Firestore 永久清除殘留
-            if (merged && isEditor && invLoadedFromFirestore) {
-                console.log('[merge] 偵測到材料別名，存回 Firestore 清除殘留');
-                saveAll('合併材料別名 (FLRG1011→FLRG1002 等)').catch(e=>console.warn('合併存回失敗:', e.message));
+            // ★ 每個 session 只存一次，避免「寫入→snapshot→再 merge→再寫入」無限迴圈
+            if (merged && isEditor && invLoadedFromFirestore && !mergeSavedThisSession) {
+                mergeSavedThisSession = true;
+                console.log('[merge] 偵測到材料別名，存回 Firestore 清除殘留（本 session 僅一次）');
+                saveAll('合併材料別名').catch(e=>console.warn('合併存回失敗:', e.message));
             }
         } catch (err) {
             console.error('[inventory snapshot] 渲染錯誤:', err);
@@ -949,6 +951,7 @@ function mergeMaterialAliases() {
 
 // ══ 寫入：inventory/main ══
 let isSaving = false;
+let mergeSavedThisSession = false;  // 防止 merge 自動存回造成無限迴圈：每 session 僅存一次
 async function saveAll(reason) {
     if (!isEditor) { showToast('唯讀模式無法修改', 'error'); return; }
     if (!invLoadedFromFirestore) {
@@ -959,7 +962,10 @@ async function saveAll(reason) {
     if (isSaving) return;
     isSaving = true; setSyncStatus('saving');
     try {
-        await setDoc(doc(db, 'inventory', 'main'), {
+        // ★ 用 updateDoc 完整取代 map 欄位（不像 setDoc merge:true 會殘留已刪除的 key）
+        //   這樣 mergeMaterialAliases 刪掉的別名 key 才會真正從 Firestore 消失，
+        //   避免「別名殘留→每次 snapshot 重複累加」的無限迴圈
+        await updateDoc(doc(db, 'inventory', 'main'), {
             cartridges: inv.cartridges || {},
             stock:      inv.stock      || {},
             safety:     inv.safety     || {},
@@ -970,7 +976,7 @@ async function saveAll(reason) {
             updatedBy:      currentUser.uid,
             updatedByEmail: currentUser.email,
             lastReason:     reason || '',
-        }, { merge: true });
+        });
         setSyncStatus('ok');
         showToast('✓ 已儲存','success');
     } catch (err) {
