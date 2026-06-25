@@ -11,6 +11,7 @@
 # ════════════════════════════════════════════════════════════════
 import os
 import sys
+import re
 import json
 import datetime
 import traceback
@@ -89,13 +90,22 @@ FAMILY_TO_NAME = {
 }
 
 
+# 已被舊版誤截的殘留 key → 正確家族代碼
+FAMILY_REMAP = {
+    "FLEXIB": "FLFL80",   # "Flexible 80A" 被誤截
+    "FLAMER": "FLFRGR",   # "Flame Retardant" 被誤截
+}
+
+
 def family_code(code: Optional[str]) -> Optional[str]:
     """取 Formlabs 代碼的前 6 碼當家族代碼（統一版本）。非標準代碼則原樣回傳。"""
     if not code:
         return code
     c = str(code).upper()
-    # 標準 Formlabs 代碼：FL 開頭、長度 >= 6
-    if c.startswith("FL") and len(c) >= 6:
+    if c in FAMILY_REMAP:
+        return FAMILY_REMAP[c]
+    # 真正的 Formlabs 代碼：FL + 6 英數字（共 8 碼）、且含數字（名稱如 FLEXIBLE 不含數字會被排除）
+    if re.fullmatch(r"FL[A-Z0-9]{6}", c) and any(ch.isdigit() for ch in c):
         return c[:6]
     return code
 
@@ -504,14 +514,25 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     batch.set(ref, entry["data"])
                 batch.commit()
 
-        # 9. 套用消耗扣減到備料庫存（不扣到負）+ 更新 last_processed_prints
+        # 9. 套用消耗扣減到備料庫存（從實際存在的同家族 key 扣，不建立幽靈 key）
         if stock_deductions:
             print(f"[sync] 套用消耗扣備料庫存: {stock_deductions}")
             for mat, amount in stock_deductions.items():
-                if mat not in inv["stock"]:
-                    inv["stock"][mat] = {"total_ml": 0, "bottles": 0}
-                cur = inv["stock"][mat].get("total_ml", 0) or 0
-                inv["stock"][mat]["total_ml"] = round(max(0, cur - amount), 1)
+                fam = canon_material(mat)
+                # 找出所有同家族的 stock key（可能是舊代碼/名稱/家族代碼）
+                matching = [k for k in inv["stock"] if canon_material(k) == fam]
+                if not matching:
+                    inv["stock"][fam] = {"total_ml": 0, "bottles": 0}
+                    matching = [fam]
+                # 從有量的 key 依序扣減（扣到 0 為止，不到負）
+                remaining = amount
+                for k in matching:
+                    if remaining <= 0:
+                        break
+                    cur = inv["stock"][k].get("total_ml", 0) or 0
+                    d = min(cur, remaining)
+                    inv["stock"][k]["total_ml"] = round(cur - d, 1)
+                    remaining -= d
             stats["stock_deducted"] = {m: round(v, 2) for m, v in stock_deductions.items()}
 
         inv["last_processed_prints"] = list(processed)[-2000:]  # 保留最近 2000 個

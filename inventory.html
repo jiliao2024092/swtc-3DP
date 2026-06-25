@@ -875,6 +875,7 @@ const CODE_TO_NAME = {
 const NAME_TO_CODE_FE = {};
 Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
 NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
+NAME_TO_CODE_FE['Flexible']      = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
 
 // ══ 代碼家族正規化：取前 6 碼當家族代碼，把同材料的不同版本統一 ══
@@ -888,12 +889,22 @@ const FAMILY_TO_NAME = {
     'FLPRMD':'Precision Model','FLFRGR':'Flame Retardant','FLDU20':'Durable',
     'FLCEBL':'Ceramic',       'FLPUBK':'Polyurethane',
 };
+// 家族名稱 → 家族代碼（讓 'Tough 1000' 這類家族名也能解析、合併）
+Object.entries(FAMILY_TO_NAME).forEach(([fam,name])=>{ if(!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name]=fam; });
+// 已被舊版 familyCode 誤截的殘留 key → 正確家族代碼
+const FAMILY_REMAP = {
+    'FLEXIB': 'FLFL80',   // "Flexible 80A" 被誤截成 FLEXIB
+    'FLAMER': 'FLFRGR',   // "Flame Retardant" 被誤截成 FLAMER
+};
 // 取家族代碼（前 6 碼），統一版本
 function familyCode(code) {
     if(!code) return code;
     const c = String(code).toUpperCase();
-    if(c.startsWith('FL') && c.length >= 6) return c.slice(0,6);
-    return code;
+    if(FAMILY_REMAP[c]) return FAMILY_REMAP[c];
+    // 真正的 Formlabs 代碼：FL + 6 英數字（共 8 碼）、且含數字、無空格
+    //   （名稱如 "FLEXIBLE"、"Flame" 不含數字，不會被誤判成代碼）
+    if(/^FL[A-Z0-9]{6}$/.test(c) && /\d/.test(c)) return c.slice(0,6);
+    return code;  // 名稱等原樣回傳
 }
 // 名稱或代碼 → 統一的家族代碼（canon）
 function canonCode(input) {
