@@ -112,13 +112,18 @@ def family_code(code: Optional[str]) -> Optional[str]:
 
 def canon_material(name_or_code: Optional[str]) -> Optional[str]:
     """名稱或代碼 → 統一的家族代碼。None safe.
-    例：'Tough 1000 V1'/'FLTO1001'/'FLTO1002' 全部 → 'FLTO10'"""
+    例：'Tough 1000 V1'/'FLTO1001'/'FLTO1002'/'Flexible 80A V1.1' 全部 → 家族碼"""
     if not name_or_code:
         return None
     # 先把名稱轉代碼（若是名稱）
-    code = NAME_TO_CODE.get(name_or_code, name_or_code)
+    code = NAME_TO_CODE.get(name_or_code)
+    if not code:
+        # 去掉版本後綴再查（"Flexible 80A V1.1" → "Flexible 80A"）
+        base = re.sub(r"\s*V\d+(\.\d+)?$", "", str(name_or_code)).strip()
+        if base != name_or_code:
+            code = NAME_TO_CODE.get(base)
     # 再取家族代碼（統一版本）
-    return family_code(code)
+    return family_code(code if code else name_or_code)
 
 
 def material_display_name(code: Optional[str]) -> Optional[str]:
@@ -400,6 +405,16 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 status = (pr.get("status") or "").upper()
                 stats["skipped_status"][status] = stats["skipped_status"].get(status, 0) + 1
 
+                # ★ 針對使用者回報一直沒抓到的特定 print 印詳細資料（依名稱比對）
+                _pname = pr.get("name", "") or ""
+                _is_debug_print = "202606180001" in _pname or "百盛鐵氟龍" in _pname
+                if _is_debug_print:
+                    print(f"[sync][DEBUG目標print] name={_pname!r} guid={guid} "
+                          f"status={status} printer={pr.get('printer')!r} "
+                          f"material={pr.get('material')!r} volume_ml={pr.get('volume_ml')!r} "
+                          f"finished={pr.get('print_finished_at')!r} created={pr.get('created_at')!r} "
+                          f"in_processed={guid in processed} in_deducted={guid in deducted}")
+
                 # 對應的機台 alias
                 # ★ Formlabs prints API 的 printer 欄位可能是 serial 或 alias，兩者都比對
                 printer_ref = pr.get("printer") or ""
@@ -471,9 +486,16 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 volume_num = round(float(volume), 1)
                 record_type = "aborted" if is_abort else "consume"
 
-                # 寫紀錄
-                finished = pr.get("print_finished_at") or pr.get("created_at") or now_iso
-                ts_dt = datetime.datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                # 寫紀錄 — 時間優先用完成時間（created_at 可能很舊，會被前端 30 天過濾排除）
+                finished = (pr.get("print_finished_at") or pr.get("finished_at")
+                            or pr.get("updated_at") or pr.get("created_at") or now_iso)
+                try:
+                    ts_dt = datetime.datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                except Exception:
+                    finished = now_iso
+                    ts_dt = datetime.datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                if _is_debug_print:
+                    print(f"[sync][DEBUG目標print] 採用時間 ts={finished!r} → tsDate={ts_dt.isoformat()}")
 
                 new_history_entries.append({
                     "guid":     guid,

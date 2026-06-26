@@ -910,8 +910,13 @@ function familyCode(code) {
 function canonCode(input) {
     if(!input) return input;
     // 若是名稱，先轉代碼
-    const code = NAME_TO_CODE_FE[input] || input;
-    return familyCode(code);
+    let code = NAME_TO_CODE_FE[input];
+    if(!code){
+        // 去掉版本後綴再查（"Flexible 80A V1.1" → "Flexible 80A"；"Tough 2000 V2" → "Tough 2000"）
+        const base = String(input).replace(/\s*V\d+(\.\d+)?$/i, '').trim();
+        if(base !== input) code = NAME_TO_CODE_FE[base];
+    }
+    return familyCode(code || input);
 }
 function matCode(input) {
     // matCode 一律回傳家族代碼（統一版本，供合併/比對/儲存 key 用）
@@ -1138,12 +1143,13 @@ function switchTab(tab) {
 // 判斷材料是否被停用（從 UI 與抓取流程隱藏）
 function isDisabled(material) {
     if (!material) return false;
-    // 使用者明確恢復顯示的，永遠不算停用
-    const overrides = new Set(inv.disabled_overrides || []);
-    if (overrides.has(material)) return false;
-    // 使用者主動停用
-    const userDisabled = new Set(inv.disabled_materials || []);
-    if (userDisabled.has(material)) return true;
+    const fam = matCode(material);
+    // 使用者明確恢復顯示的，永遠不算停用（按家族比對）
+    const overrides = new Set((inv.disabled_overrides || []).map(m=>matCode(m)));
+    if (overrides.has(fam)) return false;
+    // 使用者主動停用（按家族比對：停用任一版本＝整個家族都停用）
+    const userDisabled = new Set((inv.disabled_materials || []).map(m=>matCode(m)));
+    if (userDisabled.has(fam)) return true;
     // 預設停用清單：比對代碼或顯示名稱
     const name = matName(material);
     return DEFAULT_DISABLED_NAMES.includes(material) || DEFAULT_DISABLED_NAMES.includes(name);
