@@ -134,6 +134,22 @@ def material_display_name(code: Optional[str]) -> Optional[str]:
     return FAMILY_TO_NAME.get(fam, code)
 
 
+def parse_valid_ts(val, floor_year: int = 2000):
+    """解析 ISO 時間字串。空值、無法解析、或落在 epoch 附近（年份 < floor_year）
+    一律視為無效並回傳 None。
+    起因：Formlabs 偶爾對 FINISHED 的 print 回傳 1970 epoch 的 print_finished_at，
+    若直接採用會把消耗紀錄打到 1970，被前端「最近 30 天」視窗濾掉（看似漏抓）。"""
+    if not val:
+        return None
+    try:
+        dt = datetime.datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.year < floor_year:
+        return None
+    return dt
+
+
 # ════════════════════════════════════════════════════════════════
 # OAuth: 取得 access token
 # ════════════════════════════════════════════════════════════════
@@ -506,14 +522,16 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 volume_num = round(float(volume), 1)
                 record_type = "aborted" if is_abort else "consume"
 
-                # 寫紀錄 — 時間優先用完成時間（created_at 可能很舊，會被前端 30 天過濾排除）
-                finished = (pr.get("print_finished_at") or pr.get("finished_at")
-                            or pr.get("updated_at") or pr.get("created_at") or now_iso)
-                try:
-                    ts_dt = datetime.datetime.fromisoformat(finished.replace("Z", "+00:00"))
-                except Exception:
-                    finished = now_iso
-                    ts_dt = datetime.datetime.fromisoformat(finished.replace("Z", "+00:00"))
+                # 寫紀錄 — 完成時間優先；但 Formlabs 偶爾對 FINISHED 的 print 回傳
+                # epoch(1970) 的 print_finished_at（見「百盛鐵氟龍」案例），會把紀錄
+                # 打到 1970 → 被前端 30 天視窗濾掉，看似漏抓。故 epoch 附近的無效時間
+                # 一律退回 created_at，再退回 now（now_iso 必為有效，保證有值）。
+                ts_dt = (parse_valid_ts(pr.get("print_finished_at"))
+                         or parse_valid_ts(pr.get("finished_at"))
+                         or parse_valid_ts(pr.get("updated_at"))
+                         or parse_valid_ts(pr.get("created_at"))
+                         or parse_valid_ts(now_iso))
+                finished = ts_dt.isoformat()
                 if _is_debug_print:
                     print(f"[sync][DEBUG目標print] 採用時間 ts={finished!r} → tsDate={ts_dt.isoformat()}")
 
