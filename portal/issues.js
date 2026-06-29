@@ -30,7 +30,7 @@
       finally { setBusy(false); }
     };
     return (
-      <div className="m-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="m-overlay">
         <div className="m-box">
           <div className="m-hd"><h3>{item?'✏️ 編輯異常':'➕ 新增異常'}</h3><button className="m-close" onClick={onClose}>×</button></div>
           <div className="m-body">
@@ -91,7 +91,7 @@
       finally { setBusy(false); }
     };
     return (
-      <div className="m-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="m-overlay">
         <div className="m-box" style={{width:560}}>
           <div className="m-hd"><h3>{item?'✏️ 編輯採購':'➕ 新增採購'}</h3><button className="m-close" onClick={onClose}>×</button></div>
           <div className="m-body">
@@ -128,7 +128,7 @@
       finally { setBusy(false); }
     };
     return (
-      <div className="m-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="m-overlay">
         <div className="m-box" style={{width:560}}>
           <div className="m-hd"><h3>{item?'✏️ 編輯設備':'➕ 新增設備'}</h3><button className="m-close" onClick={onClose}>×</button></div>
           <div className="m-body">
@@ -573,8 +573,10 @@
               </tr></thead><tbody>
                 {sortArr(filtA,anomalySort).map((it,idx)=>{
                   const tone=K.ENG_TONE[it.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
-                  const first=(it.progresses||[])[0]||{date:'—',status:'—'};
-                  const rest=(it.progresses||[]).slice(1);
+                  // 進度狀況：日期最新的在最上面（主列顯示最新，展開看較舊的）
+                  const sortedProg=[...(it.progresses||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+                  const first=sortedProg[0]||{date:'—',status:'—'};
+                  const rest=sortedProg.slice(1);
                   const seqNo=idx+1;  // 左側序號：每個 issue 依序排（不計後續）
                   // 案件框線：依狀態分色（處理中=琥珀、已完成=綠、暫停=紅）
                   const stKey = it.status==='已完成'?'done':it.status==='暫停'?'pause':'progress';

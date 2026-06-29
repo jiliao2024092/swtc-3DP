@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629e"></script>
+<script src="firebase-config.js?v=20260629f"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629e"></script>
+<script src="firebase-service.js?v=20260629f"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -1461,8 +1461,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629e"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629e"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629f"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629f"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -1547,7 +1547,7 @@ function UserModal({ item, onClose, onSaved }) {
   };
 
   return (
-    <div className="m-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="m-overlay">
       <div className="m-box" style={{width:560}}>
         <div className="m-hd"><h3>{item?'✏️ 編輯使用者':'➕ 新增使用者'}</h3><button className="m-close" onClick={onClose}>×</button></div>
         <div className="m-body">
@@ -1931,7 +1931,7 @@ function ChangePasswordModal({ onClose }) {
   const S_INP = {width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',marginTop:4,boxSizing:'border-box'};
   const LBL = {fontSize:12,color:'var(--ink-3)',fontWeight:600};
   return (
-    <div className="m-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="m-overlay">
       <div className="m-box" style={{maxWidth:400}}>
         <div className="m-hd"><h3>🔑 變更密碼</h3><button className="m-close" onClick={onClose}>×</button></div>
         <div className="m-body">
