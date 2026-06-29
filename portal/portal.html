@@ -143,8 +143,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .kt-money{font-family:var(--font-mono);font-feature-settings:'tnum';color:var(--ink);font-weight:600;text-align:right;white-space:nowrap}
 .kt-anomaly-sub{background:var(--bg-soft)}
 .kt-anomaly-sub td{font-size:11.5px;color:var(--ink-3);padding-top:6px;padding-bottom:6px}
+.kt-anomaly-sub td:first-child{padding-left:42px;position:relative}
+.kt-anomaly-sub td:first-child::after{content:'';position:absolute;left:22px;top:-2px;bottom:-2px;width:2px;background:var(--line)}
 .kt-anomaly-sub-marker{display:inline-flex;align-items:center;gap:6px;color:var(--ink-4);font-family:var(--font-mono);font-size:10.5px}
-.kt-anomaly-sub-marker::before{content:'';display:inline-block;width:1px;height:12px;background:var(--line);margin-left:8px}
+.kt-anomaly-sub-marker::before{content:'';display:inline-block;width:10px;height:1px;background:var(--line)}
 .kt-pill-完成{background:#e6f1ea;color:#1d6f43}
 .kt-pill-處理{background:#fbf3dc;color:#8b6b13}
 .kt-pill-暫停{background:#fbe7e3;color:#8a1d12}

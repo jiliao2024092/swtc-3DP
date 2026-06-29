@@ -15,10 +15,11 @@
     const [form, setForm] = useState(item ? { ...item, progresses:[...(item.progresses||[])].map(p=>({...p})) } : empty);
     const [busy, setBusy] = useState(false);
     const [note, setNote] = useState('');
+    const [noteDate, setNoteDate] = useState(new Date().toISOString().split('T')[0]);  // 進度日期：預設今天但可改
     const set = (k,v) => setForm(f=>({...f,[k]:v}));
     const addNote = () => {
       if (!note.trim()) return;
-      set('progresses', [...form.progresses, { date:new Date().toISOString().split('T')[0], status:note.trim() }]);
+      set('progresses', [...form.progresses, { date: noteDate || new Date().toISOString().split('T')[0], status:note.trim() }]);
       setNote('');
     };
     const save = async () => {
@@ -63,6 +64,7 @@
                 {!form.progresses.length&&<div style={{fontSize:12,color:'#8a93a3'}}>尚無進度</div>}
               </div>
               <div style={{display:'flex',gap:6}}>
+                <input style={{...S_INP,width:150,flex:'none'}} type="date" value={noteDate} onChange={e=>setNoteDate(e.target.value)}/>
                 <input style={{...S_INP,flex:1}} placeholder="輸入進度說明後按 Enter" value={note} onChange={e=>setNote(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addNote()}/>
                 <button className="btn-cancel" style={{padding:'0 12px'}} onClick={addNote}>+</button>
               </div>
