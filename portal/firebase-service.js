@@ -147,6 +147,14 @@
     async signOut() {
       return auth.signOut();
     },
+    // 變更密碼：先用舊密碼重新驗證，再更新（所有分頁共用）
+    async changePassword(currentPassword, newPassword) {
+      const u = auth.currentUser;
+      if (!u || !u.email) throw new Error('尚未登入');
+      const cred = firebase.auth.EmailAuthProvider.credential(u.email, currentPassword);
+      await u.reauthenticateWithCredential(cred);
+      await u.updatePassword(newPassword);
+    },
     onStateChanged(cb) {
       return auth.onAuthStateChanged(cb);
     },

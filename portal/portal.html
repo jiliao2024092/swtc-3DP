@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629c"></script>
+<script src="firebase-config.js?v=20260629d"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629c"></script>
+<script src="firebase-service.js?v=20260629d"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -1461,8 +1461,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629c"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629c"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629d"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629d"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -1904,9 +1904,54 @@ function AdminPanel({ user }) {
 }
 
 /* Shell (主框架) */
+function ChangePasswordModal({ onClose }) {
+  const [cur, setCur] = React.useState('');
+  const [nw, setNw] = React.useState('');
+  const [cf, setCf] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const submit = async () => {
+    if (!cur || !nw) { window.showToast('請填寫目前密碼與新密碼','err'); return; }
+    if (nw.length < 6) { window.showToast('新密碼至少 6 碼','err'); return; }
+    if (nw !== cf) { window.showToast('兩次新密碼不一致','err'); return; }
+    setBusy(true);
+    try {
+      await window.FBAuth.changePassword(cur, nw);
+      window.showToast('密碼已更新','ok');
+      onClose();
+    } catch(e) {
+      const map = {
+        'auth/wrong-password':'目前密碼錯誤',
+        'auth/weak-password':'新密碼太弱（至少 6 碼）',
+        'auth/requires-recent-login':'請重新登入後再變更密碼',
+        'auth/too-many-requests':'嘗試次數過多，請稍後再試',
+      };
+      window.showToast(map[e.code] || e.message || '變更失敗','err');
+    } finally { setBusy(false); }
+  };
+  const S_INP = {width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',marginTop:4,boxSizing:'border-box'};
+  const LBL = {fontSize:12,color:'var(--ink-3)',fontWeight:600};
+  return (
+    <div className="m-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="m-box" style={{maxWidth:400}}>
+        <div className="m-hd"><h3>🔑 變更密碼</h3><button className="m-close" onClick={onClose}>×</button></div>
+        <div className="m-body">
+          <div className="m-field"><label style={LBL}>目前密碼</label><input style={S_INP} type="password" value={cur} onChange={e=>setCur(e.target.value)}/></div>
+          <div className="m-field"><label style={LBL}>新密碼（至少 6 碼）</label><input style={S_INP} type="password" value={nw} onChange={e=>setNw(e.target.value)}/></div>
+          <div className="m-field"><label style={LBL}>確認新密碼</label><input style={S_INP} type="password" value={cf} onChange={e=>setCf(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submit()}/></div>
+        </div>
+        <div className="m-foot">
+          <button className="btn-cancel" onClick={onClose}>取消</button>
+          <button className="btn-save" onClick={submit} disabled={busy}>{busy?'更新中…':'更新密碼'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Shell({ user, onLogout }) {
   const K = window.K;
   const [page, setPage] = useStateApp('workboard');
+  const [showPwModal, setShowPwModal] = React.useState(false);
 
   const isAdmin = window.hasPerm(user, 'admin');
   const canBoard = window.hasPerm(user, 'view_board');
@@ -1970,9 +2015,13 @@ function Shell({ user, onLogout }) {
           <span style={{fontSize:9,color:'#8a93a3',wordBreak:'break-all',fontFamily:'monospace'}}>
             perms: {JSON.stringify(user.permissions)}
           </span>
-          <button onClick={onLogout} style={{marginTop:6,background:'none',border:'1px solid var(--line)',borderRadius:5,padding:'4px 10px',fontSize:11,cursor:'pointer',color:'var(--ink-3)',fontFamily:'inherit'}}>登出</button>
+          <div style={{display:'flex',gap:6,marginTop:6}}>
+            <button onClick={()=>setShowPwModal(true)} style={{flex:1,background:'none',border:'1px solid var(--line)',borderRadius:5,padding:'4px 10px',fontSize:11,cursor:'pointer',color:'var(--ink-3)',fontFamily:'inherit'}}>變更密碼</button>
+            <button onClick={onLogout} style={{flex:1,background:'none',border:'1px solid var(--line)',borderRadius:5,padding:'4px 10px',fontSize:11,cursor:'pointer',color:'var(--ink-3)',fontFamily:'inherit'}}>登出</button>
+          </div>
         </div>
       </aside>
+      {showPwModal && <ChangePasswordModal onClose={()=>setShowPwModal(false)}/>}
       <main className="shell-main">
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}

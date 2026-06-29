@@ -12,6 +12,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { font-family: 'Noto Sans TC', 'Segoe UI', Tahoma, 'Microsoft JhengHei', sans-serif; font-size: 13px; line-height: 1.4; }
+        /* 嵌在 portal 內時隱藏自己的帳號控制（改由 portal 統一提供）*/
+        .is-embedded .embedded-hide { display: none !important; }
         /* ── 對齊 issues 緊湊風格 ── */
         .text-xs   { font-size: 10.5px !important; line-height: 1.3 !important; }
         .text-sm   { font-size: 12px   !important; line-height: 1.35 !important; }
@@ -248,20 +250,20 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <a href="inventory.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
+                <a href="inventory.html" class="embedded-hide flex items-center gap-1.5 text-sm text-gray-500 hover:text-teal-600 px-3 py-2 rounded-md hover:bg-teal-50 transition-colors">
                     <i data-lucide="package" class="w-4 h-4"></i> 庫存管理
                 </a>
-                <div class="text-right mr-2">
+                <div class="text-right mr-2 embedded-hide">
                     <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
                     <p id="user-email" class="text-xs text-gray-400">—</p>
                 </div>
-                <button id="users-mgmt-btn" onclick="showUsersModal()" title="使用者管理" class="hidden p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                <button id="users-mgmt-btn" onclick="showUsersModal()" title="使用者管理" class="embedded-hide hidden p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
                     <i data-lucide="users" class="w-4 h-4"></i>
                 </button>
-                <button onclick="showChangePasswordModal()" title="變更密碼" class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
+                <button onclick="showChangePasswordModal()" title="變更密碼" class="embedded-hide p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
                     <i data-lucide="key-round" class="w-4 h-4"></i>
                 </button>
-                <button onclick="doSignOut()" title="登出" class="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <button onclick="doSignOut()" title="登出" class="embedded-hide p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
                     <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
             </div>
@@ -607,6 +609,8 @@ window.submitChangePassword = async function() {
 
 // 是否嵌在 portal 的 iframe 內（共用同一個 Firebase Auth session）
 const IS_EMBEDDED = (window.self !== window.top);
+// 嵌在 portal iframe 內時，隱藏自己的帳號控制（改由 portal 統一提供）
+if (IS_EMBEDDED) { try { document.body.classList.add('is-embedded'); } catch(e){} }
 
 function showLogin() {
     // 嵌在 portal iframe 內時，不顯示獨立登入畫面（共用 portal 的登入狀態）
