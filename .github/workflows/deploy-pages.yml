@@ -4,17 +4,9 @@ on:
   push:
     branches:
       - main
-    paths:
-      # ★ 用 '**' 前綴才能比對子資料夾（如 portal/issues.js）
-      #   舊的 '*.js' 只比對根目錄，導致 portal/ 的改動不會觸發部署
-      - '**.html'
-      - '**.css'
-      - '**.js'
-      - '**.json'
-      - '**.ico'
-      - '**.png'
-      - '**.svg'
-  workflow_dispatch:
+    # ★ 移除 paths 過濾：任何 push 到 main 都觸發部署
+    #   （之前的 paths 過濾會排除 portal/ 子資料夾的改動，導致不部署）
+  workflow_dispatch:   # 也保留手動觸發選項
 
 permissions:
   contents: read

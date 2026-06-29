@@ -573,8 +573,11 @@
                   const tone=K.ENG_TONE[it.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
                   const first=(it.progresses||[])[0]||{date:'—',status:'—'};
                   const rest=(it.progresses||[]).slice(1);
+                  // 案件框線：依狀態分色（處理中=琥珀、已完成=綠、暫停=紅）
+                  const stKey = it.status==='已完成'?'done':it.status==='暫停'?'pause':'progress';
+                  const hasSub = rest.length>0;
                   return (<React.Fragment key={it._id}>
-                    <tr>
+                    <tr className={`case-row case-top case-${stKey}${hasSub?'':' case-bottom'}`}>
                       <td className="col-seq">{it.seq}</td>
                       <td className="col-customer">{it.customer}</td>
                       <td className="col-date">{it.date}</td>
@@ -590,7 +593,7 @@
                       </span></td>}
                     </tr>
                     {rest.map((p,i)=>(
-                      <tr key={i} className="kt-anomaly-sub">
+                      <tr key={i} className={`kt-anomaly-sub case-row case-${stKey}${i===rest.length-1?' case-bottom':''}`}>
                         <td colSpan={editMode?8:7}><span className="kt-anomaly-sub-marker">↳ 後續 #{i+2}</span></td>
                         <td className="col-date">{p.date}</td><td>{p.status}</td>
                         {editMode&&<td></td>}
