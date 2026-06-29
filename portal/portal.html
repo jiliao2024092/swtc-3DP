@@ -176,8 +176,8 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .kpi-label{font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-4);font-weight:600;font-family:var(--font-mono)}
 .kpi-value{font-size:30px;font-weight:600;font-family:var(--font-mono);letter-spacing:-0.02em;color:var(--ink);margin-top:4px;line-height:1.1;font-feature-settings:'tnum'}
 .kpi-sub{font-size:11px;color:var(--ink-4);margin-top:4px}
-.board{flex:1;display:flex;gap:14px;padding:20px 28px 24px;overflow-x:auto;align-items:flex-start;background:linear-gradient(180deg,var(--bg) 0%,var(--bg-soft) 80px);min-height:0}
-.col{flex:0 0 296px;width:296px;background:var(--bg-panel);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;max-height:calc(100vh - 220px);transition:border-color 0.15s,background 0.15s}
+.board{flex:1;display:flex;gap:10px;padding:16px 16px 20px;overflow-x:auto;align-items:flex-start;background:linear-gradient(180deg,var(--bg) 0%,var(--bg-soft) 80px);min-height:0}
+.col{flex:1 1 0;min-width:180px;background:var(--bg-panel);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;max-height:calc(100vh - 220px);transition:border-color 0.15s,background 0.15s}
 .col-over{border-color:var(--accent);background:var(--accent-soft)}
 .col-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid var(--line-soft)}
 .col-head-left{display:flex;align-items:center;gap:8px}
@@ -187,7 +187,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .col-hint{font-size:10.5px;color:var(--ink-4);font-family:var(--font-mono);letter-spacing:0.02em}
 .col-body{padding:10px 10px 12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:80px}
 .col-empty{text-align:center;color:var(--ink-4);font-size:12px;padding:24px 0;font-family:var(--font-mono)}
-.card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 12px 10px;cursor:grab;box-shadow:var(--shadow-card);transition:box-shadow 0.15s,border-color 0.15s,transform 0.15s;display:flex;flex-direction:column;gap:8px}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px 9px;cursor:grab;box-shadow:var(--shadow-card);transition:box-shadow 0.15s,border-color 0.15s,transform 0.15s;display:flex;flex-direction:column;gap:6px}
 .card:hover{border-color:#d2d6dd;box-shadow:var(--shadow-card-hover)}
 .card:active{cursor:grabbing}
 .card-dragging{opacity:0.4}
@@ -197,7 +197,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .card-top{display:flex;align-items:center;justify-content:space-between}
 .card-top-right{display:flex;align-items:center;gap:6px}
 .card-id{font-size:11px;font-family:var(--font-mono);color:var(--ink-4);letter-spacing:0.02em}
-.card-title{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.35;letter-spacing:-0.005em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-title{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.3;letter-spacing:-0.005em;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card-compact .card-title{font-size:12.5px;-webkit-line-clamp:1}
 .card-meta{font-size:11.5px;color:var(--ink-3);display:flex;gap:4px;align-items:baseline;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .meta-machine{font-family:var(--font-mono);color:var(--ink-2)}
@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629f"></script>
+<script src="firebase-config.js?v=20260629g"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629f"></script>
+<script src="firebase-service.js?v=20260629g"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -1461,8 +1461,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629f"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629f"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629g"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629g"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">

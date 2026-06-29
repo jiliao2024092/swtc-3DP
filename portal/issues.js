@@ -592,7 +592,7 @@
                       <td className="col-customer">{it.customer}</td>
                       <td className="col-date">{it.date}</td>
                       <td>{it.product}</td>
-                      <td><span className="kt-eng"><span className="kt-eng-dot" style={{color:tone.fg,background:tone.bg}}>{K.ENG_INIT[it.engineer]||it.engineer.slice(0,2)}</span>{K.ENG_LABEL[it.engineer]||it.engineer}</span></td>
+                      <td style={{whiteSpace:'nowrap'}}>{K.ENG_LABEL[it.engineer]||it.engineer}</td>
                       <td><span className={pillCls(it.status)}>{it.status}</span></td>
                       <td className="col-date">{it.warranty||'—'}</td>
                       <td>{it.cause||'—'}</td>
@@ -639,7 +639,7 @@
                   return (<tr key={it._id}>
                     <td className="col-seq">{it.seq}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date">{it.useDate}</td><td>{it.product}</td>
                     <td><span className="kt-num-badge">{it.quantity} 桶</span></td>
-                    <td><span className="kt-eng"><span className="kt-eng-dot" style={{color:tone.fg,background:tone.bg}}>{K.ENG_INIT[it.person]||it.person.slice(0,2)}</span>{K.ENG_LABEL[it.person]||it.person}</span></td>
+                    <td style={{whiteSpace:'nowrap'}}>{K.ENG_LABEL[it.person]||it.person}</td>
                     <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
                     {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
                       {canE&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('i');}}>✎</button>}
