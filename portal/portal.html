@@ -147,17 +147,26 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .kt-anomaly-sub td:first-child::after{content:'';position:absolute;left:22px;top:-2px;bottom:-2px;width:2px;background:var(--line)}
 .kt-anomaly-sub-marker{display:inline-flex;align-items:center;gap:6px;color:var(--ink-4);font-family:var(--font-mono);font-size:10.5px}
 .kt-anomaly-sub-marker::before{content:'';display:inline-block;width:10px;height:1px;background:var(--line)}
-/* ── 案件狀態色條：用左側單一色條標示同一案件 + 狀態，不另加方框 ── */
+/* ── 案件外框 + 狀態分色（外框 50% 透明、後續底色用狀態淡色）── */
 .case-progress{--case-color:#c79b2a}   /* 處理中：琥珀 */
 .case-done{--case-color:#1d6f43}       /* 已完成：綠 */
 .case-pause{--case-color:#c0392b}      /* 暫停：紅 */
-/* 左側狀態色條（連續貫穿主列＋後續，圓角收邊）*/
-.case-top > td:first-child{box-shadow:inset 3px 0 0 var(--case-color)}
-.case-row:not(.case-top) > td:first-child{box-shadow:inset 3px 0 0 var(--case-color)}
-.case-top > td:first-child{border-top-left-radius:5px}
-.case-bottom > td:first-child{border-bottom-left-radius:5px}
-/* 後續進度的縮排導引線改用狀態色（取代原本灰色）*/
-.kt-anomaly-sub.case-row td:first-child::after{background:var(--case-color);opacity:.4}
+/* 後續進度底色：用狀態色的淡色調（取代原本灰色）*/
+.kt-anomaly-sub.case-row{background:color-mix(in srgb, var(--case-color) 9%, white)}
+.kt tbody .kt-anomaly-sub.case-row:hover{background:color-mix(in srgb, var(--case-color) 14%, white)}
+/* 每個 issue 外框線：50% 透明度狀態色 */
+.case-row > td{border-top:none;border-bottom:none}
+.case-row > td:first-child{border-left:1px solid color-mix(in srgb, var(--case-color) 50%, transparent)}
+.case-row > td:last-child{border-right:1px solid color-mix(in srgb, var(--case-color) 50%, transparent)}
+.case-top > td{border-top:1px solid color-mix(in srgb, var(--case-color) 50%, transparent)}
+.case-bottom > td{border-bottom:1px solid color-mix(in srgb, var(--case-color) 50%, transparent)}
+/* 外框四角圓角 */
+.case-top > td:first-child{border-top-left-radius:6px}
+.case-top > td:last-child{border-top-right-radius:6px}
+.case-bottom > td:first-child{border-bottom-left-radius:6px}
+.case-bottom > td:last-child{border-bottom-right-radius:6px}
+/* 後續縮排導引線改用狀態色 */
+.kt-anomaly-sub.case-row td:first-child::after{background:var(--case-color);opacity:.45}
 .kt-pill-完成{background:#e6f1ea;color:#1d6f43}
 .kt-pill-處理{background:#fbf3dc;color:#8b6b13}
 .kt-pill-暫停{background:#fbe7e3;color:#8a1d12}
