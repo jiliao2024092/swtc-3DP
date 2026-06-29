@@ -257,12 +257,6 @@
                     <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
                     <p id="user-email" class="text-xs text-gray-400">—</p>
                 </div>
-                <button id="users-mgmt-btn" onclick="showUsersModal()" title="使用者管理" class="embedded-hide hidden p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
-                    <i data-lucide="users" class="w-4 h-4"></i>
-                </button>
-                <button onclick="showChangePasswordModal()" title="變更密碼" class="embedded-hide p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors">
-                    <i data-lucide="key-round" class="w-4 h-4"></i>
-                </button>
                 <button onclick="doSignOut()" title="登出" class="embedded-hide p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
                     <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
@@ -674,7 +668,9 @@ function applyRoleUI() {
     const canEdit = u.role === 'admin' || u.role === 'editor';
     document.getElementById('booking-section').classList.toggle('hidden', !canEdit);
     document.getElementById('ops-col').classList.toggle('hidden', !canEdit);
-    document.getElementById('users-mgmt-btn').classList.toggle('hidden', u.role !== 'admin');
+    // 使用者管理已移至 portal 後台管理分頁，此頁不再提供（按鈕已移除，null-safe 保護）
+    const _umb = document.getElementById('users-mgmt-btn');
+    if (_umb) _umb.classList.toggle('hidden', u.role !== 'admin');
     lucide.createIcons();
 }
 
@@ -1481,17 +1477,14 @@ function buildStatusCard(p) {
                 <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
             </span>
         </div>
-        ${isPrinting&&p.print_name?`
-        <div class="space-y-1.5">
-            <div class="flex justify-between items-center">
-                <p class="text-xs text-gray-500 truncate max-w-[140px]" title="${p.print_name}">${p.print_name}</p>
-                <span class="text-xs font-medium text-blue-600">${p.progress}%</span>
+        ${isPrinting?`
+        <div class="space-y-1.5 pt-1">
+            <div class="flex justify-between items-center gap-2">
+                <p class="text-xs text-gray-600 truncate flex-1" title="${p.print_name||''}">${p.print_name?'📄 '+p.print_name:'列印中…'}</p>
+                ${p.progress?`<span class="text-xs font-medium text-blue-600 shrink-0">${p.progress}%</span>`:''}
             </div>
-            <div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>
-            <div class="flex justify-between text-xs text-gray-400">
-                <span>第 ${p.layer_now} / ${p.layer_total} 層</span>
-                <span>${p.time_left!=='-'?'剩餘 '+p.time_left:'計算中...'}</span>
-            </div>
+            ${p.progress?`<div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>`:''}
+            ${(p.layer_now&&p.layer_total)?`<div class="text-xs text-gray-400">第 ${p.layer_now} / ${p.layer_total} 層</div>`:''}
         </div>`:''}
         ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
     `;

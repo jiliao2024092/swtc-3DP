@@ -266,11 +266,31 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     "updated_at":   c.get("last_modified") or datetime.datetime.utcnow().isoformat() + "Z",
                 })
 
+            # 目前列印工作資訊（容錯多種欄位名）：列印中時要顯示檔名
+            pstatus = p.get("printer_status", {}) or {}
+            cur_print = (pstatus.get("current_print_run") or pstatus.get("current_print")
+                         or p.get("current_print_run") or p.get("current_print")
+                         or pstatus.get("print") or {})
+            if not isinstance(cur_print, dict):
+                cur_print = {}
+            print_name = (cur_print.get("name") or cur_print.get("print_name")
+                          or cur_print.get("job_name") or pstatus.get("current_print_name")
+                          or p.get("current_print_name") or "")
+            print_progress = (cur_print.get("progress") or cur_print.get("percent")
+                              or pstatus.get("progress") or 0)
+            cur_status = pstatus.get("status") or p.get("status") or ""
+            # debug：列印中但抓不到檔名時，dump printer_status 結構以便補欄位
+            if str(cur_status).upper() in ("PRINTING", "PAUSED", "PAUSING") and not print_name:
+                import json as _jj
+                print(f"[sync][DEBUG列印中無檔名] alias={alias} "
+                      f"printer_status={_jj.dumps(pstatus, default=str)[:400]}")
+
             printers_summary.append({
                 "alias":      alias,
                 "serial":     serial,
-                "status":     (p.get("printer_status", {}) or {}).get("status")
-                              or p.get("status") or "",
+                "status":     cur_status,
+                "print_name": print_name,            # 目前列印檔名（消耗紀錄備註）
+                "progress":   print_progress,
                 "machine_type_id":  p.get("machine_type_id"),
                 "cartridges": cartridges,
                 "updated_at": datetime.datetime.utcnow().isoformat() + "Z",

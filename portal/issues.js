@@ -571,10 +571,11 @@
                 <th>進度狀況</th>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
-                {sortArr(filtA,anomalySort).map(it=>{
+                {sortArr(filtA,anomalySort).map((it,idx)=>{
                   const tone=K.ENG_TONE[it.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
                   const first=(it.progresses||[])[0]||{date:'—',status:'—'};
                   const rest=(it.progresses||[]).slice(1);
+                  const seqNo=idx+1;  // 左側序號：每個 issue 依序排（不計後續）
                   // 案件框線：依狀態分色（處理中=琥珀、已完成=綠、暫停=紅）
                   const stKey = it.status==='已完成'?'done':it.status==='暫停'?'pause':'progress';
                   const hasSub = rest.length>0;
@@ -584,7 +585,7 @@
                     <tr className={`case-row case-top case-${stKey}${showBottom?' case-bottom':''}${hasSub?' case-clickable':''}`}
                         onClick={hasSub?()=>toggleExpand(it._id):undefined}>
                       <td className="col-seq">
-                        {hasSub&&<span className="case-caret">{isExp?'▾':'▸'}</span>}{it.seq}
+                        {hasSub&&<span className="case-caret">{isExp?'▾':'▸'}</span>}{seqNo}
                       </td>
                       <td className="col-customer">{it.customer}</td>
                       <td className="col-date">{it.date}</td>
