@@ -5,11 +5,15 @@ on:
     branches:
       - main
     paths:
-      - 'index.html'
-      - 'inventory.html'
-      - '*.html'
-      - '*.css'
-      - '*.js'
+      # ★ 用 '**' 前綴才能比對子資料夾（如 portal/issues.js）
+      #   舊的 '*.js' 只比對根目錄，導致 portal/ 的改動不會觸發部署
+      - '**.html'
+      - '**.css'
+      - '**.js'
+      - '**.json'
+      - '**.ico'
+      - '**.png'
+      - '**.svg'
   workflow_dispatch:
 
 permissions:
