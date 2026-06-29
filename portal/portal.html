@@ -144,7 +144,6 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .kt-anomaly-sub{background:var(--bg-soft)}
 .kt-anomaly-sub td{font-size:11.5px;color:var(--ink-3);padding-top:6px;padding-bottom:6px}
 .kt-anomaly-sub td:first-child{padding-left:42px;position:relative}
-.kt-anomaly-sub td:first-child::after{content:'';position:absolute;left:22px;top:-2px;bottom:-2px;width:2px;background:var(--line)}
 .kt-anomaly-sub-marker{display:inline-flex;align-items:center;gap:6px;color:var(--ink-4);font-family:var(--font-mono);font-size:10.5px}
 .kt-anomaly-sub-marker::before{content:'';display:inline-block;width:10px;height:1px;background:var(--line)}
 /* ── 案件外框 + 狀態分色（外框 50% 透明、後續底色用狀態淡色）── */
@@ -152,8 +151,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .case-done{--case-color:#1d6f43}       /* 已完成：綠 */
 .case-pause{--case-color:#c0392b}      /* 暫停：紅 */
 /* 後續進度底色：用狀態色的淡色調（取代原本灰色）*/
-.kt-anomaly-sub.case-row{background:color-mix(in srgb, var(--case-color) 9%, white)}
-.kt tbody .kt-anomaly-sub.case-row:hover{background:color-mix(in srgb, var(--case-color) 14%, white)}
+/* 後續進度底色：保持原本灰色（不套狀態色）*/
 /* 每個 issue 外框線：50% 透明度狀態色 */
 .case-row > td{border-top:none;border-bottom:none}
 .case-row > td:first-child{border-left:1px solid color-mix(in srgb, var(--case-color) 50%, transparent)}
@@ -165,8 +163,12 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .case-top > td:last-child{border-top-right-radius:6px}
 .case-bottom > td:first-child{border-bottom-left-radius:6px}
 .case-bottom > td:last-child{border-bottom-right-radius:6px}
-/* 後續縮排導引線改用狀態色 */
-.kt-anomaly-sub.case-row td:first-child::after{background:var(--case-color);opacity:.45}
+/* 點擊展開：主列游標、展開三角、後續數量徽章 */
+.case-clickable{cursor:pointer}
+.case-clickable:hover{background:var(--bg-soft)}
+.case-caret{display:inline-block;width:12px;color:var(--ink-4);font-size:9px;margin-right:3px;transition:color .15s}
+.case-clickable:hover .case-caret{color:var(--ink-2)}
+.case-more{display:inline-block;margin-left:6px;font-size:10px;font-family:var(--font-mono);color:#fff;background:var(--ink-4);border-radius:999px;padding:0 6px;line-height:16px;vertical-align:middle}
 .kt-pill-完成{background:#e6f1ea;color:#1d6f43}
 .kt-pill-處理{background:#fbf3dc;color:#8b6b13}
 .kt-pill-暫停{background:#fbe7e3;color:#8a1d12}
@@ -427,10 +429,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629b"></script>
+<script src="firebase-config.js?v=20260629c"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629b"></script>
+<script src="firebase-service.js?v=20260629c"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -1476,8 +1478,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629b"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629b"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629c"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629c"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">

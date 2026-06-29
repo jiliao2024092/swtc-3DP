@@ -421,6 +421,8 @@
     const [anomalySort, setAnomalySort] = useState({field:'seq',dir:'asc'});
     const [ipaSort,     setIpaSort]     = useState({field:'seq',dir:'asc'});
     const [toolSort,    setToolSort]    = useState({field:'seq',dir:'asc'});
+    const [expandedA,   setExpandedA]   = useState({});  // 展開的異常案件（預設全收合）
+    const toggleExpand = id => setExpandedA(m => ({...m, [id]: !m[id]}));
 
     const canE = window.hasPerm(user, 'edit_issues');
     const canD = window.hasPerm(user, 'delete_issues');
@@ -576,9 +578,14 @@
                   // 案件框線：依狀態分色（處理中=琥珀、已完成=綠、暫停=紅）
                   const stKey = it.status==='已完成'?'done':it.status==='暫停'?'pause':'progress';
                   const hasSub = rest.length>0;
+                  const isExp = !!expandedA[it._id];
+                  const showBottom = (!hasSub || !isExp);  // 收合或無後續時，主列即框底
                   return (<React.Fragment key={it._id}>
-                    <tr className={`case-row case-top case-${stKey}${hasSub?'':' case-bottom'}`}>
-                      <td className="col-seq">{it.seq}</td>
+                    <tr className={`case-row case-top case-${stKey}${showBottom?' case-bottom':''}${hasSub?' case-clickable':''}`}
+                        onClick={hasSub?()=>toggleExpand(it._id):undefined}>
+                      <td className="col-seq">
+                        {hasSub&&<span className="case-caret">{isExp?'▾':'▸'}</span>}{it.seq}
+                      </td>
                       <td className="col-customer">{it.customer}</td>
                       <td className="col-date">{it.date}</td>
                       <td>{it.product}</td>
@@ -586,13 +593,13 @@
                       <td><span className={pillCls(it.status)}>{it.status}</span></td>
                       <td className="col-date">{it.warranty||'—'}</td>
                       <td>{it.cause||'—'}</td>
-                      <td>{first.status}</td>
+                      <td>{first.status}{hasSub&&!isExp&&<span className="case-more">+{rest.length}</span>}</td>
                       {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
-                        {canE&&<button className="kt-actbtn" title="編輯" onClick={()=>{setEditItem(it);setModal('a');}}>✎</button>}
-                        {canD&&<button className="kt-actbtn danger" title="刪除" onClick={()=>delA(it)}>✕</button>}
+                        {canE&&<button className="kt-actbtn" title="編輯" onClick={e=>{e.stopPropagation();setEditItem(it);setModal('a');}}>✎</button>}
+                        {canD&&<button className="kt-actbtn danger" title="刪除" onClick={e=>{e.stopPropagation();delA(it);}}>✕</button>}
                       </span></td>}
                     </tr>
-                    {rest.map((p,i)=>(
+                    {hasSub&&isExp&&rest.map((p,i)=>(
                       <tr key={i} className={`kt-anomaly-sub case-row case-${stKey}${i===rest.length-1?' case-bottom':''}`}>
                         <td colSpan={editMode?8:7}><span className="kt-anomaly-sub-marker">↳ 後續 #{i+2}</span></td>
                         <td className="col-date">{p.date}</td><td>{p.status}</td>
