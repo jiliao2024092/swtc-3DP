@@ -1601,6 +1601,8 @@ function AdminPanel({ user }) {
   const [userModal, setUserModal] = useSt(false);
   const [editUser, setEditUser] = useSt(null);
   const [saving, setSaving]     = useSt(false);
+  const [sortKey, setSortKey]   = useSt('name');   // name | email | role
+  const [sortDir, setSortDir]   = useSt('asc');    // asc | desc
 
   // 工作看板設定
   const [wbEng,  setWbEng]  = useSt([]);
@@ -1623,6 +1625,17 @@ function AdminPanel({ user }) {
   const DEF_MACH = K.MACHINES.map(m=>({name:m}));
   const DEF_BORR = [{key:'Wang',label:'王小明'},{key:'Lee',label:'李美華'},{key:'Chang',label:'張大偉'},{key:'Chen',label:'陳怡君'},{key:'Lin',label:'林志豪'}];
   const DEF_SALES = [{key:'Amber',label:'安柏'},{key:'Charlie',label:'查理'}];
+
+  // 使用者排序：依姓名/Email 字母（localeCompare）、依權限等級（管理員>工程師>查閱）
+  const roleRank = u => u.permissions?.includes('admin') ? 0 : u.permissions?.includes('edit_board') ? 1 : 2;
+  const toggleSort = k => { if(sortKey===k) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(k); setSortDir('asc'); } };
+  const sortedUsers = [...users].sort((a,b)=>{
+    let r = 0;
+    if(sortKey==='name')       r = (a.displayName||'').localeCompare(b.displayName||'', 'zh-Hant');
+    else if(sortKey==='email') r = (a.email||'').localeCompare(b.email||'');
+    else if(sortKey==='role')  r = roleRank(a) - roleRank(b);
+    return sortDir==='asc' ? r : -r;
+  });
 
   useEff(()=>{
     // 使用者清單改為即時訂閱（儲存後自動更新，免 F5）
@@ -1778,9 +1791,14 @@ function AdminPanel({ user }) {
               <button className="btn-add" onClick={()=>{setEditUser(null);setUserModal(true);}}>+ 新增使用者</button>
             </div>
             <table className="u-tbl">
-              <thead><tr><th>使用者</th><th>Email</th><th>權限</th><th>狀態</th><th>操作</th></tr></thead>
+              <thead><tr>
+                <th onClick={()=>toggleSort('name')} style={{cursor:'pointer',userSelect:'none'}}>使用者 <span style={{opacity:sortKey==='name'?.9:.3,fontSize:10}}>{sortKey==='name'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
+                <th onClick={()=>toggleSort('email')} style={{cursor:'pointer',userSelect:'none'}}>Email <span style={{opacity:sortKey==='email'?.9:.3,fontSize:10}}>{sortKey==='email'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
+                <th onClick={()=>toggleSort('role')} style={{cursor:'pointer',userSelect:'none'}}>權限 <span style={{opacity:sortKey==='role'?.9:.3,fontSize:10}}>{sortKey==='role'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
+                <th>狀態</th><th>操作</th>
+              </tr></thead>
               <tbody>
-                {users.map(u=>(
+                {sortedUsers.map(u=>(
                   <tr key={u._id}>
                     <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{(u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
                     <td style={{color:'#5a6270',fontSize:12}}>{u.email}</td>
