@@ -1634,6 +1634,7 @@ function AdminPanel({ user }) {
     if(sortKey==='name')       r = (a.displayName||'').localeCompare(b.displayName||'', 'zh-Hant');
     else if(sortKey==='email') r = (a.email||'').localeCompare(b.email||'');
     else if(sortKey==='role')  r = roleRank(a) - roleRank(b);
+    else if(sortKey==='status') r = (a.active===false?1:0) - (b.active===false?1:0); // 啟用在前
     return sortDir==='asc' ? r : -r;
   });
 
@@ -1795,7 +1796,7 @@ function AdminPanel({ user }) {
                 <th onClick={()=>toggleSort('name')} style={{cursor:'pointer',userSelect:'none'}}>使用者 <span style={{opacity:sortKey==='name'?.9:.3,fontSize:10}}>{sortKey==='name'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
                 <th onClick={()=>toggleSort('email')} style={{cursor:'pointer',userSelect:'none'}}>Email <span style={{opacity:sortKey==='email'?.9:.3,fontSize:10}}>{sortKey==='email'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
                 <th onClick={()=>toggleSort('role')} style={{cursor:'pointer',userSelect:'none'}}>權限 <span style={{opacity:sortKey==='role'?.9:.3,fontSize:10}}>{sortKey==='role'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
-                <th>狀態</th><th>操作</th>
+                <th onClick={()=>toggleSort('status')} style={{cursor:'pointer',userSelect:'none'}}>狀態 <span style={{opacity:sortKey==='status'?.9:.3,fontSize:10}}>{sortKey==='status'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th><th>操作</th>
               </tr></thead>
               <tbody>
                 {sortedUsers.map(u=>(
