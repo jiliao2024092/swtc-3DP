@@ -405,10 +405,11 @@
             <div id="list-gantt-view" class="p-4">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <div class="flex items-center gap-2">
-                        <button onclick="ganttShiftWeek(-1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                        <button onclick="ganttShift(-1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
                         <span id="gantt-range" class="text-sm font-medium text-gray-700"></span>
-                        <button onclick="ganttShiftWeek(1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
-                        <button onclick="ganttToday()" class="text-xs px-2.5 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600">本週</button>
+                        <button onclick="ganttShift(1)" class="p-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        <button id="gantt-week-btn" onclick="ganttToday()" class="text-xs px-2.5 py-1.5 rounded-md border border-blue-500 bg-blue-50 text-blue-600 font-medium">本週</button>
+                        <button id="gantt-month-btn" onclick="ganttThisMonth()" class="text-xs px-2.5 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50 text-gray-600">本月</button>
                     </div>
                     <div class="flex items-center gap-3 text-xs text-gray-500">
                         <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-yellow-300"></span>待確認</span>
@@ -473,6 +474,8 @@ let unsubscribeBookings = null;
 let hasOrder = null, editHasOrder = null, editingId = null;
 let listView = 'gantt';
 let ganttWeekStart = null;
+let ganttMode = 'week';            // 'week' | 'month'
+let ganttMonthStart = null;        // 月視圖：當月 1 號
 let sortField = 'date', sortDir = 'asc';
 const PAGE_SIZE = 10;
 let currentPage = 1;
@@ -947,16 +950,41 @@ function startOfWeek(d) {
     date.setHours(0,0,0,0);
     return date;
 }
-window.ganttToday = function() { ganttWeekStart = startOfWeek(new Date()); renderGantt(); };
-window.ganttShiftWeek = function(n) {
-    if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
-    ganttWeekStart.setDate(ganttWeekStart.getDate() + n*7);
+function startOfMonth(d) {
+    const date = new Date(d);
+    date.setDate(1);
+    date.setHours(0,0,0,0);
+    return date;
+}
+window.ganttToday = function() { ganttMode='week'; ganttWeekStart = startOfWeek(new Date()); renderGantt(); };
+window.ganttThisMonth = function() { ganttMode='month'; ganttMonthStart = startOfMonth(new Date()); renderGantt(); };
+// ‹ › 箭頭：週視圖前後一週、月視圖前後一個月
+window.ganttShift = function(n) {
+    if(ganttMode==='month'){
+        if(!ganttMonthStart) ganttMonthStart = startOfMonth(new Date());
+        ganttMonthStart.setMonth(ganttMonthStart.getMonth() + n);
+        ganttMonthStart.setDate(1);
+    } else {
+        if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
+        ganttWeekStart.setDate(ganttWeekStart.getDate() + n*7);
+    }
     renderGantt();
 };
+function updateGanttModeButtons(){
+    const base = 'text-xs px-2.5 py-1.5 rounded-md border ';
+    const on  = 'border-blue-500 bg-blue-50 text-blue-600 font-medium';
+    const off = 'border-gray-300 hover:bg-gray-50 text-gray-600';
+    const wk = document.getElementById('gantt-week-btn');
+    const mo = document.getElementById('gantt-month-btn');
+    if(wk) wk.className = base + (ganttMode==='week'  ? on : off);
+    if(mo) mo.className = base + (ganttMode==='month' ? on : off);
+}
 function ganttStatusColor(status) {
     return {'待確認':'bg-yellow-300 text-yellow-900','執行中':'bg-blue-400 text-white','已完成':'bg-green-400 text-white','異常/取消':'bg-red-300 text-red-900'}[status] || 'bg-gray-300 text-gray-700';
 }
 function renderGantt() {
+    updateGanttModeButtons();
+    if(ganttMode === 'month') return renderGanttMonth();
     if(!ganttWeekStart) ganttWeekStart = startOfWeek(new Date());
     const container = document.getElementById('gantt-container');
     const days = [];
@@ -1041,6 +1069,64 @@ function renderGantt() {
             } else {
                 html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
             }
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+    lucide.createIcons();
+}
+
+// 月視圖（A 方案）：一天一格、不分上午/下午；每筆預約用狀態色小色塊（hover 看詳情、可點編輯）
+function renderGanttMonth() {
+    if(!ganttMonthStart) ganttMonthStart = startOfMonth(new Date());
+    const container = document.getElementById('gantt-container');
+    const year  = ganttMonthStart.getFullYear();
+    const month = ganttMonthStart.getMonth();                 // 0-based
+    const daysInMonth = new Date(year, month+1, 0).getDate();
+    const days = [];
+    for(let i=1;i<=daysInMonth;i++){ const d=new Date(year, month, i); d.setHours(0,0,0,0); days.push(d); }
+    const weekdayLetters = ['日','一','二','三','四','五','六'];
+    document.getElementById('gantt-range').textContent = `${year} 年 ${month+1} 月`;
+    const todayKey = fmtDateLocal(new Date());
+    const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
+
+    let html = '<table class="w-full border-collapse text-xs"><thead>';
+    html += '<tr class="bg-gray-100 text-gray-600"><th class="p-2 border border-gray-200 w-16 sticky left-0 bg-gray-100">機台</th>';
+    days.forEach(d=>{
+        const isToday = fmtDateLocal(d)===todayKey;
+        const wd = d.getDay();
+        const isWeekend = wd===0 || wd===6;
+        html += `<th class="px-0.5 py-1 border border-gray-200 font-normal ${isToday?'bg-blue-50':isWeekend?'bg-gray-50':''}" style="min-width:24px">
+            <div class="font-medium ${isToday?'text-blue-600':''}">${d.getDate()}</div>
+            <div class="text-gray-400 font-normal" style="font-size:10px">${weekdayLetters[wd]}</div>
+        </th>`;
+    });
+    html += '</tr></thead><tbody>';
+
+    GANTT_PRINTERS.forEach(printer=>{
+        html += `<tr><td class="p-2 border border-gray-200 font-medium text-gray-700 sticky left-0 bg-white">${printer}</td>`;
+        days.forEach(d=>{
+            const dayKey = fmtDateLocal(d);
+            const isToday = dayKey===todayKey;
+            const wd = d.getDay();
+            const isWeekend = wd===0 || wd===6;
+            const todayBg = isToday ? 'bg-blue-50/40' : (isWeekend ? 'bg-gray-50/60' : '');
+            const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
+            if(!dayBookings.length){ html += `<td class="border border-gray-200 ${todayBg}"></td>`; return; }
+            // 衝突：同一時段(AM/PM)>1 視為衝突（與週視圖一致）
+            const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
+            const amCombined  = [...dayBookings.filter(b=>(b.slot||'AM')==='AM'), ...allDayItems];
+            const pmCombined  = [...dayBookings.filter(b=>b.slot==='PM'), ...allDayItems];
+            const conflict = amCombined.length>1 || pmCombined.length>1;
+            const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+            const bg   = conflict ? 'bg-orange-100' : todayBg;
+            const blocks = dayBookings.map(b=>{
+                const color   = ganttStatusColor(b.status);
+                const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':'上午';
+                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
+            }).join('');
+            html += `<td class="p-0.5 border border-gray-200 align-top ${bg}${ring}">${blocks}</td>`;
         });
         html += '</tr>';
     });
