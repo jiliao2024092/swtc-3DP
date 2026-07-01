@@ -431,12 +431,14 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 if not guid:
                     stats["skipped_invalid"] += 1
                     continue
-                # ★ 不再因 guid 在 last_processed_prints 就跳過
-                #   history doc_id = guid，set() 冪等覆蓋，重寫無害
-                #   這樣即使 guid 曾被誤記為「已處理」但實際沒寫成功，也能補回來
+                # ★ 已處理過的 guid 直接跳過，不重寫。
+                #   history doc_id = guid，紀錄內容（材料/體積/完成時間）在 print 完成後
+                #   不再變動；每輪重寫只是浪費 Firestore 寫入配額——曾造成每輪約 777 筆 ×
+                #   144 次/天 ≈ 11 萬寫入/天（免費額度僅 2 萬/天）。
+                #   若確需強制重建 history，改用 sync_formlabs_manual 的 backfill 模式。
                 if guid in processed:
                     stats["skipped_old"] += 1
-                    # 不 continue：仍重新寫入確保紀錄存在（冪等）
+                    continue
 
                 status = (pr.get("status") or "").upper()
                 stats["skipped_status"][status] = stats["skipped_status"].get(status, 0) + 1
