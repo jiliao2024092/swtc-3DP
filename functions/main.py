@@ -625,10 +625,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
 
 # ════════════════════════════════════════════════════════════════
-# Scheduled function（每 10 分鐘自動觸發）
+# Scheduled function（每 30 分鐘自動觸發）
 # ════════════════════════════════════════════════════════════════
 @scheduler_fn.on_schedule(
-    schedule="every 10 minutes",
+    schedule="every 30 minutes",
     timezone=scheduler_fn.Timezone("Asia/Taipei"),
     timeout_sec=540,
     memory=options.MemoryOption.MB_512,
