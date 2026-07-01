@@ -462,6 +462,12 @@ const DEFAULT_ADMIN_EMAIL = 'jiliao@swtc.com';
 // 應用程式常數
 const SALES     = ['Amber','Charlie','Chrissy','Benny','Celine','Mino','Yoga','Jungle','其他'];
 const ENGINEERS = ['Barry','Bill','Jaylen','Jimmy'];
+// 工程師中文名來自 Firestore settings/workspace（與 portal 後台「工程師清單」同源）；
+// 未載入前以英文 key 當 fallback。所有顯示一律「中文 (英文)」。
+let ENGINEER_ORDER = ENGINEERS.slice();
+let ENG_LABEL = {};       // { key: 中文 }
+let ENG_FULLLABEL = {};   // { key: '中文 (英文)' }
+let unsubscribeSettings = null;
 const PRINTERS  = ['Form4','Form4L','MarkTwo','UR','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 const DONE_STATUSES = new Set(['已完成','異常/取消']);
@@ -509,6 +515,7 @@ onAuthStateChanged(auth, async (user) => {
             currentUser = { uid: user.uid, email: user.email, displayName, role };
             showApp();
             subscribeBookings();
+            subscribeSettings();
         } catch (err) {
             console.error('讀取/建立使用者資料失敗', err);
             showLoginError('讀取使用者資料失敗：' + err.message);
@@ -517,6 +524,7 @@ onAuthStateChanged(auth, async (user) => {
     } else {
         currentUser = null;
         if (unsubscribeBookings) { unsubscribeBookings(); unsubscribeBookings = null; }
+        if (unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
         showLogin();
     }
 });
@@ -717,17 +725,17 @@ function bookingHasConflict(b, cs) {
 }
 function populateFilterSelects() {
     const fills = [
-        ['filter-engineer','所有工程師', ENGINEERS],
-        ['filter-status',  '所有狀態',   STATUSES],
-        ['filter-printer', '所有設備',   PRINTERS],
-        ['filter-sales',   '所有業務',   SALES],
+        ['filter-engineer','所有工程師', ENGINEER_ORDER, true],
+        ['filter-status',  '所有狀態',   STATUSES,       false],
+        ['filter-printer', '所有設備',   PRINTERS,       false],
+        ['filter-sales',   '所有業務',   SALES,          false],
     ];
-    fills.forEach(([id,placeholder,opts])=>{
+    fills.forEach(([id,placeholder,opts,isEng])=>{
         const sel = document.getElementById(id);
         if(!sel) return;
         const cur = sel.value;
         sel.innerHTML = `<option value="">${placeholder}</option>` +
-            opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('');
+            opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${isEng?engDisplay(o):o}</option>`).join('');
     });
 }
 function updateSortIndicators() {
@@ -866,7 +874,7 @@ window.renderTable = function() {
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
             <td class="p-3">${printerCell}</td>
             <td class="p-3">${purposeCell}</td>
-            <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${b.engineer}</span></td>
+            <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${engDisplay(b.engineer)}</span></td>
             <td class="p-3">
                 <select ${canEdit?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
                     class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit?'cursor-pointer':''} ${getStatusColor(b.status)}">
@@ -1028,9 +1036,9 @@ function renderGantt() {
             // 渲染一個預約色塊
             const renderItem = (b) => {
                 const color = ganttStatusColor(b.status);
-                const text = b.engineer ? `${b.engineer}: ${b.purpose||'—'}` : (b.purpose||b.sales);
+                const text = b.engineer ? `${engDisplay(b.engineer)}: ${b.purpose||'—'}` : (b.purpose||b.sales);
                 const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
+                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${engDisplay(b.engineer)} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
                     ${text}${allDayMark}
                 </div>`;
             };
@@ -1124,7 +1132,7 @@ function renderGanttMonth() {
             const blocks = dayBookings.map(b=>{
                 const color   = ganttStatusColor(b.status);
                 const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':'上午';
-                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${b.sales} · ${b.purpose} · ${b.engineer} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
+                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${b.sales} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
             }).join('');
             html += `<td class="p-0.5 border border-gray-200 align-top ${bg}${ring}">${blocks}</td>`;
         });
@@ -1403,7 +1411,7 @@ window.exportExcel = function(){
         '設備':     b.printer||'',
         '類型':     b.hasOrder?'單號':'備註',
         '內容':     b.purpose||'',
-        '負責工程師':b.engineer||'',
+        '負責工程師':engDisplay(b.engineer)||'',
         '任務狀態': b.status||'',
         '建立者':   b.createdByEmail||'',
         '最後修改': b.updatedAt ? fmtRelTime(b.updatedAt) : '',
@@ -1708,10 +1716,51 @@ function populateSelect(id, options){
     options.forEach(o=>{ const opt=document.createElement('option'); opt.value=opt.textContent=o; sel.appendChild(opt); });
 }
 
+// 工程師顯示：「中文 (英文)」；無中文或中文=key 時退回 key
+function engDisplay(key){
+    if(!key) return '';
+    if(ENG_FULLLABEL[key]) return ENG_FULLLABEL[key];
+    const zh = ENG_LABEL[key];
+    return (zh && zh !== key) ? `${zh} (${key})` : key;
+}
+
+// 填入表單工程師下拉（value=key，顯示=中文(英文)）
+function populateEngineerSelects(){
+    ['engineer-select','edit-engineer'].forEach(id=>{
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = ENGINEER_ORDER
+            .map(k=>`<option value="${k}" ${cur===k?'selected':''}>${engDisplay(k)}</option>`)
+            .join('');
+    });
+}
+
+// 訂閱 settings/workspace 取得工程師中文名（與 portal 後台同源）
+function subscribeSettings(){
+    if (unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
+    unsubscribeSettings = onSnapshot(doc(db,'settings','workspace'), (snap)=>{
+        const s = snap.exists() ? snap.data() : null;
+        ENG_LABEL = {}; ENG_FULLLABEL = {};
+        let order = ENGINEERS.slice();
+        if (s && Array.isArray(s.engineers) && s.engineers.length){
+            order = s.engineers.map(e=>e.key);
+            s.engineers.forEach(e=>{
+                ENG_LABEL[e.key]     = e.label || e.key;
+                ENG_FULLLABEL[e.key] = (e.label && e.label !== e.key) ? `${e.label} (${e.key})` : e.key;
+            });
+        }
+        ENGINEER_ORDER = order;
+        populateEngineerSelects();
+        if (currentUser) renderTable();
+    }, (err)=>console.error('讀取 settings/workspace 失敗', err));
+}
+
 // ══ 初始化 ═══════════════════════════════════
-[['sales-select',SALES],['printer-select',PRINTERS],['engineer-select',ENGINEERS],
- ['edit-sales',SALES],['edit-printer',PRINTERS],['edit-engineer',ENGINEERS]]
+[['sales-select',SALES],['printer-select',PRINTERS],
+ ['edit-sales',SALES],['edit-printer',PRINTERS]]
     .forEach(([id,opts])=>populateSelect(id,opts));
+populateEngineerSelects();  // 工程師下拉：value=key、顯示中文(英文)，settings 載入後會重填
 document.getElementById('date-input').value = fmtDateLocal(new Date());
 ganttWeekStart = startOfWeek(new Date());
 lucide.createIcons();

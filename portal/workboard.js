@@ -55,7 +55,7 @@
             <div className="m-row">
               <div className="m-field"><label style={LBL}>執行工程師</label>
                 <select style={INP} value={form.engineer} onChange={e=>set('engineer',e.target.value)}>
-                  {engineers.map(e=><option key={e} value={e}>{K.ENG_LABEL[e]||e}</option>)}
+                  {engineers.map(e=><option key={e} value={e}>{K.ENG_FULLLABEL[e]||K.ENG_LABEL[e]||e}</option>)}
                 </select></div>
               <div className="m-field"><label style={LBL}>機台</label>
                 <select style={INP} value={form.machine} onChange={e=>set('machine',e.target.value)}>
@@ -342,7 +342,7 @@
           </div>
           <select className="t-sel" value={fEng} onChange={e=>{setFEng(e.target.value);setPage(1);}}>
             <option value="">所有工程師</option>
-            {engineers.map(e=><option key={e} value={e}>{K.ENG_LABEL[e]||e}</option>)}
+            {engineers.map(e=><option key={e} value={e}>{K.ENG_FULLLABEL[e]||K.ENG_LABEL[e]||e}</option>)}
           </select>
           <select className="t-sel" value={fMachine} onChange={e=>{setFMachine(e.target.value);setPage(1);}}>
             <option value="">所有機台</option>
@@ -403,7 +403,7 @@
                         <span className="kt-eng-dot" style={{color:tone.fg,background:tone.bg}}>
                           {K.ENG_INIT[o.engineer]||o.engineer.slice(0,2)}
                         </span>
-                        {K.ENG_LABEL[o.engineer]||o.engineer}
+                        {K.ENG_FULLLABEL[o.engineer]||K.ENG_LABEL[o.engineer]||o.engineer}
                       </span>
                     </td>
                     <td className="col-date">

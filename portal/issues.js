@@ -42,7 +42,7 @@
               <div className="m-field"><label style={LBL}>品名 *</label><input style={S_INP} value={form.product} onChange={e=>set('product',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>工程師</label>
                 <select style={S_INP} value={form.engineer} onChange={e=>set('engineer',e.target.value)}>
-                  {engineers.map(e=><option key={e} value={e}>{K.ENG_LABEL[e]||e}</option>)}</select></div>
+                  {engineers.map(e=><option key={e} value={e}>{K.ENG_FULLLABEL[e]||K.ENG_LABEL[e]||e}</option>)}</select></div>
             </div>
             <div className="m-field"><label style={LBL}>狀態</label>
               <select style={S_INP} value={form.status} onChange={e=>set('status',e.target.value)}>
@@ -99,7 +99,7 @@
               <div className="m-field"><label style={LBL}>採購日期 *</label><input style={S_INP} type="date" value={form.purchaseDate||''} onChange={e=>set('purchaseDate',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>採購人員</label>
                 <select style={S_INP} value={form.person} onChange={e=>set('person',e.target.value)}>
-                  {engineers.map(e=><option key={e} value={e}>{K.ENG_LABEL[e]||e}</option>)}</select></div>
+                  {engineers.map(e=><option key={e} value={e}>{K.ENG_FULLLABEL[e]||K.ENG_LABEL[e]||e}</option>)}</select></div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>品名</label><input style={S_INP} value={form.product} onChange={e=>set('product',e.target.value)}/></div>
@@ -270,7 +270,7 @@
         case 'status':
           return Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'#8a93a3' }));
         case 'engineer':
-          return engineers.map((k,i)=>({ label:K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
+          return engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
         case 'customer': {
           const sorted=Object.entries(byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,8);
           return sorted.map(([k,v],i)=>({ label:k, value:v, color:'#0c7a99' }));
@@ -280,7 +280,7 @@
           return sorted.map(([k,v],i)=>({ label:k.slice(5), value:v, color:MACH_COLORS[i%MACH_COLORS.length] }));
         }
         case 'ipa_person':
-          return Object.entries(ipaByPerson).map(([k,v],i)=>({ label:K.ENG_LABEL[k]||k, value:v, color:ENG_COLORS[i%ENG_COLORS.length] }));
+          return Object.entries(ipaByPerson).map(([k,v],i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:v, color:ENG_COLORS[i%ENG_COLORS.length] }));
         case 'tool_method':
           return Object.entries(toolByMethod).map(([k,v],i)=>({ label:k, value:Math.round(v/1000), color:MACH_COLORS[i%MACH_COLORS.length] }));
         default: return [];
@@ -324,7 +324,7 @@
     // ── 預設圖表資料 ──
     const engineers = window._settings_engineers||K.ENG_ORDER;
     const statusSlices = Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'#8a93a3' }));
-    const engItems     = engineers.map((k,i)=>({ label:K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
+    const engItems     = engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
     const monthItems   = Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v],i)=>({ label:k.slice(5), value:v, color:MACH_COLORS[i%MACH_COLORS.length] }));
 
     const CARD = { border:'1px solid var(--line)', borderRadius:8, background:'var(--bg)', padding:'14px 16px 18px', display:'flex', flexDirection:'column', gap:12 };
@@ -557,7 +557,7 @@
                 <input value={search1} onChange={e=>setSearch1(e.target.value)} placeholder="搜尋客戶 / 品名"/>
               </div>
               <select className="t-sel" value={statusF} onChange={e=>setStatusF(e.target.value)}><option value="">所有狀態</option><option>處理中</option><option>已完成</option><option>暫停</option></select>
-              <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}><option value="">所有工程師</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_LABEL[k]||k}</option>)}</select>
+              <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}><option value="">所有工程師</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">
@@ -592,7 +592,7 @@
                       <td className="col-customer">{it.customer}</td>
                       <td className="col-date">{it.date}</td>
                       <td>{it.product}</td>
-                      <td style={{whiteSpace:'nowrap'}}>{K.ENG_LABEL[it.engineer]||it.engineer}</td>
+                      <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.engineer]||K.ENG_LABEL[it.engineer]||it.engineer}</td>
                       <td><span className={pillCls(it.status)}>{it.status}</span></td>
                       <td className="col-date">{it.warranty||'—'}</td>
                       <td>{it.cause||'—'}</td>
@@ -624,7 +624,7 @@
                 <input value={search2} onChange={e=>setSearch2(e.target.value)} placeholder="搜尋品名"/>
               </div>
               <span className="toolbar-sub">合計 <b style={{color:'#0a0e14'}}>{filtI.reduce((s,r)=>s+Number(r.quantity||0),0)}</b> 桶</span>
-              <select className="t-sel" value={personF} onChange={e=>setPersonF(e.target.value)}><option value="">所有人員</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_LABEL[k]||k}</option>)}</select>
+              <select className="t-sel" value={personF} onChange={e=>setPersonF(e.target.value)}><option value="">所有人員</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">
@@ -639,7 +639,7 @@
                   return (<tr key={it._id}>
                     <td className="col-seq">{it.seq}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date">{it.useDate}</td><td>{it.product}</td>
                     <td><span className="kt-num-badge">{it.quantity} 桶</span></td>
-                    <td style={{whiteSpace:'nowrap'}}>{K.ENG_LABEL[it.person]||it.person}</td>
+                    <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person}</td>
                     <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
                     {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
                       {canE&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('i');}}>✎</button>}

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629g"></script>
+<script src="firebase-config.js?v=20260629h"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629g"></script>
+<script src="firebase-service.js?v=20260629h"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -596,7 +596,7 @@ function TableView({ data, setData }) {
         </select>
         <select className="t-sel" value={engF} onChange={e=>{setEngF(e.target.value);setPage(1);}}>
           <option value="">所有工程師</option>
-          {engineers.map(k=><option key={k} value={k}>{K.ENG_LABEL[k]||k}</option>)}
+          {engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}
         </select>
         <select className="t-sel" value={machF} onChange={e=>{setMachF(e.target.value);setPage(1);}}>
           <option value="">所有機台</option>
@@ -636,7 +636,7 @@ function TableView({ data, setData }) {
                   <td className="col-seq">{it.seq}</td>
                   <td className="col-id">{it.id}</td>
                   <td className="col-customer">{it.customer}</td>
-                  <td><span className="kt-eng"><span className="kt-eng-dot" style={{color:tone.fg,background:tone.bg}}>{K.ENG_INIT[it.engineer]||it.engineer.slice(0,2)}</span>{K.ENG_LABEL[it.engineer]||it.engineer}</span></td>
+                  <td><span className="kt-eng"><span className="kt-eng-dot" style={{color:tone.fg,background:tone.bg}}>{K.ENG_INIT[it.engineer]||it.engineer.slice(0,2)}</span>{K.ENG_FULLLABEL[it.engineer]||K.ENG_LABEL[it.engineer]||it.engineer}</span></td>
                   <td className="col-date"><DueCell item={it}/></td>
                   <td className="col-date">{it.startDate||'—'}</td>
                   <td className="col-date">{it.endDate||'—'}</td>
@@ -756,7 +756,7 @@ function KanbanView({ data, setData }) {
 
   function Avatar({ engineer }) {
     const tone = K.ENG_TONE[engineer]||{fg:'#5a6270',bg:'#eef0f3'};
-    return <span className="avatar" style={{color:tone.fg,background:tone.bg}} title={K.ENG_LABEL[engineer]||engineer}>{K.ENG_INIT[engineer]||engineer.slice(0,2)}</span>;
+    return <span className="avatar" style={{color:tone.fg,background:tone.bg}} title={K.ENG_FULLLABEL[engineer]||K.ENG_LABEL[engineer]||engineer}>{K.ENG_INIT[engineer]||engineer.slice(0,2)}</span>;
   }
 
   function DueChip({ dateStr, isDone }) {
@@ -845,7 +845,7 @@ function KanbanView({ data, setData }) {
               <div className="field-label">執行工程師</div>
               <div className="field-value">
                 <span className="avatar" style={{color:tone.fg,background:tone.bg,marginRight:8}}>{K.ENG_INIT[open.engineer]||open.engineer.slice(0,2)}</span>
-                {K.ENG_LABEL[open.engineer]||open.engineer}
+                {K.ENG_FULLLABEL[open.engineer]||K.ENG_LABEL[open.engineer]||open.engineer}
               </div>
             </div>
             <div className="drawer-field">
@@ -925,7 +925,7 @@ function KanbanView({ data, setData }) {
         </div>
         <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}>
           <option value="">所有工程師</option>
-          {engineers.map(k=><option key={k} value={k}>{K.ENG_LABEL[k]||k}</option>)}
+          {engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}
         </select>
         <select className="t-sel" value={machF} onChange={e=>setMachF(e.target.value)}>
           <option value="">所有機台</option>
@@ -1029,7 +1029,7 @@ function GanttView({ data }) {
         <div className="toolbar-divider"/>
         <select className="t-sel-pill" value={engF} onChange={e=>setEngF(e.target.value)}>
           <option value="">所有工程師</option>
-          {engineers.map(k=><option key={k} value={k}>{K.ENG_LABEL[k]||k}</option>)}
+          {engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}
         </select>
         <select className="t-sel-pill" value={statusF} onChange={e=>setStatusF(e.target.value)}>
           <option value="">所有進度</option>
@@ -1124,7 +1124,7 @@ function GanttView({ data }) {
         const st=K2.statusOf(d);
         const statusLabel={done:'已完成',progress:'進行中',blocked:'等待材料',todo:'待處理',cancelled:'已取消'}[st]||st;
         const statusColor={done:'#1d6f43',progress:'#0c7a99',blocked:'#8b6b13',todo:'#5a6270',cancelled:'#8a93a3'}[st]||'#5a6270';
-        const engLabel=K2.ENG_LABEL[d.engineer]||d.engineer;
+        const engLabel=K2.ENG_FULLLABEL[d.engineer]||K2.ENG_LABEL[d.engineer]||d.engineer;
         const tone=K2.ENG_TONE[d.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
         const today2=K2.TODAY;
         const dueMs=d.dueDate?new Date(d.dueDate)-today2:null;
@@ -1327,7 +1327,7 @@ function DashboardView({ data }) {
   function buildSlices(dim) {
     switch(dim) {
       case 'status': return Object.entries(stats.statusDist).map(([k,v],i)=>({ label:K.STATUS_TONE[k]?.label||k, value:v, color:STATUS_COLORS[k] }));
-      case 'engineer': return stats.engineers.map((k,i)=>({ label:K.ENG_LABEL[k]||k, value:stats.byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
+      case 'engineer': return stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:stats.byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
       case 'progress': return K.PROGRESS_VALUES.map((p,i)=>({ label:`${p}%`, value:stats.byProg[p]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
       case 'machine':  return stats.machines.map((m,i)=>({ label:m, value:stats.byMach[m]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
       case 'material': return Object.entries(stats.byMat).map(([k,v],i)=>({ label:k, value:v, color:i===0?'#1d6f43':'#c79b2a' }));
@@ -1373,7 +1373,7 @@ function DashboardView({ data }) {
 
   // ── 預設固定圖表 ──
   const statusSlices  = Object.entries(stats.statusDist).map(([k,v])=>({ label:K.STATUS_TONE[k]?.label||k, value:v, color:STATUS_COLORS[k] }));
-  const engItems      = stats.engineers.map((k,i)=>({ label:K.ENG_LABEL[k]||k, value:stats.byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
+  const engItems      = stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:stats.byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
   const progItems     = K.PROGRESS_VALUES.map((p,i)=>({ label:`${p}%`, value:stats.byProg[p]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
 
   const CARD = { border:'1px solid var(--line)', borderRadius:8, background:'var(--bg)', padding:'14px 16px 18px', display:'flex', flexDirection:'column', gap:12 };
@@ -1461,8 +1461,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629g"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629g"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629h"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629h"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
