@@ -17,6 +17,7 @@
       seq:'', id:'', customer:'',
       engineer: engineers[0] || K.ENG_ORDER[0],
       dueDate:'', startDate:'', endDate:'', material:'足夠',
+      resin:'', category:'代工',
       progress: 0,
       machine: machines[0] || K.MACHINES[0],
       complete:'否', remark:''
@@ -74,6 +75,17 @@
               <div className="m-field"><label style={LBL}>材料庫存</label>
                 <select style={INP} value={form.material} onChange={e=>set('material',e.target.value)}>
                   {K.MATERIALS.map(m=><option key={m}>{m}</option>)}
+                </select></div>
+            </div>
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>樹脂材料</label>
+                <select style={INP} value={form.resin||''} onChange={e=>set('resin',e.target.value)}>
+                  <option value="">未指定</option>
+                  {K.RESINS.map(m=><option key={m}>{m}</option>)}
+                </select></div>
+              <div className="m-field"><label style={LBL}>類型</label>
+                <select style={INP} value={form.category||'代工'} onChange={e=>set('category',e.target.value)}>
+                  {K.CATEGORIES.map(c=><option key={c}>{c}</option>)}
                 </select></div>
             </div>
             <div className="m-row">
@@ -276,6 +288,8 @@
     const [fEng,     setFEng]     = useState('');
     const [fMachine, setFMachine] = useState('');
     const [fStatus,  setFStatus]  = useState('');
+    const [fResin,   setFResin]   = useState('');
+    const [fCategory,setFCategory]= useState('');
     const [sortKey,  setSortKey]  = useState('seq');
     const [sortDir,  setSortDir]  = useState('asc');
     const [page,     setPage]     = useState(1);
@@ -292,6 +306,8 @@
       if (s && !o.id.toLowerCase().includes(s) && !o.customer.toLowerCase().includes(s)) return false;
       if (fEng     && o.engineer !== fEng)     return false;
       if (fMachine && o.machine  !== fMachine) return false;
+      if (fResin    && (o.resin||'')    !== fResin)    return false;
+      if (fCategory && (o.category||'') !== fCategory) return false;
       if (fStatus) {
         const st = K.statusOf(o);
         if (st !== fStatus) return false;
@@ -356,6 +372,14 @@
             <option value="done">已完成</option>
             <option value="cancelled">已取消</option>
           </select>
+          <select className="t-sel" value={fResin} onChange={e=>{setFResin(e.target.value);setPage(1);}}>
+            <option value="">所有樹脂</option>
+            {K.RESINS.map(m=><option key={m}>{m}</option>)}
+          </select>
+          <select className="t-sel" value={fCategory} onChange={e=>{setFCategory(e.target.value);setPage(1);}}>
+            <option value="">所有類型</option>
+            {K.CATEGORIES.map(c=><option key={c}>{c}</option>)}
+          </select>
           <button
             onClick={()=>{setHideDone(v=>!v);setPage(1);}}
             style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'#e6f1f6',color:hideDone?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
@@ -376,6 +400,8 @@
                 <th className={thCls('dueDate')} onClick={()=>sortBy('dueDate')} style={{cursor:'pointer'}}>交期</th>
                 <th>機台</th>
                 <th>材料</th>
+                <th>樹脂</th>
+                <th>類型</th>
                 <th className={thCls('progress')} onClick={()=>sortBy('progress')} style={{cursor:'pointer'}}>進度</th>
                 <th>狀態</th>
                 <th>備註</th>
@@ -385,7 +411,7 @@
             </thead>
             <tbody>
               {paged.length === 0 && (
-                <tr><td colSpan={editMode?11:10}><div className="kt-empty">沒有符合條件的資料</div></td></tr>
+                <tr><td colSpan={editMode?13:12}><div className="kt-empty">沒有符合條件的資料</div></td></tr>
               )}
               {paged.map(o => {
                 const st = K.statusOf(o);
@@ -421,6 +447,12 @@
                         background: o.material==='需調撥'?'#fbf3dc':'#e6f1ea',
                         padding:'2px 8px', borderRadius:10
                       }}>{o.material}</span>
+                    </td>
+                    <td style={{fontSize:12,color:o.resin?'#3b4250':'#b0b6bf',whiteSpace:'nowrap'}}>{o.resin||'—'}</td>
+                    <td>
+                      {o.category
+                        ? <span style={{fontSize:11,fontWeight:700,color:o.category==='評估'?'#0c7a99':'#6b3fa0',background:o.category==='評估'?'#e6f1f6':'#efe9f7',padding:'2px 8px',borderRadius:10}}>{o.category}</span>
+                        : <span style={{color:'#b0b6bf'}}>—</span>}
                     </td>
                     <td>
                       <div style={{display:'flex',alignItems:'center',gap:6}}>

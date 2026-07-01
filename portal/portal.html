@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629i"></script>
+<script src="firebase-config.js?v=20260629j"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629i"></script>
+<script src="firebase-service.js?v=20260629j"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -453,6 +453,10 @@ window.showToast = window.showToast || function (msg, type) {
   };
   K.MACHINES = ['Form4', 'Form4L', 'Fuse1+', 'Mark2'];
   K.MATERIALS = ['足夠', '需調撥'];
+  // 樹脂材料清單（固定清單，對齊常見 Formlabs 樹脂；日後可改為同步庫存/後台設定）
+  K.RESINS = ['Clear V5','White V5','Grey V5','Black V5','Draft V2','Tough 1500','Tough 2000','Rigid 4000','Rigid 10K','Flexible 80A','Elastic 50A','High Temp','其他'];
+  // 工作類型：代工（實際生產）/ 評估（試印評估）
+  K.CATEGORIES = ['代工', '評估'];
   K.PROGRESS_VALUES = [0, 25, 50, 75, 100];
   K.STATUS_TONE = {
     todo:      { fg:'#5a6270', bg:'#eef0f3', label:'待開始' },
@@ -709,14 +713,18 @@ function KanbanView({ data, setData }) {
   ];
   const ENGINEER_COLUMNS = K.ENG_ORDER.map(k => ({ key:k, title:K.ENG_LABEL[k], hint:k, tone:K.ENG_TONE[k].fg }));
   const MACHINE_COLUMNS  = K.MACHINES.map(k => ({ key:k, title:k, hint:'機台', tone:'#0c7a99' }));
+  const RESIN_COLUMNS    = [...K.RESINS.map(k => ({ key:k, title:k, hint:'樹脂', tone:'#6b3fa0' })), { key:'未分類', title:'未分類', hint:'未指定樹脂', tone:'#9aa3b2' }];
+  const CATEGORY_COLUMNS = [...K.CATEGORIES.map(k => ({ key:k, title:k, hint:'類型', tone:'#0c7a99' })), { key:'未分類', title:'未分類', hint:'未指定類型', tone:'#9aa3b2' }];
 
-  const cols = groupBy==='status' ? STATUS_COLUMNS : groupBy==='progress' ? PROGRESS_COLUMNS : groupBy==='engineer' ? ENGINEER_COLUMNS : MACHINE_COLUMNS;
+  const cols = groupBy==='status' ? STATUS_COLUMNS : groupBy==='progress' ? PROGRESS_COLUMNS : groupBy==='engineer' ? ENGINEER_COLUMNS : groupBy==='machine' ? MACHINE_COLUMNS : groupBy==='resin' ? RESIN_COLUMNS : CATEGORY_COLUMNS;
 
   function columnKeyFor(item) {
     if (groupBy==='status')   return K.statusOf(item);
     if (groupBy==='progress') return String(item.progress);
     if (groupBy==='engineer') return item.engineer;
     if (groupBy==='machine')  return item.machine||'—';
+    if (groupBy==='resin')    return item.resin||'未分類';
+    if (groupBy==='category') return item.category||'未分類';
     return K.statusOf(item);
   }
 
@@ -749,6 +757,8 @@ function KanbanView({ data, setData }) {
       } else if (groupBy==='progress') { u.progress=parseInt(colKey,10); u.complete=u.progress===100?'是':'否'; }
       else if (groupBy==='engineer') { u.engineer=colKey; }
       else if (groupBy==='machine')  { u.machine=colKey; }
+      else if (groupBy==='resin')    { if(colKey!=='未分類') u.resin=colKey; }
+      else if (groupBy==='category') { if(colKey!=='未分類') u.category=colKey; }
       return u;
     }));
     setDragItem(null);
@@ -932,7 +942,7 @@ function KanbanView({ data, setData }) {
           {machines.map(m=><option key={m} value={m}>{m}</option>)}
         </select>
         <div className="seg">
-          {[['status','狀態'],['progress','進度'],['engineer','工程師'],['machine','機台']].map(([g,l])=>(
+          {[['status','狀態'],['progress','進度'],['engineer','工程師'],['machine','機台'],['resin','樹脂'],['category','類型']].map(([g,l])=>(
             <button key={g} className={`seg-btn${groupBy===g?' active':''}`} onClick={()=>setGroupBy(g)}>{l}</button>
           ))}
         </div>
@@ -1461,8 +1471,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629i"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629i"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629j"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629j"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
