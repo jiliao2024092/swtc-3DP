@@ -411,6 +411,7 @@
     const [editItem,  setEditItem]  = useState(null);
     const [search1,   setSearch1]   = useState('');
     const [statusF,   setStatusF]   = useState('');
+    const [hideDoneA, setHideDoneA] = useState(true);   // 客戶異常：預設隱藏已完成
     const [engF,      setEngF]      = useState('');
     const [search2,   setSearch2]   = useState('');
     const [personF,   setPersonF]   = useState('');
@@ -457,6 +458,7 @@
       const s=search1.toLowerCase();
       if(s && !it.customer.toLowerCase().includes(s) && !it.product.toLowerCase().includes(s)) return false;
       if(statusF && it.status!==statusF) return false;
+      if(hideDoneA && !statusF && it.status==='已完成') return false;
       if(engF    && it.engineer!==engF)  return false;
       return true;
     });
@@ -558,6 +560,11 @@
               </div>
               <select className="t-sel" value={statusF} onChange={e=>setStatusF(e.target.value)}><option value="">所有狀態</option><option>處理中</option><option>已完成</option><option>暫停</option></select>
               <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}><option value="">所有工程師</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
+              <button
+                onClick={()=>setHideDoneA(v=>!v)}
+                style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'#e6f1f6',color:hideDoneA?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
+                {hideDoneA ? '顯示已完成' : '👁 顯示已完成'}
+              </button>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">

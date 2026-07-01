@@ -377,7 +377,6 @@
                 <th>機台</th>
                 <th>材料</th>
                 <th className={thCls('progress')} onClick={()=>sortBy('progress')} style={{cursor:'pointer'}}>進度</th>
-                <th>完成</th>
                 <th>狀態</th>
                 <th>備註</th>
                 {/* 編輯模式才顯示操作欄 */}
@@ -386,7 +385,7 @@
             </thead>
             <tbody>
               {paged.length === 0 && (
-                <tr><td colSpan={editMode?12:11}><div className="kt-empty">沒有符合條件的資料</div></td></tr>
+                <tr><td colSpan={editMode?11:10}><div className="kt-empty">沒有符合條件的資料</div></td></tr>
               )}
               {paged.map(o => {
                 const st = K.statusOf(o);
@@ -408,7 +407,7 @@
                     </td>
                     <td className="col-date">
                       <div>{o.dueDate}</div>
-                      {days !== null && (
+                      {days !== null && st!=='done' && st!=='cancelled' && (
                         <div style={{fontSize:10.5, color: days<0?'#c0392b':days<=3?'#8b6b13':'#8a93a3'}}>
                           {days<0 ? `逾期 ${-days} 天` : days===0 ? '今日到期' : `剩 ${days} 天`}
                         </div>
@@ -430,9 +429,6 @@
                         </div>
                         <span style={{fontSize:11,fontWeight:700,color:'#5a6270',width:30,textAlign:'right'}}>{o.progress}%</span>
                       </div>
-                    </td>
-                    <td style={{textAlign:'center'}}>
-                      <span style={{fontSize:13}}>{o.complete==='是'?'✅':'—'}</span>
                     </td>
                     <td>
                       <span style={{...sstyle, padding:'2px 9px', borderRadius:10, fontSize:11, fontWeight:700}}>
