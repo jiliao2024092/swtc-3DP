@@ -385,8 +385,8 @@
                                 <th class="p-3 border-b font-medium w-20 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('slot')">時段<span id="sort-slot" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-24 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('sales')">業務<span id="sort-sales" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('printer')">設備<span id="sort-printer" class="ml-1 text-gray-300"></span></th>
+                                <th class="p-3 border-b font-medium w-36 whitespace-nowrap cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('engineer')">工程師<span id="sort-engineer" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium">單號 / 備註</th>
-                                <th class="p-3 border-b font-medium w-28 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('engineer')">工程師<span id="sort-engineer" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-32 cursor-pointer select-none hover:bg-gray-200" onclick="sortBy('status')">狀態<span id="sort-status" class="ml-1 text-gray-300"></span></th>
                                 <th class="p-3 border-b font-medium w-32">最後變更</th>
                                 <th id="ops-col" class="p-3 border-b font-medium w-24 text-center hidden">操作</th>
@@ -873,8 +873,8 @@ window.renderTable = function() {
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
             <td class="p-3">${printerCell}</td>
+            <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200 whitespace-nowrap">${engDisplay(b.engineer)}</span></td>
             <td class="p-3">${purposeCell}</td>
-            <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200">${engDisplay(b.engineer)}</span></td>
             <td class="p-3">
                 <select ${canEdit?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
                     class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit?'cursor-pointer':''} ${getStatusColor(b.status)}">
