@@ -87,7 +87,8 @@
                   {form.resin && !resins.includes(form.resin) && <option value={form.resin}>{form.resin}</option>}
                 </select></div>
               <div className="m-field"><label style={LBL}>類型</label>
-                <select style={INP} value={form.category||'代工'} onChange={e=>set('category',e.target.value)}>
+                <select style={INP} value={form.category||''} onChange={e=>set('category',e.target.value)}>
+                  <option value="">未指定</option>
                   {K.CATEGORIES.map(c=><option key={c}>{c}</option>)}
                 </select></div>
             </div>
