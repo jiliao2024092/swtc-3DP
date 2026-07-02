@@ -293,7 +293,7 @@
     const [fStatus,  setFStatus]  = useState('');
     const [fResin,   setFResin]   = useState('');
     const [fCategory,setFCategory]= useState('');
-    const [sortKey,  setSortKey]  = useState('seq');
+    const [sortKey,  setSortKey]  = useState('score');   // 預設依分數排序（交期越近＋類型加權，分數越低越前）
     const [sortDir,  setSortDir]  = useState('asc');
     const [page,     setPage]     = useState(1);
     const [hideDone, setHideDone] = useState(true);
@@ -323,8 +323,20 @@
       return true;
     });
 
+    // 優先分數：本日距交期越近分數越低（逾期為負，最前）；類型加權 評估+1 / 代工+2 / 無+3
+    const scoreOf = (o) => {
+      const d = K.daysUntil(o.dueDate);
+      const base = (d === null) ? 99999 : d;   // 無交期者排最後
+      const catMod = o.category === '評估' ? 1 : o.category === '代工' ? 2 : 3;
+      return base + catMod;
+    };
+
     // 排序
     const sorted = [...filtered].sort((a, b) => {
+      if (sortKey === 'score') {
+        const d = scoreOf(a) - scoreOf(b);
+        return sortDir === 'asc' ? d : -d;
+      }
       let va = a[sortKey], vb = b[sortKey];
       if (typeof va === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
       if (va < vb) return sortDir === 'asc' ? -1 : 1;

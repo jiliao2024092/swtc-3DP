@@ -1540,6 +1540,17 @@ function updateStockSortIndicators(){
     });
 }
 
+// 總庫存 ±1（L）箭頭：只調整輸入框數值，仍需按「儲存全部」寫入（沿用整頁編輯流程）
+function stepStock(btn, delta){
+    const cell = btn.closest('td');
+    const inp = cell && cell.querySelector('.stock-liters-input');
+    if(!inp || inp.disabled) return;
+    let v = parseFloat(inp.value) || 0;
+    v = Math.max(0, Math.round((v + delta) * 10) / 10);
+    inp.value = v.toFixed(1);
+    inp.dispatchEvent(new Event('input', { bubbles:true }));
+}
+
 function renderStockTable() {
     updateStockSortIndicators();
     const tbody=document.getElementById('stock-table-body');
@@ -1589,10 +1600,16 @@ function renderStockTable() {
         tr.setAttribute('data-material', m);
         tr.innerHTML=`
             <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
-            <td class="p-3 text-right">
-                <input type="number" min="0" step="0.1" value="${stockLiters.toFixed(1)}" ${inputDisabled?'disabled':''}
-                    class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400 ${low&&!isStockEditMode?'text-red-500 font-medium':''}">
-                <span class="text-xs text-gray-400 ml-1">L</span>
+            <td class="p-3">
+                <div class="flex items-center justify-end gap-1">
+                    <button type="button" onclick="stepStock(this,-1)" ${inputDisabled?'disabled':''} title="－1 L"
+                        class="w-6 h-7 flex items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed text-xs leading-none">▼</button>
+                    <input type="number" min="0" step="1" value="${stockLiters.toFixed(1)}" ${inputDisabled?'disabled':''}
+                        class="stock-liters-input w-20 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400 ${low&&!isStockEditMode?'text-red-500 font-medium':''}">
+                    <button type="button" onclick="stepStock(this,1)" ${inputDisabled?'disabled':''} title="＋1 L"
+                        class="w-6 h-7 flex items-center justify-center rounded-md border border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed text-xs leading-none">▲</button>
+                    <span class="text-xs text-gray-400 ml-1">L</span>
+                </div>
             </td>
             <td class="p-3 text-right text-gray-700">${getCartridgeTotal(m) > 0 ? `<span class="text-sm">${(getCartridgeTotal(m)/1000).toFixed(2)} L</span>` : '<span class="text-gray-300 text-xs">—</span>'}</td>
             <td class="p-3 text-right text-gray-700">
@@ -2566,6 +2583,7 @@ window.renderStockTable = renderStockTable;
 window.startStockEdit = startStockEdit;
 window.cancelStockEdit = cancelStockEdit;
 window.saveStockEdits = saveStockEdits;
+window.stepStock = stepStock;
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload

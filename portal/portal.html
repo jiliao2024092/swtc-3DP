@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629k"></script>
+<script src="firebase-config.js?v=20260629l"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629k"></script>
+<script src="firebase-service.js?v=20260629l"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -694,6 +694,7 @@ function KanbanView({ data, setData }) {
   const [machF, setMachF] = useStateK('');
   const [groupBy, setGroupBy] = useStateK('status');
   const [density, setDensity] = useStateK('comfortable');
+  const [hideDone, setHideDone] = useStateK(true);
   const [open, setOpen] = useStateK(null);
   const [dragItem, setDragItem] = useStateK(null);
 
@@ -729,7 +730,11 @@ function KanbanView({ data, setData }) {
     return K.statusOf(item);
   }
 
-  const filtered = useMemoK(() => K.applyFilters(data, { search, engineer:engF, machine:machF }), [data, search, engF, machF]);
+  const filtered = useMemoK(() => {
+    let r = K.applyFilters(data, { search, engineer:engF, machine:machF });
+    if (hideDone) r = r.filter(d => { const s=K.statusOf(d); return s!=='done' && s!=='cancelled'; });
+    return r;
+  }, [data, search, engF, machF, hideDone]);
   const grouped  = useMemoK(() => {
     const m = {}; cols.forEach(c => { m[c.key] = []; });
     filtered.forEach(it => { const k = columnKeyFor(it); if (m[k]) m[k].push(it); });
@@ -942,6 +947,11 @@ function KanbanView({ data, setData }) {
           <option value="">所有機台</option>
           {machines.map(m=><option key={m} value={m}>{m}</option>)}
         </select>
+        <button
+          onClick={()=>setHideDone(v=>!v)}
+          style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'#e6f1f6',color:hideDone?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
+          {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
+        </button>
         <div className="seg">
           {[['status','狀態'],['progress','進度'],['engineer','工程師'],['machine','機台'],['resin','樹脂'],['category','類型']].map(([g,l])=>(
             <button key={g} className={`seg-btn${groupBy===g?' active':''}`} onClick={()=>setGroupBy(g)}>{l}</button>
@@ -1224,6 +1234,7 @@ function DashboardView({ data }) {
     const engineers = window._settings_engineers||K.ENG_ORDER;
     const machines  = window._settings_machines||K.MACHINES;
     const byEng={}, byMach={}, byProg={0:0,25:0,50:0,75:0,100:0}, byMat={};
+    const byCat={}; (K.CATEGORIES||[]).forEach(c=>{byCat[c]=0;}); byCat['未指定']=0;
     engineers.forEach(k=>{byEng[k]=0;}); machines.forEach(m=>{byMach[m]=0;});
     data.forEach(d=>{
       if(d.engineer) byEng[d.engineer]=(byEng[d.engineer]||0)+1;
@@ -1231,10 +1242,11 @@ function DashboardView({ data }) {
       const p = K.PROGRESS_VALUES.includes(d.progress)?d.progress:0;
       byProg[p]=(byProg[p]||0)+1;
       const mat=d.material||'足夠'; byMat[mat]=(byMat[mat]||0)+1;
+      const cat=d.category||'未指定'; byCat[cat]=(byCat[cat]||0)+1;
     });
     const byCustomer={};
     data.forEach(d=>{ const c=d.customer||'—'; byCustomer[c]=(byCustomer[c]||0)+1; });
-    return { total,wip,blocked,done,due7,statusDist,byEng,byMach,byProg,byMat,byCustomer,engineers,machines };
+    return { total,wip,blocked,done,due7,statusDist,byEng,byMach,byProg,byMat,byCat,byCustomer,engineers,machines };
   }, [data]);
 
   // ── 圖表元件 ──
@@ -1327,6 +1339,7 @@ function DashboardView({ data }) {
     { key:'progress', label:'依 進度' },
     { key:'machine',  label:'依 機台' },
     { key:'material', label:'依 材料' },
+    { key:'category', label:'依 類型' },
     { key:'customer', label:'依 客戶（Top 8）' },
   ];
   const CHART_OPTIONS = [
@@ -1342,6 +1355,7 @@ function DashboardView({ data }) {
       case 'progress': return K.PROGRESS_VALUES.map((p,i)=>({ label:`${p}%`, value:stats.byProg[p]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
       case 'machine':  return stats.machines.map((m,i)=>({ label:m, value:stats.byMach[m]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
       case 'material': return Object.entries(stats.byMat).map(([k,v],i)=>({ label:k, value:v, color:i===0?'#1d6f43':'#c79b2a' }));
+      case 'category': { const CAT_COLORS={'代工':'#6b3fa0','評估':'#0c7a99','未指定':'#b0b5bf'}; return Object.entries(stats.byCat).map(([k,v])=>({ label:k, value:v, color:CAT_COLORS[k]||'#8a93a3' })); }
       case 'customer': {
         const sorted=Object.entries(stats.byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,8);
         return sorted.map(([k,v],i)=>({ label:k, value:v, color:'#0c7a99' }));
@@ -1351,7 +1365,7 @@ function DashboardView({ data }) {
   }
 
   function CustomChart({ idx }) {
-    const [dim,   setDim]   = useState(idx===0?'machine':idx===1?'material':'customer');
+    const [dim,   setDim]   = useState(idx===0?'machine':idx===1?'category':'customer');
     const [chart, setChart] = useState(idx===2?'hbar':'donut');
     const slices = buildSlices(dim);
     const colorFn = (item, i) => slices[i]?.color || 'var(--accent)';
@@ -1472,8 +1486,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629k"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629k"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629l"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629l"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
