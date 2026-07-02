@@ -412,10 +412,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629j"></script>
+<script src="firebase-config.js?v=20260629k"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629j"></script>
+<script src="firebase-service.js?v=20260629k"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -713,7 +713,8 @@ function KanbanView({ data, setData }) {
   ];
   const ENGINEER_COLUMNS = K.ENG_ORDER.map(k => ({ key:k, title:K.ENG_LABEL[k], hint:k, tone:K.ENG_TONE[k].fg }));
   const MACHINE_COLUMNS  = K.MACHINES.map(k => ({ key:k, title:k, hint:'機台', tone:'#0c7a99' }));
-  const RESIN_COLUMNS    = [...K.RESINS.map(k => ({ key:k, title:k, hint:'樹脂', tone:'#6b3fa0' })), { key:'未分類', title:'未分類', hint:'未指定樹脂', tone:'#9aa3b2' }];
+  const RESIN_LIST       = (window._inventory_materials && window._inventory_materials.length) ? window._inventory_materials : K.RESINS;
+  const RESIN_COLUMNS    = [...RESIN_LIST.map(k => ({ key:k, title:k, hint:'樹脂', tone:'#6b3fa0' })), { key:'未分類', title:'未分類', hint:'未指定樹脂', tone:'#9aa3b2' }];
   const CATEGORY_COLUMNS = [...K.CATEGORIES.map(k => ({ key:k, title:k, hint:'類型', tone:'#0c7a99' })), { key:'未分類', title:'未分類', hint:'未指定類型', tone:'#9aa3b2' }];
 
   const cols = groupBy==='status' ? STATUS_COLUMNS : groupBy==='progress' ? PROGRESS_COLUMNS : groupBy==='engineer' ? ENGINEER_COLUMNS : groupBy==='machine' ? MACHINE_COLUMNS : groupBy==='resin' ? RESIN_COLUMNS : CATEGORY_COLUMNS;
@@ -1471,8 +1472,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629j"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629j"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629k"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629k"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -2072,6 +2073,11 @@ function App() {
     const unsubSettings = FBSettings.onSnapshot(s => {
       if (s) window.applySettings(s);
     });
+    // 監聽材料庫存 → 工作看板「樹脂材料」下拉用（與材料庫存頁一致）
+    const unsubInv = FBInventory.onSnapshot(names => {
+      window._inventory_materials = names;
+      if (window._onSettingsUpdated) window._onSettingsUpdated();
+    });
     let unsubUserDoc = null;
     // 監聽登入狀態
     const unsubAuth = FBAuth.onStateChanged(async fbUser => {
@@ -2094,7 +2100,7 @@ function App() {
       } else { setUser(null); }
       setChecking(false);
     });
-    return () => { unsubAuth(); unsubSettings(); if (unsubUserDoc) unsubUserDoc(); };
+    return () => { unsubAuth(); unsubSettings(); unsubInv(); if (unsubUserDoc) unsubUserDoc(); };
   }, []);
 
   if (checking) return (

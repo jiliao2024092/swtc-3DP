@@ -12,6 +12,8 @@
     // 動態讀取工程師與機台（支援後台新增）
     const engineers = window._settings_engineers || K.ENG_ORDER;
     const machines  = window._settings_machines  || K.MACHINES;
+    // 樹脂材料：優先用材料庫存實際清單，未載入時退回 K.RESINS
+    const resins = (window._inventory_materials && window._inventory_materials.length) ? window._inventory_materials : K.RESINS;
 
     const empty = {
       seq:'', id:'', customer:'',
@@ -81,7 +83,8 @@
               <div className="m-field"><label style={LBL}>樹脂材料</label>
                 <select style={INP} value={form.resin||''} onChange={e=>set('resin',e.target.value)}>
                   <option value="">未指定</option>
-                  {K.RESINS.map(m=><option key={m}>{m}</option>)}
+                  {resins.map(m=><option key={m}>{m}</option>)}
+                  {form.resin && !resins.includes(form.resin) && <option value={form.resin}>{form.resin}</option>}
                 </select></div>
               <div className="m-field"><label style={LBL}>類型</label>
                 <select style={INP} value={form.category||'代工'} onChange={e=>set('category',e.target.value)}>
@@ -299,6 +302,7 @@
     // 每次都即時從 window 讀取最新設定（labelVer 變動時觸發重新渲染）
     const engineers = window._settings_engineers || K.ENG_ORDER;
     const machines  = window._settings_machines  || K.MACHINES;
+    const resins = (window._inventory_materials && window._inventory_materials.length) ? window._inventory_materials : K.RESINS;
 
     // 篩選
     const filtered = data.filter(o => {
@@ -374,7 +378,7 @@
           </select>
           <select className="t-sel" value={fResin} onChange={e=>{setFResin(e.target.value);setPage(1);}}>
             <option value="">所有樹脂</option>
-            {K.RESINS.map(m=><option key={m}>{m}</option>)}
+            {resins.map(m=><option key={m}>{m}</option>)}
           </select>
           <select className="t-sel" value={fCategory} onChange={e=>{setFCategory(e.target.value);setPage(1);}}>
             <option value="">所有類型</option>

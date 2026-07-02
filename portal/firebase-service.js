@@ -137,6 +137,89 @@
   };
 
   // ════════════════════════════════════════════════
+  // 材料庫存 → inventory/main（供工作看板「樹脂材料」下拉使用）
+  //   材料名稱對照與家族正規化須與 inventory.html 一致
+  //   （只取 stock + 機台 cartridges，不含 history；停用材料排除）
+  // ════════════════════════════════════════════════
+  const CODE_TO_NAME = {
+    'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
+    'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
+    'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLRG1011':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
+    'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
+    'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
+    'FLTO1001':'Tough 1000 V1','FLTO1002':'Tough 1000 V2',
+  };
+  const FAMILY_TO_NAME = {
+    'FLGPCL':'Clear V5','FLGPWH':'White V5','FLGPGR':'Grey V5','FLGPBK':'Black V5',
+    'FLTO10':'Tough 1000','FLTO15':'Tough 1500','FLTO20':'Tough 2000','FLRG10':'Rigid 10K',
+    'FLRG40':'Rigid 4000','FLFL80':'Flexible 80A','FLHTAM':'High Temp','FLFLES':'Elastic 50A',
+    'FLESD0':'ESD Resin','FLSI40':'Silicone 40A','FLFAMD':'Fast Model','FLPRMD':'Precision Model',
+    'FLFRGR':'Flame Retardant','FLDU20':'Durable','FLCEBL':'Ceramic','FLPUBK':'Polyurethane',
+  };
+  const FAMILY_REMAP = { 'FLEXIB':'FLFL80', 'FLAMER':'FLFRGR' };
+  const NAME_TO_CODE_FE = {};
+  Object.entries(CODE_TO_NAME).forEach(([code,name]) => { NAME_TO_CODE_FE[name] = code; });
+  NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';
+  NAME_TO_CODE_FE['Flexible']     = 'FLFL8002';
+  NAME_TO_CODE_FE['Rigid 4000 V1']= 'FLRG4001';
+  Object.entries(FAMILY_TO_NAME).forEach(([fam,name]) => { if (!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name] = fam; });
+  const DEFAULT_DISABLED_NAMES = [
+    'Durable V2.1','Tough 1500 V1.1','FLTO1501','Tough 2000 V1','Tough 2000 V1.1','FLTO2001',
+    'Open Material V1','Flexible 80A V1','FLFL8001','Rigid 4000 V1',
+  ];
+  function familyCode(code) {
+    if (!code) return code;
+    const c = String(code).toUpperCase();
+    if (FAMILY_REMAP[c]) return FAMILY_REMAP[c];
+    if (/^FL[A-Z0-9]{6}$/.test(c) && /\d/.test(c)) return c.slice(0, 6);
+    return code;
+  }
+  function canonCode(input) {
+    if (!input) return input;
+    let code = NAME_TO_CODE_FE[input];
+    if (!code) {
+      const base = String(input).replace(/\s*V\d+(\.\d+)?$/i, '').trim();
+      if (base !== input) code = NAME_TO_CODE_FE[base];
+    }
+    return familyCode(code || input);
+  }
+  const matCode = canonCode;
+  function matName(input) {
+    if (!input) return input;
+    const fam = familyCode(canonCode(input));
+    return FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
+  }
+  function isDisabled(inv, material) {
+    if (!material) return false;
+    const fam = matCode(material);
+    const overrides = new Set((inv.disabled_overrides || []).map(m => matCode(m)));
+    if (overrides.has(fam)) return false;
+    const userDisabled = new Set((inv.disabled_materials || []).map(m => matCode(m)));
+    if (userDisabled.has(fam)) return true;
+    const name = matName(material);
+    return DEFAULT_DISABLED_NAMES.includes(material) || DEFAULT_DISABLED_NAMES.includes(name);
+  }
+  // 由 inventory/main 文件組出「材料庫存顯示名稱」清單（家族去重、排除停用、排序）
+  function materialDisplayNames(inv) {
+    if (!inv) return [];
+    const fams = new Set();
+    Object.values(inv.cartridges || {}).forEach(slots => (slots || []).forEach(s => { if (s && s.material) fams.add(matCode(s.material)); }));
+    Object.keys(inv.stock || {}).forEach(k => fams.add(matCode(k)));
+    const names = [...fams].filter(f => !isDisabled(inv, f)).map(matName);
+    return [...new Set(names)].sort();
+  }
+  window.matName = matName;
+  window.FBInventory = {
+    onSnapshot(cb) {
+      return db.collection('inventory').doc('main').onSnapshot(
+        snap => cb(materialDisplayNames(snap.exists ? snap.data() : null)),
+        err => { console.error('[inventory] onSnapshot 失敗:', err); cb([]); }
+      );
+    },
+  };
+
+  // ════════════════════════════════════════════════
   // 使用者與認證 → users/{uid}
   //   沿用現有 users collection；用 permissions array（取代舊的 role 欄位）
   // ════════════════════════════════════════════════
