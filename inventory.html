@@ -234,7 +234,7 @@
             <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清除並重建
             </button>
-            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除重複的消耗紀錄（按 print_guid 去重，保留每組第一筆）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
+            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除完全相同的重複紀錄（材料/機台/消耗/備註/時間全相同才刪；時間不同保留）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
                 <i data-lucide="copy-x" class="w-3.5 h-3.5"></i> 去除重複
             </button>
             <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
@@ -2484,7 +2484,7 @@ async function deduplicateHistory() {
         showToast('僅 admin 可執行此操作', 'error');
         return;
     }
-    const msg = `掃描所有消耗紀錄，刪除有相同 print_guid 的重複項（保留每組第一筆）。\n\n要繼續嗎？`;
+    const msg = `掃描消耗紀錄，只刪除「所有欄位完全相同」的重複項（材料/機台/消耗/備註/時間都一樣才算重複；時間不同的保留，確保同檔案多次列印不被刪）。\n\n要繼續嗎？`;
     if (!confirm(msg)) return;
 
     const btn = event.target.closest('button');
@@ -2497,26 +2497,26 @@ async function deduplicateHistory() {
         const allDocs = await getDocs(histRef);
         console.log(`[dedupe] 共 ${allDocs.size} 筆紀錄`);
 
-        // 2. 按 print_guid 分組，找出重複
-        const guidMap = new Map();  // guid -> [docSnap, docSnap, ...]
+        // 2. 按「所有欄位」組合鍵分組（材料/機台/消耗/備註/時間/guid/類型/狀態全部相同才算重複）
+        //    只要時間不同就視為不同的列印工作 → 保留（確保同一檔案多次列印不被誤刪）
+        const keyMap = new Map();
         allDocs.docs.forEach(d => {
-            const guid = d.data().print_guid;
-            if (!guid) return;  // 沒 guid 的（如 stockin/manual）不處理
-            if (!guidMap.has(guid)) guidMap.set(guid, []);
-            guidMap.get(guid).push(d);
+            const x = d.data();
+            if (!x.print_guid) return;  // 只處理列印消耗紀錄（stockin/manual 不動）
+            const key = JSON.stringify([
+                x.print_guid, x.material || '', x.printer || '',
+                x.ml ?? '', x.note || '', x.ts || '',
+                x.type || '', x.apiStatus || ''
+            ]);
+            if (!keyMap.has(key)) keyMap.set(key, []);
+            keyMap.get(key).push(d);
         });
 
-        // 3. 找出有重複的 guid（>1 筆）
+        // 3. 每組「所有欄位完全相同」的保留一筆，其餘才視為重複刪除
         const dupes = [];
-        guidMap.forEach((docs, guid) => {
+        keyMap.forEach(docs => {
             if (docs.length > 1) {
-                // 排序（按 ts 升序），保留第一筆，刪除其他
-                docs.sort((a, b) => {
-                    const aTs = a.data().ts || '';
-                    const bTs = b.data().ts || '';
-                    return aTs.localeCompare(bTs);
-                });
-                // 加到 dupes 列表（除了第一筆）
+                docs.sort((a, b) => a.id.localeCompare(b.id));  // 穩定：保留 doc id 最小者
                 dupes.push(...docs.slice(1));
             }
         });
