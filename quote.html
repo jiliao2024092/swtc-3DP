@@ -246,6 +246,28 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
             <div class="f-hint">精細 · 標準 · 快速</div>
           </div>
           <div class="sec">
+            <div class="sec-lbl">數量</div>
+            <input class="dim-inp" id="qty-input" type="number" min="1" value="1" oninput="onQtyChange()" style="width:100%">
+            <div class="f-hint">材料 · 支撐 · 費用 ×N（時間為單件）</div>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">擺放工具</div>
+            <div class="mtype-grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:4px">
+              <button class="mtype-btn" onclick="rotateModel('x')">X 90°</button>
+              <button class="mtype-btn" onclick="rotateModel('y')">Y 90°</button>
+              <button class="mtype-btn" onclick="rotateModel('z')">Z 90°</button>
+            </div>
+            <div class="mtype-grid" style="margin-bottom:4px">
+              <button class="mtype-btn" onclick="dropToFloorBtn()">⬇ 貼地</button>
+              <button class="mtype-btn" onclick="mirrorModel()">⇋ 鏡像</button>
+            </div>
+            <div style="display:flex;gap:4px;align-items:center">
+              <input class="dim-inp" id="scale-input" type="number" min="1" value="100" style="flex:1">
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono)">%</span>
+              <button class="mtype-btn" onclick="applyScale()" style="flex:0 0 auto;padding:5px 9px">縮放</button>
+            </div>
+          </div>
+          <div class="sec">
             <div class="sec-lbl">擺放與計算</div>
             <button class="calc-btn" onclick="autoOrient()" style="margin-bottom:6px">⚡ 自動擺放</button>
             <button class="calc-btn" onclick="manualCalc()" style="background:var(--bg);color:var(--ink);border:1px solid var(--line)">
@@ -310,12 +332,18 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
           <button class="vtb-mode" id="btn-obj" onclick="setCtrlMode('object')">物件操控</button>
           <div class="vtb-sep"></div>
           <button class="vtb-btn" id="btn-overhang" onclick="toggleOverhangView()" style="border-color:var(--warn);color:var(--warn)">⚠ 懸垂分析</button>
+          <button class="vtb-btn" id="btn-slice" onclick="toggleSliceView()" style="border-color:var(--accent);color:var(--accent)">▤ 層切預覽</button>
           <div class="vtb-sep"></div>
           <button class="vtb-auto" onclick="autoOrient()">⚡ 自動擺放</button>
         </div>
         <div class="viewer-canvas" id="viewer-canvas">
           <canvas id="three-canvas"></canvas>
           <div class="viewer-hint" id="viewer-hint">左鍵旋轉場景 · 滾輪縮放 · 右鍵平移</div>
+          <div id="slice-ctrl" style="display:none;position:absolute;top:12px;right:12px;bottom:44px;flex-direction:column;align-items:center;gap:8px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:10px 8px;box-shadow:0 2px 8px rgba(10,14,20,.08)">
+            <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono)">層切 Z</span>
+            <input id="slice-slider" type="range" min="0" max="100" value="100" oninput="onSliceInput(this.value)" orient="vertical" style="writing-mode:vertical-lr;direction:rtl;width:10px;flex:1;cursor:pointer">
+            <span id="slice-z-label" style="font-size:9px;color:var(--accent);font-family:var(--font-mono);white-space:nowrap">— mm</span>
+          </div>
         </div>
         <div class="viewer-foot">
           <div style="display:flex;gap:14px;flex-wrap:wrap">
@@ -439,7 +467,10 @@ let materials = [...DEFAULT_MATERIALS];
 let selectedPrinter = 'f4';
 let selectedType = 'exterior';
 let selectedLayer = 0.050;
+let selectedQty = 1;      // 數量（費用/材料 ×N）
 let stlAnalysis = null;   // 儲存分析結果
+let sliceMode = false;    // 層切預覽開關
+let clipPlane = null;     // 層切裁切面（延遲建立，確保 THREE 已載入）
 
 // ══ Auth ══
 auth.onAuthStateChanged(async user => {
@@ -617,15 +648,16 @@ function calcQuote(){
   const supCost  = Math.round(supVol*ppc);
   const postCost = 90;
   const printHr  = Math.round(Math.ceil(z/selectedLayer)*12/3600*10)/10;
-  document.getElementById('c-mat-vol').textContent  = `${vol.toFixed(1)} mL`;
-  document.getElementById('c-sup-vol').textContent  = `${supVol.toFixed(1)} mL`;
-  document.getElementById('c-material').textContent = `NT$${matCost.toLocaleString()}`;
-  document.getElementById('c-support').textContent  = `NT$${supCost.toLocaleString()}`;
-  document.getElementById('c-time').textContent     = `${printHr} hr`;
-  document.getElementById('c-post').textContent     = `NT$${postCost}`;
-  document.getElementById('c-total').textContent    = `NT$${(matCost+supCost+postCost).toLocaleString()}`;
-  document.getElementById('v-vol').textContent      = `${vol.toFixed(1)} mL`;
-  document.getElementById('v-sup').textContent      = `${supVol.toFixed(1)} mL`;
+  const q = Math.max(1, selectedQty);
+  document.getElementById('c-mat-vol').textContent  = `${(vol*q).toFixed(1)} mL`;
+  document.getElementById('c-sup-vol').textContent  = `${(supVol*q).toFixed(1)} mL`;
+  document.getElementById('c-material').textContent = `NT$${(matCost*q).toLocaleString()}`;
+  document.getElementById('c-support').textContent  = `NT$${(supCost*q).toLocaleString()}`;
+  document.getElementById('c-time').textContent     = q>1 ? `${printHr} hr/件` : `${printHr} hr`;
+  document.getElementById('c-post').textContent     = `NT$${(postCost*q).toLocaleString()}`;
+  document.getElementById('c-total').textContent    = `NT$${((matCost+supCost+postCost)*q).toLocaleString()}`;
+  document.getElementById('v-vol').textContent      = `${(vol*q).toFixed(1)} mL`;
+  document.getElementById('v-sup').textContent      = `${(supVol*q).toFixed(1)} mL`;
   document.getElementById('v-time').textContent     = `~${printHr} hr`;
   document.getElementById('pfs-badge').style.display    = 'none';
   document.getElementById('formula-badge').style.display = 'inline';
@@ -634,27 +666,125 @@ function calcQuote(){
 // 用 PFS 真實數字更新估價面板
 function updateQuoteFromPFS(timeSec, volMl, supVolMl, mat){
   const ppc        = mat.price / 1000;
-  const matCost    = Math.round((volMl - supVolMl) * ppc);   // 本體材料費
-  const supCost    = Math.round(supVolMl * ppc);             // 支撐材料費
+  const q          = Math.max(1, selectedQty);
+  const matCost    = Math.round((volMl - supVolMl) * ppc);   // 本體材料費（單件）
+  const supCost    = Math.round(supVolMl * ppc);             // 支撐材料費（單件）
   const postCost   = 90;
-  const total      = matCost + supCost + postCost;
+  const total      = (matCost + supCost + postCost) * q;
   const hr = Math.floor(timeSec/3600);
   const mn = Math.floor((timeSec%3600)/60);
-  const timeStr = hr>0 ? `${hr}h ${mn}m` : `${mn}m`;
+  const timeStr = (hr>0 ? `${hr}h ${mn}m` : `${mn}m`) + (q>1 ? '/件' : '');
 
-  document.getElementById('c-mat-vol').textContent  = `${(volMl-supVolMl).toFixed(1)} mL`;
-  document.getElementById('c-sup-vol').textContent  = `${supVolMl.toFixed(1)} mL`;
-  document.getElementById('c-material').textContent = `NT$${matCost.toLocaleString()}`;
-  document.getElementById('c-support').textContent  = `NT$${supCost.toLocaleString()}`;
+  document.getElementById('c-mat-vol').textContent  = `${((volMl-supVolMl)*q).toFixed(1)} mL`;
+  document.getElementById('c-sup-vol').textContent  = `${(supVolMl*q).toFixed(1)} mL`;
+  document.getElementById('c-material').textContent = `NT$${(matCost*q).toLocaleString()}`;
+  document.getElementById('c-support').textContent  = `NT$${(supCost*q).toLocaleString()}`;
   document.getElementById('c-time').textContent     = timeStr;
-  document.getElementById('c-post').textContent     = `NT$${postCost}`;
+  document.getElementById('c-post').textContent     = `NT$${(postCost*q).toLocaleString()}`;
   document.getElementById('c-total').textContent    = `NT$${total.toLocaleString()}`;
-  document.getElementById('v-vol').textContent      = `${(volMl-supVolMl).toFixed(1)} mL`;
-  document.getElementById('v-sup').textContent      = `${supVolMl.toFixed(1)} mL`;
+  document.getElementById('v-vol').textContent      = `${((volMl-supVolMl)*q).toFixed(1)} mL`;
+  document.getElementById('v-sup').textContent      = `${(supVolMl*q).toFixed(1)} mL`;
   document.getElementById('v-time').textContent     = timeStr;
   document.getElementById('pfs-badge').style.display     = 'inline';
   document.getElementById('formula-badge').style.display = 'none';
   showToast(`PreForm 精確計算：${timeStr} · 本體${(volMl-supVolMl).toFixed(1)}mL · 支撐${supVolMl.toFixed(1)}mL`, 'ok');
+}
+
+// ══ 數量 ══
+function onQtyChange(){
+  selectedQty = Math.max(1, parseInt(document.getElementById('qty-input').value) || 1);
+  document.getElementById('qty-input').value = selectedQty;
+  calcQuote();
+}
+
+// ══ 精確擺放：繞軸轉 90° / 貼地 / 鏡像 / 縮放 ══
+function needModel(){
+  if(!threeModel || !threeModel.userData.isSTL){ showToast('請先上傳 STL','err'); return false; }
+  return true;
+}
+function refreshDims(){
+  if(!threeModel) return;
+  const size = new THREE.Box3().setFromObject(threeModel).getSize(new THREE.Vector3());
+  document.getElementById('dim-x').value = Math.round(size.x);
+  document.getElementById('dim-y').value = Math.round(size.z);
+  document.getElementById('dim-z').value = Math.round(size.y);
+}
+function dropToFloor(){
+  if(!threeModel) return;
+  let bb = new THREE.Box3().setFromObject(threeModel);
+  threeModel.position.y -= bb.min.y;                     // 底部貼 Y=0
+  bb = new THREE.Box3().setFromObject(threeModel);
+  threeModel.position.x -= (bb.max.x + bb.min.x) / 2;    // XZ 置中
+  threeModel.position.z -= (bb.max.z + bb.min.z) / 2;
+}
+function afterTransform(){
+  dropToFloor(); refreshDims(); checkOverflow(); calcQuote();
+  if(sliceMode) toggleSliceView();                       // 變形後關閉層切避免錯位
+  if(overhangMode){ restoreOriginalColors(); applyOverhangColors(); }
+}
+function rotateModel(axis){
+  if(!needModel()) return;
+  threeModel.rotation[axis] += Math.PI/2;
+  afterTransform();
+  showToast(`已繞 ${axis.toUpperCase()} 軸轉 90°`, 'ok');
+}
+function dropToFloorBtn(){ if(!needModel()) return; dropToFloor(); checkOverflow(); showToast('已貼地置中','ok'); }
+function mirrorModel(){
+  if(!needModel()) return;
+  threeModel.scale.x *= -1;
+  afterTransform();
+  showToast('已鏡像','ok');
+}
+function applyScale(){
+  if(!needModel()) return;
+  const pct = Math.max(1, Math.min(1000, parseFloat(document.getElementById('scale-input').value) || 100));
+  const f = pct / 100;
+  const sgnX = Math.sign(threeModel.scale.x) || 1;       // 保留鏡像方向
+  threeModel.scale.set(f * sgnX, f, f);                  // 以原始網格為基準縮放
+  document.getElementById('scale-input').value = Math.round(pct);
+  afterTransform();
+  showToast(`已縮放至 ${Math.round(pct)}%`, 'ok');
+}
+
+// ══ 層切預覽（Z 高度裁切面）══
+function setModelClip(planes){
+  if(!threeModel) return;
+  threeModel.material.clippingPlanes = planes;
+  threeModel.material.needsUpdate = true;
+  threeModel.children.forEach(c => { if(c.material){ c.material.clippingPlanes = planes; c.material.needsUpdate = true; } });
+}
+function applySlice(z){
+  if(!clipPlane) clipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), z);
+  clipPlane.constant = z;                                // 法向量(0,-1,0)：隱藏 y>z 的部分
+  setModelClip([clipPlane]);
+  const lbl = document.getElementById('slice-z-label');
+  if(lbl) lbl.textContent = z.toFixed(1) + ' mm';
+}
+function onSliceInput(v){ applySlice(parseFloat(v)); }
+function resetSlice(){
+  sliceMode = false;
+  const ctrl = document.getElementById('slice-ctrl');
+  const btn  = document.getElementById('btn-slice');
+  if(ctrl) ctrl.style.display = 'none';
+  if(btn)  btn.style.cssText = 'border-color:var(--accent);color:var(--accent)';
+  setModelClip([]);
+}
+function toggleSliceView(){
+  if(!needModel()) return;
+  sliceMode = !sliceMode;
+  const ctrl = document.getElementById('slice-ctrl');
+  const btn  = document.getElementById('btn-slice');
+  if(sliceMode){
+    const maxY = Math.max(1, new THREE.Box3().setFromObject(threeModel).max.y);
+    const s = document.getElementById('slice-slider');
+    s.min = 0; s.max = maxY.toFixed(2); s.step = (maxY/120).toFixed(3); s.value = maxY.toFixed(2);
+    ctrl.style.display = 'flex';
+    btn.style.cssText = 'border-color:var(--accent);background:var(--accent-soft);color:var(--accent)';
+    applySlice(maxY);
+    showToast('層切預覽開啟，拖曳右側滑桿','ok');
+  } else {
+    resetSlice();
+  }
 }
 
 // ══ 自動擺放（依列印範圍計算最佳角度）══
@@ -911,6 +1041,7 @@ function loadGeometry(geom){
     new THREE.LineBasicMaterial({color:0x0c7a99,opacity:.3,transparent:true})
   ));
   scene.add(threeModel);
+  resetSlice();   // 新模型：清除層切狀態
 
   const size=geom.boundingBox.getSize(new THREE.Vector3());
   document.getElementById('dim-x').value=Math.round(size.x);
@@ -981,6 +1112,17 @@ function runSTLAnalysis(geom){
   const supportArea=Math.round(size.x*size.z*overhangRatio*0.3*100)/100;
   const supportPoints=Math.max(0,Math.round(supportArea*1.5));
 
+  // 表面積（所有三角面積總和，mm² → cm²）
+  const _a=new THREE.Vector3(),_b=new THREE.Vector3(),_c=new THREE.Vector3(),_ab=new THREE.Vector3(),_ac=new THREE.Vector3();
+  let _area=0;
+  for(let i=0;i<triCount;i++){
+    _a.set(pos.getX(i*3),pos.getY(i*3),pos.getZ(i*3));
+    _b.set(pos.getX(i*3+1),pos.getY(i*3+1),pos.getZ(i*3+1));
+    _c.set(pos.getX(i*3+2),pos.getY(i*3+2),pos.getZ(i*3+2));
+    _area += _ab.subVectors(_b,_a).cross(_ac.subVectors(_c,_a)).length()*0.5;
+  }
+  const surfaceAreaCm2 = Math.round(_area/100*10)/10;
+
   // 整體評分（0~100）
   let score=100;
   if(!isWatertight) score-=20;
@@ -995,7 +1137,7 @@ function runSTLAnalysis(geom){
     isWatertight, holeCount, boundaryEdges, loosefaces,
     minWall, thinWallCount, maxOverhang, overhangRatio,
     islandRisk, floatingCount, supportArea, supportPoints,
-    triCount, size, score,
+    triCount, size, score, surfaceAreaCm2,
   };
   renderAnalysis();
 }
@@ -1075,6 +1217,11 @@ function renderAnalysis(){
       '此角度可最小化懸垂面積，降低 FEP 剝離力',
       85, 'info'
     )}
+
+    ${secHdr('模型統計')}
+    ${ci('info', '包圍盒 (XYZ)', `${a.size.x.toFixed(1)} × ${a.size.z.toFixed(1)} × ${a.size.y.toFixed(1)} mm`, '原始網格外框尺寸')}
+    ${ci('info', '表面積', `${a.surfaceAreaCm2} cm²`, '所有三角面積總和')}
+    ${ci('info', '三角面數', `${(a.triCount||0).toLocaleString()} 面`, 'STL 網格複雜度')}
   `;
 }
 
@@ -1126,6 +1273,7 @@ function initThree(){
   renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.setSize(vc.clientWidth,vc.clientHeight);
+  renderer.localClippingEnabled=true;   // 層切預覽用
 
   scene.add(new THREE.AmbientLight(0xffffff,0.55));
   const d1=new THREE.DirectionalLight(0xffffff,0.75); d1.position.set(1,2,1.5); scene.add(d1);
