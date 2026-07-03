@@ -569,7 +569,7 @@
             </div>
             <div className="table-wrap">
               <table className="kt"><thead><tr>
-                <SortTh label="序" field="seq" cur={anomalySort} onSort={mkSort(setAnomalySort)} style={{width:36,textAlign:'center'}}/>
+                <th style={{width:36,textAlign:'center'}}>序</th>
                 <th>客戶</th>
                 <SortTh label="異常日期" field="date" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 <th>品名</th><th>工程師</th><th>狀態</th>
@@ -636,15 +636,15 @@
             </div>
             <div className="table-wrap">
               <table className="kt"><thead><tr>
-                <SortTh label="序" field="seq" cur={ipaSort} onSort={mkSort(setIpaSort)} style={{width:36,textAlign:'center'}}/>
+                <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="採購日期" field="purchaseDate" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
                 <th>使用區間</th><th>品名</th><th>數量</th><th>採購人員</th><th>備註</th>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
-                {sortArr(filtI,ipaSort).map(it=>{
+                {sortArr(filtI,ipaSort).map((it,idx)=>{
                   const tone=K.ENG_TONE[it.person]||{fg:'#5a6270',bg:'#eef0f3'};
                   return (<tr key={it._id}>
-                    <td className="col-seq">{it.seq}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date">{it.useDate}</td><td>{it.product}</td>
+                    <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date">{it.useDate}</td><td>{it.product}</td>
                     <td><span className="kt-num-badge">{it.quantity} 桶</span></td>
                     <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person}</td>
                     <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
@@ -672,14 +672,14 @@
             </div>
             <div className="table-wrap">
               <table className="kt"><thead><tr>
-                <SortTh label="序" field="seq" cur={toolSort} onSort={mkSort(setToolSort)} style={{width:36,textAlign:'center'}}/>
+                <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="採購日期" field="purchaseDate" cur={toolSort} onSort={mkSort(setToolSort)}/>
                 <th>品名</th><th>數量</th><th>採購方式</th><th>單號</th><th>備註</th>
                 <th style={{textAlign:'right'}}>金額</th>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
-                {sortArr(filtT,toolSort).map(it=>(<tr key={it._id}>
-                  <td className="col-seq">{it.seq}</td><td className="col-date">{it.purchaseDate||'—'}</td><td>{it.product}</td>
+                {sortArr(filtT,toolSort).map((it,idx)=>(<tr key={it._id}>
+                  <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate||'—'}</td><td>{it.product}</td>
                   <td><span className="kt-num-badge">{it.quantity}</span></td><td>{it.method}</td><td className="col-id">{it.number||'—'}</td>
                   <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
                   <td className="kt-money">NT$ {(Number(it.price||0)*Number(it.quantity||1)).toLocaleString()}</td>

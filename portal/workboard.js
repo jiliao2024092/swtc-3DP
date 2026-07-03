@@ -26,6 +26,7 @@
     };
     const [form, setForm] = useState(order ? { ...order } : empty);
     const [busy, setBusy] = useState(false);
+    const [showLink, setShowLink] = useState(!!(order && order.link));  // 單號超連結輸入是否展開
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
     const save = async () => {
@@ -51,7 +52,13 @@
           <div className="m-body">
             <div className="m-row">
               <div className="m-field"><label style={LBL}>EF 單號</label>
-                <input style={INP} value={form.id||''} onChange={e=>set('id',e.target.value)} placeholder="202512100001"/></div>
+                <div style={{display:'flex',gap:6}}>
+                  <input style={{...INP,flex:1}} value={form.id||''} onChange={e=>set('id',e.target.value)} placeholder="202512100001"/>
+                  <button type="button" onClick={()=>setShowLink(v=>!v)} title={form.link?'已設超連結，點擊編輯':'新增超連結'}
+                    style={{flexShrink:0,width:40,border:'1.5px solid',borderColor:(form.link||showLink)?'#0c7a99':'#e6e8ec',background:(form.link||showLink)?'#e6f1f6':'#fff',color:(form.link||showLink)?'#0c7a99':'#5a6270',borderRadius:6,cursor:'pointer',fontSize:15,lineHeight:1}}>🔗</button>
+                </div>
+                {showLink && <input style={{...INP,marginTop:6,fontSize:12}} value={form.link||''} onChange={e=>set('link',e.target.value)} placeholder="https://…（單號超連結，總表可點擊）"/>}
+              </div>
               <div className="m-field"><label style={LBL}>客戶名稱 *</label>
                 <input style={INP} value={form.customer} onChange={e=>set('customer',e.target.value)}/></div>
             </div>
@@ -410,7 +417,7 @@
           <table className="kt">
             <thead>
               <tr>
-                <th className={'col-seq ' + thCls('seq')} onClick={()=>sortBy('seq')} style={{cursor:'pointer'}}>序</th>
+                <th className="col-seq">序</th>
                 <th className={thCls('id')} onClick={()=>sortBy('id')} style={{cursor:'pointer'}}>單號</th>
                 <th className={thCls('customer')} onClick={()=>sortBy('customer')} style={{cursor:'pointer'}}>客戶</th>
                 <th className={thCls('engineer')} onClick={()=>sortBy('engineer')} style={{cursor:'pointer'}}>工程師</th>
@@ -430,15 +437,20 @@
               {paged.length === 0 && (
                 <tr><td colSpan={editMode?13:12}><div className="kt-empty">沒有符合條件的資料</div></td></tr>
               )}
-              {paged.map(o => {
+              {paged.map((o, idx) => {
                 const st = K.statusOf(o);
                 const sstyle = STATUS_STYLE[st] || STATUS_STYLE.todo;
                 const tone = K.ENG_TONE[o.engineer] || { fg:'#5a6270', bg:'#eef0f3' };
                 const days = K.daysUntil(o.dueDate);
+                const rowNo = (page-1)*PAGE_SIZE + idx + 1;   // 序號＝目前顯示清單的位置（1~N，不隨排序改變）
                 return (
                   <tr key={o._id || o.seq}>
-                    <td className="col-seq">{o.seq}</td>
-                    <td className="col-id" style={{fontFamily:'monospace',fontSize:11.5}}>{o.id}</td>
+                    <td className="col-seq">{rowNo}</td>
+                    <td className="col-id" style={{fontFamily:'monospace',fontSize:11.5}}>
+                      {(o.link && /^https?:\/\//i.test(o.link))
+                        ? <a href={o.link} target="_blank" rel="noopener noreferrer" style={{color:'#0c7a99',textDecoration:'underline'}}>{o.id||'—'}</a>
+                        : (o.id||'')}
+                    </td>
                     <td className="col-customer" style={{fontWeight:600}}>{o.customer}</td>
                     <td>
                       <span className="kt-eng">
