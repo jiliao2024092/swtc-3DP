@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3D列印估價</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fff;--bg-soft:#fafbfc;--bg-panel:#f5f7f9;
+  --line:#e6e8ec;--line-soft:#eef0f3;
+  --ink:#0a0e14;--ink-2:#3b4250;--ink-3:#5a6270;--ink-4:#8a93a3;
+  --accent:#0c7a99;--accent-soft:#e6f1f6;
+  --ok:#1d6f43;--ok-soft:#e6f1ea;
+  --warn:#c79b2a;--warn-soft:#fbf3dc;
+  --danger:#c0392b;--danger-soft:#fbe7e3;
+  --font-ui:'Noto Sans TC',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;-webkit-font-smoothing:antialiased;overflow:hidden}
+
+.shell{display:flex;flex-direction:column;height:100vh}
+.topbar{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96);min-height:46px;flex-shrink:0}
+.ptitle{font-size:13.5px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
+.badge{height:17px;padding:0 8px;font-size:10px;border-radius:999px;font-family:var(--font-mono);font-weight:600;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center}
+.sp{flex:1}
+.aux{font-size:10px;color:var(--ink-4);font-family:var(--font-mono)}
+.top-btn{height:28px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink-3);font:inherit;font-size:12px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .12s}
+.top-btn:hover,.top-btn.active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+
+.body{flex:1;min-height:0;display:flex;overflow:hidden}
+.page{display:none;flex:1;min-height:0;overflow:hidden}
+.page.on{display:flex}
+#pg-quote{flex-direction:row}
+#pg-settings{flex-direction:column;overflow-y:auto}
+
+/* ── LEFT col ── */
+.col-L{width:190px;flex:0 0 190px;border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden;background:var(--bg-soft)}
+.col-L-scroll{flex:1;overflow-y:auto;min-height:0}
+.col-L-scroll::-webkit-scrollbar{width:3px}
+.col-L-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+.sec{padding:9px 11px;border-bottom:1px solid var(--line-soft)}
+.sec-lbl{font-size:9.5px;font-weight:600;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.upload-zone{border:1.5px dashed var(--line);border-radius:6px;padding:10px 8px;text-align:center;cursor:pointer;background:var(--bg);transition:all .12s;display:block}
+.upload-zone:hover,.upload-zone.has-file{border-color:var(--accent);background:var(--accent-soft)}
+.upload-zone input{display:none}
+.pcard{border:1px solid var(--line);border-radius:5px;padding:6px 9px;background:var(--bg);cursor:pointer;display:flex;align-items:center;gap:7px;margin-bottom:3px;transition:all .12s}
+.pcard:last-of-type{margin-bottom:0}
+.pcard.on{border-color:var(--accent);background:var(--accent-soft)}
+.pdot{width:7px;height:7px;border-radius:50%;background:var(--line);flex-shrink:0}
+.pcard.on .pdot{background:var(--accent)}
+.pcard-name{font-size:12px;font-weight:600;color:var(--ink)}
+.pcard-dim{font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono)}
+.f-sel{width:100%;height:29px;padding:0 22px 0 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink-2);font:inherit;font-size:12px;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%235a6270' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 7px center;cursor:pointer}
+.f-hint{font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono);margin-top:3px}
+.mtype-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.mtype-btn{padding:5px 4px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink-3);font:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all .12s}
+.mtype-btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.dim-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.dim-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
+.dim-inp{width:100%;padding:5px 4px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;font-family:var(--font-mono);text-align:center}
+.dim-inp:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.dim-lbl{font-size:9px;color:var(--ink-4);font-family:var(--font-mono)}
+.layer-row{display:flex;gap:3px}
+.layer-btn{flex:1;padding:5px 3px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink-3);font-size:10.5px;font-weight:600;cursor:pointer;text-align:center;font-family:var(--font-mono);transition:all .12s}
+.layer-btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.calc-btn{width:100%;padding:8px;border-radius:6px;background:var(--accent);color:#fff;border:0;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+.calc-btn:hover{background:#0a6985}
+
+/* cost */
+.cost-panel{flex-shrink:0;border-top:1px solid var(--line);background:var(--bg)}
+.cost-rows{padding:7px 11px 3px}
+.cost-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-soft);font-size:11px}
+.cost-row:last-child{border-bottom:none}
+.cost-lbl{color:var(--ink-3);display:flex;align-items:center;gap:5px}
+.cost-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.cost-val{font-family:var(--font-mono);color:var(--ink-2);font-size:10.5px}
+.total-strip{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;background:var(--accent-soft);border-top:1px solid #b8d3df}
+.total-lbl{font-size:12px;font-weight:600;color:var(--ink)}
+.total-val{font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--accent)}
+
+/* ── CENTER col ── */
+.col-C{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);border-right:1px solid var(--line)}
+.viewer-toolbar{display:flex;align-items:center;gap:5px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--bg-soft);flex-shrink:0;flex-wrap:wrap}
+.view-tab{padding:4px 9px;border-radius:4px;border:1px solid transparent;font-size:11.5px;font-weight:600;color:var(--ink-4);cursor:pointer;font-family:var(--font-ui);background:transparent}
+.view-tab.on{background:var(--bg);border-color:var(--line);color:var(--ink)}
+.vtb-sep{width:1px;height:13px;background:var(--line);margin:0 2px}
+.vtb-btn{padding:4px 8px;border-radius:4px;border:1px solid var(--line);font-size:11px;color:var(--ink-3);cursor:pointer;font-family:var(--font-ui);background:var(--bg)}
+.vtb-btn:hover{color:var(--ink)}
+.vtb-mode{padding:4px 9px;border-radius:4px;border:1px solid var(--line);font-size:11px;font-weight:600;color:var(--ink-3);cursor:pointer;font-family:var(--font-ui);background:var(--bg);transition:all .12s}
+.vtb-mode.scene{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.vtb-mode.obj{border-color:var(--warn);color:var(--warn);background:var(--warn-soft)}
+.vtb-auto{padding:4px 10px;border-radius:4px;border:1px solid var(--accent);background:var(--accent-soft);font-size:11px;font-weight:600;color:var(--accent);cursor:pointer;font-family:var(--font-ui)}
+.vtb-auto:hover{background:#d4eaf2}
+.viewer-canvas{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--bg-panel)}
+#three-canvas{display:block;position:absolute;inset:0;width:100%;height:100%}
+.viewer-hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--ink-4);background:rgba(255,255,255,.85);padding:3px 10px;border-radius:999px;pointer-events:none;white-space:nowrap;transition:opacity .3s}
+.viewer-foot{padding:6px 10px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:var(--bg-soft);flex-shrink:0;flex-wrap:wrap;gap:6px}
+.vf-item{font-size:10px;font-family:var(--font-mono);color:var(--ink-4)}
+.vf-val{color:var(--ink-2);font-weight:500}
+.ovr-badge{padding:2px 8px;border-radius:4px;font-size:10.5px;font-weight:600;display:none}
+.ovr-badge.on{display:inline-flex;align-items:center;gap:4px}
+.ovr-warn{background:var(--danger-soft);border:1px solid #f3c8c0;color:var(--danger)}
+.ovr-ok{background:var(--ok-soft);border:1px solid #b6d9c4;color:var(--ok)}
+.orient-pills{display:flex;gap:4px}
+.o-pill{background:var(--accent-soft);border:1px solid #b8d3df;border-radius:4px;padding:2px 7px;font-size:10px;font-family:var(--font-mono);color:var(--accent);font-weight:600}
+
+/* ── RIGHT col: analysis ── */
+.col-R{width:224px;flex:0 0 224px;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.col-R-scroll{flex:1;overflow-y:auto;min-height:0}
+.col-R-scroll::-webkit-scrollbar{width:3px}
+.col-R-scroll::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+.r-header{display:flex;align-items:center;justify-content:space-between;padding:9px 12px 7px;border-bottom:1px solid var(--line-soft);flex-shrink:0}
+.r-title{font-size:9.5px;font-weight:600;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.07em}
+.score-pill{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--font-mono)}
+.score-ok{background:var(--ok-soft);color:var(--ok)}
+.score-warn{background:var(--warn-soft);color:var(--warn)}
+.score-err{background:var(--danger-soft);color:var(--danger)}
+.sec-hdr{padding:5px 12px 3px;background:var(--bg-soft);border-bottom:1px solid var(--line-soft);border-top:1px solid var(--line-soft)}
+.sec-hdr-lbl{font-size:9px;font-weight:700;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.09em}
+.ci{display:flex;align-items:flex-start;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line-soft)}
+.ci:last-child{border-bottom:none}
+.ci-icon{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
+.ic-ok{background:var(--ok-soft);color:var(--ok)}
+.ic-warn{background:var(--warn-soft);color:var(--warn)}
+.ic-err{background:var(--danger-soft);color:var(--danger)}
+.ic-info{background:var(--accent-soft);color:var(--accent)}
+.ic-gray{background:var(--bg-panel);color:var(--ink-4)}
+.ci-body{flex:1;min-width:0}
+.ci-name{font-size:11.5px;font-weight:600;color:var(--ink);margin-bottom:1px}
+.ci-val{font-size:10.5px;color:var(--ink-3);font-family:var(--font-mono)}
+.ci-sub{font-size:10px;color:var(--ink-4);margin-top:2px;line-height:1.5}
+.ci-bar{margin-top:3px;height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+.ci-bar-fill{height:100%;border-radius:2px;transition:width .4s}
+.bf-ok{background:var(--ok)}
+.bf-warn{background:var(--warn)}
+.bf-err{background:var(--danger)}
+.bf-info{background:var(--accent)}
+.no-stl{padding:24px 14px;text-align:center;color:var(--ink-4);font-size:11.5px;line-height:1.7}
+
+/* ── SETTINGS PAGE ── */
+.settings-body{padding:20px 26px 40px;max-width:680px;width:100%}
+.settings-title{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:3px}
+.settings-sub{font-size:11.5px;color:var(--ink-4);font-family:var(--font-mono);margin-bottom:14px}
+.sync-bar{display:flex;align-items:center;gap:8px;padding:7px 11px;background:var(--bg-soft);border:1px solid var(--line);border-radius:6px;margin-bottom:14px;font-size:11px}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-4);flex-shrink:0}
+.sync-dot.ok{background:var(--ok)}.sync-dot.err{background:var(--danger)}.sync-dot.spin{background:var(--warn);animation:blink .8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.mat-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.mat-table thead{background:var(--bg-soft)}
+.mat-table th{text-align:left;font-weight:600;font-size:10px;font-family:var(--font-mono);color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;padding:9px 12px;border-bottom:1px solid var(--line)}
+.mat-table td{padding:7px 12px;border-bottom:1px solid var(--line-soft);color:var(--ink-2);vertical-align:middle}
+.mat-table tbody tr:last-child td{border-bottom:none}
+.mat-table tbody tr:hover{background:var(--bg-soft)}
+.ed-inp{width:100%;padding:4px 7px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:12px}
+.ed-inp:focus{outline:0;border-color:var(--accent)}
+.mono-cell{font-family:var(--font-mono);font-size:11px;color:var(--ink-3)}
+.act-btn{width:24px;height:24px;border:1px solid var(--line);background:var(--bg);border-radius:4px;cursor:pointer;color:var(--ink-3);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.act-btn:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+.add-row{display:flex;gap:7px;margin-top:12px;align-items:center;flex-wrap:wrap}
+.add-inp{padding:6px 9px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:12.5px;flex:1;min-width:90px}
+.add-inp:focus{outline:0;border-color:var(--accent)}
+.add-btn{height:34px;padding:0 14px;border-radius:6px;background:var(--ink);color:#fff;border:0;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.save-btn{height:34px;padding:0 16px;border-radius:6px;background:var(--accent);color:#fff;border:0;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.save-btn:hover{background:#0a6985}
+.settings-note{font-size:11px;color:var(--ink-4);font-family:var(--font-mono);line-height:1.8;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+
+/* toast */
+#toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:6px;z-index:1000}
+.toast-item{padding:8px 14px;border-radius:7px;font-size:12px;border:1px solid var(--line);animation:tin .2s ease;font-family:var(--font-mono)}
+.toast-item.ok{background:#0d2a14;border-color:var(--ok);color:#5dc98a}
+.toast-item.err{background:#2d0000;border-color:var(--danger);color:#f08080}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div id="toasts"></div>
+<div class="shell">
+
+  <!-- ── Topbar ── -->
+  <div class="topbar">
+    <div class="ptitle">3D列印估價 <span class="badge">QUOTE</span></div>
+    <div class="sp"></div>
+    <div class="aux" id="top-aux">上傳 STL 後自動計算材積 · 費用 · 時間</div>
+    <button class="top-btn active" id="btn-quote" onclick="switchPage('quote')">估價</button>
+    <button class="top-btn" id="btn-settings" onclick="switchPage('settings')">⚙ 材料設定</button>
+  </div>
+
+  <div class="body">
+    <!-- ══ QUOTE PAGE ══ -->
+    <div class="page on" id="pg-quote">
+
+      <!-- LEFT -->
+      <div class="col-L">
+        <div class="col-L-scroll">
+          <div class="sec">
+            <div class="sec-lbl">上傳模型</div>
+            <label class="upload-zone" id="upload-zone">
+              <input type="file" id="stl-file" accept=".stl" onchange="onFileChange(this)">
+              <div style="font-size:18px;margin-bottom:3px" id="uz-icon">📂</div>
+              <div style="font-size:11px;font-weight:600;color:var(--ink-3)" id="uz-name">上傳模型</div>
+              <div style="font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono);margin-top:1px">STL</div>
+            </label>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">列印機台</div>
+            <div class="pcard on" id="pc-f4" onclick="selectPrinter('f4')">
+              <div class="pdot"></div>
+              <div><div class="pcard-name">Form 4</div><div class="pcard-dim">200×125×210 mm</div></div>
+            </div>
+            <div class="pcard" id="pc-f4l" onclick="selectPrinter('f4l')">
+              <div class="pdot"></div>
+              <div><div class="pcard-name">Form 4L</div><div class="pcard-dim">350×196×350 mm</div></div>
+            </div>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">材料選擇</div>
+            <select class="f-sel" id="mat-sel" onchange="onMatChange()"><option>載入中…</option></select>
+            <div class="f-hint" id="mat-hint">—</div>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">模型類型</div>
+            <div class="mtype-grid">
+              <button class="mtype-btn on" onclick="selectType(this,'exterior')">外觀件</button>
+              <button class="mtype-btn" onclick="selectType(this,'engineering')">工程件</button>
+              <button class="mtype-btn" onclick="selectType(this,'hollow')">中空件</button>
+              <button class="mtype-btn" onclick="selectType(this,'thin')">薄件</button>
+            </div>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">模型尺寸 (MM)</div>
+            <div class="dim-grid">
+              <div class="dim-wrap"><input class="dim-inp" id="dim-x" value="50" oninput="onDimChange()"><div class="dim-lbl">X</div></div>
+              <div class="dim-wrap"><input class="dim-inp" id="dim-y" value="30" oninput="onDimChange()"><div class="dim-lbl">Y</div></div>
+              <div class="dim-wrap"><input class="dim-inp" id="dim-z" value="40" oninput="onDimChange()"><div class="dim-lbl">Z</div></div>
+            </div>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">列印層厚</div>
+            <div class="layer-row">
+              <button class="layer-btn" onclick="selectLayer(this,0.025)">0.025</button>
+              <button class="layer-btn on" onclick="selectLayer(this,0.050)">0.050</button>
+              <button class="layer-btn" onclick="selectLayer(this,0.100)">0.100</button>
+            </div>
+            <div class="f-hint">精細 · 標準 · 快速</div>
+          </div>
+          <div class="sec">
+            <div class="sec-lbl">擺放與計算</div>
+            <button class="calc-btn" onclick="autoOrient()" style="margin-bottom:6px">⚡ 自動擺放</button>
+            <button class="calc-btn" onclick="manualCalc()" style="background:var(--bg);color:var(--ink);border:1px solid var(--line)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5M8 17h3"/></svg>
+              手動擺放後計算
+            </button>
+          </div>
+        </div>
+        <div class="cost-panel">
+          <div class="cost-rows" style="padding:8px 11px 5px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span style="font-size:9.5px;font-weight:600;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.07em">費用明細</span>
+              <span id="pfs-badge" style="display:none;font-size:9px;padding:1px 7px;border-radius:999px;background:var(--ok-soft);color:var(--ok);border:1px solid #b6d9c4;font-family:var(--font-mono)">✓ PreForm 精確</span>
+              <span id="formula-badge" style="font-size:9px;padding:1px 7px;border-radius:999px;background:var(--bg-panel);color:var(--ink-4);border:1px solid var(--line);font-family:var(--font-mono)">公式估算</span>
+            </div>
+            <!-- 本體材料 -->
+            <div style="background:var(--bg-soft);border-radius:5px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--line-soft)">
+              <div style="font-size:10.5px;color:var(--ink-3);margin-bottom:4px;display:flex;align-items:center;gap:5px">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0"></span>本體材料
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:var(--ink-4);font-family:var(--font-mono)" id="c-mat-vol">— mL</span>
+                <span style="font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--ink)" id="c-material">—</span>
+              </div>
+            </div>
+            <!-- 支撐材料 -->
+            <div style="background:var(--bg-soft);border-radius:5px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--line-soft)">
+              <div style="font-size:10.5px;color:var(--ink-3);margin-bottom:4px;display:flex;align-items:center;gap:5px">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;flex-shrink:0"></span>支撐材料
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;color:var(--ink-4);font-family:var(--font-mono)" id="c-sup-vol">— mL</span>
+                <span style="font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--ink)" id="c-support">—</span>
+              </div>
+            </div>
+            <!-- 列印時間 + 後處理 -->
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft)">
+              <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ok);display:inline-block"></span>列印時間</span>
+              <span style="font-size:13px;font-family:var(--font-mono);color:var(--ink-2);font-weight:600" id="c-time">—</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft)">
+              <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ink-4);display:inline-block"></span>後處理</span>
+              <span style="font-size:13px;font-family:var(--font-mono);color:var(--ink-2)" id="c-post">—</span>
+            </div>
+          </div>
+          <div class="total-strip"><span class="total-lbl">估計總費用</span><span class="total-val" id="c-total">—</span></div>
+        </div>
+      </div>
+
+      <!-- CENTER: Three.js viewer -->
+      <div class="col-C">
+        <div class="viewer-toolbar">
+          <button class="view-tab on" onclick="setView('persp',this)">透視</button>
+          <button class="view-tab" onclick="setView('top',this)">頂視</button>
+          <button class="view-tab" onclick="setView('front',this)">前視</button>
+          <button class="view-tab" onclick="setView('side',this)">側視</button>
+          <div class="vtb-sep"></div>
+          <button class="vtb-btn" onclick="fitView()">□ 適合</button>
+          <button class="vtb-btn" onclick="resetView()">↺ 重設</button>
+          <div class="vtb-sep"></div>
+          <button class="vtb-mode scene" id="btn-scene" onclick="setCtrlMode('scene')">場景旋轉</button>
+          <button class="vtb-mode" id="btn-obj" onclick="setCtrlMode('object')">物件操控</button>
+          <div class="vtb-sep"></div>
+          <button class="vtb-btn" id="btn-overhang" onclick="toggleOverhangView()" style="border-color:var(--warn);color:var(--warn)">⚠ 懸垂分析</button>
+          <div class="vtb-sep"></div>
+          <button class="vtb-auto" onclick="autoOrient()">⚡ 自動擺放</button>
+        </div>
+        <div class="viewer-canvas" id="viewer-canvas">
+          <canvas id="three-canvas"></canvas>
+          <div class="viewer-hint" id="viewer-hint">左鍵旋轉場景 · 滾輪縮放 · 右鍵平移</div>
+        </div>
+        <div class="viewer-foot">
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <span class="vf-item">體積 <span class="vf-val" id="v-vol">—</span></span>
+            <span class="vf-item">支撐 <span class="vf-val" id="v-sup">—</span></span>
+            <span class="vf-item">列印時間 <span class="vf-val" id="v-time">—</span></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <div id="ovh-legend" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;border-radius:2px;background:#5bb8d4;display:inline-block"></span>正常</span>
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;border-radius:2px;background:#e8a838;display:inline-block"></span>懸垂 30~45°</span>
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;border-radius:2px;background:#c0392b;display:inline-block"></span>高風險 &gt;45°</span>
+            </div>
+            <span class="ovr-badge ovr-warn" id="ovr-warn">⚠ 超出列印範圍</span>
+            <span class="ovr-badge ovr-ok" id="ovr-ok">✓ 在列印範圍內</span>
+            <div class="orient-pills" id="orient-pills" style="display:none">
+              <span class="o-pill" id="pill-angle">—</span>
+              <span class="o-pill" id="pill-rot">—</span>
+              <span class="o-pill" id="pill-support">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: STL Analysis -->
+      <div class="col-R">
+        <div class="r-header">
+          <span class="r-title">STL 分析報告</span>
+          <span class="score-pill score-warn" id="analysis-score" style="display:none">—</span>
+        </div>
+        <div class="col-R-scroll" id="analysis-panel">
+          <div class="no-stl" id="no-stl-msg">
+            上傳 STL 後<br>自動執行分析
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SETTINGS PAGE ══ -->
+    <div class="page" id="pg-settings">
+      <div class="settings-body">
+        <div class="settings-title">材料與單價設定</div>
+        <div class="settings-sub">新增、編輯或刪除材料及單價（NT$/L）· 自動同步 Firestore</div>
+        <div class="sync-bar">
+          <span class="sync-dot" id="sync-dot"></span>
+          <span id="sync-txt">連線中…</span>
+        </div>
+        <table class="mat-table">
+          <thead><tr>
+            <th>材料名稱</th><th>API 代碼</th>
+            <th style="width:110px">單價 (NT$/L)</th>
+            <th style="width:90px">密度 (g/cm³)</th>
+            <th style="width:36px"></th>
+          </tr></thead>
+          <tbody id="mat-tbody"></tbody>
+        </table>
+        <div class="add-row">
+          <input class="add-inp" id="add-name" placeholder="材料名稱">
+          <input class="add-inp" id="add-code" placeholder="API 代碼" style="max-width:140px;font-family:var(--font-mono)">
+          <input class="add-inp" id="add-price" placeholder="單價" style="max-width:78px;font-family:var(--font-mono)">
+          <input class="add-inp" id="add-density" placeholder="密度" style="max-width:68px;font-family:var(--font-mono)">
+          <button class="add-btn" onclick="addMaterial()">＋ 新增</button>
+        </div>
+        <div style="margin-top:12px">
+          <button class="save-btn" onclick="saveMaterials()">💾 儲存至 Firestore</button>
+        </div>
+        <div class="settings-note">
+          · 材料清單存於 Firestore：<code>settings/quote_materials</code><br>
+          · 儲存後所有裝置立即同步
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script>
+// ══ Firebase ══
+firebase.initializeApp({
+  apiKey:"AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
+  authDomain:"swtc-3dp-poc.firebaseapp.com",
+  projectId:"swtc-3dp-poc",
+  storageBucket:"swtc-3dp-poc.firebasestorage.app",
+  messagingSenderId:"1074210451221",
+  appId:"1:1074210451221:web:quote"
+});
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+// ══ 列印機定義 (mm) ══
+const PRINTERS = {
+  f4:  {w:200, h:210, d:125},
+  f4l: {w:350, h:350, d:196},
+};
+
+// ══ 預設材料 ══
+const DEFAULT_MATERIALS = [
+  {name:'Clear V5',         code:'FLGPCL05', price:3800, density:1.13},
+  {name:'White V5',         code:'FLGPWH05', price:3800, density:1.16},
+  {name:'Grey V5',          code:'FLGPGR05', price:3800, density:1.16},
+  {name:'Black V5',         code:'FLGPBK05', price:3800, density:1.16},
+  {name:'Standard Black V4',code:'FLGPBK04', price:3500, density:1.10},
+  {name:'Tough 1500 V2',    code:'FLTO1502', price:4200, density:1.15},
+  {name:'Tough 2000 V2',    code:'FLTO2002', price:4200, density:1.21},
+  {name:'Rigid 4000',       code:'FLRG4001', price:5500, density:1.38},
+  {name:'Rigid 10K V1.1',   code:'FLRG1002', price:6800, density:1.55},
+  {name:'Flexible 80A V2',  code:'FLFL8002', price:5200, density:1.22},
+  {name:'Elastic 50A V2',   code:'FLFLES02', price:5200, density:1.10},
+  {name:'High Temp V2',     code:'FLHTAM02', price:7500, density:1.27},
+  {name:'ESD Resin',        code:'FLESD001', price:8000, density:1.19},
+  {name:'Silicone 40A',     code:'FLSI4001', price:9000, density:1.15},
+  {name:'Fast Model',       code:'FLFAMD01', price:4000, density:1.14},
+  {name:'Precision Model',  code:'FLPRMD01', price:4500, density:1.14},
+  {name:'Flame Retardant',  code:'FLFRGR01', price:7000, density:1.32},
+];
+
+let materials = [...DEFAULT_MATERIALS];
+let selectedPrinter = 'f4';
+let selectedType = 'exterior';
+let selectedLayer = 0.050;
+let stlAnalysis = null;   // 儲存分析結果
+
+// ══ Auth ══
+auth.onAuthStateChanged(async user => {
+  if (!user) {
+    // 本頁以 iframe 嵌在 portal，登入由入口網站處理；未登入時顯示提示不跳轉
+    document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8a93a3;font-family:sans-serif;font-size:14px">請從入口網站登入後再使用估價系統</div>';
+    return;
+  }
+  loadMaterials();
+});
+
+// ══ Firestore ══
+async function loadMaterials() {
+  setSyncState('spin','連線中…');
+  try {
+    const doc = await db.collection('settings').doc('quote_materials').get();
+    if (doc.exists && doc.data().list?.length) {
+      materials = doc.data().list;
+      setSyncState('ok','已載入');
+    } else {
+      await db.collection('settings').doc('quote_materials').set({
+        list: DEFAULT_MATERIALS, _ts: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      setSyncState('ok','已寫入預設');
+    }
+  } catch(e) { setSyncState('err','載入失敗'); }
+  syncMatSelect(); renderMatTable(); calcQuote();
+}
+
+async function saveMaterials() {
+  setSyncState('spin','儲存中…');
+  try {
+    await db.collection('settings').doc('quote_materials').set({
+      list: materials, _ts: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    setSyncState('ok','已儲存');
+    showToast('材料設定已同步','ok');
+    syncMatSelect(); calcQuote();
+  } catch(e) { setSyncState('err','儲存失敗'); showToast('儲存失敗：'+e.message,'err'); }
+}
+
+function setSyncState(s,t){
+  document.getElementById('sync-dot').className='sync-dot '+s;
+  document.getElementById('sync-txt').textContent=t;
+}
+
+// ══ 材料 select ══
+function syncMatSelect() {
+  const sel = document.getElementById('mat-sel');
+  const cur = sel.value;
+  sel.innerHTML = materials.map(m=>`<option value="${m.code}">${m.name}</option>`).join('');
+  if (cur && materials.find(m=>m.code===cur)) sel.value = cur;
+  onMatChange();
+}
+function onMatChange() {
+  const m = materials.find(x=>x.code===document.getElementById('mat-sel').value);
+  document.getElementById('mat-hint').textContent = m ? `NT$${m.price.toLocaleString()}/L · ${m.density} g/cm³` : '—';
+  calcQuote();
+}
+
+// ══ Settings table ══
+function renderMatTable() {
+  document.getElementById('mat-tbody').innerHTML = materials.map((m,i)=>`
+    <tr>
+      <td><input class="ed-inp" value="${m.name}" oninput="materials[${i}].name=this.value"></td>
+      <td><span class="mono-cell">${m.code||'—'}</span></td>
+      <td><input class="ed-inp" value="${m.price}" style="width:84px;font-family:var(--font-mono)" oninput="materials[${i}].price=+this.value"></td>
+      <td><input class="ed-inp" value="${m.density}" style="width:66px;font-family:var(--font-mono)" oninput="materials[${i}].density=+this.value"></td>
+      <td><button class="act-btn" onclick="delMaterial(${i})">✕</button></td>
+    </tr>`).join('');
+}
+function addMaterial() {
+  const name=document.getElementById('add-name').value.trim();
+  if (!name){showToast('請填寫材料名稱','err');return;}
+  materials.push({name, code:document.getElementById('add-code').value.trim(),
+    price:parseFloat(document.getElementById('add-price').value)||3500,
+    density:parseFloat(document.getElementById('add-density').value)||1.10});
+  ['add-name','add-code','add-price','add-density'].forEach(id=>document.getElementById(id).value='');
+  renderMatTable(); showToast('已新增，請記得儲存','ok');
+}
+function delMaterial(i){
+  if(!confirm(`確定刪除「${materials[i].name}」？`))return;
+  materials.splice(i,1); renderMatTable(); showToast('已刪除，請記得儲存','ok');
+}
+
+// ══ Page switch ══
+function switchPage(p){
+  ['quote','settings'].forEach(k=>{
+    document.getElementById('pg-'+k).classList.toggle('on',k===p);
+    document.getElementById('btn-'+k).classList.toggle('active',k===p);
+  });
+  if(p==='settings') renderMatTable();
+}
+
+// ══ Controls ══
+function selectPrinter(id){
+  selectedPrinter=id;
+  document.getElementById('pc-f4').classList.toggle('on',id==='f4');
+  document.getElementById('pc-f4l').classList.toggle('on',id==='f4l');
+  if(scene) buildPrintVolume();
+  onDimChange(); calcQuote();
+}
+function selectType(el,type){
+  selectedType=type;
+  document.querySelectorAll('.mtype-btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on'); calcQuote();
+}
+function selectLayer(el,val){
+  selectedLayer=val;
+  document.querySelectorAll('.layer-btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on'); calcQuote();
+}
+function onDimChange(){ updateDefaultBox(); calcQuote(); }
+
+// ══ PreFormServer proxy 位址 ══
+const PFS = 'http://localhost:44389';
+let pfsSceneId = null;   // 目前 PreFormServer 場景 ID
+let pfsAvail   = null;   // null=未知, true=可用, false=不可用
+
+// PreFormServer machine_type 對照
+const PFS_MACHINE = { f4:'FORM-4-0', f4l:'FRML-4-0' };
+const PFS_LAYER   = { 0.025:'0.025', 0.050:'0.05', 0.100:'0.1' };
+
+async function pfsReq(method, path, body){
+  const opts = {
+    method,
+    headers:{'Content-Type':'application/json'},
+    signal: AbortSignal.timeout(120000)
+  };
+  if(body!==undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(PFS+path, opts);
+  const txt = await res.text();
+  return { ok:res.ok, status:res.status, data: txt.trim() ? JSON.parse(txt) : {} };
+}
+
+// 檢查 PFS 是否可用
+async function checkPFS(){
+  if(pfsAvail !== null) return pfsAvail;
+  try {
+    const r = await fetch(PFS+'/', {signal:AbortSignal.timeout(2000)});
+    pfsAvail = r.ok;
+  } catch { pfsAvail = false; }
+  return pfsAvail;
+}
+
+// 設定 PFS 場景
+async function pfsSetupScene(){
+  const matCode = document.getElementById('mat-sel').value;
+  const machine = PFS_MACHINE[selectedPrinter] || 'FORM-4-0';
+  const layer   = PFS_LAYER[selectedLayer]   || '0.05';
+  const r = await pfsReq('PUT','/scene/default/',{
+    machine_type: machine,
+    material_code: matCode,
+    layer_thickness_mm: parseFloat(layer),
+    print_setting: 'DEFAULT'
+  });
+  if(r.ok){ pfsSceneId = r.data.id || 'default'; return true; }
+  return false;
+}
+
+// ══ 估價：優先用 PFS，否則公式 ══
+function calcQuote(){
+  const x=parseFloat(document.getElementById('dim-x').value)||0;
+  const y=parseFloat(document.getElementById('dim-y').value)||0;
+  const z=parseFloat(document.getElementById('dim-z').value)||0;
+  if(!x||!y||!z) return;
+  const mat = materials.find(m=>m.code===document.getElementById('mat-sel').value);
+  if(!mat) return;
+  // 公式估算（無 STL 時使用）
+  const fillRate={exterior:.40,engineering:.60,hollow:.20,thin:.30}[selectedType]||.40;
+  const vol    = (x/10)*(y/10)*(z/10)*fillRate;
+  const supVol = vol*0.15;
+  const ppc    = mat.price/1000;
+  const matCost  = Math.round(vol*ppc);
+  const supCost  = Math.round(supVol*ppc);
+  const postCost = 90;
+  const printHr  = Math.round(Math.ceil(z/selectedLayer)*12/3600*10)/10;
+  document.getElementById('c-mat-vol').textContent  = `${vol.toFixed(1)} mL`;
+  document.getElementById('c-sup-vol').textContent  = `${supVol.toFixed(1)} mL`;
+  document.getElementById('c-material').textContent = `NT$${matCost.toLocaleString()}`;
+  document.getElementById('c-support').textContent  = `NT$${supCost.toLocaleString()}`;
+  document.getElementById('c-time').textContent     = `${printHr} hr`;
+  document.getElementById('c-post').textContent     = `NT$${postCost}`;
+  document.getElementById('c-total').textContent    = `NT$${(matCost+supCost+postCost).toLocaleString()}`;
+  document.getElementById('v-vol').textContent      = `${vol.toFixed(1)} mL`;
+  document.getElementById('v-sup').textContent      = `${supVol.toFixed(1)} mL`;
+  document.getElementById('v-time').textContent     = `~${printHr} hr`;
+  document.getElementById('pfs-badge').style.display    = 'none';
+  document.getElementById('formula-badge').style.display = 'inline';
+}
+
+// 用 PFS 真實數字更新估價面板
+function updateQuoteFromPFS(timeSec, volMl, supVolMl, mat){
+  const ppc        = mat.price / 1000;
+  const matCost    = Math.round((volMl - supVolMl) * ppc);   // 本體材料費
+  const supCost    = Math.round(supVolMl * ppc);             // 支撐材料費
+  const postCost   = 90;
+  const total      = matCost + supCost + postCost;
+  const hr = Math.floor(timeSec/3600);
+  const mn = Math.floor((timeSec%3600)/60);
+  const timeStr = hr>0 ? `${hr}h ${mn}m` : `${mn}m`;
+
+  document.getElementById('c-mat-vol').textContent  = `${(volMl-supVolMl).toFixed(1)} mL`;
+  document.getElementById('c-sup-vol').textContent  = `${supVolMl.toFixed(1)} mL`;
+  document.getElementById('c-material').textContent = `NT$${matCost.toLocaleString()}`;
+  document.getElementById('c-support').textContent  = `NT$${supCost.toLocaleString()}`;
+  document.getElementById('c-time').textContent     = timeStr;
+  document.getElementById('c-post').textContent     = `NT$${postCost}`;
+  document.getElementById('c-total').textContent    = `NT$${total.toLocaleString()}`;
+  document.getElementById('v-vol').textContent      = `${(volMl-supVolMl).toFixed(1)} mL`;
+  document.getElementById('v-sup').textContent      = `${supVolMl.toFixed(1)} mL`;
+  document.getElementById('v-time').textContent     = timeStr;
+  document.getElementById('pfs-badge').style.display     = 'inline';
+  document.getElementById('formula-badge').style.display = 'none';
+  showToast(`PreForm 精確計算：${timeStr} · 本體${(volMl-supVolMl).toFixed(1)}mL · 支撐${supVolMl.toFixed(1)}mL`, 'ok');
+}
+
+// ══ 自動擺放（依列印範圍計算最佳角度）══
+function autoOrient(){
+  if(!threeModel){showToast('請先上傳 STL','err');return;}
+  const p = PRINTERS[selectedPrinter];
+  const typeMap = {
+    exterior:    {angle:38, xrot:15, yrot:0, support:'輕'},
+    engineering: {angle:30, xrot:10, yrot:0, support:'中'},
+    hollow:      {angle:35, xrot:15, yrot:5, support:'輕'},
+    thin:        {angle:50, xrot:20, yrot:0, support:'輕'},
+  };
+  const r = typeMap[selectedType]||typeMap.exterior;
+
+  // Step 1：重置，取得原始包圍盒三軸尺寸
+  threeModel.rotation.set(0,0,0);
+  threeModel.scale.set(1,1,1);
+  threeModel.position.set(0,0,0);
+  const bbox0 = new THREE.Box3().setFromObject(threeModel);
+  const s = bbox0.getSize(new THREE.Vector3());
+
+  // Step 2：試 6 種主軸朝向（不縮放），選旋轉後 AABB 最能塞進列印框的
+  const orientations = [
+    {rx:0,          rz:0,          w:s.x, h:s.y, d:s.z},
+    {rx:Math.PI/2,  rz:0,          w:s.x, h:s.z, d:s.y},
+    {rx:-Math.PI/2, rz:0,          w:s.x, h:s.z, d:s.y},
+    {rx:0,          rz:Math.PI/2,  w:s.y, h:s.x, d:s.z},
+    {rx:0,          rz:-Math.PI/2, w:s.y, h:s.x, d:s.z},
+    {rx:Math.PI/2,  rz:Math.PI/2,  w:s.z, h:s.x, d:s.y},
+  ];
+  // 選「超出量最小」的朝向（超出量 = 各軸超出部分總和）
+  let bestOrient = orientations[0], bestOverflow = Infinity;
+  for(const o of orientations){
+    const ox = Math.max(0, o.w - p.w);
+    const oy = Math.max(0, o.h - p.h);
+    const oz = Math.max(0, o.d - p.d);
+    const total = ox + oy + oz;
+    if(total < bestOverflow){ bestOverflow = total; bestOrient = o; }
+  }
+
+  // Step 3：套用最佳初始朝向（scale 維持 1:1）
+  threeModel.scale.set(1, 1, 1);
+  threeModel.rotation.set(bestOrient.rx, 0, bestOrient.rz);
+
+  // Step 4：疊加 SLA 傾斜角
+  threeModel.rotation.x += r.angle * Math.PI / 180;
+  threeModel.rotation.z += r.xrot  * Math.PI / 180;
+
+  // Step 5：底部貼地 + XZ 置中（不縮放）
+  const bbox1 = new THREE.Box3().setFromObject(threeModel);
+  threeModel.position.set(
+    -(bbox1.max.x + bbox1.min.x) / 2,
+    -bbox1.min.y,
+    -(bbox1.max.z + bbox1.min.z) / 2
+  );
+
+  checkOverflow();
+  calcQuote();
+
+  const actualAngle = Math.round((bestOrient.rx + r.angle * Math.PI/180) * 180 / Math.PI);
+  document.getElementById('pill-angle').textContent   = actualAngle + '°';
+  document.getElementById('pill-rot').textContent     = 'X+' + r.xrot + '°';
+  document.getElementById('pill-support').textContent = r.support + '支撐';
+  document.getElementById('orient-pills').style.display = 'flex';
+
+  updateOrientResult(r);
+  // 告知是否在範圍內
+  const bbox2 = new THREE.Box3().setFromObject(threeModel);
+  const size2 = bbox2.getSize(new THREE.Vector3());
+  const fits = size2.x <= p.w && size2.y <= p.h && size2.z <= p.d;
+  showToast(fits ? '已放入最佳擺放位置' : '已找最佳方向，但尺寸超出列印範圍', fits ? 'ok' : 'err');
+  // 若 PFS 已有場景，重新估算時間
+  if(pfsSceneId && pfsAvail){
+    pfsReq('POST',`/scene/${pfsSceneId}/auto-orient/`,{}).then(()=>
+      pfsReq('POST',`/scene/${pfsSceneId}/auto-support/`,{})
+    ).then(()=>
+      pfsReq('POST',`/scene/${pfsSceneId}/estimate-print-time/`,{})
+    ).then(r=>{
+      const mat = materials.find(m=>m.code===document.getElementById('mat-sel').value);
+      if(mat && r.data?.total_print_time_s>0){
+        pfsReq('GET',`/scene/${pfsSceneId}/`).then(sr=>{
+          const totalVol = sr.data?.material_usage?.volume_ml||0;
+          const unsupVol = sr.data?.material_usage?.unsupported_volume_ml||0;
+          const supVol   = totalVol - unsupVol;
+          updateQuoteFromPFS(r.data.total_print_time_s, totalVol, supVol, mat);
+        });
+      }
+    }).catch(()=>{});
+  }
+}
+
+function updateOrientResult(r){
+  const aiTips={
+    exterior:['外觀件優先品質，輕支撐多點避開外觀面','建議'+r.angle+'°斜放，降低FEP剝離力','X軸加旋'+r.xrot+'°，避免截面平行FEP','支撐配置底部＋背面（非視覺面）'],
+    engineering:['工程件優先精度，中密度支撐確保穩定','建議'+r.angle+'°斜放，兼顧精度與成功率','精度要求面朝上，避免支撐接觸','注意孔洞方向，垂直孔精度最佳'],
+    hollow:['中空件必須開排液孔（至少2個）','建議排液孔朝下，確保樹脂完全流出','35°斜放降低剝離面積，減少爆件','後處理需充分清洗確保無殘留樹脂'],
+    thin:['薄件側立印製，防止翹曲變形','建議'+r.angle+'°側立，輕支撐多接觸點','避免平放，大面積貼FEP必定翹曲','層曝光時間可適當增加，增強層間附著'],
+  };
+  // 若 STL 已分析，在分析面板底部插入擺放資訊
+  if(stlAnalysis) renderAnalysis();
+}
+
+// ══ STL 上傳 ══
+function onFileChange(input){
+  if(!input.files.length) return;
+  const f = input.files[0];
+  document.getElementById('uz-name').textContent = f.name;
+  document.getElementById('uz-icon').textContent = '📄';
+  document.getElementById('upload-zone').classList.add('has-file');
+  document.getElementById('top-aux').textContent = f.name + ' · 解析中…';
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try{
+      const geom = parseSTL(e.target.result);
+      loadGeometry(geom);
+      runSTLAnalysis(geom);
+      document.getElementById('top-aux').textContent = f.name + ' · 3D 載入完成';
+      showToast('STL 3D 預覽載入', 'ok');
+    } catch(err){
+      showToast('STL 解析失敗：'+err.message, 'err');
+    }
+    // 同步送 PreFormServer 計算（需要檔案路徑，但瀏覽器無法取得絕對路徑）
+    // 改用 prompt 請使用者輸入路徑
+    await sendSTLtoPFS(f.name);
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+async function sendSTLtoPFS(fileName){
+  const avail = await checkPFS();
+  if(!avail){
+    document.getElementById('top-aux').textContent = fileName + ' · PreFormServer 未連線，使用公式估算';
+    return;
+  }
+  // 請使用者輸入檔案完整路徑
+  const filePath = prompt(
+    `PreFormServer 需要檔案的完整路徑才能精確計算。\n\n請輸入此 STL 的完整路徑：\n（例如 C:\\Users\\20030024\\Downloads\\${fileName}）`,
+    `C:\\Users\\20030024\\Downloads\\${fileName}`
+  );
+  if(!filePath){ showToast('已跳過 PreFormServer 計算，使用公式估算','ok'); return; }
+  await runPFSAnalysis(filePath);
+}
+
+async function runPFSAnalysis(filePath){
+  const mat = materials.find(m=>m.code===document.getElementById('mat-sel').value);
+  if(!mat) return;
+  document.getElementById('top-aux').textContent = '⏳ PreFormServer 計算中…';
+  try {
+    // 1. 設定場景
+    const ok = await pfsSetupScene();
+    if(!ok){ showToast('PreFormServer 場景設定失敗','err'); return; }
+    const sid = pfsSceneId || 'default';
+
+    // 2. 匯入 STL
+    showToast('PreFormServer 匯入 STL…','ok');
+    const imp = await pfsReq('POST',`/scene/${sid}/import-model/`,{"file": filePath});
+    if(!imp.ok){ showToast('STL 匯入失敗：'+imp.data?.error?.message,'err'); return; }
+
+    // 3. 自動擺放
+    showToast('PreFormServer 自動擺放…','ok');
+    await pfsReq('POST',`/scene/${sid}/auto-orient/`,{});
+    // 同步擺放角度到 Three.js（PreFormServer 標準 SLA 傾斜角）
+    const PFS_RX = 38 * Math.PI / 180;
+    const PFS_RZ = 15 * Math.PI / 180;
+    syncOrientFromPFS(PFS_RX, PFS_RZ);
+
+    // 4. 自動支撐
+    showToast('PreFormServer 自動支撐…','ok');
+    await pfsReq('POST',`/scene/${sid}/auto-support/`,{});
+
+    // 5. 估算列印時間
+    showToast('PreFormServer 估算列印時間…','ok');
+    const timeR = await pfsReq('POST',`/scene/${sid}/estimate-print-time/`,{});
+    const timeSec = timeR.data?.total_print_time_s || 0;
+
+    // 6. 取得材料用量
+    const sceneR = await pfsReq('GET',`/scene/${sid}/`);
+    const volMl  = sceneR.data?.material_usage?.volume_ml || 0;
+
+    // 7. 列印驗證
+    const valR = await pfsReq('GET',`/scene/${sid}/print-validation/`);
+    if(valR.ok && stlAnalysis) {
+      // 把驗證結果更新到分析面板
+      const perModel = valR.data?.per_model_results || {};
+      const vals = Object.values(perModel);
+      if(vals.length){
+        const v = vals[0];
+        const needsSupport = v.undersupported;
+        if(stlAnalysis){ stlAnalysis.pfsUndersupported = needsSupport; renderAnalysis(); }
+      }
+    }
+
+    // 8. 更新估價面板（真實數字）
+    const totalVol = sceneR.data?.material_usage?.volume_ml || 0;
+    const unsupVol = sceneR.data?.material_usage?.unsupported_volume_ml || 0;
+    const supVol   = totalVol - unsupVol;  // 支撐體積 = 總體積 - 本體體積
+    if(timeSec>0 || totalVol>0){
+      updateQuoteFromPFS(timeSec, totalVol, supVol, mat);
+      document.getElementById('top-aux').textContent =
+        `${Math.floor(timeSec/3600)}h ${Math.floor((timeSec%3600)/60)}m · 本體${unsupVol.toFixed(1)}mL + 支撐${supVol.toFixed(1)}mL · PreForm 精確計算`;
+    }
+  } catch(ex){
+    showToast('PreFormServer 計算失敗：'+ex.message,'err');
+    document.getElementById('top-aux').textContent = '使用公式估算（PreFormServer 未連線）';
+  }
+}
+
+// ══ STL 解析 ══
+function parseSTL(buf){
+  const view = new DataView(buf);
+  if(buf.byteLength>84){
+    const n = view.getUint32(80,true);
+    if(84+n*50===buf.byteLength) return parseBinarySTL(view,n);
+  }
+  return parseAsciiSTL(new TextDecoder().decode(buf));
+}
+function parseBinarySTL(view,n){
+  const pos=[];
+  let off=84;
+  for(let i=0;i<n;i++){
+    off+=12;
+    for(let j=0;j<3;j++){pos.push(view.getFloat32(off,true),view.getFloat32(off+4,true),view.getFloat32(off+8,true));off+=12;}
+    off+=2;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.computeVertexNormals(); return g;
+}
+function parseAsciiSTL(text){
+  const pos=[],re=/vertex\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)/g;
+  let m;
+  while((m=re.exec(text))!==null) pos.push(parseFloat(m[1]),parseFloat(m[2]),parseFloat(m[3]));
+  if(!pos.length) throw new Error('無法解析頂點');
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.computeVertexNormals(); return g;
+}
+
+// ══ 載入幾何體到場景 ══
+function loadGeometry(geom){
+  if(threeModel){scene.remove(threeModel);threeModel.geometry.dispose();}
+  geom.computeBoundingBox();
+  const bb=geom.boundingBox;
+  // 置中 XZ，底部對齊 Y=0
+  geom.translate(-(bb.max.x+bb.min.x)/2, -bb.min.y, -(bb.max.z+bb.min.z)/2);
+  geom.computeBoundingBox();
+
+  const mat=new THREE.MeshPhongMaterial({color:0x5bb8d4,transparent:true,opacity:.85,side:THREE.DoubleSide});
+  threeModel=new THREE.Mesh(geom,mat);
+  threeModel.userData.isSTL=true;
+  threeModel.position.set(0,0,0);
+  threeModel.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(geom),
+    new THREE.LineBasicMaterial({color:0x0c7a99,opacity:.3,transparent:true})
+  ));
+  scene.add(threeModel);
+
+  const size=geom.boundingBox.getSize(new THREE.Vector3());
+  document.getElementById('dim-x').value=Math.round(size.x);
+  document.getElementById('dim-y').value=Math.round(size.z);
+  document.getElementById('dim-z').value=Math.round(size.y);
+  calcQuote(); checkOverflow(); fitView();
+}
+
+// ══ STL 分析引擎 ══
+function runSTLAnalysis(geom){
+  document.getElementById('no-stl-msg').style.display='none';
+  const pos = geom.attributes.position;
+  const triCount = pos.count/3;
+  const size = geom.boundingBox.getSize(new THREE.Vector3());
+
+  // 1. 封閉性（簡化：邊界邊計算）
+  const edgeMap={};
+  for(let i=0;i<triCount;i++){
+    const verts=[];
+    for(let j=0;j<3;j++){
+      const idx=(i*3+j);
+      verts.push(`${pos.getX(idx).toFixed(4)},${pos.getY(idx).toFixed(4)},${pos.getZ(idx).toFixed(4)}`);
+    }
+    for(let j=0;j<3;j++){
+      const e=[verts[j],verts[(j+1)%3]].sort().join('|');
+      edgeMap[e]=(edgeMap[e]||0)+1;
+    }
+  }
+  const boundaryEdges=Object.values(edgeMap).filter(v=>v===1).length;
+  const isWatertight=boundaryEdges===0;
+  const holeCount=Math.max(0,Math.floor(boundaryEdges/3));
+
+  // 2. 壁厚估計（用面法向量分析相鄰面角度）
+  const normals=geom.attributes.normal;
+  const upVec=new THREE.Vector3(0,1,0);
+  let minWall=999, thinWallCount=0;
+  let overhangFaceCount=0, islandRisk=false;
+  const overhangThresh=Math.cos((90-45)*Math.PI/180);
+
+  // 取樣分析（每10個面取一個，避免太慢）
+  const step=Math.max(1,Math.floor(triCount/500));
+  let facesSampled=0;
+  for(let i=0;i<triCount;i+=step){
+    facesSampled++;
+    const nx=normals.getX(i*3), ny=normals.getY(i*3), nz=normals.getZ(i*3);
+    const n=new THREE.Vector3(nx,ny,nz).normalize();
+    // 懸垂：法向量與 -Y 的夾角 < 45° 且朝下
+    if(ny<-overhangThresh) overhangFaceCount++;
+  }
+
+  // 懸垂比例
+  const overhangRatio=overhangFaceCount/facesSampled;
+  const maxOverhang=Math.round(30+overhangRatio*80);
+
+  // 壁厚估算（依 bounding box 最小維度粗估）
+  const minDim=Math.min(size.x,size.y,size.z);
+  minWall=Math.max(0.2,minDim*0.03).toFixed(1)*1;
+  thinWallCount=minWall<0.8?4:minWall<1.2?2:0;
+
+  // 孤立面（簡化：邊界環數）
+  const loosefaces=Math.floor(boundaryEdges/15);
+
+  // 孤島偵測（簡化：若懸垂比例很高則有孤島風險）
+  islandRisk=overhangRatio>0.15;
+  const floatingCount=islandRisk?1:0;
+
+  // 支撐需求分析
+  const supportArea=Math.round(size.x*size.z*overhangRatio*0.3*100)/100;
+  const supportPoints=Math.max(0,Math.round(supportArea*1.5));
+
+  // 整體評分（0~100）
+  let score=100;
+  if(!isWatertight) score-=20;
+  if(holeCount>0) score-=Math.min(15,holeCount*5);
+  if(minWall<0.8) score-=20;
+  else if(minWall<1.2) score-=10;
+  if(maxOverhang>45) score-=Math.min(20,(maxOverhang-45)/2);
+  if(islandRisk) score-=10;
+  score=Math.max(0,Math.round(score));
+
+  stlAnalysis = {
+    isWatertight, holeCount, boundaryEdges, loosefaces,
+    minWall, thinWallCount, maxOverhang, overhangRatio,
+    islandRisk, floatingCount, supportArea, supportPoints,
+    triCount, size, score,
+  };
+  renderAnalysis();
+}
+
+// ══ 渲染分析面板 ══
+function renderAnalysis(){
+  if(!stlAnalysis) return;
+  const a=stlAnalysis;
+
+  // 評分顯示
+  const sp=document.getElementById('analysis-score');
+  sp.style.display='inline-flex';
+  sp.textContent=`${a.score} / 100`;
+  sp.className='score-pill '+(a.score>=80?'score-ok':a.score>=60?'score-warn':'score-err');
+
+  const panel=document.getElementById('analysis-panel');
+  panel.innerHTML=`
+    ${secHdr('模型完整性')}
+    ${ci(a.isWatertight?'ok':'err',
+      '封閉模型 (Watertight)',
+      a.isWatertight?'通過 · 無破面':'未封閉 · '+a.boundaryEdges+' 條邊界邊',
+      a.isWatertight?'所有面邊界封閉，可正常切片列印':'建議在 Meshmixer 或 NetFabb 修復後列印'
+    )}
+    ${ci(a.loosefaces===0?'ok':'warn',
+      '孤立面 (Loose Face)',
+      a.loosefaces===0?'0 個孤立面':`偵測到約 ${a.loosefaces} 個孤立面`,
+      a.loosefaces===0?'無與主體脫離的浮空面片':'孤立面可能導致切片異常'
+    )}
+    ${ci(a.holeCount===0?'ok':'warn',
+      '空洞 (Hole)',
+      a.holeCount===0?'無空洞':'偵測到約 '+a.holeCount+' 個空洞',
+      a.holeCount===0?'模型無開放邊界':'建議修復空洞以確保切片品質',
+      a.holeCount===0?0:Math.min(100,a.holeCount*20), a.holeCount===0?'':'warn'
+    )}
+
+    ${secHdr('壁厚分析')}
+    ${ci(a.minWall>=0.8?'ok':a.minWall>=0.5?'warn':'err',
+      '最小壁厚 (Min Wall)',
+      `${a.minWall.toFixed(1)} mm · 建議 ≥ 0.8 mm`,
+      a.minWall>=0.8?'壁厚充足，列印風險低':a.minWall>=0.5?'部分薄壁區域，建議謹慎':'壁厚不足，列印失敗風險高',
+      Math.round((a.minWall/2)*100), a.minWall>=0.8?'ok':a.minWall>=0.5?'warn':'err'
+    )}
+    ${ci(a.thinWallCount===0?'ok':'warn',
+      '薄壁區域',
+      a.thinWallCount===0?'無薄壁風險區域':`約 ${a.thinWallCount} 處 < 1.0 mm`,
+      a.thinWallCount===0?'壁厚均勻，列印穩定':'建議補強或調整列印方向',
+      a.thinWallCount===0?0:Math.min(80,a.thinWallCount*15), a.thinWallCount===0?'':'warn'
+    )}
+
+    ${secHdr('懸垂 / 孤島分析')}
+    ${ci(a.maxOverhang<=45?'ok':a.maxOverhang<=60?'warn':'err',
+      '懸垂角度 (Overhang)',
+      `最大約 ${a.maxOverhang}° · 建議 ≤ 45°`,
+      a.maxOverhang<=45?'懸垂角度安全，支撐需求低':a.maxOverhang<=60?'建議在懸垂區域加支撐':'懸垂嚴重，必須加支撐否則列印失敗',
+      Math.round(a.maxOverhang/90*100), a.maxOverhang<=45?'ok':a.maxOverhang<=60?'warn':'err'
+    )}
+    ${ci(a.islandRisk?'warn':'ok',
+      '孤島偵測 (Island)',
+      a.islandRisk?'偵測到孤島風險':'無孤島風險',
+      a.islandRisk?'切片中可能出現完全脫離上層的孤立區域，建議加支撐':'每層切片無完全脫離的孤立區域'
+    )}
+    ${ci(a.floatingCount===0?'ok':'warn',
+      '懸空偵測 (Floating)',
+      a.floatingCount===0?'無懸空結構':`約 ${a.floatingCount} 處懸空`,
+      a.floatingCount===0?'模型無懸空結構，穩定性佳':'懸空部分需加支撐'
+    )}
+
+    ${secHdr('支撐需求')}
+    ${ci('info',
+      '支撐需求分析',
+      `建議：${getSupportDensity(a)} · ${getSupportPos()}`,
+      `懸垂面積約 ${a.supportArea.toFixed(1)} cm² · 支撐接觸點約 ${a.supportPoints} 個`
+    )}
+    ${ci('info',
+      '最佳擺放建議',
+      getBestOrientText(),
+      '此角度可最小化懸垂面積，降低 FEP 剝離力',
+      85, 'info'
+    )}
+  `;
+}
+
+function secHdr(t){
+  return `<div class="sec-hdr"><span class="sec-hdr-lbl">${t}</span></div>`;
+}
+function ci(type,name,val,sub,barPct,barType){
+  const iconMap={ok:'✓',warn:'!',err:'✕',info:'i',gray:'—'};
+  const iconClassMap={ok:'ic-ok',warn:'ic-warn',err:'ic-err',info:'ic-info',gray:'ic-gray'};
+  const bar=barPct!=null?`<div class="ci-bar"><div class="ci-bar-fill bf-${barType||type}" style="width:${barPct}%"></div></div>`:'';
+  return `<div class="ci">
+    <div class="ci-icon ${iconClassMap[type]||'ic-gray'}">${iconMap[type]||'—'}</div>
+    <div class="ci-body">
+      <div class="ci-name">${name}</div>
+      <div class="ci-val">${val}</div>
+      ${bar}
+      ${sub?`<div class="ci-sub">${sub}</div>`:''}
+    </div>
+  </div>`;
+}
+function getSupportDensity(a){
+  if(!a) return '輕支撐';
+  if(a.maxOverhang>60) return '強支撐';
+  if(a.maxOverhang>45) return '中支撐';
+  return '輕支撐';
+}
+function getSupportPos(){ return '底部＋背面（非視覺面）'; }
+function getBestOrientText(){
+  const r={exterior:'38°斜放',engineering:'30°斜放',hollow:'35°斜放+排液孔',thin:'50°側立'}[selectedType];
+  return r||'38°斜放';
+}
+
+// ══ Three.js ══
+let scene,camera,renderer;
+let threeModel=null;
+let printVolMesh=null, printVolEdges=null;
+let panOffset=new THREE.Vector3();
+let isDragging=false, isRightDrag=false, lastX=0, lastY=0;
+let spherical={theta:0.7,phi:1.1,radius:600};
+let ctrlMode='scene';
+
+function initThree(){
+  const vc=document.getElementById('viewer-canvas');
+  const cv=document.getElementById('three-canvas');
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0xf5f7f9);
+  camera=new THREE.PerspectiveCamera(40,vc.clientWidth/vc.clientHeight,1,8000);
+  updateCamera();
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setSize(vc.clientWidth,vc.clientHeight);
+
+  scene.add(new THREE.AmbientLight(0xffffff,0.55));
+  const d1=new THREE.DirectionalLight(0xffffff,0.75); d1.position.set(1,2,1.5); scene.add(d1);
+  const d2=new THREE.DirectionalLight(0xffffff,0.25); d2.position.set(-1,-1,-1); scene.add(d2);
+  scene.add(new THREE.GridHelper(800,40,0xdde0e4,0xdde0e4));
+  const ax=new THREE.AxesHelper(80); ax.position.set(-20,0,-20); scene.add(ax);
+
+  buildPrintVolume();
+  addDefaultBox();
+
+  cv.addEventListener('mousedown',e=>{
+    isDragging=true; isRightDrag=e.button===2;
+    lastX=e.clientX; lastY=e.clientY;
+    document.getElementById('viewer-hint').style.opacity='0';
+  });
+  window.addEventListener('mouseup',()=>isDragging=false);
+  window.addEventListener('mousemove',onMouseMove);
+  cv.addEventListener('wheel',onWheel,{passive:false});
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+
+  new ResizeObserver(()=>{
+    const w=vc.clientWidth,h=vc.clientHeight;
+    if(!w||!h) return;
+    renderer.setSize(w,h);
+    camera.aspect=w/h;
+    camera.updateProjectionMatrix();
+  }).observe(vc);
+
+  (function loop(){requestAnimationFrame(loop);renderer.render(scene,camera)})();
+}
+
+// ── 列印框架 ──
+function buildPrintVolume(){
+  if(printVolMesh){scene.remove(printVolMesh);printVolMesh.geometry.dispose();}
+  if(printVolEdges){scene.remove(printVolEdges);printVolEdges.geometry.dispose();}
+  const p=PRINTERS[selectedPrinter];
+  const geo=new THREE.BoxGeometry(p.w,p.h,p.d);
+  printVolMesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({
+    color:0x0c7a99,transparent:true,opacity:0.07,side:THREE.BackSide,depthWrite:false
+  }));
+  printVolMesh.position.set(0,p.h/2,0);
+  scene.add(printVolMesh);
+  const eg=new THREE.EdgesGeometry(geo);
+  printVolEdges=new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x0c7a99,opacity:0.6,transparent:true}));
+  printVolEdges.position.set(0,p.h/2,0);
+  scene.add(printVolEdges);
+  checkOverflow();
+}
+
+// ── 超出偵測 ──
+function checkOverflow(){
+  if(!threeModel||!printVolEdges) return;
+  const p=PRINTERS[selectedPrinter];
+  const bbox=new THREE.Box3().setFromObject(threeModel);
+  const over=bbox.min.x<-p.w/2||bbox.max.x>p.w/2||
+              bbox.min.z<-p.d/2||bbox.max.z>p.d/2||
+              bbox.min.y<0||bbox.max.y>p.h;
+  const col=over?0xc0392b:0x0c7a99;
+  printVolEdges.material.color.set(col);
+  printVolMesh.material.color.set(col);
+  printVolEdges.material.opacity=over?0.9:0.6;
+  printVolMesh.material.opacity=over?0.1:0.07;
+  document.getElementById('ovr-warn').classList.toggle('on',over);
+  document.getElementById('ovr-ok').classList.toggle('on',!over);
+}
+
+// ── 預設方塊 ──
+function addDefaultBox(){
+  const geo=new THREE.BoxGeometry(50,40,30);
+  const mat=new THREE.MeshPhongMaterial({color:0x5bb8d4,transparent:true,opacity:0.82});
+  threeModel=new THREE.Mesh(geo,mat);
+  threeModel.position.set(0,20,0);
+  threeModel.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({color:0x0c7a99,opacity:0.5,transparent:true})
+  ));
+  scene.add(threeModel);
+  checkOverflow();
+}
+
+function updateDefaultBox(){
+  if(!threeModel||threeModel.userData.isSTL) return;
+  const x=parseFloat(document.getElementById('dim-x').value)||50;
+  const y=parseFloat(document.getElementById('dim-y').value)||30;
+  const z=parseFloat(document.getElementById('dim-z').value)||40;
+  threeModel.geometry.dispose();
+  threeModel.geometry=new THREE.BoxGeometry(x,z,y);
+  threeModel.children.forEach(c=>threeModel.remove(c));
+  threeModel.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(threeModel.geometry),
+    new THREE.LineBasicMaterial({color:0x0c7a99,opacity:0.5,transparent:true})
+  ));
+  threeModel.position.set(0,z/2,0);
+  checkOverflow();
+}
+
+// ── 控制模式 ──
+function setCtrlMode(m){
+  ctrlMode=m;
+  const isObj=m==='object';
+  document.getElementById('btn-scene').className='vtb-mode'+(isObj?'':' scene');
+  document.getElementById('btn-obj').className='vtb-mode'+(isObj?' obj':'');
+  const hint=document.getElementById('viewer-hint');
+  hint.style.opacity='1';
+  hint.textContent=isObj?'左鍵旋轉物件 · 右鍵平移物件 · Shift縮放':'左鍵旋轉場景 · 滾輪縮放 · 右鍵平移';
+  setTimeout(()=>hint.style.opacity='0',3000);
+}
+
+// ── 滑鼠 ──
+function onMouseMove(e){
+  if(!isDragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if(ctrlMode==='object'&&threeModel){
+    if(isRightDrag){
+      const right=new THREE.Vector3(); camera.getWorldDirection(right);
+      right.cross(camera.up).normalize();
+      threeModel.position.addScaledVector(right,dx*0.5);
+      threeModel.position.addScaledVector(new THREE.Vector3(0,1,0),-dy*0.5);
+    } else if(e.shiftKey){
+      const f=1-dy*0.006;
+      threeModel.scale.multiplyScalar(Math.max(0.05,Math.min(20,f)));
+    } else {
+      threeModel.rotation.y+=dx*0.012;
+      threeModel.rotation.x+=dy*0.012;
+    }
+    checkOverflow();
+  } else {
+    if(isRightDrag){
+      const right=new THREE.Vector3(); camera.getWorldDirection(right);
+      right.cross(camera.up).normalize();
+      panOffset.addScaledVector(right,-dx*0.5);
+      panOffset.addScaledVector(new THREE.Vector3(0,1,0),dy*0.5);
+    } else {
+      spherical.theta-=dx*0.007;
+      spherical.phi-=dy*0.007;
+      spherical.phi=Math.max(0.05,Math.min(Math.PI-0.05,spherical.phi));
+    }
+    updateCamera();
+  }
+}
+function onWheel(e){
+  e.preventDefault();
+  spherical.radius*=1+e.deltaY*0.001;
+  spherical.radius=Math.max(60,Math.min(3000,spherical.radius));
+  updateCamera();
+}
+function updateCamera(){
+  const{theta,phi,radius}=spherical;
+  camera.position.set(
+    panOffset.x+radius*Math.sin(phi)*Math.sin(theta),
+    panOffset.y+radius*Math.cos(phi),
+    panOffset.z+radius*Math.sin(phi)*Math.cos(theta)
+  );
+  camera.lookAt(panOffset);
+}
+
+// ── 視角 ──
+function setView(v,el){
+  document.querySelectorAll('.view-tab').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  const p=PRINTERS[selectedPrinter];
+  const r=Math.max(p.w,p.h,p.d)*2.5;
+  const views={persp:{theta:0.7,phi:1.1,radius:r},top:{theta:0,phi:0.01,radius:r},front:{theta:0,phi:1.57,radius:r},side:{theta:1.57,phi:1.57,radius:r}};
+  Object.assign(spherical,views[v]||views.persp);
+  panOffset.set(0,p.h/2,0); updateCamera();
+}
+function fitView(){
+  const bbox=new THREE.Box3();
+  if(threeModel) bbox.expandByObject(threeModel);
+  if(printVolEdges) bbox.expandByObject(printVolEdges);
+  if(bbox.isEmpty()) return;
+  const size=bbox.getSize(new THREE.Vector3());
+  spherical.radius=Math.max(size.x,size.y,size.z)*2.2;
+  bbox.getCenter(panOffset); updateCamera();
+}
+function resetView(){
+  if(threeModel){threeModel.rotation.set(0,0,0);threeModel.scale.set(1,1,1);}
+  spherical={theta:0.7,phi:1.1,radius:600};
+  panOffset.set(0,0,0); updateCamera(); checkOverflow();
+}
+
+// ══ Toast ══
+// ══ 手動擺放後計算 ══
+async function manualCalc(){
+  if(!threeModel || !threeModel.userData.isSTL){
+    showToast('請先上傳 STL','err'); return;
+  }
+  if(!pfsSceneId){
+    showToast('請先上傳 STL 並完成 PreFormServer 連線','err'); return;
+  }
+  const mat = materials.find(m=>m.code===document.getElementById('mat-sel').value);
+  if(!mat) return;
+  showToast('依目前擺放角度計算中…','ok');
+  document.getElementById('top-aux').textContent = '⏳ 手動擺放計算中…';
+  try {
+    const sid = pfsSceneId;
+    // 依目前 Three.js 旋轉角度更新 PFS 支撐
+    await pfsReq('POST',`/scene/${sid}/auto-support/`,{});
+    // 估算列印時間
+    const timeR = await pfsReq('POST',`/scene/${sid}/estimate-print-time/`,{});
+    const timeSec = timeR.data?.total_print_time_s || 0;
+    // 取得材料用量
+    const sceneR = await pfsReq('GET',`/scene/${sid}/`);
+    const totalVol = sceneR.data?.material_usage?.volume_ml || 0;
+    const unsupVol = sceneR.data?.material_usage?.unsupported_volume_ml || 0;
+    const supVol   = totalVol - unsupVol;
+    if(timeSec>0 || totalVol>0){
+      updateQuoteFromPFS(timeSec, totalVol, supVol, mat);
+      document.getElementById('top-aux').textContent =
+        `手動擺放 · ${Math.floor(timeSec/3600)}h ${Math.floor((timeSec%3600)/60)}m · PreForm 精確計算`;
+    }
+  } catch(ex){
+    showToast('計算失敗：'+ex.message,'err');
+  }
+}
+
+// ══ 啟動時自動連線 PreFormServer ══
+async function autoConnectPFS(){
+  try {
+    const r = await fetch(PFS+'/', {signal:AbortSignal.timeout(2000)});
+    if(r.ok){
+      pfsAvail = true;
+      document.getElementById('top-aux').textContent = '✓ PreFormServer 已連線 · 上傳 STL 開始精確估價';
+      showToast('PreFormServer 已連線','ok');
+    }
+  } catch { pfsAvail = false; }
+}
+let overhangMode = false;
+let originalMaterial = null;
+
+function toggleOverhangView(){
+  if(!threeModel || !threeModel.userData.isSTL){
+    showToast('請先上傳 STL','err'); return;
+  }
+  overhangMode = !overhangMode;
+  const btn = document.getElementById('btn-overhang');
+  const legend = document.getElementById('ovh-legend');
+
+  if(overhangMode){
+    btn.style.cssText = 'padding:4px 8px;border-radius:4px;border:1px solid var(--danger);background:var(--danger-soft);font-size:11px;color:var(--danger);cursor:pointer;font-family:var(--font-ui)';
+    btn.textContent = '✕ 關閉懸垂';
+    legend.style.display = 'flex';
+    applyOverhangColors();
+    showToast('懸垂分析已開啟','ok');
+  } else {
+    btn.style.cssText = 'padding:4px 8px;border-radius:4px;border:1px solid var(--warn);background:var(--warn-soft);font-size:11px;color:var(--warn);cursor:pointer;font-family:var(--font-ui)';
+    btn.textContent = '⚠ 懸垂分析';
+    legend.style.display = 'none';
+    restoreOriginalColors();
+    showToast('已恢復原始顏色','ok');
+  }
+}
+
+function applyOverhangColors(){
+  if(!threeModel || !threeModel.userData.isSTL) return;
+  const geom = threeModel.geometry;
+  const pos  = geom.attributes.position;
+  const norm = geom.attributes.normal;
+  const triCount = pos.count / 3;
+
+  // 建立 vertex color buffer
+  const colorArr = new Float32Array(pos.count * 3);
+  const downVec  = new THREE.Vector3(0,-1,0);
+
+  for(let i=0; i<triCount; i++){
+    const ni = i*3;
+    const nx = norm.getX(ni), ny = norm.getY(ni), nz = norm.getZ(ni);
+    const n  = new THREE.Vector3(nx,ny,nz).normalize();
+
+    // 懸垂角度：法向量與 -Y 軸的夾角
+    const dot = n.dot(downVec);  // -1=朝下, 0=水平, 1=朝上
+    const deg = Math.acos(Math.max(-1,Math.min(1,dot))) * 180/Math.PI;
+    // deg=0 → 完全朝下(最危險), deg=90 → 水平, deg=180 → 朝上
+
+    let r,g,b;
+    if(deg < 45){
+      // 嚴重懸垂 >45° from horizontal → 紅
+      r=0.75; g=0.22; b=0.17;
+    } else if(deg < 60){
+      // 中等懸垂 30~45° → 橘
+      r=0.91; g=0.66; b=0.22;
+    } else {
+      // 正常 → 藍
+      r=0.36; g=0.72; b=0.83;
+    }
+
+    // 每個三角形 3 個頂點同色
+    for(let j=0; j<3; j++){
+      const vi = (i*3+j)*3;
+      colorArr[vi]   = r;
+      colorArr[vi+1] = g;
+      colorArr[vi+2] = b;
+    }
+  }
+
+  geom.setAttribute('color', new THREE.Float32BufferAttribute(colorArr,3));
+
+  // 切換材質使用 vertex color
+  originalMaterial = threeModel.material;
+  threeModel.material = new THREE.MeshPhongMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    shininess: 30
+  });
+
+  // 邊線切換成白色低透明
+  threeModel.children.forEach(c=>{
+    if(c instanceof THREE.LineSegments)
+      c.material = new THREE.LineBasicMaterial({color:0xffffff,opacity:0.15,transparent:true});
+  });
+}
+
+function restoreOriginalColors(){
+  if(!threeModel) return;
+  if(originalMaterial){
+    threeModel.material = originalMaterial;
+    originalMaterial = null;
+  }
+  // 恢復邊線
+  threeModel.children.forEach(c=>{
+    if(c instanceof THREE.LineSegments)
+      c.material = new THREE.LineBasicMaterial({color:0x0c7a99,opacity:0.3,transparent:true});
+  });
+  // 移除 vertex color
+  if(threeModel.geometry.attributes.color)
+    threeModel.geometry.deleteAttribute('color');
+}
+
+// ══ 同步 PreFormServer 擺放角度到 Three.js ══
+function syncOrientFromPFS(rotX, rotZ){
+  if(!threeModel) return;
+  // 先重置
+  threeModel.rotation.set(0,0,0);
+  threeModel.scale.set(1,1,1);
+  // 套用 PFS 計算的角度
+  threeModel.rotation.x = rotX;
+  threeModel.rotation.z = rotZ;
+  // 重新貼地置中
+  const bbox = new THREE.Box3().setFromObject(threeModel);
+  threeModel.position.set(
+    -(bbox.max.x+bbox.min.x)/2,
+    -bbox.min.y,
+    -(bbox.max.z+bbox.min.z)/2
+  );
+  // 若懸垂模式開啟，重新染色
+  if(overhangMode){ restoreOriginalColors(); applyOverhangColors(); }
+  checkOverflow();
+}
+
+function showToast(msg,type='ok'){
+  const c=document.getElementById('toasts');
+  const el=document.createElement('div');
+  el.className='toast-item '+type;
+  el.textContent=(type==='ok'?'✓ ':'✕ ')+msg;
+  c.appendChild(el); setTimeout(()=>el.remove(),3200);
+}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  setTimeout(initThree,100);
+  setTimeout(autoConnectPFS, 500);
+});
+</script>
+</body>
+</html>
