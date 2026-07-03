@@ -329,6 +329,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .btn-save{height:34px;padding:0 16px;border:none;background:#0a0e14;color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
 .btn-save:disabled{opacity:.5;cursor:not-allowed}
 .btn-add{height:32px;padding:0 14px;border:none;background:#0a0e14;color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
+/* 編輯/設定切換按鈕：外觀對齊 inventory 的「編輯模式」按鈕 */
+.btn-edit-mode{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 15px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.btn-edit-mode:hover{background:#eff6ff;border-color:#60a5fa;color:#1d4ed8}
+.btn-edit-mode.active{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
 
 /* Login */
 .login-page{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#0a0e14,#131c2e,#0c2340);display:flex;align-items:center;justify-content:center}
@@ -412,10 +416,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629n"></script>
+<script src="firebase-config.js?v=20260629o"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629n"></script>
+<script src="firebase-service.js?v=20260629o"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -1486,8 +1490,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629n"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629n"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629o"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629o"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">

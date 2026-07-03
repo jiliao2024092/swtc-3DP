@@ -229,20 +229,10 @@
           {canEdit && (
             <div style={{display:'flex', gap:8, marginRight:8, alignItems:'center'}}>
 
-              {/* 編輯模式切換按鈕 */}
-              <button
-                onClick={() => setEditMode(m => !m)}
-                style={{
-                  height:32, padding:'0 14px', border:'1.5px solid',
-                  borderColor: editMode ? '#0c7a99' : '#e6e8ec',
-                  background:  editMode ? '#e6f1f6' : '#fff',
-                  color:       editMode ? '#0c7a99' : '#5a6270',
-                  fontSize:13, fontWeight:600, borderRadius:6,
-                  cursor:'pointer', fontFamily:'inherit',
-                  display:'flex', alignItems:'center', gap:6,
-                  transition:'all .15s'
-                }}>
-                ✏️ {editMode ? '完成編輯' : '編輯'}
+              {/* 編輯模式切換按鈕（外觀對齊 inventory 編輯模式）*/}
+              <button className={'btn-edit-mode'+(editMode?' active':'')} onClick={() => setEditMode(m => !m)}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                {editMode ? '完成編輯' : '編輯模式'}
               </button>
 
               {/* 新增列印工作 */}

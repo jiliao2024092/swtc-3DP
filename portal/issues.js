@@ -419,7 +419,7 @@
     const [methodF,   setMethodF]   = useState('');
     const [labelVer,  setLabelVer]  = useState(0);
     const [editMode,   setEditMode]  = useState(false);
-    const [anomalySort, setAnomalySort] = useState({field:'seq',dir:'asc'});
+    const [anomalySort, setAnomalySort] = useState({field:'score',dir:'asc'});
     const [ipaSort,     setIpaSort]     = useState({field:'seq',dir:'asc'});
     const [toolSort,    setToolSort]    = useState({field:'seq',dir:'asc'});
     const [expandedA,   setExpandedA]   = useState({});  // 展開的異常案件（預設全收合）
@@ -475,11 +475,19 @@
 
     const pillCls = st => st==='已完成'?'kt-pill kt-pill-完成':st==='處理中'?'kt-pill kt-pill-處理':'kt-pill kt-pill-暫停';
 
+    // 客戶異常優先分數：本日距異常日期越近分數越低；狀態加權 處理中+1 / 暫停+2 / 已完成+3
+    const anomalyScore = (it) => {
+      const du = K.daysUntil(it.date);                  // 異常日期 - 本日（過去為負）
+      const dist = du===null ? 99999 : Math.abs(du);    // 距今天數（越近越小；無日期排最後）
+      const mod = it.status==='處理中' ? 1 : it.status==='暫停' ? 2 : 3;
+      return dist + mod;
+    };
     const sortArr = (arr, s) => {
       const d = s.dir==='asc'?1:-1;
       return [...arr].sort((a,b)=>{
         let ka,kb;
-        if(s.field==='seq'){ ka=a.seq||0; kb=b.seq||0; }
+        if(s.field==='score'){ ka=anomalyScore(a); kb=anomalyScore(b); }
+        else if(s.field==='seq'){ ka=a.seq||0; kb=b.seq||0; }
         else if(s.field==='date'){ ka=a.date||''; kb=b.date||''; }
         else if(s.field==='purchaseDate'){ ka=a.purchaseDate||''; kb=b.purchaseDate||''; }
         else if(s.field==='warranty'){ ka=a.warranty||''; kb=b.warranty||''; }
@@ -496,13 +504,13 @@
         label, React.createElement('span',{style:{marginLeft:3,opacity:active?1:0.35,fontSize:10,color:active?'var(--accent)':'inherit'}},arrow));
     };
     const SettingsBtn = () => React.createElement('button',{
-      className:'btn-ghost'+(editMode?' warn':''),
-      style:{marginLeft:'auto',display:'flex',alignItems:'center',gap:6},
+      className:'btn-edit-mode'+(editMode?' active':''),
+      style:{marginLeft:'auto'},
       onClick:()=>setEditMode(m=>!m)
-    }, React.createElement('svg',{width:13,height:13,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
-      React.createElement('circle',{cx:12,cy:12,r:3}),
-      React.createElement('path',{d:'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'})
-    ), editMode?'結束設定':'設定');
+    }, React.createElement('svg',{width:14,height:14,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},
+      React.createElement('path',{d:'M12 20h9'}),
+      React.createElement('path',{d:'M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z'})
+    ), editMode?'完成編輯':'編輯模式');
 
     // ── sidebar subtab 樣式 ──
     const SUBTABS = [
