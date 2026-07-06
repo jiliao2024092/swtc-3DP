@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>材料庫存管理</title>
+    <title>台中設備工程工作管理平台</title>
     <link rel="icon" type="image/x-icon" href="/swtc-3DP/favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -255,12 +255,16 @@
     </div>
 
     <!-- 叫料提醒橫幅 -->
-    <div id="alert-banner" class="hidden bg-red-50 border border-red-200 rounded-xl p-4">
+    <div id="alert-banner" class="hidden bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-4 shadow-sm">
         <div class="flex items-start gap-3">
-            <i data-lucide="bell-ring" class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5"></i>
-            <div>
-                <p class="font-semibold text-red-700 mb-1">⚠️ 以下材料庫存不足，請安排叫料</p>
-                <div id="alert-items" class="space-y-1"></div>
+            <div class="flex-shrink-0 w-9 h-9 rounded-full bg-red-100 flex items-center justify-center">
+                <i data-lucide="bell-ring" class="w-5 h-5 text-red-500"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-red-700 mb-2 flex items-center gap-2">材料庫存不足，請安排叫料
+                    <span id="alert-count" class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium"></span>
+                </p>
+                <div id="alert-items" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
             </div>
         </div>
     </div>
@@ -535,6 +539,7 @@ let inv = {
     stock: {},
     history: [],
     safety: {},
+    partno: {},              // 手動品號（familyCode → 品號字串）
     last_processed_prints: [],
     disabled_materials: [],  // 使用者主動停用的材料代碼
     disabled_overrides: []   // 使用者覆寫「預設停用」的清單（讓系統預設停用的材料重新顯示）
@@ -780,6 +785,7 @@ function subscribeAll() {
                 inv.cartridges = d.cartridges || {};
                 inv.stock      = d.stock      || {};
                 inv.safety     = d.safety     || {};
+                inv.partno     = d.partno     || {};
                 inv.last_processed_prints = d.last_processed_prints || [];
                 inv.disabled_materials    = d.disabled_materials    || [];
                 inv.disabled_overrides    = d.disabled_overrides    || [];
@@ -787,7 +793,7 @@ function subscribeAll() {
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
-                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
             const merged = mergeMaterialAliases();
@@ -998,6 +1004,7 @@ async function saveAll(reason) {
             cartridges: inv.cartridges || {},
             stock:      inv.stock      || {},
             safety:     inv.safety     || {},
+            partno:     inv.partno     || {},
             last_processed_prints: inv.last_processed_prints || [],
             disabled_materials: inv.disabled_materials || [],
             disabled_overrides: inv.disabled_overrides || [],
@@ -1205,6 +1212,14 @@ function getSafetyStock(material) {
     return found != null ? found : DEFAULT_SAFETY;
 }
 
+// 取材料品號（手動設定，依家族比對）
+function getPartNo(material) {
+    const fam = matCode(material);
+    if (inv.partno && inv.partno[fam]) return inv.partno[fam];
+    for (const k of Object.keys(inv.partno || {})) { if (matCode(k) === fam && inv.partno[k]) return inv.partno[k]; }
+    return '';
+}
+
 function isLowStock(material) {
     return getTotalInventory(material) < getSafetyStock(material);
 }
@@ -1216,10 +1231,19 @@ function renderAlerts() {
     const items=document.getElementById('alert-items');
     if(!mats.length){ banner.classList.add('hidden'); return; }
     banner.classList.remove('hidden');
+    const cnt=document.getElementById('alert-count'); if(cnt) cnt.textContent=`${mats.length} 項`;
     items.innerHTML=mats.map(m=>{
         const total=getTotalInventory(m);
         const safety=getSafetyStock(m);
-        return `<div class="text-sm text-red-600">• <strong>${matName(m)}</strong>：總庫存 ${(total/1000).toFixed(1)} L，低於安全庫存 ${(safety/1000).toFixed(1)} L</div>`;
+        const partno=getPartNo(m);
+        const gap=Math.max(0,(safety-total)/1000);
+        return `
+        <div class="flex items-center gap-2 bg-white/70 border border-red-200 rounded-lg px-3 py-2">
+            ${partno?`<span class="font-mono text-[11px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded whitespace-nowrap" title="品號">${partno}</span>`:'<span class="text-[11px] text-gray-300 whitespace-nowrap">無品號</span>'}
+            <span class="font-semibold text-gray-800 text-sm truncate">${matName(m)}</span>
+            <span class="text-xs text-gray-500 ml-auto whitespace-nowrap">庫存 <b class="text-red-600">${(total/1000).toFixed(1)}</b> / 安全 ${(safety/1000).toFixed(1)} L</span>
+            <span class="text-xs font-semibold text-red-600 whitespace-nowrap">缺 ${gap.toFixed(1)} L</span>
+        </div>`;
     }).join('');
 }
 
@@ -1804,14 +1828,24 @@ function showSafetyModal() {
     body.innerHTML='';
     const mats=getAllMaterials();
     if(!mats.length){ body.innerHTML='<p class="text-gray-400 text-sm">尚無材料，請先設定樹脂罐。</p>'; }
+    else {
+        const hdr=document.createElement('div');
+        hdr.className='flex items-center gap-3 pb-1 border-b border-gray-100 text-xs font-medium text-gray-400';
+        hdr.innerHTML=`<span class="flex-1">材料</span><span class="w-32 text-center">品號</span><span class="w-24 text-right">安全庫存</span><span class="w-4"></span>`;
+        body.appendChild(hdr);
+    }
     mats.forEach(m=>{
         const safety=getSafetyStock(m);
+        const partno=getPartNo(m).replace(/"/g,'&quot;');
         const row=document.createElement('div');
         row.className='flex items-center gap-3';
         row.innerHTML=`
             <label class="flex-1 text-sm font-medium text-gray-700">${matName(m)}</label>
+            <input type="text" value="${partno}" placeholder="品號" data-material="${m}"
+                class="partno-input w-32 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none">
             <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="1" data-material="${m}"
-                class="safety-input w-28 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right"> L
+                class="safety-input w-24 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right">
+            <span class="text-sm text-gray-400 w-4">L</span>
         `;
         body.appendChild(row);
     });
@@ -1822,6 +1856,12 @@ async function saveSafetyStock() {
     document.querySelectorAll('.safety-input').forEach(el=>{
         const liters = parseFloat(el.value)||0;
         inv.safety[el.dataset.material] = Math.round(liters * 1000 * 10) / 10;
+    });
+    if(!inv.partno) inv.partno = {};
+    document.querySelectorAll('.partno-input').forEach(el=>{
+        const fam = matCode(el.dataset.material);
+        const v = (el.value||'').trim();
+        if(v) inv.partno[fam] = v; else delete inv.partno[fam];
     });
     closeSafetyModal();
     renderAll();

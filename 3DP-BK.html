@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D列印機預約系統</title>
+    <title>台中設備工程工作管理平台</title>
     <link rel="icon" type="image/x-icon" href="/swtc-3DP/favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -34,6 +34,9 @@
         .toggle-btn { padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;border:1px solid #d1d5db;cursor:pointer;transition:all 0.15s;background:white;color:#6b7280; }
         .toggle-btn.active-yes { background:#dbeafe;color:#1d4ed8;border-color:#93c5fd; }
         .toggle-btn.active-no  { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
+        /* 甘特圖列加高，讓表格上下更大更好讀 */
+        #gantt-container table td { height:54px; vertical-align:top; }
+        #gantt-container thead th { position:sticky; top:0; z-index:1; }
         .page-btn { padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #d1d5db;background:white;color:#374151;cursor:pointer;transition:all 0.15s; }
         .page-btn:hover { background:#f3f4f6; }
         .page-btn.active { background:#2563eb;color:white;border-color:#2563eb; }
@@ -290,55 +293,6 @@
             </div>
         </div>
 
-        <!-- 新增預約（僅 editor/admin）-->
-        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
-            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
-            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">預約日期</label>
-                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">時段</label>
-                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                        <option value="AM">上午</option>
-                        <option value="PM">下午</option>
-                        <option value="ALL">全天</option>
-                    </select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">申請業務</label>
-                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
-                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1 lg:col-span-2">
-                    <div class="flex items-center justify-between">
-                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
-                        <div class="flex items-center gap-1">
-                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
-                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
-                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
-                        </div>
-                    </div>
-                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
-                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
-                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="lg:col-span-8 flex justify-end mt-2">
-                    <button type="submit" id="submit-btn"
-                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
-                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
-                    </button>
-                </div>
-            </form>
-        </div>
-
         <!-- 執行清單 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
@@ -357,6 +311,9 @@
                     </div>
                     <button onclick="exportExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700">
                         <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出 Excel
+                    </button>
+                    <button id="add-booking-btn" onclick="toggleBookingForm()" class="hidden flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增預約單
                     </button>
                 </div>
             </div>
@@ -420,6 +377,55 @@
                 </div>
                 <div id="gantt-container" class="overflow-x-auto"></div>
             </div>
+        </div>
+
+        <!-- 新增預約（僅 editor/admin）-->
+        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
+            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
+            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">預約日期</label>
+                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">時段</label>
+                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="AM">上午</option>
+                        <option value="PM">下午</option>
+                        <option value="ALL">全天</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">申請業務</label>
+                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
+                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1 lg:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
+                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
+                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
+                        </div>
+                    </div>
+                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
+                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
+                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="lg:col-span-8 flex justify-end mt-2">
+                    <button type="submit" id="submit-btn"
+                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
+                    </button>
+                </div>
+            </form>
         </div>
 
     </div>
@@ -677,13 +683,33 @@ function applyRoleUI() {
 
     // 顯示/隱藏編輯功能
     const canEdit = u.role === 'admin' || u.role === 'editor';
-    document.getElementById('booking-section').classList.toggle('hidden', !canEdit);
+    // 新增預約單預設隱藏；僅 editor/admin 顯示「新增預約單」切換鈕（點按或雙擊甘特圖才展開）
+    document.getElementById('booking-section').classList.add('hidden');
+    document.getElementById('add-booking-btn').classList.toggle('hidden', !canEdit);
     document.getElementById('ops-col').classList.toggle('hidden', !canEdit);
     // 使用者管理已移至 portal 後台管理分頁，此頁不再提供（按鈕已移除，null-safe 保護）
     const _umb = document.getElementById('users-mgmt-btn');
     if (_umb) _umb.classList.toggle('hidden', u.role !== 'admin');
     lucide.createIcons();
 }
+
+// 新增預約單：展開/收合（預設隱藏）
+window.toggleBookingForm = function(){
+    const sec = document.getElementById('booking-section');
+    const nowHidden = sec.classList.toggle('hidden');
+    if(!nowHidden) sec.scrollIntoView({behavior:'smooth', block:'center'});
+};
+// 雙擊甘特圖格子 → 展開表單並帶入 設備 / 日期 / 時段
+window.quickAddBooking = function(printer, dateKey, slot){
+    const sec = document.getElementById('booking-section');
+    if(sec.classList.contains('hidden')) sec.classList.remove('hidden');
+    const di = document.getElementById('date-input'); if(di && dateKey) di.value = dateKey;
+    const si = document.getElementById('slot-input'); if(si && slot) si.value = slot;
+    const pi = document.getElementById('printer-select');
+    if(pi && printer){ for(const o of pi.options){ if(o.value===printer){ pi.value=printer; break; } } }
+    sec.scrollIntoView({behavior:'smooth', block:'center'});
+    showToast('已帶入設備/日期/時段，請補齊資料後送出');
+};
 
 // ══════════════════════════════════════════════
 // ══ 4. Firestore 即時訂閱 bookings ════════════
@@ -1026,6 +1052,8 @@ function renderGantt() {
             const amItems     = dayBookings.filter(b=>(b.slot||'AM')==='AM');
             const pmItems     = dayBookings.filter(b=>b.slot==='PM');
             const todayBg = isToday?'bg-blue-50/40':'';
+            // 雙擊格子 → 快速新增預約（帶入設備/日期/時段），僅 editor/admin
+            const dbl = (slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增預約"` : '';
 
             // 衝突偵測：AM 格 = amItems + allDay；PM 格 = pmItems + allDay
             const amCombined = [...amItems, ...allDayItems];
@@ -1051,7 +1079,7 @@ function renderGantt() {
                 const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
                 const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
                 const content = allDayItems.map(renderItem).join('');
-                html += `<td colspan="2" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:140px">${badge}${content}</td>`;
+                html += `<td colspan="2" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:140px"${dbl('ALL')}>${badge}${content}</td>`;
                 return;  // 跳過下面 AM/PM 兩格
             }
 
@@ -1064,18 +1092,18 @@ function renderGantt() {
                 const ring = amConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
                 const bg   = amConflict ? 'bg-orange-100' : todayBg;
                 const badge = amConflict ? renderConflictBadge(amCombined.length) : '';
-                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px">${badge}${amCombined.map(renderItem).join('')}</td>`;
+                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl('AM')}>${badge}${amCombined.map(renderItem).join('')}</td>`;
             } else {
-                html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
+                html += `<td class="p-1 border border-gray-200 ${todayBg}"${dbl('AM')}></td>`;
             }
             // PM 格
             if(pmCombined.length){
                 const ring = pmConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
                 const bg   = pmConflict ? 'bg-orange-100' : todayBg;
                 const badge = pmConflict ? renderConflictBadge(pmCombined.length) : '';
-                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px">${badge}${pmCombined.map(renderItem).join('')}</td>`;
+                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl('PM')}>${badge}${pmCombined.map(renderItem).join('')}</td>`;
             } else {
-                html += `<td class="p-1 border border-gray-200 ${todayBg}"></td>`;
+                html += `<td class="p-1 border border-gray-200 ${todayBg}"${dbl('PM')}></td>`;
             }
         });
         html += '</tr>';
