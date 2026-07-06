@@ -35,14 +35,15 @@
     view_issues:   '查看異常資源',
     edit_issues:   '編輯異常資源',
     delete_issues: '刪除異常資源',
+    view_quote:    '使用 3D 列印估價',
     admin:         '管理員（所有權限）',
   };
 
   window.ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','admin'],
-    manager:  ['view_board','edit_board','view_issues','edit_issues'],
-    operator: ['view_board','edit_board','view_issues','edit_issues'],
-    viewer:   ['view_board','view_issues'],
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_quote','admin'],
+    manager:  ['view_board','edit_board','view_issues','edit_issues','view_quote'],
+    operator: ['view_board','edit_board','view_issues','edit_issues','view_quote'],
+    viewer:   ['view_board','view_issues','view_quote'],
   };
 
   // admin 權限視為擁有一切
