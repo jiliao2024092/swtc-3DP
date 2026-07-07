@@ -20,6 +20,7 @@
       engineer: engineers[0] || K.ENG_ORDER[0],
       dueDate:'', startDate:'', endDate:'', actualEndDate:'', material:'足夠',
       resin:'', category:'代工',
+      estUsage:'', actUsage:'',
       progress: 0,
       machine: machines[0] || K.MACHINES[0],
       complete:'否', remark:''
@@ -83,6 +84,12 @@
                 <input style={INP} type="date" value={form.actualEndDate||''} onChange={e=>set('actualEndDate',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>&nbsp;</label>
                 <div style={{fontSize:11,color:'#8a93a3',padding:'8px 0'}}>實際完成日晚於期望交期時，總表會標記逾期</div></div>
+            </div>
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>預估消耗量 (mL)</label>
+                <input style={INP} type="number" min="0" step="1" value={form.estUsage??''} onChange={e=>set('estUsage',e.target.value===''?'':+e.target.value)} placeholder="例：120"/></div>
+              <div className="m-field"><label style={LBL}>實際消耗量 (mL)</label>
+                <input style={INP} type="number" min="0" step="1" value={form.actUsage??''} onChange={e=>set('actUsage',e.target.value===''?'':+e.target.value)} placeholder="超過預估將於總表標記"/></div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>期望交期 *</label>
@@ -441,6 +448,9 @@
                 // 實際完成日晚於期望交期 → 逾期天數（計算標記，不寫入 remark）
                 const lateDays = (o.actualEndDate && o.dueDate && !Number.isNaN(new Date(o.actualEndDate).getTime()) && !Number.isNaN(new Date(o.dueDate).getTime()))
                   ? Math.round((new Date(o.actualEndDate) - new Date(o.dueDate)) / K.DAY) : null;
+                // 實際消耗量超過預估 → 超耗量（計算標記，不寫入 remark）
+                const overUse = (o.actUsage!=null && o.actUsage!=='' && o.estUsage!=null && o.estUsage!=='' && +o.actUsage > +o.estUsage)
+                  ? (+o.actUsage - +o.estUsage) : null;
                 const rowNo = (page-1)*PAGE_SIZE + idx + 1;   // 序號＝目前顯示清單的位置（1~N，不隨排序改變）
                 return (
                   <tr key={o._id || o.seq}
@@ -505,11 +515,16 @@
                     </td>
                     <td style={{fontSize:12,maxWidth:180}}>
                       {lateDays>0 && (
-                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'#c0392b',background:'#fdecea',padding:'1px 7px',borderRadius:9,marginBottom:o.remark?3:0,whiteSpace:'nowrap'}}>
+                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'#c0392b',background:'#fdecea',padding:'1px 7px',borderRadius:9,marginRight:4,marginBottom:3,whiteSpace:'nowrap'}}>
                           ⚠ 逾期完工 {lateDays} 天
                         </span>
                       )}
-                      <div style={{color:'#8a93a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.remark||(lateDays>0?'':'—')}</div>
+                      {overUse>0 && (
+                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'#8b6b13',background:'#fbf3dc',padding:'1px 7px',borderRadius:9,marginBottom:3,whiteSpace:'nowrap'}}>
+                          ⚠ 超耗 {overUse} mL
+                        </span>
+                      )}
+                      <div style={{color:'#8a93a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.remark||((lateDays>0||overUse>0)?'':'—')}</div>
                     </td>
 
                     {/* 編輯模式：顯示編輯/刪除按鈕 */}

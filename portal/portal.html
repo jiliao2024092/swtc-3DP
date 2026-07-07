@@ -416,10 +416,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260629q"></script>
+<script src="firebase-config.js?v=20260629r"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260629q"></script>
+<script src="firebase-service.js?v=20260629r"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 
@@ -1250,7 +1250,21 @@ function DashboardView({ data }) {
     });
     const byCustomer={};
     data.forEach(d=>{ const c=d.customer||'—'; byCustomer[c]=(byCustomer[c]||0)+1; });
-    return { total,wip,blocked,done,due7,statusDist,byEng,byMach,byProg,byMat,byCat,byCustomer,engineers,machines };
+    // 依材料種類（樹脂）分析：以 resin 分組，未指定另計
+    const byResin={};
+    data.forEach(d=>{ const r=d.resin||'未指定'; byResin[r]=(byResin[r]||0)+1; });
+    // 異常統計：逾期完工（實際完成日晚於期望交期）、超耗（實際消耗量 > 預估消耗量）＋負責工程師分布
+    const DAY=K.DAY;
+    const isLate = d => d.actualEndDate && d.dueDate && !Number.isNaN(new Date(d.actualEndDate).getTime()) && !Number.isNaN(new Date(d.dueDate).getTime()) && (new Date(d.actualEndDate)-new Date(d.dueDate))/DAY > 0;
+    const isOver = d => d.actUsage!=null && d.actUsage!=='' && d.estUsage!=null && d.estUsage!=='' && (+d.actUsage > +d.estUsage);
+    const lateOrders = data.filter(isLate);
+    const overOrders = data.filter(isOver);
+    const byEngLate={}, byEngOver={};
+    engineers.forEach(k=>{ byEngLate[k]=0; byEngOver[k]=0; });
+    lateOrders.forEach(d=>{ if(d.engineer) byEngLate[d.engineer]=(byEngLate[d.engineer]||0)+1; });
+    overOrders.forEach(d=>{ if(d.engineer) byEngOver[d.engineer]=(byEngOver[d.engineer]||0)+1; });
+    return { total,wip,blocked,done,due7,statusDist,byEng,byMach,byProg,byMat,byCat,byResin,byCustomer,engineers,machines,
+             lateCount:lateOrders.length, overCount:overOrders.length, byEngLate, byEngOver };
   }, [data]);
 
   // ── 圖表元件 ──
@@ -1342,7 +1356,7 @@ function DashboardView({ data }) {
     { key:'engineer', label:'依 工程師' },
     { key:'progress', label:'依 進度' },
     { key:'machine',  label:'依 機台' },
-    { key:'material', label:'依 材料' },
+    { key:'resin',    label:'依 材料種類' },
     { key:'category', label:'依 類型' },
     { key:'customer', label:'依 客戶（Top 8）' },
   ];
@@ -1358,7 +1372,7 @@ function DashboardView({ data }) {
       case 'engineer': return stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:stats.byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
       case 'progress': return K.PROGRESS_VALUES.map((p,i)=>({ label:`${p}%`, value:stats.byProg[p]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
       case 'machine':  return stats.machines.map((m,i)=>({ label:m, value:stats.byMach[m]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
-      case 'material': return Object.entries(stats.byMat).map(([k,v],i)=>({ label:k, value:v, color:i===0?'#1d6f43':'#c79b2a' }));
+      case 'resin': { const RCOL=['#0c7a99','#6b3fa0','#1d6f43','#a05a00','#c0392b','#2471a3','#c79b2a','#8b6b13']; return Object.entries(stats.byResin).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>({ label:k, value:v, color:k==='未指定'?'#b0b5bf':RCOL[i%RCOL.length] })); }
       case 'category': { const CAT_COLORS={'代工':'#6b3fa0','評估':'#0c7a99','未指定':'#b0b5bf'}; return Object.entries(stats.byCat).map(([k,v])=>({ label:k, value:v, color:CAT_COLORS[k]||'#8a93a3' })); }
       case 'customer': {
         const sorted=Object.entries(stats.byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,8);
@@ -1471,6 +1485,36 @@ function DashboardView({ data }) {
         </div>
       </div>
 
+      {/* 異常分析：逾期完工 / 超耗 筆數 + 負責工程師分布 */}
+      <div style={{display:'flex',alignItems:'baseline',gap:10,padding:'4px 0 14px'}}>
+        <span style={{fontSize:14,fontWeight:700,color:'var(--ink)'}}>異常分析</span>
+        <span style={{fontSize:10.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)',letterSpacing:'0.06em',textTransform:'uppercase'}}>ANOMALIES — 逾期完工 / 超耗 與負責工程師</span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:16,marginBottom:32}}>
+        {[
+          { title:'逾期完工', badge:'實際完成日晚於期望交期', count:stats.lateCount, color:'#c0392b', by:stats.byEngLate },
+          { title:'消耗超標', badge:'實際消耗量大於預估消耗量', count:stats.overCount, color:'#8b6b13', by:stats.byEngOver },
+        ].map(a=>{
+          const items = stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:a.by[k]||0, color:a.color }));
+          return (
+            <div key={a.title} style={CARD}>
+              <div style={CARD_HEAD}>
+                <span style={CARD_TITLE}>{a.title}</span>
+                <span style={CARD_BADGE}>{a.badge}</span>
+              </div>
+              <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+                <span style={{fontSize:32,fontWeight:700,fontFamily:'var(--font-mono)',letterSpacing:'-0.02em',color:a.count>0?a.color:'var(--ink-3)',lineHeight:1}}>{a.count}</span>
+                <span style={{fontSize:11,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>筆異常</span>
+              </div>
+              <div style={{fontSize:11,color:'var(--ink-4)',marginBottom:2}}>負責工程師分布</div>
+              {a.count>0
+                ? <HBarChart items={items} colorFn={()=>a.color}/>
+                : <div className="chart-empty">目前無此類異常</div>}
+            </div>
+          );
+        })}
+      </div>
+
       {/* 自由分析 */}
       <div style={{display:'flex',alignItems:'baseline',gap:10,padding:'4px 0 14px'}}>
         <span style={{fontSize:14,fontWeight:700,color:'var(--ink)'}}>自由分析</span>
@@ -1490,8 +1534,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260629q"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260629q"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260629r"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260629r"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
