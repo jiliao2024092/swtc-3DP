@@ -119,6 +119,13 @@
   window.FBEquipment = makeCollectionService('issues_equipment', 'seq', 'asc');
 
   // ════════════════════════════════════════════════
+  // 樣品出借 → collections: sample_items（樣品清冊）/ sample_loans（出借紀錄）
+  //   出借紀錄開放 viewer 登記（見 firestore.rules）
+  // ════════════════════════════════════════════════
+  window.FBSampleItems = makeCollectionService('sample_items', 'seq', 'asc');
+  window.FBSampleLoans = makeCollectionService('sample_loans', 'loanDate', 'desc');
+
+  // ════════════════════════════════════════════════
   // 平台設定 → settings/workspace
   // ════════════════════════════════════════════════
   window.FBSettings = {

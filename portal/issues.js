@@ -181,6 +181,122 @@
     );
   }
 
+  const SAMPLE_PURPOSES = ['外觀精度','材質特性','外觀精度及材質特性'];
+
+  // 樣品是否借出中：存在未歸還（無 returnDate）的出借紀錄
+  function isSampleOut(loans) { return (loans||[]).some(l => !l.returnDate); }
+
+  // ── 樣品清冊 Modal（維護樣品主檔，限編輯者）──
+  function SampleModal({ item, onClose, onSave }) {
+    const empty = { name:'', material:'', location:'', volume:'', purpose:'外觀精度', remark:'' };
+    const [form, setForm] = useState(item?{...item}:empty);
+    const [busy, setBusy] = useState(false);
+    const set = (k,v) => setForm(f=>({...f,[k]:v}));
+    const save = async () => {
+      if (!form.name) { showToast('請填樣品名稱','err'); return; }
+      setBusy(true);
+      try { await onSave(form); onClose(); }
+      catch(e) { showToast(e.message||'失敗','err'); }
+      finally { setBusy(false); }
+    };
+    return (
+      <div className="m-overlay">
+        <div className="m-box" style={{width:560}}>
+          <div className="m-hd"><h3>{item?'✏️ 編輯樣品':'➕ 新增樣品'}</h3><button className="m-close" onClick={onClose}>×</button></div>
+          <div className="m-body">
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>樣品名稱 *</label><input style={S_INP} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="例：角度調整器"/></div>
+              <div className="m-field"><label style={LBL}>材質（材料種類）</label><input style={S_INP} value={form.material||''} onChange={e=>set('material',e.target.value)} placeholder="例：Grey V5"/></div>
+            </div>
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>位置</label><input style={S_INP} value={form.location||''} onChange={e=>set('location',e.target.value)} placeholder="例：樣品箱1 / 桌面"/></div>
+              <div className="m-field"><label style={LBL}>體積 (ml)</label><input style={S_INP} type="number" min={0} step="0.01" value={form.volume??''} onChange={e=>set('volume',e.target.value===''?'':+e.target.value)}/></div>
+            </div>
+            <div className="m-field"><label style={LBL}>展示目的</label>
+              <select style={S_INP} value={form.purpose||''} onChange={e=>set('purpose',e.target.value)}>
+                {SAMPLE_PURPOSES.map(p=><option key={p}>{p}</option>)}
+              </select></div>
+            <div className="m-field"><label style={LBL}>備註</label><textarea style={{...S_INP,resize:'vertical'}} value={form.remark||''} onChange={e=>set('remark',e.target.value)} rows={2}/></div>
+          </div>
+          <div className="m-foot"><button className="btn-cancel" onClick={onClose}>取消</button><button className="btn-save" onClick={save} disabled={busy}>{busy?'儲存中...':'💾 儲存'}</button></div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 出借登記 Modal（開放 viewer 登記出借/歸還）──
+  function LoanModal({ sample, loans, borrowers, canManage, onClose, onAddLoan, onReturnLoan, onDelLoan }) {
+    const today = new Date().toISOString().split('T')[0];
+    const [form, setForm] = useState({ borrower:'', loanDate: today, returnDate:'', remark:'' });
+    const [busy, setBusy] = useState(false);
+    const set = (k,v) => setForm(f=>({...f,[k]:v}));
+    const sorted = [...(loans||[])].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||''));
+    const submit = async () => {
+      if (!form.borrower.trim()) { showToast('請填借出人／客戶名稱','err'); return; }
+      if (!form.loanDate) { showToast('請填借出日期','err'); return; }
+      setBusy(true);
+      try {
+        await onAddLoan({ itemId: sample._id, itemName: sample.name, material: sample.material||'',
+                          borrower: form.borrower.trim(), loanDate: form.loanDate, returnDate: form.returnDate||'', remark: form.remark||'' });
+        setForm({ borrower:'', loanDate: today, returnDate:'', remark:'' });
+      } catch(e){ showToast(e.message||'失敗','err'); }
+      finally { setBusy(false); }
+    };
+    return (
+      <div className="m-overlay">
+        <div className="m-box" style={{width:640}}>
+          <div className="m-hd"><h3>📋 出借登記 — {sample.name}</h3><button className="m-close" onClick={onClose}>×</button></div>
+          <div className="m-body">
+            <div style={{fontSize:12,color:'#5a6270',marginBottom:12,background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:6,padding:'8px 11px'}}>
+              材質：{sample.material||'—'} · 位置：{sample.location||'—'} · 目前狀態：
+              <b style={{color:isSampleOut(loans)?'#c0392b':'#1d6f43'}}>{isSampleOut(loans)?'借出中':'可借出'}</b>
+            </div>
+
+            {/* 新增出借 */}
+            <div style={{border:'1px solid #e6e8ec',borderRadius:6,padding:12,marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#5a6270',marginBottom:8}}>新增出借紀錄</div>
+              <div className="m-row">
+                <div className="m-field"><label style={LBL}>借出人／客戶名稱 *</label>
+                  <input style={S_INP} list="loan-borrowers" value={form.borrower} onChange={e=>set('borrower',e.target.value)} placeholder="輸入或選擇"/>
+                  <datalist id="loan-borrowers">{(borrowers||[]).map(b=><option key={b.key||b.label} value={b.label||b.key}/>)}</datalist>
+                </div>
+                <div className="m-field"><label style={LBL}>借出日期 *</label><input style={S_INP} type="date" value={form.loanDate} onChange={e=>set('loanDate',e.target.value)}/></div>
+              </div>
+              <div className="m-row">
+                <div className="m-field"><label style={LBL}>歸還日期（未歸還留空）</label><input style={S_INP} type="date" value={form.returnDate} onChange={e=>set('returnDate',e.target.value)}/></div>
+                <div className="m-field"><label style={LBL}>備註</label><input style={S_INP} value={form.remark} onChange={e=>set('remark',e.target.value)}/></div>
+              </div>
+              <div style={{textAlign:'right',marginTop:8}}><button className="btn-save" onClick={submit} disabled={busy}>{busy?'登記中...':'＋ 登記出借'}</button></div>
+            </div>
+
+            {/* 出借歷史 */}
+            <div style={{fontSize:12,fontWeight:600,color:'#5a6270',marginBottom:6}}>出借紀錄（{sorted.length}）</div>
+            <div style={{maxHeight:200,overflow:'auto',border:'1px solid #e6e8ec',borderRadius:6}}>
+              <table className="kt" style={{fontSize:12}}><thead><tr>
+                <th>借出人／客戶</th><th>借出日期</th><th>歸還日期</th><th>備註</th><th style={{width:80}}></th>
+              </tr></thead><tbody>
+                {sorted.map(l=>(<tr key={l._id}>
+                  <td>{l.borrower}</td>
+                  <td className="col-date">{l.loanDate||'—'}</td>
+                  <td className="col-date">{l.returnDate
+                    ? l.returnDate
+                    : <span style={{color:'#c0392b',fontWeight:600}}>借出中</span>}</td>
+                  <td style={{color:'#5a6270'}}>{l.remark||'—'}</td>
+                  <td style={{whiteSpace:'nowrap',textAlign:'right'}}>
+                    {!l.returnDate && <button className="btn-cancel" style={{padding:'2px 8px',fontSize:11}} onClick={()=>onReturnLoan(l)}>歸還</button>}
+                    {canManage && <button className="kt-actbtn danger" title="刪除" style={{marginLeft:4}} onClick={()=>onDelLoan(l)}>✕</button>}
+                  </td>
+                </tr>))}
+                {!sorted.length&&<tr><td colSpan={5}><div className="kt-empty" style={{padding:16}}>尚無出借紀錄</div></td></tr>}
+              </tbody></table>
+            </div>
+          </div>
+          <div className="m-foot"><button className="btn-cancel" onClick={onClose}>關閉</button></div>
+        </div>
+      </div>
+    );
+  }
+
   // ── 分析頁（預設 + 自由分析）──
   function IssuesStats({ anomalies, ipa, tools }) {
     const STATUS_COLORS_A = { '處理中':'#c79b2a', '已完成':'#1d6f43', '暫停':'#c0392b' };
@@ -432,6 +548,9 @@
     const [anomalies, setAnomalies] = useState([]);
     const [ipa,       setIpa]       = useState([]);
     const [equipment, setEquipment] = useState([]);
+    const [samples,   setSamples]   = useState([]);   // 樣品清冊
+    const [loans,     setLoans]     = useState([]);   // 出借紀錄
+    const [borrowers, setBorrowers] = useState([]);   // 借用人清單（settings/workspace.borrowers）
     const [loading,   setLoading]   = useState(true);
     const [sub,       setSub]       = useState('anomaly');
     const [modal,     setModal]     = useState(null);
@@ -444,11 +563,15 @@
     const [personF,   setPersonF]   = useState('');
     const [search3,   setSearch3]   = useState('');
     const [methodF,   setMethodF]   = useState('');
+    const [search4,   setSearch4]   = useState('');   // 樣品搜尋
+    const [outF,      setOutF]      = useState('');    // 樣品借出狀態篩選
+    const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
     const [labelVer,  setLabelVer]  = useState(0);
     const [editMode,   setEditMode]  = useState(false);
     const [anomalySort, setAnomalySort] = useState({field:'score',dir:'asc'});
     const [ipaSort,     setIpaSort]     = useState({field:'seq',dir:'asc'});
     const [toolSort,    setToolSort]    = useState({field:'seq',dir:'asc'});
+    const [sampleSort,  setSampleSort]  = useState({field:'seq',dir:'asc'});
     const [expandedA,   setExpandedA]   = useState({});  // 展開的異常案件（預設全收合）
     const toggleExpand = id => setExpandedA(m => ({...m, [id]: !m[id]}));
 
@@ -469,7 +592,10 @@
       const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); });
       const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); });
       const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); });
-      return () => { u1(); u2(); u3(); };
+      const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
+      const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
+      const u6 = FBSettings.onSnapshot(s=>setBorrowers((s&&s.borrowers)||[]));
+      return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
     }, []);
 
     const nextSeq = arr => arr.length ? Math.max(...arr.map(d=>d.seq||0))+1 : 1;
@@ -480,6 +606,14 @@
     const delI  = async it => { if(!confirm('刪除？'))return; await FBIPA.del(it._id); showToast('已刪除','inf'); };
     const saveE = async f => { if(editItem){await FBEquipment.update(editItem._id,f);showToast('已更新 ✓');}else{await FBEquipment.add({...f,seq:nextSeq(equipment)});showToast('已新增 ✓');}setModal(null); };
     const delE  = async it => { if(!confirm('刪除？'))return; await FBEquipment.del(it._id); showToast('已刪除','inf'); };
+    // 樣品清冊（限編輯者）
+    const saveS = async f => { if(editItem){await FBSampleItems.update(editItem._id,f);showToast('已更新 ✓');}else{await FBSampleItems.add({...f,seq:nextSeq(samples)});showToast('已新增 ✓');}setModal(null); };
+    const delS  = async it => { if(!confirm(`刪除樣品「${it.name}」？其出借紀錄不會一併刪除。`))return; await FBSampleItems.del(it._id); showToast('已刪除','inf'); };
+    // 出借紀錄（開放 viewer 登記/歸還）
+    const addLoan    = async l  => { await FBSampleLoans.add(l); showToast('已登記出借 ✓'); };
+    const returnLoan = async l  => { await FBSampleLoans.update(l._id, { returnDate: new Date().toISOString().split('T')[0] }); showToast('已標記歸還 ✓'); };
+    const delLoan    = async l  => { if(!confirm('刪除此出借紀錄？'))return; await FBSampleLoans.del(l._id); showToast('已刪除','inf'); };
+    const loansOf = id => loans.filter(l=>l.itemId===id);
 
     const filtA = anomalies.filter(it=>{
       const s=search1.toLowerCase();
@@ -552,8 +686,17 @@
       { key:'anomaly', label:'客戶異常', count:anomalies.length },
       { key:'ipa',     label:'IPA 採購', count:ipa.length },
       { key:'tools',   label:'設備清單', count:equipment.length },
+      { key:'samples', label:'樣品出借', count:samples.length },
       { key:'stats',   label:'分析',     count:null },
     ];
+
+    // 樣品清冊篩選（含借出狀態）
+    const filtS = samples.filter(it=>{
+      const s=search4.toLowerCase();
+      if(s && !(it.name||'').toLowerCase().includes(s) && !(it.material||'').toLowerCase().includes(s) && !(it.location||'').toLowerCase().includes(s)) return false;
+      if(outF){ const out=isSampleOut(loansOf(it._id)); if(outF==='out'&&!out) return false; if(outF==='in'&&out) return false; }
+      return true;
+    });
 
     if (loading) return (
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'#8a93a3',fontSize:14}}>
@@ -566,6 +709,7 @@
       anomaly: canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('a');}}>+ 新增異常</button>,
       ipa:     canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('i');}}>+ 新增採購</button>,
       tools:   canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('e');}}>+ 新增設備</button>,
+      samples: canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('s');}}>+ 新增樣品</button>,
       stats:   null,
     };
 
@@ -746,6 +890,51 @@
             </div>
           </>}
 
+          {/* 樣品出借 */}
+          {sub==='samples'&&<>
+            <div className="toolbar">
+              <div className="t-search">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                <input value={search4} onChange={e=>setSearch4(e.target.value)} placeholder="搜尋名稱 / 材質 / 位置"/>
+              </div>
+              <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
+              <span className="toolbar-sub">共 <b style={{color:'#0a0e14'}}>{filtS.length}</b> 件，借出中 <b style={{color:'#c0392b'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
+              {canE&&<SettingsBtn/>}
+            </div>
+            <div className="table-wrap">
+              <table className="kt"><thead><tr>
+                <th style={{width:36,textAlign:'center'}}>序</th>
+                <SortTh label="樣品名稱" field="name" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
+                <SortTh label="材質" field="material" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
+                <SortTh label="位置" field="location" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
+                <SortTh label="體積(ml)" field="volume" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
+                <SortTh label="展示目的" field="purpose" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
+                <th>狀態</th><th>出借</th>
+                {editMode&&<th className="col-actions">操作</th>}
+              </tr></thead><tbody>
+                {sortArr(filtS,sampleSort).map((it,idx)=>{
+                  const myLoans=loansOf(it._id);
+                  const out=isSampleOut(myLoans);
+                  return (<tr key={it._id}>
+                    <td className="col-seq">{idx+1}</td>
+                    <td className="col-customer">{it.name}</td>
+                    <td>{it.material||'—'}</td>
+                    <td>{it.location||'—'}</td>
+                    <td className="kt-money">{it.volume!=null&&it.volume!==''?it.volume:'—'}</td>
+                    <td>{it.purpose||'—'}</td>
+                    <td><span className={out?'kt-pill kt-pill-暫停':'kt-pill kt-pill-完成'}>{out?'借出中':'可借出'}</span></td>
+                    <td><button className="btn-cancel" style={{padding:'2px 10px',fontSize:11}} onClick={()=>setLoanSample(it)}>登記/歸還{myLoans.length?` (${myLoans.length})`:''}</button></td>
+                    {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
+                      {canE&&<button className="kt-actbtn" title="編輯" onClick={()=>{setEditItem(it);setModal('s');}}>✎</button>}
+                      {canD&&<button className="kt-actbtn danger" title="刪除" onClick={()=>delS(it)}>✕</button>}
+                    </span></td>}
+                  </tr>);
+                })}
+                {!filtS.length&&<tr><td colSpan={editMode?9:8}><div className="kt-empty">無樣品資料</div></td></tr>}
+              </tbody></table>
+            </div>
+          </>}
+
           {/* 分析 */}
           {sub==='stats'&&(
             <IssuesStats anomalies={anomalies} ipa={ipa} tools={equipment}/>
@@ -755,6 +944,9 @@
           {modal==='a'&&<AnomalyModal item={editItem} onClose={()=>setModal(null)} onSave={saveA}/>}
           {modal==='i'&&<IPAModal     item={editItem} onClose={()=>setModal(null)} onSave={saveI}/>}
           {modal==='e'&&<EquipModal   item={editItem} onClose={()=>setModal(null)} onSave={saveE}/>}
+          {modal==='s'&&<SampleModal  item={editItem} onClose={()=>setModal(null)} onSave={saveS}/>}
+          {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} borrowers={borrowers} canManage={canD}
+                                  onClose={()=>setLoanSample(null)} onAddLoan={addLoan} onReturnLoan={returnLoan} onDelLoan={delLoan}/>}
         </div>
       </div>
     );

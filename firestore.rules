@@ -107,6 +107,19 @@ service cloud.firestore {
       allow delete: if hasPerm('delete_issues');
     }
 
+    // 樣品清冊：維護限編輯者/admin
+    match /sample_items/{id} {
+      allow read: if hasPerm('view_issues');
+      allow create, update: if hasPerm('edit_issues');
+      allow delete: if hasPerm('delete_issues');
+    }
+    // 出借紀錄：開放 viewer 登記/歸還（有 view_issues 即可 create/update）；刪除限編輯者
+    match /sample_loans/{id} {
+      allow read: if hasPerm('view_issues');
+      allow create, update: if hasPerm('view_issues');
+      allow delete: if hasPerm('edit_issues');
+    }
+
     match /settings/{docId} {
       allow read: if isLoggedIn();
       allow write: if isAdmin();
