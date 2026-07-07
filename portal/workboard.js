@@ -18,7 +18,7 @@
     const empty = {
       seq:'', id:'', customer:'',
       engineer: engineers[0] || K.ENG_ORDER[0],
-      dueDate:'', startDate:'', endDate:'', material:'足夠',
+      dueDate:'', startDate:'', endDate:'', actualEndDate:'', material:'足夠',
       resin:'', category:'代工',
       progress: 0,
       machine: machines[0] || K.MACHINES[0],
@@ -43,7 +43,7 @@
     const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'#5a6270', marginBottom:5 };
 
     return (
-      <div className="m-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="m-overlay">
         <div className="m-box">
           <div className="m-hd">
             <h3>{order ? '✏️ 編輯列印工作' : '➕ 新增列印工作'}</h3>
@@ -77,6 +77,12 @@
                 <input style={INP} type="date" value={form.startDate||''} onChange={e=>set('startDate',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>預計完成日</label>
                 <input style={INP} type="date" value={form.endDate||''} onChange={e=>set('endDate',e.target.value)}/></div>
+            </div>
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>實際完成日</label>
+                <input style={INP} type="date" value={form.actualEndDate||''} onChange={e=>set('actualEndDate',e.target.value)}/></div>
+              <div className="m-field"><label style={LBL}>&nbsp;</label>
+                <div style={{fontSize:11,color:'#8a93a3',padding:'8px 0'}}>實際完成日晚於期望交期時，總表會標記逾期</div></div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>期望交期 *</label>
@@ -432,9 +438,15 @@
                 const sstyle = STATUS_STYLE[st] || STATUS_STYLE.todo;
                 const tone = K.ENG_TONE[o.engineer] || { fg:'#5a6270', bg:'#eef0f3' };
                 const days = K.daysUntil(o.dueDate);
+                // 實際完成日晚於期望交期 → 逾期天數（計算標記，不寫入 remark）
+                const lateDays = (o.actualEndDate && o.dueDate && !Number.isNaN(new Date(o.actualEndDate).getTime()) && !Number.isNaN(new Date(o.dueDate).getTime()))
+                  ? Math.round((new Date(o.actualEndDate) - new Date(o.dueDate)) / K.DAY) : null;
                 const rowNo = (page-1)*PAGE_SIZE + idx + 1;   // 序號＝目前顯示清單的位置（1~N，不隨排序改變）
                 return (
-                  <tr key={o._id || o.seq}>
+                  <tr key={o._id || o.seq}
+                    onDoubleClick={() => canEdit && onEdit(o)}
+                    style={canEdit ? {cursor:'pointer'} : undefined}
+                    title={canEdit ? '雙擊編輯' : undefined}>
                     <td className="col-seq">{rowNo}</td>
                     <td className="col-id" style={{fontFamily:'monospace',fontSize:11.5}}>
                       {(o.link && /^https?:\/\//i.test(o.link))
@@ -485,8 +497,20 @@
                       <span style={{...sstyle, padding:'2px 9px', borderRadius:10, fontSize:11, fontWeight:700}}>
                         {K.STATUS_TONE[st]?.label || st}
                       </span>
+                      {o.actualEndDate && (
+                        <div style={{fontSize:10.5, color: lateDays>0?'#c0392b':'#1d6f43', marginTop:3}}>
+                          實際 {o.actualEndDate}
+                        </div>
+                      )}
                     </td>
-                    <td style={{color:'#8a93a3',fontSize:12,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.remark||'—'}</td>
+                    <td style={{fontSize:12,maxWidth:180}}>
+                      {lateDays>0 && (
+                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'#c0392b',background:'#fdecea',padding:'1px 7px',borderRadius:9,marginBottom:o.remark?3:0,whiteSpace:'nowrap'}}>
+                          ⚠ 逾期完工 {lateDays} 天
+                        </span>
+                      )}
+                      <div style={{color:'#8a93a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.remark||(lateDays>0?'':'—')}</div>
+                    </td>
 
                     {/* 編輯模式：顯示編輯/刪除按鈕 */}
                     {editMode && (

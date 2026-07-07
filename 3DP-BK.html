@@ -884,7 +884,7 @@ window.renderTable = function() {
                 ${displayDate}${isOverdue?' <span class="text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>':''}
             </td>
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
-            <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${b.sales}</span></td>
+            <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${salesDisplay(b.sales)}</span></td>
             <td class="p-3">${printerCell}</td>
             <td class="p-3"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded-md text-xs font-medium border border-indigo-200 whitespace-nowrap">${engDisplay(b.engineer)}</span></td>
             <td class="p-3">${purposeCell}</td>
@@ -1051,9 +1051,9 @@ function renderGantt() {
             // 渲染一個預約色塊
             const renderItem = (b) => {
                 const color = ganttStatusColor(b.status);
-                const text = b.engineer ? `${engDisplay(b.engineer)}: ${b.purpose||'—'}` : (b.purpose||b.sales);
+                const text = b.engineer ? `${engDisplay(b.engineer)}: ${b.purpose||'—'}` : (b.purpose||salesDisplay(b.sales));
                 const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${b.sales} · ${b.purpose} · ${engDisplay(b.engineer)} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
+                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
                     ${text}${allDayMark}
                 </div>`;
             };
@@ -1147,7 +1147,7 @@ function renderGanttMonth() {
             const blocks = dayBookings.map(b=>{
                 const color   = ganttStatusColor(b.status);
                 const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':'上午';
-                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${b.sales} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
+                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
             }).join('');
             html += `<td class="p-0.5 border border-gray-200 align-top ${bg}${ring}">${blocks}</td>`;
         });
@@ -1243,7 +1243,7 @@ window.updateStatus = async function(id, newStatus){
 window.deleteBooking = async function(id){
     const b = bookings.find(x=>x.id===id);
     if(!b) return;
-    if(!confirm(`確定要刪除這筆預約？\n\n${b.date} · ${b.printer} · ${b.sales} · ${b.purpose||''}`)) return;
+    if(!confirm(`確定要刪除這筆預約？\n\n${b.date} · ${b.printer} · ${salesDisplay(b.sales)} · ${b.purpose||''}`)) return;
     try {
         await deleteDoc(doc(db,'bookings',id));
         showToast('✓ 已刪除','success');
@@ -1422,7 +1422,7 @@ window.exportExcel = function(){
     const rows = bookings.map(b=>({
         '預約日期': b.date||'',
         '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='ALL'?'全天':'',
-        '申請業務': b.sales||'',
+        '申請業務': salesDisplay(b.sales),
         '設備':     b.printer||'',
         '類型':     b.hasOrder?'單號':'備註',
         '內容':     b.purpose||'',
@@ -1758,6 +1758,14 @@ function engDisplay(key){
     if(!key) return '';
     if(ENG_FULLLABEL[key]) return ENG_FULLLABEL[key];
     const zh = ENG_LABEL[key];
+    return (zh && zh !== key) ? `${zh} (${key})` : key;
+}
+
+// 業務顯示：一律「中文 (英文)」；label=中文、key=英文，兩者相同時只顯示一個（清單與 admin bk_sales 同源）
+function salesDisplay(key){
+    if(!key) return '';
+    const opt = salesOptions.find(o=>o.key===key);
+    const zh = opt && opt.label;
     return (zh && zh !== key) ? `${zh} (${key})` : key;
 }
 
