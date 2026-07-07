@@ -132,6 +132,7 @@
                 <select id="edit-slot" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                     <option value="AM">上午</option>
                     <option value="PM">下午</option>
+                    <option value="EV">晚上</option>
                     <option value="ALL">全天</option>
                 </select>
             </div>
@@ -719,7 +720,7 @@ function subscribeBookings() {
 function getStatusColor(status){
     return {'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
 }
-function getOccupiedSlots(b) { return b.slot==='ALL' ? ['AM','PM'] : [b.slot||'AM']; }
+function getOccupiedSlots(b) { return b.slot==='ALL' ? ['AM','PM','EV'] : [b.slot||'AM']; }
 function getConflictKeys() {
     const counts = {};
     bookings.forEach(b=>{
@@ -761,7 +762,7 @@ function updateSortIndicators() {
 }
 function getSortKey(b, field) {
     if(field==='date')     return b.date || '';
-    if(field==='slot')     return ({'AM':1,'PM':2,'ALL':0}[b.slot]) ?? 9;
+    if(field==='slot')     return ({'ALL':0,'AM':1,'PM':2,'EV':3}[b.slot]) ?? 9;
     if(field==='sales')    return b.sales || '';
     if(field==='printer')  return b.printer || '';
     if(field==='engineer') return b.engineer || '';
@@ -864,8 +865,8 @@ window.renderTable = function() {
             ? new Date(b.date+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
             : '—';
         const isOverdue = b.date && b.date<today && !DONE_STATUSES.has(b.status);
-        const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='ALL' ? '全天' : '—';
-        const slotColor = isConflict ? 'bg-orange-200 text-orange-800' : (b.slot==='PM' ? 'bg-orange-100 text-orange-700' : b.slot==='ALL' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700');
+        const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='EV' ? '晚上' : b.slot==='ALL' ? '全天' : '—';
+        const slotColor = isConflict ? 'bg-orange-200 text-orange-800' : (b.slot==='PM' ? 'bg-orange-100 text-orange-700' : b.slot==='EV' ? 'bg-indigo-100 text-indigo-700' : b.slot==='ALL' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700');
         const printerCell = isConflict
             ? `<span class="text-orange-700 font-medium">${b.printer}</span> <span class="text-xs bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full">衝突</span>`
             : b.printer;
@@ -1020,13 +1021,13 @@ function renderGantt() {
     html += '<tr class="bg-gray-100 text-gray-600"><th class="p-2 border border-gray-200 w-24 sticky left-0 bg-gray-100">機台</th>';
     days.forEach(d=>{
         const isToday = fmtDateLocal(d)===todayKey;
-        html += `<th class="p-2 border border-gray-200 ${isToday?'bg-blue-50':''}" colspan="2">
+        html += `<th class="p-2 border border-gray-200 ${isToday?'bg-blue-50':''}" colspan="3">
             <div class="font-medium ${isToday?'text-blue-600':''}">${d.getMonth()+1}/${d.getDate()}</div>
             <div class="text-gray-400 font-normal">${weekdayNames[d.getDay()===0?6:d.getDay()-1]}</div>
         </th>`;
     });
     html += '</tr><tr class="bg-gray-50 text-gray-400"><th class="p-1 border border-gray-200 sticky left-0 bg-gray-50"></th>';
-    days.forEach(()=>{ html += '<th class="p-1 border border-gray-200 font-normal">上午</th><th class="p-1 border border-gray-200 font-normal">下午</th>'; });
+    days.forEach(()=>{ html += '<th class="p-1 border border-gray-200 font-normal">上午</th><th class="p-1 border border-gray-200 font-normal">下午</th><th class="p-1 border border-gray-200 font-normal">晚上</th>'; });
     html += '</tr></thead><tbody>';
 
     GANTT_PRINTERS.forEach(printer=>{
@@ -1036,17 +1037,14 @@ function renderGantt() {
             const isToday = dayKey===todayKey;
             const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
-            const amItems     = dayBookings.filter(b=>(b.slot||'AM')==='AM');
-            const pmItems     = dayBookings.filter(b=>b.slot==='PM');
+            const SLOTS = ['AM','PM','EV'];
+            const indiv = { AM: dayBookings.filter(b=>(b.slot||'AM')==='AM'),
+                            PM: dayBookings.filter(b=>b.slot==='PM'),
+                            EV: dayBookings.filter(b=>b.slot==='EV') };
+            const anyIndiv = indiv.AM.length || indiv.PM.length || indiv.EV.length;
             const todayBg = isToday?'bg-blue-50/40':'';
             // 雙擊格子 → 快速新增預約（帶入設備/日期/時段），僅 editor/admin
             const dbl = (slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增預約"` : '';
-
-            // 衝突偵測：AM 格 = amItems + allDay；PM 格 = pmItems + allDay
-            const amCombined = [...amItems, ...allDayItems];
-            const pmCombined = [...pmItems, ...allDayItems];
-            const amConflict = amCombined.length > 1;
-            const pmConflict = pmCombined.length > 1;
 
             // 渲染一個預約色塊
             const renderItem = (b) => {
@@ -1059,39 +1057,30 @@ function renderGantt() {
             };
             const renderConflictBadge = (n) => `<div class="text-xs text-orange-700 font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
 
-            // 情境 A：當天只有全天預約，無 AM/PM 單獨預約 → 用 colspan=2 橫跨
-            if(allDayItems.length && !amItems.length && !pmItems.length){
+            // 情境 A：當天只有全天預約，無 上午/下午/晚上 單獨預約 → 用 colspan=3 橫跨
+            if(allDayItems.length && !anyIndiv){
                 const isConflict = allDayItems.length > 1;
                 const bg = isConflict ? 'bg-orange-100' : todayBg;
                 const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
                 const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
                 const content = allDayItems.map(renderItem).join('');
-                html += `<td colspan="2" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:140px"${dbl('ALL')}>${badge}${content}</td>`;
-                return;  // 跳過下面 AM/PM 兩格
+                html += `<td colspan="3" class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:210px"${dbl('ALL')}>${badge}${content}</td>`;
+                return;  // 跳過下面三格
             }
 
-            // 情境 B：同時有全天 + AM/PM 單獨預約（衝突情況）→ 仍分兩格但兩格都顯示全天那筆
-            // 情境 C：只有 AM/PM 單獨預約，無全天 → 標準兩格
-            // 情境 D：完全沒預約 → 空兩格
-
-            // AM 格
-            if(amCombined.length){
-                const ring = amConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
-                const bg   = amConflict ? 'bg-orange-100' : todayBg;
-                const badge = amConflict ? renderConflictBadge(amCombined.length) : '';
-                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl('AM')}>${badge}${amCombined.map(renderItem).join('')}</td>`;
-            } else {
-                html += `<td class="p-1 border border-gray-200 ${todayBg}"${dbl('AM')}></td>`;
-            }
-            // PM 格
-            if(pmCombined.length){
-                const ring = pmConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
-                const bg   = pmConflict ? 'bg-orange-100' : todayBg;
-                const badge = pmConflict ? renderConflictBadge(pmCombined.length) : '';
-                html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl('PM')}>${badge}${pmCombined.map(renderItem).join('')}</td>`;
-            } else {
-                html += `<td class="p-1 border border-gray-200 ${todayBg}"${dbl('PM')}></td>`;
-            }
+            // 情境 B/C/D：逐時段渲染（每格 = 該時段單獨預約 + 全天預約）
+            SLOTS.forEach(sl=>{
+                const combined = [...indiv[sl], ...allDayItems];
+                if(combined.length){
+                    const conflict = combined.length > 1;
+                    const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                    const bg   = conflict ? 'bg-orange-100' : todayBg;
+                    const badge = conflict ? renderConflictBadge(combined.length) : '';
+                    html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
+                } else {
+                    html += `<td class="p-1 border border-gray-200 ${todayBg}"${dbl(sl)}></td>`;
+                }
+            });
         });
         html += '</tr>';
     });
@@ -1141,12 +1130,13 @@ function renderGanttMonth() {
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
             const amCombined  = [...dayBookings.filter(b=>(b.slot||'AM')==='AM'), ...allDayItems];
             const pmCombined  = [...dayBookings.filter(b=>b.slot==='PM'), ...allDayItems];
-            const conflict = amCombined.length>1 || pmCombined.length>1;
+            const evCombined  = [...dayBookings.filter(b=>b.slot==='EV'), ...allDayItems];
+            const conflict = amCombined.length>1 || pmCombined.length>1 || evCombined.length>1;
             const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : '';
             const bg   = conflict ? 'bg-orange-100' : todayBg;
             const blocks = dayBookings.map(b=>{
                 const color   = ganttStatusColor(b.status);
-                const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':'上午';
+                const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':b.slot==='EV'?'晚上':'上午';
                 return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
             }).join('');
             html += `<td class="p-0.5 border border-gray-200 align-top ${bg}${ring}">${blocks}</td>`;
@@ -1184,7 +1174,7 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     // 衝突檢查
     const dupCount = bookings.filter(b=>b.printer===printer && b.date===date && (b.slot||'AM')===slot).length;
     if(dupCount > 0){
-        const slotTxt = slot==='ALL'?'全天':slot==='PM'?'下午':'上午';
+        const slotTxt = slot==='ALL'?'全天':slot==='PM'?'下午':slot==='EV'?'晚上':'上午';
         if(!confirm(`注意：${printer} 在 ${date} ${slotTxt} 已有 ${dupCount} 筆預約。\n確定仍要新增嗎？`)) return;
     }
 
@@ -1421,7 +1411,7 @@ window.exportExcel = function(){
     if(!bookings.length){ showToast('沒有資料可以匯出','error'); return; }
     const rows = bookings.map(b=>({
         '預約日期': b.date||'',
-        '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='ALL'?'全天':'',
+        '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='EV'?'晚上':b.slot==='ALL'?'全天':'',
         '申請業務': salesDisplay(b.sales),
         '設備':     b.printer||'',
         '類型':     b.hasOrder?'單號':'備註',
