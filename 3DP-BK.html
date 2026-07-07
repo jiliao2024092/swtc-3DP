@@ -34,9 +34,6 @@
         .toggle-btn { padding:5px 14px;border-radius:6px;font-size:13px;font-weight:500;border:1px solid #d1d5db;cursor:pointer;transition:all 0.15s;background:white;color:#6b7280; }
         .toggle-btn.active-yes { background:#dbeafe;color:#1d4ed8;border-color:#93c5fd; }
         .toggle-btn.active-no  { background:#fee2e2;color:#b91c1c;border-color:#fca5a5; }
-        /* 甘特圖列加高，讓表格上下更大更好讀 */
-        #gantt-container table td { height:54px; vertical-align:top; }
-        #gantt-container thead th { position:sticky; top:0; z-index:1; }
         .page-btn { padding:4px 10px;border-radius:6px;font-size:13px;border:1px solid #d1d5db;background:white;color:#374151;cursor:pointer;transition:all 0.15s; }
         .page-btn:hover { background:#f3f4f6; }
         .page-btn.active { background:#2563eb;color:white;border-color:#2563eb; }
@@ -293,6 +290,55 @@
             </div>
         </div>
 
+        <!-- 新增預約（僅 editor/admin）-->
+        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
+            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
+            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">預約日期</label>
+                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">時段</label>
+                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="AM">上午</option>
+                        <option value="PM">下午</option>
+                        <option value="ALL">全天</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">申請業務</label>
+                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
+                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1 lg:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
+                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
+                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
+                        </div>
+                    </div>
+                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
+                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
+                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="lg:col-span-8 flex justify-end mt-2">
+                    <button type="submit" id="submit-btn"
+                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
+                    </button>
+                </div>
+            </form>
+        </div>
+
         <!-- 執行清單 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
@@ -311,9 +357,6 @@
                     </div>
                     <button onclick="exportExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700">
                         <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出 Excel
-                    </button>
-                    <button id="add-booking-btn" onclick="toggleBookingForm()" class="hidden flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                        <i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增預約單
                     </button>
                 </div>
             </div>
@@ -377,55 +420,6 @@
                 </div>
                 <div id="gantt-container" class="overflow-x-auto"></div>
             </div>
-        </div>
-
-        <!-- 新增預約（僅 editor/admin）-->
-        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
-            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
-            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">預約日期</label>
-                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">時段</label>
-                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                        <option value="AM">上午</option>
-                        <option value="PM">下午</option>
-                        <option value="ALL">全天</option>
-                    </select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">申請業務</label>
-                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
-                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1 lg:col-span-2">
-                    <div class="flex items-center justify-between">
-                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
-                        <div class="flex items-center gap-1">
-                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
-                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
-                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
-                        </div>
-                    </div>
-                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
-                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
-                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="lg:col-span-8 flex justify-end mt-2">
-                    <button type="submit" id="submit-btn"
-                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
-                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
-                    </button>
-                </div>
-            </form>
         </div>
 
     </div>
@@ -683,9 +677,7 @@ function applyRoleUI() {
 
     // 顯示/隱藏編輯功能
     const canEdit = u.role === 'admin' || u.role === 'editor';
-    // 新增預約單預設隱藏；僅 editor/admin 顯示「新增預約單」切換鈕（點按或雙擊甘特圖才展開）
-    document.getElementById('booking-section').classList.add('hidden');
-    document.getElementById('add-booking-btn').classList.toggle('hidden', !canEdit);
+    document.getElementById('booking-section').classList.toggle('hidden', !canEdit);
     document.getElementById('ops-col').classList.toggle('hidden', !canEdit);
     // 使用者管理已移至 portal 後台管理分頁，此頁不再提供（按鈕已移除，null-safe 保護）
     const _umb = document.getElementById('users-mgmt-btn');
@@ -693,13 +685,7 @@ function applyRoleUI() {
     lucide.createIcons();
 }
 
-// 新增預約單：展開/收合（預設隱藏）
-window.toggleBookingForm = function(){
-    const sec = document.getElementById('booking-section');
-    const nowHidden = sec.classList.toggle('hidden');
-    if(!nowHidden) sec.scrollIntoView({behavior:'smooth', block:'center'});
-};
-// 雙擊甘特圖格子 → 展開表單並帶入 設備 / 日期 / 時段
+// 雙擊甘特圖格子 → 帶入 設備 / 日期 / 時段
 window.quickAddBooking = function(printer, dateKey, slot){
     const sec = document.getElementById('booking-section');
     if(sec.classList.contains('hidden')) sec.classList.remove('hidden');
