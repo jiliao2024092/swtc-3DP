@@ -290,55 +290,6 @@
             </div>
         </div>
 
-        <!-- 新增預約（僅 editor/admin）-->
-        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
-            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
-            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">預約日期</label>
-                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">時段</label>
-                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                        <option value="AM">上午</option>
-                        <option value="PM">下午</option>
-                        <option value="ALL">全天</option>
-                    </select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">申請業務</label>
-                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
-                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="space-y-1 lg:col-span-2">
-                    <div class="flex items-center justify-between">
-                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
-                        <div class="flex items-center gap-1">
-                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
-                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
-                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
-                        </div>
-                    </div>
-                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
-                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
-                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                </div>
-                <div class="lg:col-span-8 flex justify-end mt-2">
-                    <button type="submit" id="submit-btn"
-                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
-                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
-                    </button>
-                </div>
-            </form>
-        </div>
-
         <!-- 執行清單 -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
@@ -422,6 +373,55 @@
             </div>
         </div>
 
+        <!-- 新增預約（僅 editor/admin）-->
+        <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
+            <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
+            <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">預約日期</label>
+                    <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">時段</label>
+                    <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="AM">上午</option>
+                        <option value="PM">下午</option>
+                        <option value="ALL">全天</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">申請業務</label>
+                    <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">選擇設備</label>
+                    <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1 lg:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <label id="purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
+                        <div class="flex items-center gap-1">
+                            <span class="text-xs text-gray-400 mr-1">是否有單號</span>
+                            <button type="button" id="btn-yes" onclick="setHasOrder(true)"  class="toggle-btn">有</button>
+                            <button type="button" id="btn-no"  onclick="setHasOrder(false)" class="toggle-btn">無</button>
+                        </div>
+                    </div>
+                    <input type="text" id="purpose-input" placeholder="請先選擇是否有單號" disabled
+                        class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">指派工程師</label>
+                    <select id="engineer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="lg:col-span-8 flex justify-end mt-2">
+                    <button type="submit" id="submit-btn"
+                        class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-md transition-colors font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                        <i data-lucide="plus" class="w-4 h-4"></i> 送出預約
+                    </button>
+                </div>
+            </form>
+        </div>
+
     </div>
 </div>
 
@@ -468,6 +468,7 @@ let ENGINEER_ORDER = ENGINEERS.slice();
 let ENG_LABEL = {};       // { key: 中文 }
 let ENG_FULLLABEL = {};   // { key: '中文 (英文)' }
 let unsubscribeSettings = null;
+let salesOptions = SALES.map(s=>({key:s,label:s}));  // booking 業務清單（admin settings/workspace.bk_sales 覆蓋）
 const PRINTERS  = ['Form4','Form4L','MarkTwo','UR','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 const DONE_STATUSES = new Set(['已完成','異常/取消']);
@@ -1583,28 +1584,34 @@ function buildStatusCard(p) {
     const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
     const isPrinting = ['PRINTING','PAUSED','PAUSING'].includes(p.status);
     const ml = getMachineLabelFE(p.machine_type);
+    const img = getMachineImageFE(p);
     const card = document.createElement('div');
-    card.className = 'border border-gray-200 rounded-xl p-4 space-y-3 hover:border-blue-300 transition-colors';
+    card.className = 'border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-colors';
     card.innerHTML = `
-        <div class="flex items-start justify-between">
-            <div>
-                <p class="font-semibold text-gray-800 text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
-                <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
+        <div class="flex items-start gap-3">
+            ${img?`<img src="${img}" alt="${printerDisplayFE(p.alias)||''}" loading="lazy" class="w-16 h-16 object-contain flex-shrink-0 rounded-lg bg-gray-50">`:''}
+            <div class="flex-1 min-w-0 space-y-3">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="font-semibold text-gray-800 text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
+                        <p class="text-xs text-gray-400 mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
+                    </div>
+                    <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                        <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
+                    </span>
+                </div>
+                ${isPrinting?`
+                <div class="space-y-1.5 pt-1">
+                    <div class="flex justify-between items-center gap-2">
+                        <p class="text-xs text-gray-600 truncate flex-1" title="${p.print_name||''}">${p.print_name?'📄 '+p.print_name:'列印中…'}</p>
+                        ${p.progress?`<span class="text-xs font-medium text-blue-600 shrink-0">${p.progress}%</span>`:''}
+                    </div>
+                    ${p.progress?`<div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>`:''}
+                    ${(p.layer_now&&p.layer_total)?`<div class="text-xs text-gray-400">第 ${p.layer_now} / ${p.layer_total} 層</div>`:''}
+                </div>`:''}
+                ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
             </div>
-            <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
-                <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${p.status==='PRINTING'?'animate-pulse':''}"></span>${s.label}
-            </span>
         </div>
-        ${isPrinting?`
-        <div class="space-y-1.5 pt-1">
-            <div class="flex justify-between items-center gap-2">
-                <p class="text-xs text-gray-600 truncate flex-1" title="${p.print_name||''}">${p.print_name?'📄 '+p.print_name:'列印中…'}</p>
-                ${p.progress?`<span class="text-xs font-medium text-blue-600 shrink-0">${p.progress}%</span>`:''}
-            </div>
-            ${p.progress?`<div class="bg-gray-200 rounded-full h-1.5 overflow-hidden"><div class="${p.status==='PAUSED'?'bg-yellow-400':'bg-blue-500'} h-full" style="width:${p.progress}%"></div></div>`:''}
-            ${(p.layer_now&&p.layer_total)?`<div class="text-xs text-gray-400">第 ${p.layer_now} / ${p.layer_total} 層</div>`:''}
-        </div>`:''}
-        ${p.material?`<p class="text-xs text-gray-400">材料：${matNameFE(p.material)}</p>`:''}
     `;
     return card;
 }
@@ -1766,6 +1773,18 @@ function populateEngineerSelects(){
     });
 }
 
+// 填入業務下拉（value=key，顯示=中文名；清單與 admin 後台「業務清單」bk_sales 同源）
+function populateSalesSelects(){
+    ['sales-select','edit-sales'].forEach(id=>{
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const cur = sel.value;
+        let html = salesOptions.map(o=>`<option value="${o.key}" ${cur===o.key?'selected':''}>${o.label||o.key}</option>`).join('');
+        if(cur && !salesOptions.some(o=>o.key===cur)) html += `<option value="${cur}" selected>${cur}</option>`;  // 保留舊值
+        sel.innerHTML = html;
+    });
+}
+
 // 訂閱 settings/workspace 取得工程師中文名（與 portal 後台同源）
 function subscribeSettings(){
     if (unsubscribeSettings) { unsubscribeSettings(); unsubscribeSettings = null; }
@@ -1782,15 +1801,20 @@ function subscribeSettings(){
         }
         ENGINEER_ORDER = order;
         populateEngineerSelects();
+        // 業務清單：與 admin 後台「業務清單」(bk_sales) 同源；無設定時退回內建 SALES
+        salesOptions = (s && Array.isArray(s.bk_sales) && s.bk_sales.length)
+            ? s.bk_sales.filter(x=>x && (x.key||x.label)).map(x=>({key:x.key||x.label, label:x.label||x.key}))
+            : SALES.map(v=>({key:v,label:v}));
+        populateSalesSelects();
         if (currentUser) renderTable();
     }, (err)=>console.error('讀取 settings/workspace 失敗', err));
 }
 
 // ══ 初始化 ═══════════════════════════════════
-[['sales-select',SALES],['printer-select',PRINTERS],
- ['edit-sales',SALES],['edit-printer',PRINTERS]]
+[['printer-select',PRINTERS],['edit-printer',PRINTERS]]
     .forEach(([id,opts])=>populateSelect(id,opts));
 populateEngineerSelects();  // 工程師下拉：value=key、顯示中文(英文)，settings 載入後會重填
+populateSalesSelects();     // 業務下拉：value=key、顯示中文名，settings.bk_sales 載入後會重填
 document.getElementById('date-input').value = fmtDateLocal(new Date());
 ganttWeekStart = startOfWeek(new Date());
 lucide.createIcons();

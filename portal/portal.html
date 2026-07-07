@@ -1873,8 +1873,8 @@ function AdminPanel({ user }) {
             {/* 工作看板設定 */}
             {settingTab==='workboard'&&(
               <div>
-                <ListEditor label="工程師清單" list={wbEng}  setList={setWbEngSync}  keyField={true}/>
-                <ListEditor label="機台清單"   list={wbMach} setList={setWbMachSync} keyField={false}/>
+                {ListEditor({label:"工程師清單", list:wbEng,  setList:setWbEngSync,  keyField:true})}
+                {ListEditor({label:"機台清單",   list:wbMach, setList:setWbMachSync, keyField:false})}
               </div>
             )}
 
@@ -1898,8 +1898,8 @@ function AdminPanel({ user }) {
                 {sync
                   ? <div style={{padding:'16px',background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:8,color:'#8a93a3',fontSize:13,textAlign:'center'}}>目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
-                      <ListEditor label="工程師清單（獨立）" list={isEng}  setList={setIsEng}  keyField={true}/>
-                      <ListEditor label="機台清單（獨立）"   list={isMach} setList={setIsMach} keyField={false}/>
+                      {ListEditor({label:"工程師清單（獨立）", list:isEng,  setList:setIsEng,  keyField:true})}
+                      {ListEditor({label:"機台清單（獨立）",   list:isMach, setList:setIsMach, keyField:false})}
                     </>
                 }
               </div>
@@ -1908,7 +1908,7 @@ function AdminPanel({ user }) {
             {/* 3D列印樣品設定 */}
             {settingTab==='samples'&&(
               <div>
-                <BorrowerEditor/>
+                {BorrowerEditor()}
                 <div style={{padding:'12px 14px',background:'#e6f1f6',border:'1px solid #b5d4f4',borderRadius:8,fontSize:12,color:'#0c7a99'}}>
                   💡 借用人清單會在儲存後即時更新至樣品管理頁面
                 </div>
@@ -1935,12 +1935,12 @@ function AdminPanel({ user }) {
                 {bkSync
                   ? <div style={{padding:'16px',background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:8,color:'#8a93a3',fontSize:13,textAlign:'center',marginBottom:20}}>工程師與機台目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
-                      <ListEditor label="工程師清單（獨立）" list={bkEng}  setList={setBkEng}  keyField={true}/>
-                      <ListEditor label="機台清單（獨立）"   list={bkMach} setList={setBkMach} keyField={false}/>
+                      {ListEditor({label:"工程師清單（獨立）", list:bkEng,  setList:setBkEng,  keyField:true})}
+                      {ListEditor({label:"機台清單（獨立）",   list:bkMach, setList:setBkMach, keyField:false})}
                     </>
                 }
                 {/* 業務清單（獨立，含中英文） */}
-                <SalesEditor/>
+                {SalesEditor()}
               </div>
             )}
           </div>
