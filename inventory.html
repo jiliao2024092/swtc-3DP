@@ -476,6 +476,29 @@
                 </div>
             </div>
 
+            <!-- 當月消耗紀錄（依用量排序，看哪些列印佔比大）-->
+            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="consume-detail-title" class="text-sm font-semibold text-gray-700">當月消耗紀錄（依用量排序）</h3>
+                    <span id="consume-detail-sum" class="text-xs text-gray-500"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead><tr class="bg-gray-100 text-gray-600">
+                            <th class="p-2 border-b font-medium text-left w-8">#</th>
+                            <th class="p-2 border-b font-medium text-left">列印 / 備註</th>
+                            <th class="p-2 border-b font-medium text-left">材料</th>
+                            <th class="p-2 border-b font-medium text-left">機台</th>
+                            <th class="p-2 border-b font-medium text-right w-24">用量</th>
+                            <th class="p-2 border-b font-medium text-left w-40">佔比</th>
+                            <th class="p-2 border-b font-medium text-left w-28">日期</th>
+                        </tr></thead>
+                        <tbody id="consume-detail-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+                <p id="consume-detail-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+            </div>
+
             <!-- 月度趨勢圖 -->
             <div class="border border-gray-100 rounded-xl p-4 mb-6">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -2313,7 +2336,64 @@ function renderMonthlyTrend() {
     });
 }
 
+// 當月消耗紀錄明細：列出每筆列印消耗，依用量由大到小，看哪些列印佔比較大
+function renderMonthlyConsume() {
+    const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const printerFilter = document.getElementById('monthly-printer').value;
+    const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+    const title = document.getElementById('consume-detail-title');
+    if(title) title.textContent = `${curYear}年 ${curMonth}月 消耗紀錄（依用量排序）${printerFilter?` · ${printerFilter}`:''}`;
+
+    const recs = inv.history
+        .filter(h=>(h.type==='consume'||h.type==='aborted')
+            && (!printerFilter || (h.printer||'').includes(printerFilter))
+            && h.ts && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth)
+        .slice()
+        .sort((a,b)=>(b.ml||0)-(a.ml||0));
+
+    const body  = document.getElementById('consume-detail-body');
+    const empty = document.getElementById('consume-detail-empty');
+    const sumEl = document.getElementById('consume-detail-sum');
+    if(!body) return;
+    const total = recs.reduce((s,h)=>s+(h.ml||0),0);
+
+    if(!recs.length){
+        body.innerHTML=''; empty.classList.remove('hidden');
+        if(sumEl) sumEl.textContent='';
+        return;
+    }
+    empty.classList.add('hidden');
+    if(sumEl) sumEl.textContent = `共 ${recs.length} 筆 · 合計 ${(total/1000).toFixed(2)} L`;
+
+    body.innerHTML = recs.map((h,i)=>{
+        const ml  = h.ml||0;
+        const pct = total>0 ? (ml/total*100) : 0;
+        const pctTxt = pct>=1 ? Math.round(pct) : pct.toFixed(1);
+        const qty = ml>=1000 ? (ml/1000).toFixed(2)+' L' : Math.round(ml)+' mL';
+        const isAbort = h.type==='aborted';
+        return `<tr class="hover:bg-gray-50">
+            <td class="p-2 text-gray-400">${i+1}</td>
+            <td class="p-2 text-gray-700">${esc(h.note)||'—'}${isAbort?' <span class="text-xs text-amber-600">(中止)</span>':''}</td>
+            <td class="p-2 text-gray-600">${esc(matName(h.material))||'—'}</td>
+            <td class="p-2 text-gray-600">${esc(printerDisplay(h.printer))||'—'}</td>
+            <td class="p-2 text-right font-medium text-gray-800">${qty}</td>
+            <td class="p-2">
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden" style="min-width:60px">
+                        <div class="h-full bg-teal-500 rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
+                    </div>
+                    <span class="text-xs text-gray-500 w-9 text-right">${pctTxt}%</span>
+                </div>
+            </td>
+            <td class="p-2 text-gray-400 text-xs">${h.ts?new Date(h.ts).toLocaleDateString('zh-TW'):'—'}</td>
+        </tr>`;
+    }).join('');
+}
+
 function renderMonthlyPie() {
+    renderMonthlyConsume();
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
     const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
     const printerFilter = document.getElementById('monthly-printer').value;

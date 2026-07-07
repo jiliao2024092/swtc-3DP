@@ -1113,6 +1113,11 @@ function GanttView({ data }) {
             const s=dayOffset(item.startDate);
             const e=dayOffset(item.endDate||item.dueDate);
             const due=dayOffset(item.dueDate);
+            const actual=dayOffset(item.actualEndDate);
+            // 實際完成日晚於期望交期 → 逾期完工，時間軸以紅色標示
+            const lateDone = item.actualEndDate && item.dueDate
+              && !Number.isNaN(new Date(item.actualEndDate).getTime()) && !Number.isNaN(new Date(item.dueDate).getTime())
+              && (new Date(item.actualEndDate) > new Date(item.dueDate));
             const hasBar=s!==null&&e!==null&&e>=s;
             return (
               <div key={item._id||item.seq} className={`row${rowIdx%2?' alt':''}`} style={{height:56,position:'relative'}}>
@@ -1122,14 +1127,20 @@ function GanttView({ data }) {
                   return <div key={i} style={{position:'absolute',left:i*DAY_W,top:0,bottom:0,width:DAY_W,borderRight:'1px solid var(--line-soft)',background:isWeekend?'rgba(10,14,20,0.018)':'transparent'}}/>;
                 })}
                 <div className="today-line" style={{left:todayOffset*DAY_W+DAY_W/2}}/>
+                {/* 逾期完工紅色標記：實際完成日的紅色垂直線 + ▲ */}
+                {lateDone&&actual!==null&&(
+                  <div title={`實際完成 ${item.actualEndDate}（逾期）`} style={{position:'absolute',left:actual*DAY_W+DAY_W/2-1,top:4,bottom:4,width:2,background:'#c0392b',zIndex:3,pointerEvents:'none'}}>
+                    <span style={{position:'absolute',bottom:-3,left:-4,fontSize:9,color:'#c0392b',lineHeight:1}}>▲</span>
+                  </div>
+                )}
                 {hasBar&&(
-                  <div className={`bar ${st}`} style={{left:s*DAY_W,width:Math.max(1,(e-s+1))*DAY_W-2,top:'50%',transform:'translateY(-50%)'}}
+                  <div className={`bar ${st}`} style={{left:s*DAY_W,width:Math.max(1,(e-s+1))*DAY_W-2,top:'50%',transform:'translateY(-50%)',...(lateDone?{outline:'2px solid #c0392b',outlineOffset:1,boxShadow:'0 0 0 3px rgba(192,57,43,0.12)'}:{})}}
                     onMouseEnter={e2=>{setTooltip({item,x:e2.clientX+14,y:e2.clientY-20})}}
                     onMouseMove={e2=>{setTooltip(v=>v?{...v,x:e2.clientX+14,y:e2.clientY-20}:v)}}
                     onMouseLeave={()=>setTooltip(null)}
                   >
                     <div className="bar-fill" style={{width:`${item.progress}%`}}/>
-                    <span className="bar-text">{item.customer}</span>
+                    <span className="bar-text">{item.customer}{lateDone?' ⚠':''}</span>
                     {due!==null&&due>e&&<div className="bar-due-marker"/>}
                   </div>
                 )}
@@ -1188,9 +1199,16 @@ function GanttView({ data }) {
                 <span style={{fontFamily:'var(--font-mono)',fontSize:11}}>{d.machine||'—'}</span>
               </div>
               <div style={{display:'flex',justifyContent:'space-between'}}>
-                <span style={{color:'var(--ink-4)'}}>交期</span>
+                <span style={{color:'var(--ink-4)'}}>期望交期</span>
                 <span style={{color:dueCol,fontFamily:'var(--font-mono)',fontSize:11}}>{d.dueDate||'—'}<span style={{marginLeft:5,fontSize:10,opacity:.8}}>{dueText}</span></span>
               </div>
+              {d.actualEndDate&&(()=>{
+                const lateTip = d.dueDate && !Number.isNaN(new Date(d.actualEndDate).getTime()) && !Number.isNaN(new Date(d.dueDate).getTime()) && (new Date(d.actualEndDate)>new Date(d.dueDate));
+                return <div style={{display:'flex',justifyContent:'space-between'}}>
+                  <span style={{color:'var(--ink-4)'}}>實際完成</span>
+                  <span style={{color:lateTip?'#c0392b':'var(--ink-2)',fontFamily:'var(--font-mono)',fontSize:11,fontWeight:lateTip?700:400}}>{d.actualEndDate}{lateTip?' ⚠ 逾期':''}</span>
+                </div>;
+              })()}
               <div style={{display:'flex',justifyContent:'space-between'}}>
                 <span style={{color:'var(--ink-4)'}}>進度</span>
                 <span style={{color:'var(--ink-2)'}}>{d.progress||0}%</span>

@@ -1171,11 +1171,17 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
 
     const printer = document.getElementById('printer-select').value;
     const slot    = document.getElementById('slot-input').value;
-    // 衝突檢查
-    const dupCount = bookings.filter(b=>b.printer===printer && b.date===date && (b.slot||'AM')===slot).length;
-    if(dupCount > 0){
+    // 衝突檢查：以「佔用時段」重疊判定，全天(ALL)與任一時段重疊也算衝突
+    const newSlots = getOccupiedSlots({slot});
+    const conflicts = bookings.filter(b=>b.printer===printer && b.date===date
+        && getOccupiedSlots(b).some(s=>newSlots.includes(s)));
+    if(conflicts.length > 0){
         const slotTxt = slot==='ALL'?'全天':slot==='PM'?'下午':slot==='EV'?'晚上':'上午';
-        if(!confirm(`注意：${printer} 在 ${date} ${slotTxt} 已有 ${dupCount} 筆預約。\n確定仍要新增嗎？`)) return;
+        const detail = conflicts.slice(0,5).map(b=>{
+            const bs = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':b.slot==='EV'?'晚上':'上午';
+            return `・${bs}：${salesDisplay(b.sales)}${b.purpose?' / '+b.purpose:''}`;
+        }).join('\n');
+        if(!confirm(`注意：${printer} 在 ${date} ${slotTxt} 與現有 ${conflicts.length} 筆預約時段重疊：\n${detail}\n\n確定仍要新增嗎？`)) return;
     }
 
     const btn = document.getElementById('submit-btn');
