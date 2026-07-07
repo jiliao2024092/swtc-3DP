@@ -35,15 +35,38 @@
     view_issues:   '查看異常資源',
     edit_issues:   '編輯異常資源',
     delete_issues: '刪除異常資源',
+    view_booking:  '查看列印機預約',
+    view_inventory:'查看材料庫存',
     view_quote:    '使用 3D 列印估價',
     admin:         '管理員（所有權限）',
   };
 
-  window.ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_quote','admin'],
-    manager:  ['view_board','edit_board','view_issues','edit_issues','view_quote'],
-    operator: ['view_board','edit_board','view_issues','edit_issues','view_quote'],
-    viewer:   ['view_board','view_issues','view_quote'],
+  // 分頁 → 對應「查看」權限（後台分頁權限設定用）
+  window.TAB_PERMS = [
+    { key:'workboard', label:'工作看板',     perm:'view_board' },
+    { key:'booking',   label:'列印機預約',   perm:'view_booking' },
+    { key:'inventory', label:'材料庫存',     perm:'view_inventory' },
+    { key:'quote',     label:'3D 列印估價',  perm:'view_quote' },
+    { key:'issues',    label:'異常與資源',   perm:'view_issues' },
+  ];
+
+  // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
+  window.DEFAULT_ROLE_PRESETS = {
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','admin'],
+    manager:  ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
+    operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
+    viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote'],
+  };
+  window.ROLE_PRESETS = JSON.parse(JSON.stringify(window.DEFAULT_ROLE_PRESETS));
+  // 以 settings 覆蓋角色預設（admin 後台「角色權限設定」儲存後套用）
+  window.applyRolePresets = function (overrides) {
+    const base = JSON.parse(JSON.stringify(window.DEFAULT_ROLE_PRESETS));
+    if (overrides && typeof overrides === 'object') {
+      Object.keys(overrides).forEach(role => {
+        if (Array.isArray(overrides[role])) base[role] = overrides[role].slice();
+      });
+    }
+    window.ROLE_PRESETS = base;
   };
 
   // admin 權限視為擁有一切
@@ -51,6 +74,18 @@
     if (!user || !user.permissions) return false;
     if (user.permissions.includes('admin')) return true;
     return user.permissions.includes(perm);
+  };
+
+  // 分頁可見判斷（含向後相容）：列印機預約/材料庫存原本對所有登入者開放，
+  // 舊帳號 permissions 尚未含這兩個分頁權限時，預設仍可見（不因升級而失去存取）。
+  window.canSeeTab = function (user, perm) {
+    if (!user) return false;
+    if (window.hasPerm(user, perm)) return true;
+    if (perm === 'view_booking' || perm === 'view_inventory') {
+      const p = user.permissions || [];
+      if (!p.includes('view_booking') && !p.includes('view_inventory')) return true;  // 尚未設定 → 相容顯示
+    }
+    return false;
   };
 
   // 由 permissions 推導出舊系統用的 role（讓 3DP-BK / inventory 也能正確判斷權限）
