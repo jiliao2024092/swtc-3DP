@@ -1787,8 +1787,8 @@ function populateSalesSelects(){
         const sel = document.getElementById(id);
         if(!sel) return;
         const cur = sel.value;
-        let html = salesOptions.map(o=>`<option value="${o.key}" ${cur===o.key?'selected':''}>${o.label||o.key}</option>`).join('');
-        if(cur && !salesOptions.some(o=>o.key===cur)) html += `<option value="${cur}" selected>${cur}</option>`;  // 保留舊值
+        let html = salesOptions.map(o=>`<option value="${o.key}" ${cur===o.key?'selected':''}>${salesDisplay(o.key)}</option>`).join('');
+        if(cur && !salesOptions.some(o=>o.key===cur)) html += `<option value="${cur}" selected>${salesDisplay(cur)}</option>`;  // 保留舊值
         sel.innerHTML = html;
     });
 }

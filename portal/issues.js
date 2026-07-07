@@ -76,13 +76,31 @@
     );
   }
 
+  // 使用區間天數（含頭尾）：起訖日期皆有效才計算，否則回 null
+  function ipaUseDays(useStart, useEnd) {
+    if (!useStart || !useEnd) return null;
+    const a = new Date(useStart), b = new Date(useEnd);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
+    return Math.round((b - a) / K.DAY) + 1;
+  }
+  // 使用區間顯示文字：優先用起訖日期，退回舊的自由文字 useDate
+  function ipaRangeText(it) {
+    if (it.useStart && it.useEnd) {
+      const d = ipaUseDays(it.useStart, it.useEnd);
+      return `${it.useStart} ~ ${it.useEnd}${d!=null?`（${d} 天）`:''}`;
+    }
+    if (it.useStart) return `${it.useStart} ~`;
+    return it.useDate || '—';
+  }
+
   // ── IPA Modal ──
   function IPAModal({ item, onClose, onSave }) {
     const engineers = window._settings_engineers || K.ENG_ORDER;
-    const empty = { purchaseDate:'', useDate:'', product:'20L-IPA 異丙醇', quantity:1, person:engineers[0]||K.ENG_ORDER[0], remark:'' };
+    const empty = { purchaseDate:'', useStart:'', useEnd:'', useDate:'', product:'20L-IPA 異丙醇', quantity:1, person:engineers[0]||K.ENG_ORDER[0], remark:'' };
     const [form, setForm] = useState(item?{...item}:empty);
     const [busy, setBusy] = useState(false);
     const set = (k,v) => setForm(f=>({...f,[k]:v}));
+    const useDays = ipaUseDays(form.useStart, form.useEnd);
     const save = async () => {
       if (!form.purchaseDate) { showToast('請填採購日期','err'); return; }
       setBusy(true);
@@ -105,7 +123,16 @@
               <div className="m-field"><label style={LBL}>品名</label><input style={S_INP} value={form.product} onChange={e=>set('product',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>數量 (桶)</label><input style={S_INP} type="number" min={1} value={form.quantity} onChange={e=>set('quantity',+e.target.value)}/></div>
             </div>
-            <div className="m-field"><label style={LBL}>使用區間</label><input style={S_INP} value={form.useDate||''} onChange={e=>set('useDate',e.target.value)} placeholder="2026-01-08 ~ 02-04"/></div>
+            <div className="m-row">
+              <div className="m-field"><label style={LBL}>使用開始日</label><input style={S_INP} type="date" value={form.useStart||''} onChange={e=>set('useStart',e.target.value)}/></div>
+              <div className="m-field"><label style={LBL}>使用結束日</label><input style={S_INP} type="date" value={form.useEnd||''} onChange={e=>set('useEnd',e.target.value)}/></div>
+            </div>
+            <div className="m-field"><label style={LBL}>使用天數</label>
+              <div style={{...S_INP,background:'#fafbfc',color:useDays!=null?'#0a0e14':'#8a93a3'}}>
+                {useDays!=null ? `${useDays} 天（${form.useStart} ~ ${form.useEnd}，含頭尾）` : '選擇起訖日期後自動計算'}
+              </div>
+              {useDays!=null && useDays<0 && <div style={{fontSize:11,color:'#c0392b',marginTop:4}}>結束日早於開始日，請檢查</div>}
+            </div>
             <div className="m-field"><label style={LBL}>備註</label><textarea style={{...S_INP,resize:'vertical'}} value={form.remark||''} onChange={e=>set('remark',e.target.value)} rows={2}/></div>
           </div>
           <div className="m-foot"><button className="btn-cancel" onClick={onClose}>取消</button><button className="btn-save" onClick={save} disabled={busy}>{busy?'儲存中...':'💾 儲存'}</button></div>
@@ -482,17 +509,25 @@
       const mod = it.status==='處理中' ? 1 : it.status==='暫停' ? 2 : 3;
       return dist + mod;
     };
+    const ANO_STATUS_RANK = { '處理中':0, '暫停':1, '已完成':2 };
+    // 取排序值：特殊欄位另計，其餘直接取欄位（字串小寫、缺值墊底）
+    const sortValOf = (o, field) => {
+      switch(field){
+        case 'score':        return anomalyScore(o);
+        case 'seq':          return o.seq||0;
+        case 'status':       return ANO_STATUS_RANK[o.status] ?? 9;
+        case 'quantity':     return Number(o.quantity||0);
+        case 'amount':       return Number(o.price||0)*Number(o.quantity||1);
+        case 'useStart':     return o.useStart || o.useDate || '';
+        case 'pdate':        return (o.progresses&&o.progresses[0])?o.progresses[0].date:'';
+        default:             return o[field] != null ? o[field] : '';
+      }
+    };
     const sortArr = (arr, s) => {
       const d = s.dir==='asc'?1:-1;
       return [...arr].sort((a,b)=>{
-        let ka,kb;
-        if(s.field==='score'){ ka=anomalyScore(a); kb=anomalyScore(b); }
-        else if(s.field==='seq'){ ka=a.seq||0; kb=b.seq||0; }
-        else if(s.field==='date'){ ka=a.date||''; kb=b.date||''; }
-        else if(s.field==='purchaseDate'){ ka=a.purchaseDate||''; kb=b.purchaseDate||''; }
-        else if(s.field==='warranty'){ ka=a.warranty||''; kb=b.warranty||''; }
-        else if(s.field==='cause'){ ka=a.cause||''; kb=b.cause||''; }
-        else if(s.field==='pdate'){ ka=(a.progresses&&a.progresses[0])?a.progresses[0].date:''; kb=(b.progresses&&b.progresses[0])?b.progresses[0].date:''; }
+        let ka=sortValOf(a,s.field), kb=sortValOf(b,s.field);
+        if(typeof ka==='string'){ ka=ka.toLowerCase(); kb=String(kb).toLowerCase(); }
         if(ka<kb) return -d; if(ka>kb) return d; return 0;
       });
     };
@@ -578,12 +613,14 @@
             <div className="table-wrap">
               <table className="kt"><thead><tr>
                 <th style={{width:36,textAlign:'center'}}>序</th>
-                <th>客戶</th>
+                <SortTh label="客戶" field="customer" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 <SortTh label="異常日期" field="date" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
-                <th>品名</th><th>工程師</th><th>狀態</th>
+                <SortTh label="品名" field="product" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
+                <SortTh label="工程師" field="engineer" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
+                <SortTh label="狀態" field="status" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 <SortTh label="保固日期" field="warranty" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 <SortTh label="異常原因" field="cause" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
-                <th>進度狀況</th>
+                <SortTh label="進度狀況" field="pdate" cur={anomalySort} onSort={mkSort(setAnomalySort)}/>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
                 {sortArr(filtA,anomalySort).map((it,idx)=>{
@@ -646,13 +683,17 @@
               <table className="kt"><thead><tr>
                 <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="採購日期" field="purchaseDate" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
-                <th>使用區間</th><th>品名</th><th>數量</th><th>採購人員</th><th>備註</th>
+                <SortTh label="使用區間" field="useStart" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
+                <SortTh label="品名" field="product" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
+                <SortTh label="數量" field="quantity" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
+                <SortTh label="採購人員" field="person" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
+                <SortTh label="備註" field="remark" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
                 {sortArr(filtI,ipaSort).map((it,idx)=>{
                   const tone=K.ENG_TONE[it.person]||{fg:'#5a6270',bg:'#eef0f3'};
                   return (<tr key={it._id}>
-                    <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date">{it.useDate}</td><td>{it.product}</td>
+                    <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date" style={{whiteSpace:'nowrap'}}>{ipaRangeText(it)}</td><td>{it.product}</td>
                     <td><span className="kt-num-badge">{it.quantity} 桶</span></td>
                     <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person}</td>
                     <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
@@ -682,8 +723,12 @@
               <table className="kt"><thead><tr>
                 <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="採購日期" field="purchaseDate" cur={toolSort} onSort={mkSort(setToolSort)}/>
-                <th>品名</th><th>數量</th><th>採購方式</th><th>單號</th><th>備註</th>
-                <th style={{textAlign:'right'}}>金額</th>
+                <SortTh label="品名" field="product" cur={toolSort} onSort={mkSort(setToolSort)}/>
+                <SortTh label="數量" field="quantity" cur={toolSort} onSort={mkSort(setToolSort)}/>
+                <SortTh label="採購方式" field="method" cur={toolSort} onSort={mkSort(setToolSort)}/>
+                <SortTh label="單號" field="number" cur={toolSort} onSort={mkSort(setToolSort)}/>
+                <SortTh label="備註" field="remark" cur={toolSort} onSort={mkSort(setToolSort)}/>
+                <SortTh label="金額" field="amount" cur={toolSort} onSort={mkSort(setToolSort)} style={{textAlign:'right'}}/>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
                 {sortArr(filtT,toolSort).map((it,idx)=>(<tr key={it._id}>

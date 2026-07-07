@@ -342,14 +342,24 @@
       return base + catMod;
     };
 
+    // 取排序值（狀態依 statusOf 的固定順序、其餘直接取欄位）
+    const STATUS_RANK = { todo:0, progress:1, blocked:2, done:3, cancelled:4 };
+    const sortVal = (o, key) => {
+      if (key === 'status')   return STATUS_RANK[K.statusOf(o)] ?? 9;
+      if (key === 'material') return o.material === '需調撥' ? 1 : 0;
+      return o[key];
+    };
+
     // 排序
     const sorted = [...filtered].sort((a, b) => {
       if (sortKey === 'score') {
         const d = scoreOf(a) - scoreOf(b);
         return sortDir === 'asc' ? d : -d;
       }
-      let va = a[sortKey], vb = b[sortKey];
-      if (typeof va === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+      let va = sortVal(a, sortKey), vb = sortVal(b, sortKey);
+      if (va == null) va = '';
+      if (vb == null) vb = '';
+      if (typeof va === 'string') { va = va.toLowerCase(); vb = String(vb).toLowerCase(); }
       if (va < vb) return sortDir === 'asc' ? -1 : 1;
       if (va > vb) return sortDir === 'asc' ?  1 : -1;
       return 0;
@@ -424,14 +434,14 @@
                 <th className={thCls('id')} onClick={()=>sortBy('id')} style={{cursor:'pointer'}}>單號</th>
                 <th className={thCls('customer')} onClick={()=>sortBy('customer')} style={{cursor:'pointer'}}>客戶</th>
                 <th className={thCls('engineer')} onClick={()=>sortBy('engineer')} style={{cursor:'pointer'}}>工程師</th>
-                <th className={thCls('dueDate')} onClick={()=>sortBy('dueDate')} style={{cursor:'pointer'}}>交期</th>
-                <th>機台</th>
-                <th>材料</th>
-                <th>樹脂</th>
-                <th>類型</th>
+                <th className={thCls('dueDate')} onClick={()=>sortBy('dueDate')} style={{cursor:'pointer'}}>期望交期</th>
+                <th className={thCls('machine')} onClick={()=>sortBy('machine')} style={{cursor:'pointer'}}>機台</th>
+                <th className={thCls('material')} onClick={()=>sortBy('material')} style={{cursor:'pointer'}}>材料</th>
+                <th className={thCls('resin')} onClick={()=>sortBy('resin')} style={{cursor:'pointer'}}>樹脂</th>
+                <th className={thCls('category')} onClick={()=>sortBy('category')} style={{cursor:'pointer'}}>類型</th>
                 <th className={thCls('progress')} onClick={()=>sortBy('progress')} style={{cursor:'pointer'}}>進度</th>
-                <th>狀態</th>
-                <th>備註</th>
+                <th className={thCls('status')} onClick={()=>sortBy('status')} style={{cursor:'pointer'}}>狀態</th>
+                <th className={thCls('remark')} onClick={()=>sortBy('remark')} style={{cursor:'pointer'}}>備註</th>
                 {/* 編輯模式才顯示操作欄 */}
                 {editMode && <th className="col-actions">操作</th>}
               </tr>
