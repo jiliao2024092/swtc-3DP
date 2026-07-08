@@ -83,12 +83,9 @@
     if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return null;
     return Math.round((b - a) / K.DAY) + 1;
   }
-  // 使用區間顯示文字：優先用起訖日期，退回舊的自由文字 useDate
+  // 使用區間顯示文字：優先用起訖日期（天數另列顯示），退回舊的自由文字 useDate
   function ipaRangeText(it) {
-    if (it.useStart && it.useEnd) {
-      const d = ipaUseDays(it.useStart, it.useEnd);
-      return `${it.useStart} ~ ${it.useEnd}${d!=null?`（${d} 天）`:''}`;
-    }
+    if (it.useStart && it.useEnd) return `${it.useStart} ~ ${it.useEnd}`;
     if (it.useStart) return `${it.useStart} ~`;
     return it.useDate || '—';
   }
@@ -653,6 +650,7 @@
         case 'quantity':     return Number(o.quantity||0);
         case 'amount':       return Number(o.price||0)*Number(o.quantity||1);
         case 'useStart':     return o.useStart || o.useDate || '';
+        case 'useDays':      { const d = ipaUseDays(o.useStart, o.useEnd); return d==null ? -1 : d; }
         case 'pdate':        return (o.progresses&&o.progresses[0])?o.progresses[0].date:'';
         default:             return o[field] != null ? o[field] : '';
       }
@@ -828,6 +826,7 @@
                 <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="採購日期" field="purchaseDate" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
                 <SortTh label="使用區間" field="useStart" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
+                <SortTh label="使用天數" field="useDays" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
                 <SortTh label="品名" field="product" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
                 <SortTh label="數量" field="quantity" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
                 <SortTh label="採購人員" field="person" cur={ipaSort} onSort={mkSort(setIpaSort)}/>
@@ -837,7 +836,9 @@
                 {sortArr(filtI,ipaSort).map((it,idx)=>{
                   const tone=K.ENG_TONE[it.person]||{fg:'#5a6270',bg:'#eef0f3'};
                   return (<tr key={it._id}>
-                    <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date" style={{whiteSpace:'nowrap'}}>{ipaRangeText(it)}</td><td>{it.product}</td>
+                    <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date" style={{whiteSpace:'nowrap'}}>{ipaRangeText(it)}</td>
+                    <td style={{whiteSpace:'nowrap'}}>{(()=>{ const d=ipaUseDays(it.useStart,it.useEnd); return d!=null ? <span className="kt-num-badge">{d} 天</span> : <span style={{color:'#b0b6bf'}}>—</span>; })()}</td>
+                    <td>{it.product}</td>
                     <td><span className="kt-num-badge">{it.quantity} 桶</span></td>
                     <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person}</td>
                     <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
@@ -847,7 +848,7 @@
                     </span></td>}
                   </tr>);
                 })}
-                {!filtI.length&&<tr><td colSpan={editMode?8:7}><div className="kt-empty">無採購紀錄</div></td></tr>}
+                {!filtI.length&&<tr><td colSpan={editMode?9:8}><div className="kt-empty">無採購紀錄</div></td></tr>}
               </tbody></table>
             </div>
           </>}
