@@ -300,6 +300,174 @@
     );
   }
 
+  // ── 樣品借出統計（以出借紀錄 sample_loans 為資訊來源；自由選維度與圖表）──
+  function LoanStatsPanel({ loans, samples, borrowers }) {
+    const { useState } = React;
+    const COLORS = ['#0c7a99','#6b3fa0','#1d6f43','#a05a00','#c0392b','#2471a3','#c79b2a','#8b6b13'];
+
+    const sampleName = l => l.itemName || (samples.find(s=>s._id===l.itemId)||{}).name || '（未知樣品）';
+    const materialOf = l => l.material || (samples.find(s=>s._id===l.itemId)||{}).material || '（未填材質）';
+
+    // 依維度彙整出借次數；month 依時間排序，其餘依次數由大到小
+    const buildSlices = (dim) => {
+      const m = {};
+      if (dim==='month') {
+        loans.forEach(l=>{ const k=(l.loanDate||'').slice(0,7)||'（無日期）'; m[k]=(m[k]||0)+1; });
+        return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).map(([label,value],i)=>({label,value,color:COLORS[i%COLORS.length]}));
+      }
+      const keyFn = dim==='sample'?sampleName : dim==='material'?materialOf : (l)=>borrowerDisplay(l.borrower,borrowers)||'（未填）';
+      loans.forEach(l=>{ const k=keyFn(l); m[k]=(m[k]||0)+1; });
+      return Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([label,value],i)=>({label,value,color:COLORS[i%COLORS.length]}));
+    };
+
+    const DIM_OPTIONS = [
+      { key:'sample',   label:'依 樣品' },
+      { key:'material', label:'依 材料' },
+      { key:'borrower', label:'依 借出人' },
+      { key:'month',    label:'依 借出月份' },
+    ];
+    const CHART_OPTIONS = [
+      { key:'donut', label:'環狀圖' },
+      { key:'hbar',  label:'橫條圖' },
+      { key:'vbar',  label:'直條圖' },
+      { key:'line',  label:'折線圖' },
+    ];
+
+    function DonutChart({ slices, centerLabel }) {
+      const total=slices.reduce((s,x)=>s+x.value,0);
+      if(!total) return <div className="chart-empty">無資料</div>;
+      const R=65,cx=85,cy=85; let acc=0;
+      const paths=slices.filter(s=>s.value>0).map(sl=>{
+        const pct=sl.value/total;
+        const s0=acc*2*Math.PI-Math.PI/2; acc+=pct; const s1=acc*2*Math.PI-Math.PI/2;
+        const large=pct>0.5?1:0;
+        const x1=cx+R*Math.cos(s0),y1=cy+R*Math.sin(s0),x2=cx+R*Math.cos(s1),y2=cy+R*Math.sin(s1);
+        return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="#fff" strokeWidth="2"/>;
+      });
+      return (
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,width:'100%'}}>
+          <div style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="#fff"/></svg>
+            <div style={{position:'absolute',textAlign:'center',pointerEvents:'none'}}>
+              <div style={{fontSize:26,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',lineHeight:1}}>{total}</div>
+              <div style={{fontSize:10,color:'var(--ink-4)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'借出'}</div>
+            </div>
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'4px 10px',justifyContent:'center',fontSize:10.5,color:'var(--ink-3)',fontFamily:'var(--font-mono)'}}>
+            {slices.filter(s=>s.value>0).map(s=>(
+              <span key={s.label} style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                <span style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>{s.label} · {s.value}
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function HBarChart({ items }) {
+      const max=Math.max(1,...items.map(i=>i.value));
+      return (
+        <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',padding:'4px 0'}}>
+          {items.filter(i=>i.value>0).map((item)=>(
+            <div key={item.label} style={{display:'grid',gridTemplateColumns:'96px 1fr 32px',gap:10,alignItems:'center'}}>
+              <span style={{fontSize:11.5,color:'var(--ink-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={item.label}>{item.label}</span>
+              <div style={{height:14,background:'var(--bg-soft)',borderRadius:4,overflow:'hidden',position:'relative'}}>
+                <div style={{position:'absolute',inset:'0 auto 0 0',borderRadius:4,background:item.color,width:`${Math.round(item.value/max*100)}%`,transition:'width .3s'}}/>
+              </div>
+              <span style={{fontSize:11,fontFamily:'var(--font-mono)',color:'var(--ink-2)',textAlign:'right'}}>{item.value}</span>
+            </div>
+          ))}
+          {items.every(i=>i.value===0)&&<div className="chart-empty">無資料</div>}
+        </div>
+      );
+    }
+
+    function VBarChart({ items }) {
+      const max=Math.max(1,...items.map(i=>i.value));
+      const H=130;
+      if(!items.length) return <div className="chart-empty">無資料</div>;
+      return (
+        <div style={{width:'100%',display:'flex',justifyContent:'center'}}>
+          <svg width="100%" height={H+34} viewBox={`0 0 ${Math.max(items.length*52,200)} ${H+34}`} preserveAspectRatio="xMidYMid meet">
+            {[0,Math.ceil(max/2),max].map((v,i)=>{ const y=H-Math.round(v/max*H); return <g key={i}><line x1={16} y1={y} x2={items.length*52-4} y2={y} stroke="var(--line-soft)" strokeWidth="1"/><text x={14} y={y+4} fontSize="9" fill="var(--ink-4)" textAnchor="end">{v}</text></g>; })}
+            {items.map((item,idx)=>{
+              const bw=32, bx=idx*52+20, bh=max>0?Math.max(2,Math.round(item.value/max*H)):0, by=H-bh;
+              return (<g key={item.label}>
+                <rect x={bx} y={by} width={bw} height={bh} fill={item.color} rx="3"/>
+                {item.value>0&&<text x={bx+bw/2} y={by-4} fontSize="9" fill="var(--ink-3)" textAnchor="middle">{item.value}</text>}
+                <text x={bx+bw/2} y={H+14} fontSize="9" fill="var(--ink-4)" textAnchor="middle">{String(item.label).slice(-6)}</text>
+              </g>);
+            })}
+          </svg>
+        </div>
+      );
+    }
+
+    function LineChart({ items, color }) {
+      if(!items.length) return <div className="chart-empty">無資料</div>;
+      const max=Math.max(1,...items.map(i=>i.value));
+      const W=Math.max(items.length*56,220), H=150, padL=24, padR=14, padT=12, padB=26, n=items.length;
+      const xx=i=> n<=1 ? W/2 : padL + i*(W-padL-padR)/(n-1);
+      const yy=v=> padT + (1 - v/max)*(H-padT-padB);
+      const pts=items.map((it,i)=>`${xx(i).toFixed(1)},${yy(it.value).toFixed(1)}`).join(' ');
+      const col=color||'#0c7a99';
+      return (
+        <div style={{width:'100%',display:'flex',justifyContent:'center'}}>
+          <svg width="100%" height={H+8} viewBox={`0 0 ${W} ${H+8}`} preserveAspectRatio="xMidYMid meet">
+            {[0,Math.ceil(max/2),max].map((v,i)=>{ const y=yy(v); return <g key={i}><line x1={padL} y1={y} x2={W-padR} y2={y} stroke="var(--line-soft)" strokeWidth="1"/><text x={padL-3} y={y+3} fontSize="9" fill="var(--ink-4)" textAnchor="end">{v}</text></g>; })}
+            <polyline fill="none" stroke={col} strokeWidth="2" points={pts} strokeLinejoin="round" strokeLinecap="round"/>
+            {items.map((it,i)=>(<g key={i}>
+              <circle cx={xx(i)} cy={yy(it.value)} r="3" fill={col}/>
+              {it.value>0&&<text x={xx(i)} y={yy(it.value)-6} fontSize="9" fill="var(--ink-3)" textAnchor="middle">{it.value}</text>}
+              <text x={xx(i)} y={H-padB+15} fontSize="8.5" fill="var(--ink-4)" textAnchor="middle">{String(it.label).length>6?String(it.label).slice(-5):it.label}</text>
+            </g>))}
+          </svg>
+        </div>
+      );
+    }
+
+    function CustomChart({ idx }) {
+      const defaults=[['sample','hbar'],['borrower','donut'],['month','line']][idx]||['sample','hbar'];
+      const [dim,setDim]=useState(defaults[0]);
+      const [chart,setChart]=useState(defaults[1]);
+      const slices=buildSlices(dim);
+      const centerLabel=(DIM_OPTIONS.find(d=>d.key===dim)||{}).label.replace('依 ','');
+      const SEL={ height:32, padding:'0 26px 0 10px', border:'1px solid var(--line)', borderRadius:6, background:'var(--bg)', color:'var(--ink-2)', font:'inherit', fontSize:12, cursor:'pointer', WebkitAppearance:'none', appearance:'none', backgroundImage:"url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%235a6270' stroke-width='1.4'/></svg>\")", backgroundRepeat:'no-repeat', backgroundPosition:'right 7px center', flex:1, minWidth:0 };
+      return (
+        <div style={{border:'1px solid var(--line)',borderRadius:8,background:'var(--bg)',padding:'14px 16px 18px',display:'flex',flexDirection:'column',gap:14}}>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontSize:11,color:'var(--accent)'}}>⊕</span>
+            <span style={{fontSize:12.5,fontWeight:600,color:'var(--ink)'}}>自由分析 #{idx+1}</span>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <select style={SEL} value={dim}   onChange={e=>setDim(e.target.value)}>{DIM_OPTIONS.map(d=><option key={d.key} value={d.key}>{d.label}</option>)}</select>
+            <select style={SEL} value={chart} onChange={e=>setChart(e.target.value)}>{CHART_OPTIONS.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}</select>
+          </div>
+          <div style={{display:'flex',justifyContent:'center',alignItems:'center',minHeight:190}}>
+            {chart==='donut'&&<DonutChart slices={slices} centerLabel={centerLabel}/>}
+            {chart==='hbar' &&<HBarChart  items={slices}/>}
+            {chart==='vbar' &&<VBarChart  items={slices}/>}
+            {chart==='line' &&<LineChart  items={slices}/>}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{flex:1,overflow:'auto',padding:'18px 24px'}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:16}}>
+          <span style={{fontSize:15,fontWeight:700,color:'var(--ink)'}}>樣品借出統計</span>
+          <span style={{fontSize:11.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>資料來源：出借紀錄 · 總借出 {loans.length} 筆</span>
+        </div>
+        {loans.length===0
+          ? <div className="kt-empty" style={{padding:40}}>尚無出借紀錄</div>
+          : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:16}}>
+              <CustomChart idx={0}/><CustomChart idx={1}/><CustomChart idx={2}/>
+            </div>}
+      </div>
+    );
+  }
+
   // ── 分析頁（預設 + 自由分析）──
   function IssuesStats({ anomalies, ipa, tools }) {
     const STATUS_COLORS_A = { '處理中':'#c79b2a', '已完成':'#1d6f43', '暫停':'#c0392b' };
@@ -994,45 +1162,8 @@
               </tbody></table>
             </div>}
 
-            {/* 借出統計視窗 */}
-            {showStats && (()=>{
-              const st = loanStats();
-              const StatCard = (title, rows, unitLabel) => {
-                const max = Math.max(1, ...rows.map(r=>r.count));
-                return (
-                  <div style={{border:'1px solid var(--line)',borderRadius:8,background:'var(--bg)',padding:'14px 16px 16px',display:'flex',flexDirection:'column',gap:10,minWidth:0}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
-                      <span style={{fontSize:13,fontWeight:700,color:'var(--ink)'}}>{title}</span>
-                      <span style={{fontSize:10.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>{rows.length} {unitLabel}</span>
-                    </div>
-                    {rows.length ? rows.map((r,i)=>(
-                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 40px',gap:8,alignItems:'center'}}>
-                        <div style={{minWidth:0}}>
-                          <div style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}} title={r.label}>{r.label}</div>
-                          <div style={{height:6,background:'var(--bg-soft)',borderRadius:3,overflow:'hidden',marginTop:3}}>
-                            <div style={{height:'100%',width:`${Math.round(r.count/max*100)}%`,background:'#0c7a99',borderRadius:3}}/>
-                          </div>
-                        </div>
-                        <span style={{fontSize:13,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',textAlign:'right'}}>{r.count}</span>
-                      </div>
-                    )) : <div className="kt-empty" style={{padding:16}}>尚無出借紀錄</div>}
-                  </div>
-                );
-              };
-              return (
-                <div style={{flex:1,overflow:'auto',padding:'18px 24px'}}>
-                  <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:16}}>
-                    <span style={{fontSize:15,fontWeight:700,color:'var(--ink)'}}>樣品借出統計</span>
-                    <span style={{fontSize:11.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>總借出 {st.total} 筆</span>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:16}}>
-                    {StatCard('每個樣品的借出次數', st.bySample, '樣品')}
-                    {StatCard('每種材料的借出次數', st.byMaterial, '材料')}
-                    {StatCard('每位借出人的借出次數', st.byBorrower, '人')}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* 借出統計視窗（以出借紀錄為來源、可選維度與圖表） */}
+            {showStats && <LoanStatsPanel loans={loans} samples={samples} borrowers={borrowers}/>}
           </>}
 
           {/* 分析 */}
