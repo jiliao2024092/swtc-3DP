@@ -180,6 +180,27 @@
 
   const SAMPLE_PURPOSES = ['外觀精度','材質特性','外觀精度及材質特性'];
 
+  // 編號2「需登記」清冊（台中FLB樣品清冊 20260707）— 供一鍵造冊匯入
+  const SAMPLE_SEED = [
+    { name:'渦輪',         material:'Rigid 4K',       location:'桌面' },
+    { name:'防塵套',       material:'Silicon 40A',    location:'桌面' },
+    { name:'槌子',         material:'Tough2000',      location:'桌面' },
+    { name:'起子機外殼',   material:'White',          location:'桌面' },
+    { name:'心臟',         material:'Clear',          location:'桌面' },
+    { name:'晶格鞋墊',     material:'Flexible 80A',   location:'桌面' },
+    { name:'吸塵器吸頭',   material:'Grey',           location:'桌面' },
+    { name:'氣動夾爪',     material:'Elestic 50A',    location:'桌面' },
+    { name:'泵浦外殼',     material:'Tough2000',      location:'桌面' },
+    { name:'牙齒模型',     material:'Precision Model', location:'桌面' },
+    { name:'旋鈕',         material:'Black',          location:'桌面' },
+    { name:'容器模具',     material:'White',          location:'桌面' },
+    { name:'氣動工具外殼', material:'Grey',           location:'桌面' },
+    { name:'旋臂',         material:'Grey',           location:'桌面' },
+    { name:'腳踏車煞車握把', material:'Nylon 11 CF',  location:'桌面' },
+    { name:'撥動工具',     material:'Nylon 11',       location:'桌面' },
+    { name:'泵浦過濾器',   material:'Polypropylene',  location:'桌面' },
+  ];
+
   // 樣品是否借出中：存在未歸還（無 returnDate）的出借紀錄
   function isSampleOut(loans) { return (loans||[]).some(l => !l.returnDate); }
 
@@ -612,6 +633,37 @@
     const delLoan    = async l  => { if(!confirm('刪除此出借紀錄？'))return; await FBSampleLoans.del(l._id); showToast('已刪除','inf'); };
     const loansOf = id => loans.filter(l=>l.itemId===id);
 
+    // 一鍵造冊：把編號2清冊匯入 sample_items（依名稱去重，只新增缺少的）
+    const importSeed = async () => {
+      const existing = new Set(samples.map(s=>(s.name||'').trim()));
+      const toAdd = SAMPLE_SEED.filter(s=>!existing.has(s.name.trim()));
+      if (!toAdd.length) { showToast('清冊已是最新，無新增項目','inf'); return; }
+      if (!confirm(`將匯入 ${toAdd.length} 筆樣品（已存在的同名樣品會略過）。確定嗎？`)) return;
+      let seq = nextSeq(samples);
+      for (const s of toAdd) { await FBSampleItems.add({ ...s, purpose:'外觀精度', remark:'', seq: seq++ }); }
+      showToast(`已匯入 ${toAdd.length} 筆樣品 ✓`);
+    };
+
+    // 匯出 Excel：樣品清冊 + 出借紀錄兩個工作表
+    const exportSamples = () => {
+      if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
+      const wb = XLSX.utils.book_new();
+      const itemRows = [...samples].sort((a,b)=>(a.seq||0)-(b.seq||0)).map((it,i)=>({
+        '編號': i+1, '樣品名稱': it.name||'', '材質': it.material||'', '位置': it.location||'',
+        '體積(ml)': it.volume??'', '展示目的': it.purpose||'', '目前狀態': isSampleOut(loansOf(it._id))?'借出中':'可借出',
+        '出借次數': loansOf(it._id).length, '備註': it.remark||'',
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemRows.length?itemRows:[{'編號':'','樣品名稱':''}]), '樣品清冊');
+      const loanRows = [...loans].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||'')).map(l=>({
+        '樣品名稱': l.itemName||'', '材質': l.material||'', '借出人/客戶': l.borrower||'',
+        '借出日期': l.loanDate||'', '歸還日期': l.returnDate||'', '狀態': l.returnDate?'已歸還':'借出中', '備註': l.remark||'',
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(loanRows.length?loanRows:[{'樣品名稱':'','借出人/客戶':''}]), '出借紀錄');
+      const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
+      XLSX.writeFile(wb, `樣品出借清冊_${today}.xlsx`);
+      showToast('已匯出 Excel ✓');
+    };
+
     const filtA = anomalies.filter(it=>{
       const s=search1.toLowerCase();
       if(s && !it.customer.toLowerCase().includes(s) && !it.product.toLowerCase().includes(s)) return false;
@@ -900,6 +952,8 @@
               </div>
               <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
               <span className="toolbar-sub">共 <b style={{color:'#0a0e14'}}>{filtS.length}</b> 件，借出中 <b style={{color:'#c0392b'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊與出借紀錄為 Excel">⬇ 匯出Excel</button>
+              {canE&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={importSeed} title="從編號2清冊一鍵造冊（依名稱去重）">📥 匯入編號2清冊</button>}
               {canE&&<SettingsBtn/>}
             </div>
             <div className="table-wrap">
