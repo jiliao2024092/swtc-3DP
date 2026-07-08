@@ -223,18 +223,21 @@
   // ── 出借登記 Modal（開放 viewer 登記出借/歸還）──
   function LoanModal({ sample, loans, borrowers, canManage, onClose, onAddLoan, onReturnLoan, onDelLoan }) {
     const today = new Date().toISOString().split('T')[0];
-    const [form, setForm] = useState({ borrower:'', loanDate: today, returnDate:'', remark:'' });
+    const [form, setForm] = useState({ loanDate: today, returnDate:'', remark:'' });
+    const [borrowerSel,   setBorrowerSel]   = useState('');   // 下拉選的 key，或 '__other__'
+    const [borrowerOther, setBorrowerOther] = useState('');   // 選「其他」時自行輸入的名稱
     const [busy, setBusy] = useState(false);
     const set = (k,v) => setForm(f=>({...f,[k]:v}));
     const sorted = [...(loans||[])].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||''));
+    const borrowerVal = borrowerSel==='__other__' ? borrowerOther.trim() : borrowerSel;
     const submit = async () => {
-      if (!form.borrower.trim()) { showToast('請填借出人／客戶名稱','err'); return; }
+      if (!borrowerVal) { showToast(borrowerSel==='__other__'?'請輸入「其他」借出人／客戶名稱':'請選擇借出人／客戶','err'); return; }
       if (!form.loanDate) { showToast('請填借出日期','err'); return; }
       setBusy(true);
       try {
         await onAddLoan({ itemId: sample._id, itemName: sample.name, material: sample.material||'',
-                          borrower: form.borrower.trim(), loanDate: form.loanDate, returnDate: form.returnDate||'', remark: form.remark||'' });
-        setForm({ borrower:'', loanDate: today, returnDate:'', remark:'' });
+                          borrower: borrowerVal, loanDate: form.loanDate, returnDate: form.returnDate||'', remark: form.remark||'' });
+        setForm({ loanDate: today, returnDate:'', remark:'' }); setBorrowerSel(''); setBorrowerOther('');
       } catch(e){ showToast(e.message||'失敗','err'); }
       finally { setBusy(false); }
     };
@@ -253,8 +256,12 @@
               <div style={{fontSize:12,fontWeight:600,color:'#5a6270',marginBottom:8}}>新增出借紀錄</div>
               <div className="m-row">
                 <div className="m-field"><label style={LBL}>借出人／客戶名稱 *</label>
-                  <input style={S_INP} list="loan-borrowers" value={form.borrower} onChange={e=>set('borrower',e.target.value)} placeholder="輸入或選擇"/>
-                  <datalist id="loan-borrowers">{(borrowers||[]).map(b=><option key={b.key||b.label} value={b.label||b.key}/>)}</datalist>
+                  <select style={S_INP} value={borrowerSel} onChange={e=>setBorrowerSel(e.target.value)}>
+                    <option value="">請選擇…</option>
+                    {(borrowers||[]).map(b=>{ const v=b.key||b.label; return <option key={v} value={v}>{borrowerDisplay(v, borrowers)}</option>; })}
+                    <option value="__other__">其他（自行輸入）</option>
+                  </select>
+                  {borrowerSel==='__other__' && <input style={{...S_INP,marginTop:6}} value={borrowerOther} onChange={e=>setBorrowerOther(e.target.value)} placeholder="請輸入借出人／客戶名稱" autoFocus/>}
                 </div>
                 <div className="m-field"><label style={LBL}>借出日期 *</label><input style={S_INP} type="date" value={form.loanDate} onChange={e=>set('loanDate',e.target.value)}/></div>
               </div>
@@ -591,7 +598,12 @@
       const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); });
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
       const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
-      const u6 = FBSettings.onSnapshot(s=>setBorrowers((s&&s.borrowers)||[]));
+      // 借出人下拉：與列印機預約同源（優先用業務清單 bk_sales，退回借用人清單 borrowers）
+      const u6 = FBSettings.onSnapshot(s=>{
+        const raw = (s && Array.isArray(s.bk_sales) && s.bk_sales.length) ? s.bk_sales
+                  : ((s && s.borrowers) || []);
+        setBorrowers(raw.filter(x=>x && (x.key||x.label) && x.key!=='其他' && x.label!=='其他').map(x=>({ key:x.key||x.label, label:x.label||x.key })));
+      });
       return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
     }, []);
 
