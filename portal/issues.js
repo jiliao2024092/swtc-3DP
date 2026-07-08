@@ -178,8 +178,6 @@
     );
   }
 
-  const SAMPLE_PURPOSES = ['外觀精度','材質特性','外觀精度及材質特性'];
-
   // 樣品是否借出中：存在未歸還（無 returnDate）的出借紀錄
   function isSampleOut(loans) { return (loans||[]).some(l => !l.returnDate); }
 
@@ -193,7 +191,7 @@
 
   // ── 樣品清冊 Modal（維護樣品主檔，限編輯者）──
   function SampleModal({ item, onClose, onSave }) {
-    const empty = { name:'', material:'', location:'', volume:'', purpose:'外觀精度', remark:'' };
+    const empty = { name:'', material:'', location:'', remark:'' };
     const [form, setForm] = useState(item?{...item}:empty);
     const [busy, setBusy] = useState(false);
     const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -213,14 +211,7 @@
               <div className="m-field"><label style={LBL}>樣品名稱 *</label><input style={S_INP} value={form.name} onChange={e=>set('name',e.target.value)} placeholder="例：角度調整器"/></div>
               <div className="m-field"><label style={LBL}>材質（材料種類）</label><input style={S_INP} value={form.material||''} onChange={e=>set('material',e.target.value)} placeholder="例：Grey V5"/></div>
             </div>
-            <div className="m-row">
-              <div className="m-field"><label style={LBL}>位置</label><input style={S_INP} value={form.location||''} onChange={e=>set('location',e.target.value)} placeholder="例：樣品箱1 / 桌面"/></div>
-              <div className="m-field"><label style={LBL}>體積 (ml)</label><input style={S_INP} type="number" min={0} step="0.01" value={form.volume??''} onChange={e=>set('volume',e.target.value===''?'':+e.target.value)}/></div>
-            </div>
-            <div className="m-field"><label style={LBL}>展示目的</label>
-              <select style={S_INP} value={form.purpose||''} onChange={e=>set('purpose',e.target.value)}>
-                {SAMPLE_PURPOSES.map(p=><option key={p}>{p}</option>)}
-              </select></div>
+            <div className="m-field"><label style={LBL}>位置</label><input style={S_INP} value={form.location||''} onChange={e=>set('location',e.target.value)} placeholder="例：樣品箱1 / 桌面"/></div>
             <div className="m-field"><label style={LBL}>備註</label><textarea style={{...S_INP,resize:'vertical'}} value={form.remark||''} onChange={e=>set('remark',e.target.value)} rows={2}/></div>
           </div>
           <div className="m-foot"><button className="btn-cancel" onClick={onClose}>取消</button><button className="btn-save" onClick={save} disabled={busy}>{busy?'儲存中...':'💾 儲存'}</button></div>
@@ -643,7 +634,7 @@
       const wb = XLSX.utils.book_new();
       const itemRows = [...samples].sort((a,b)=>(a.seq||0)-(b.seq||0)).map((it,i)=>({
         '編號': i+1, '樣品名稱': it.name||'', '材質': it.material||'', '位置': it.location||'',
-        '體積(ml)': it.volume??'', '展示目的': it.purpose||'', '目前狀態': isSampleOut(loansOf(it._id))?'借出中':'可借出',
+        '目前狀態': isSampleOut(loansOf(it._id))?'借出中':'可借出',
         '出借次數': loansOf(it._id).length, '備註': it.remark||'',
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemRows.length?itemRows:[{'編號':'','樣品名稱':''}]), '樣品清冊');
@@ -968,8 +959,6 @@
                 <SortTh label="樣品名稱" field="name" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
                 <SortTh label="材質" field="material" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
                 <SortTh label="位置" field="location" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
-                <SortTh label="體積(ml)" field="volume" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
-                <SortTh label="展示目的" field="purpose" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
                 <th>狀態</th><th>出借</th>
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
@@ -981,8 +970,6 @@
                     <td className="col-customer">{it.name}</td>
                     <td>{it.material||'—'}</td>
                     <td>{it.location||'—'}</td>
-                    <td className="kt-money">{it.volume!=null&&it.volume!==''?it.volume:'—'}</td>
-                    <td>{it.purpose||'—'}</td>
                     <td><span className={out?'kt-pill kt-pill-暫停':'kt-pill kt-pill-完成'}>{out?'借出中':'可借出'}</span></td>
                     <td><button className="btn-cancel" style={{padding:'2px 10px',fontSize:11}} onClick={()=>setLoanSample(it)}>登記/歸還{myLoans.length?` (${myLoans.length})`:''}</button></td>
                     {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
@@ -991,7 +978,7 @@
                     </span></td>}
                   </tr>);
                 })}
-                {!filtS.length&&<tr><td colSpan={editMode?9:8}><div className="kt-empty">無樣品資料</div></td></tr>}
+                {!filtS.length&&<tr><td colSpan={editMode?7:6}><div className="kt-empty">無樣品資料</div></td></tr>}
               </tbody></table>
             </div>}
 
