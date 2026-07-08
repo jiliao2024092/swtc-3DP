@@ -180,29 +180,16 @@
 
   const SAMPLE_PURPOSES = ['外觀精度','材質特性','外觀精度及材質特性'];
 
-  // 編號2「需登記」清冊（台中FLB樣品清冊 20260707）— 供一鍵造冊匯入
-  const SAMPLE_SEED = [
-    { name:'渦輪',         material:'Rigid 4K',       location:'桌面' },
-    { name:'防塵套',       material:'Silicon 40A',    location:'桌面' },
-    { name:'槌子',         material:'Tough2000',      location:'桌面' },
-    { name:'起子機外殼',   material:'White',          location:'桌面' },
-    { name:'心臟',         material:'Clear',          location:'桌面' },
-    { name:'晶格鞋墊',     material:'Flexible 80A',   location:'桌面' },
-    { name:'吸塵器吸頭',   material:'Grey',           location:'桌面' },
-    { name:'氣動夾爪',     material:'Elestic 50A',    location:'桌面' },
-    { name:'泵浦外殼',     material:'Tough2000',      location:'桌面' },
-    { name:'牙齒模型',     material:'Precision Model', location:'桌面' },
-    { name:'旋鈕',         material:'Black',          location:'桌面' },
-    { name:'容器模具',     material:'White',          location:'桌面' },
-    { name:'氣動工具外殼', material:'Grey',           location:'桌面' },
-    { name:'旋臂',         material:'Grey',           location:'桌面' },
-    { name:'腳踏車煞車握把', material:'Nylon 11 CF',  location:'桌面' },
-    { name:'撥動工具',     material:'Nylon 11',       location:'桌面' },
-    { name:'泵浦過濾器',   material:'Polypropylene',  location:'桌面' },
-  ];
-
   // 樣品是否借出中：存在未歸還（無 returnDate）的出借紀錄
   function isSampleOut(loans) { return (loans||[]).some(l => !l.returnDate); }
+
+  // 借出人顯示：一律「中文 (英文)」；依 borrowers 清單({key:英文,label:中文})比對，非清單內則原樣顯示
+  function borrowerDisplay(value, borrowers) {
+    if (!value) return '';
+    const b = (borrowers||[]).find(x => x.key===value || x.label===value);
+    if (b && b.label && b.key && b.label!==b.key) return `${b.label} (${b.key})`;
+    return value;
+  }
 
   // ── 樣品清冊 Modal（維護樣品主檔，限編輯者）──
   function SampleModal({ item, onClose, onSave }) {
@@ -294,7 +281,7 @@
                 <th>借出人／客戶</th><th>借出日期</th><th>歸還日期</th><th>備註</th><th style={{width:80}}></th>
               </tr></thead><tbody>
                 {sorted.map(l=>(<tr key={l._id}>
-                  <td>{l.borrower}</td>
+                  <td>{borrowerDisplay(l.borrower, borrowers)}</td>
                   <td className="col-date">{l.loanDate||'—'}</td>
                   <td className="col-date">{l.returnDate
                     ? l.returnDate
@@ -584,6 +571,7 @@
     const [search4,   setSearch4]   = useState('');   // 樣品搜尋
     const [outF,      setOutF]      = useState('');    // 樣品借出狀態篩選
     const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
+    const [showStats, setShowStats] = useState(false); // 樣品借出統計視窗切換
     const [labelVer,  setLabelVer]  = useState(0);
     const [editMode,   setEditMode]  = useState(false);
     const [anomalySort, setAnomalySort] = useState({field:'score',dir:'asc'});
@@ -633,18 +621,23 @@
     const delLoan    = async l  => { if(!confirm('刪除此出借紀錄？'))return; await FBSampleLoans.del(l._id); showToast('已刪除','inf'); };
     const loansOf = id => loans.filter(l=>l.itemId===id);
 
-    // 一鍵造冊：把編號2清冊匯入 sample_items（依名稱去重，只新增缺少的）
-    const importSeed = async () => {
-      const existing = new Set(samples.map(s=>(s.name||'').trim()));
-      const toAdd = SAMPLE_SEED.filter(s=>!existing.has(s.name.trim()));
-      if (!toAdd.length) { showToast('清冊已是最新，無新增項目','inf'); return; }
-      if (!confirm(`將匯入 ${toAdd.length} 筆樣品（已存在的同名樣品會略過）。確定嗎？`)) return;
-      let seq = nextSeq(samples);
-      for (const s of toAdd) { await FBSampleItems.add({ ...s, purpose:'外觀精度', remark:'', seq: seq++ }); }
-      showToast(`已匯入 ${toAdd.length} 筆樣品 ✓`);
+    // 借出統計：每個樣品 / 每種材料 / 每位借出人的借出次數（依次數由大到小）
+    const loanStats = () => {
+      const bySample={}, byMaterial={}, byBorrower={};
+      loans.forEach(l=>{
+        const smp = samples.find(s=>s._id===l.itemId);
+        const sName = l.itemName || (smp&&smp.name) || '（未知樣品）';
+        bySample[sName] = (bySample[sName]||0)+1;
+        const mat = l.material || (smp&&smp.material) || '（未填材質）';
+        byMaterial[mat] = (byMaterial[mat]||0)+1;
+        const bwr = borrowerDisplay(l.borrower, borrowers) || '（未填）';
+        byBorrower[bwr] = (byBorrower[bwr]||0)+1;
+      });
+      const sortDesc = o => Object.entries(o).map(([label,count])=>({label,count})).sort((a,b)=>b.count-a.count);
+      return { bySample:sortDesc(bySample), byMaterial:sortDesc(byMaterial), byBorrower:sortDesc(byBorrower), total:loans.length };
     };
 
-    // 匯出 Excel：樣品清冊 + 出借紀錄兩個工作表
+    // 匯出 Excel：樣品清冊 + 出借紀錄 + 借出統計 三個工作表
     const exportSamples = () => {
       if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
       const wb = XLSX.utils.book_new();
@@ -655,10 +648,21 @@
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemRows.length?itemRows:[{'編號':'','樣品名稱':''}]), '樣品清冊');
       const loanRows = [...loans].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||'')).map(l=>({
-        '樣品名稱': l.itemName||'', '材質': l.material||'', '借出人/客戶': l.borrower||'',
+        '樣品名稱': l.itemName||'', '材質': l.material||'', '借出人/客戶': borrowerDisplay(l.borrower, borrowers),
         '借出日期': l.loanDate||'', '歸還日期': l.returnDate||'', '狀態': l.returnDate?'已歸還':'借出中', '備註': l.remark||'',
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(loanRows.length?loanRows:[{'樣品名稱':'','借出人/客戶':''}]), '出借紀錄');
+      // 借出統計
+      const st = loanStats();
+      const statRows = [];
+      statRows.push({'類別':'依樣品','項目':'','借出次數':''});
+      st.bySample.forEach(r=>statRows.push({'類別':'','項目':r.label,'借出次數':r.count}));
+      statRows.push({'類別':'依材料','項目':'','借出次數':''});
+      st.byMaterial.forEach(r=>statRows.push({'類別':'','項目':r.label,'借出次數':r.count}));
+      statRows.push({'類別':'依借出人','項目':'','借出次數':''});
+      st.byBorrower.forEach(r=>statRows.push({'類別':'','項目':r.label,'借出次數':r.count}));
+      statRows.push({'類別':'總借出筆數','項目':'','借出次數':st.total});
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(statRows.length?statRows:[{'類別':'','項目':'','借出次數':''}]), '借出統計');
       const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
       XLSX.writeFile(wb, `樣品出借清冊_${today}.xlsx`);
       showToast('已匯出 Excel ✓');
@@ -952,11 +956,13 @@
               </div>
               <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
               <span className="toolbar-sub">共 <b style={{color:'#0a0e14'}}>{filtS.length}</b> 件，借出中 <b style={{color:'#c0392b'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
-              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊與出借紀錄為 Excel">⬇ 匯出Excel</button>
-              {canE&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={importSeed} title="從編號2清冊一鍵造冊（依名稱去重）">📥 匯入編號2清冊</button>}
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
+              <button className={'btn-edit-mode'+(showStats?' active':'')} onClick={()=>setShowStats(v=>!v)} title="切換樣品借出統計">
+                📊 {showStats?'回清冊':'借出統計'}
+              </button>
               {canE&&<SettingsBtn/>}
             </div>
-            <div className="table-wrap">
+            {!showStats && <div className="table-wrap">
               <table className="kt"><thead><tr>
                 <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="樣品名稱" field="name" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
@@ -987,7 +993,47 @@
                 })}
                 {!filtS.length&&<tr><td colSpan={editMode?9:8}><div className="kt-empty">無樣品資料</div></td></tr>}
               </tbody></table>
-            </div>
+            </div>}
+
+            {/* 借出統計視窗 */}
+            {showStats && (()=>{
+              const st = loanStats();
+              const StatCard = (title, rows, unitLabel) => {
+                const max = Math.max(1, ...rows.map(r=>r.count));
+                return (
+                  <div style={{border:'1px solid var(--line)',borderRadius:8,background:'var(--bg)',padding:'14px 16px 16px',display:'flex',flexDirection:'column',gap:10,minWidth:0}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+                      <span style={{fontSize:13,fontWeight:700,color:'var(--ink)'}}>{title}</span>
+                      <span style={{fontSize:10.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>{rows.length} {unitLabel}</span>
+                    </div>
+                    {rows.length ? rows.map((r,i)=>(
+                      <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 40px',gap:8,alignItems:'center'}}>
+                        <div style={{minWidth:0}}>
+                          <div style={{fontSize:12,color:'var(--ink-2)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}} title={r.label}>{r.label}</div>
+                          <div style={{height:6,background:'var(--bg-soft)',borderRadius:3,overflow:'hidden',marginTop:3}}>
+                            <div style={{height:'100%',width:`${Math.round(r.count/max*100)}%`,background:'#0c7a99',borderRadius:3}}/>
+                          </div>
+                        </div>
+                        <span style={{fontSize:13,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',textAlign:'right'}}>{r.count}</span>
+                      </div>
+                    )) : <div className="kt-empty" style={{padding:16}}>尚無出借紀錄</div>}
+                  </div>
+                );
+              };
+              return (
+                <div style={{flex:1,overflow:'auto',padding:'18px 24px'}}>
+                  <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:16}}>
+                    <span style={{fontSize:15,fontWeight:700,color:'var(--ink)'}}>樣品借出統計</span>
+                    <span style={{fontSize:11.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>總借出 {st.total} 筆</span>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:16}}>
+                    {StatCard('每個樣品的借出次數', st.bySample, '樣品')}
+                    {StatCard('每種材料的借出次數', st.byMaterial, '材料')}
+                    {StatCard('每位借出人的借出次數', st.byBorrower, '人')}
+                  </div>
+                </div>
+              );
+            })()}
           </>}
 
           {/* 分析 */}
