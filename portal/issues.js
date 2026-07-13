@@ -300,6 +300,48 @@
     );
   }
 
+  // ── 出借總表（仿原始紙本表單：每列一樣品，列內展開全部借出/歸還紀錄）──
+  function LoanLedger({ samples, loansOf, borrowers, canManage, onDelLoan }) {
+    return (
+      <div className="table-wrap">
+        <table className="kt"><thead><tr>
+          <th style={{width:36,textAlign:'center'}}>序</th>
+          <th>樣品名稱</th><th>材質</th><th>位置</th>
+          <th style={{width:60,textAlign:'center'}}>次數</th>
+          <th>借出紀錄（借出人 · 借出日 → 歸還日）</th>
+        </tr></thead><tbody>
+          {samples.map((s,idx)=>{
+            const ls=[...loansOf(s._id)].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||''));
+            const out=ls.some(l=>!l.returnDate);
+            return (<tr key={s._id}>
+              <td className="col-seq">{idx+1}</td>
+              <td className="col-customer" style={{whiteSpace:'nowrap'}}>{s.name}
+                {out&&<span className="kt-pill kt-pill-暫停" style={{marginLeft:6}}>借出中</span>}</td>
+              <td style={{whiteSpace:'nowrap'}}>{s.material||'—'}</td>
+              <td style={{whiteSpace:'nowrap'}}>{s.location||'—'}</td>
+              <td style={{textAlign:'center'}}><span className="kt-num-badge">{ls.length}</span></td>
+              <td>
+                {ls.length ? <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                  {ls.map(l=>(
+                    <div key={l._id} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,lineHeight:1.5}}>
+                      <span style={{fontWeight:600,color:'#3b4250',minWidth:120}}>{borrowerDisplay(l.borrower,borrowers)||'—'}</span>
+                      <span style={{fontFamily:'monospace',color:'#5a6270',whiteSpace:'nowrap'}}>
+                        {l.loanDate||'—'} → {l.returnDate ? l.returnDate : <span style={{color:'#c0392b',fontWeight:600}}>借出中</span>}
+                      </span>
+                      {l.remark&&<span style={{color:'#8a93a3'}}>· {l.remark}</span>}
+                      {canManage&&<button className="kt-actbtn danger" title="刪除此紀錄" style={{marginLeft:'auto'}} onClick={()=>onDelLoan(l)}>✕</button>}
+                    </div>
+                  ))}
+                </div> : <span style={{color:'#b0b6bf'}}>— 尚無借出紀錄</span>}
+              </td>
+            </tr>);
+          })}
+          {!samples.length&&<tr><td colSpan={6}><div className="kt-empty">無樣品資料</div></td></tr>}
+        </tbody></table>
+      </div>
+    );
+  }
+
   // ── 樣品借出統計（以出借紀錄 sample_loans 為資訊來源；自由選維度與圖表）──
   function LoanStatsPanel({ loans, samples, borrowers }) {
     const { useState } = React;
@@ -737,7 +779,7 @@
     const [search4,   setSearch4]   = useState('');   // 樣品搜尋
     const [outF,      setOutF]      = useState('');    // 樣品借出狀態篩選
     const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
-    const [showStats, setShowStats] = useState(false); // 樣品借出統計視窗切換
+    const [sampleView, setSampleView] = useState('list'); // 樣品分頁檢視：list 清冊 / ledger 出借總表 / stats 借出統計
     const [labelVer,  setLabelVer]  = useState(0);
     const [editMode,   setEditMode]  = useState(false);
     const [anomalySort, setAnomalySort] = useState({field:'score',dir:'asc'});
@@ -1128,12 +1170,15 @@
               <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
               <span className="toolbar-sub">共 <b style={{color:'#0a0e14'}}>{filtS.length}</b> 件，借出中 <b style={{color:'#c0392b'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
-              <button className={'btn-edit-mode'+(showStats?' active':'')} onClick={()=>setShowStats(v=>!v)} title="切換樣品借出統計">
-                📊 {showStats?'回清冊':'借出統計'}
+              <button className={'btn-edit-mode'+(sampleView==='ledger'?' active':'')} onClick={()=>setSampleView(v=>v==='ledger'?'list':'ledger')} title="切換出借總表（原始表單樣式，一覽借出/歸還）">
+                📋 {sampleView==='ledger'?'回清冊':'出借總表'}
+              </button>
+              <button className={'btn-edit-mode'+(sampleView==='stats'?' active':'')} onClick={()=>setSampleView(v=>v==='stats'?'list':'stats')} title="切換樣品借出統計">
+                📊 {sampleView==='stats'?'回清冊':'借出統計'}
               </button>
               {canE&&<SettingsBtn/>}
             </div>
-            {!showStats && <div className="table-wrap">
+            {sampleView==='list' && <div className="table-wrap">
               <table className="kt"><thead><tr>
                 <th style={{width:36,textAlign:'center'}}>序</th>
                 <SortTh label="樣品名稱" field="name" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
@@ -1162,8 +1207,11 @@
               </tbody></table>
             </div>}
 
+            {/* 出借總表（原始表單樣式：每列一樣品，展開其所有借出/歸還紀錄） */}
+            {sampleView==='ledger' && <LoanLedger samples={sortArr(filtS,sampleSort)} loansOf={loansOf} borrowers={borrowers} canManage={canD} onDelLoan={delLoan}/>}
+
             {/* 借出統計視窗（以出借紀錄為來源、可選維度與圖表） */}
-            {showStats && <LoanStatsPanel loans={loans} samples={samples} borrowers={borrowers}/>}
+            {sampleView==='stats' && <LoanStatsPanel loans={loans} samples={samples} borrowers={borrowers}/>}
           </>}
 
           {/* 分析 */}
