@@ -148,6 +148,15 @@
                 <label class="text-sm font-medium text-gray-700">指派工程師</label>
                 <select id="edit-engineer" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
             </div>
+            <div class="space-y-1">
+                <label class="text-sm font-medium text-gray-700">任務狀態</label>
+                <select id="edit-status" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    <option>待確認</option>
+                    <option>執行中</option>
+                    <option>已完成</option>
+                    <option>異常/取消</option>
+                </select>
+            </div>
             <div class="col-span-2 space-y-1">
                 <div class="flex items-center justify-between">
                     <label id="edit-purpose-label" class="text-sm font-medium text-gray-700">備註說明</label>
@@ -1258,6 +1267,7 @@ window.openEditModal = function(id){
     document.getElementById('edit-sales').value = b.sales;
     document.getElementById('edit-printer').value = b.printer;
     document.getElementById('edit-engineer').value = b.engineer;
+    document.getElementById('edit-status').value = b.status || '待確認';
     const btnY=document.getElementById('edit-btn-yes');
     const btnN=document.getElementById('edit-btn-no');
     const lbl =document.getElementById('edit-purpose-label');
@@ -1287,6 +1297,7 @@ window.saveEdit = async function(){
             sales:    document.getElementById('edit-sales').value,
             printer:  document.getElementById('edit-printer').value,
             engineer: document.getElementById('edit-engineer').value,
+            status:   document.getElementById('edit-status').value,
             hasOrder: editHasOrder,
             purpose,
             updatedBy:      currentUser.uid,
