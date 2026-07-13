@@ -632,7 +632,10 @@ function selectPrinter(id){
   selectedPrinter=id;
   document.getElementById('pc-f4').classList.toggle('on',id==='f4');
   document.getElementById('pc-f4l').classList.toggle('on',id==='f4l');
+  // 換機型＝列印範圍改變，舊的「合法擺放」快照可能已不適用（例如換到較小機型），重新判定
+  lastValidTransform=null;
   if(scene) buildPrintVolume();
+  enforcePrintVolume();   // 目前位置若在新範圍內就記錄為新快照；不在範圍內僅顯示警示色（無舊快照可還原）
   onDimChange(); calcQuote();
 }
 function selectType(el,type){
@@ -824,23 +827,29 @@ function dropToFloor(){
   threeModel.position.x -= (bb.max.x + bb.min.x) / 2;    // XZ 置中
   threeModel.position.z -= (bb.max.z + bb.min.z) / 2;
 }
+// 回傳 true=動作因超出真實列印範圍而被還原；false=動作合法（呼叫端可依此決定是否顯示成功提示）
 function afterTransform(){
-  dropToFloor(); refreshDims(); checkOverflow(); calcQuote();
+  dropToFloor(); checkOverflow();
+  const reverted = enforcePrintVolume();
+  refreshDims(); calcQuote();
   if(sliceMode) toggleSliceView();                       // 變形後關閉層切避免錯位
   if(overhangMode){ restoreOriginalColors(); applyOverhangColors(); }
+  return reverted;
 }
 function rotateModel(axis){
   if(!needModel()) return;
   threeModel.rotation[axis] += Math.PI/2;
-  afterTransform();
-  showToast(`已繞 ${axis.toUpperCase()} 軸轉 90°`, 'ok');
+  if(!afterTransform()) showToast(`已繞 ${axis.toUpperCase()} 軸轉 90°`, 'ok');
 }
-function dropToFloorBtn(){ if(!needModel()) return; dropToFloor(); checkOverflow(); showToast('已貼地置中','ok'); }
+function dropToFloorBtn(){
+  if(!needModel()) return;
+  dropToFloor(); checkOverflow();
+  if(!enforcePrintVolume()) showToast('已貼地置中','ok');
+}
 function mirrorModel(){
   if(!needModel()) return;
   threeModel.scale.x *= -1;
-  afterTransform();
-  showToast('已鏡像','ok');
+  if(!afterTransform()) showToast('已鏡像','ok');
 }
 function applyScale(){
   if(!needModel()) return;
@@ -848,10 +857,10 @@ function applyScale(){
   const f = pct / 100;
   const sgnX = Math.sign(threeModel.scale.x) || 1;       // 保留鏡像方向
   threeModel.scale.set(f * sgnX, f, f);                  // 以原始網格為基準縮放
-  document.getElementById('scale-input').value = Math.round(pct);
-  afterTransform();
+  const reverted = afterTransform();
+  document.getElementById('scale-input').value = Math.round(Math.abs(threeModel.scale.y) * 100);   // 若被還原，讀回真正的縮放值
   syncTransformInputs();
-  showToast(`已縮放至 ${Math.round(pct)}%`, 'ok');
+  if(!reverted) showToast(`已縮放至 ${Math.round(pct)}%`, 'ok');
 }
 
 // ══ 精確變形：TransformControls 拖拉 gizmo + 數值輸入（以檔案原點為基準）══
@@ -863,7 +872,7 @@ function initGizmo(){
   if(!window.THREE || !THREE.TransformControls){ console.warn('TransformControls 未載入'); return; }
   transformControls = new THREE.TransformControls(camera, renderer.domElement);
   transformControls.setSize(0.85);
-  transformControls.setSpace('local');   // 以物件（檔案原點）本地座標操作
+  transformControls.setSpace('world');   // 預設：移動用絕對(世界)座標；旋轉會在 selectModel() 內切換為 local
   transformControls.addEventListener('dragging-changed', e=>{ gizmoDragging = e.value; });
   transformControls.addEventListener('objectChange', ()=>{ syncTransformInputs(); afterManualTransform(); });
   transformControls.enabled=false; transformControls.visible=false;
@@ -875,6 +884,9 @@ function selectModel(){
   if(!transformControls || !threeModel) return;
   if(!gizmoMode) gizmoMode='translate';        // 第一次選取預設用移動模式
   transformControls.setMode(gizmoMode);
+  // 移動＝絕對世界座標軸向（X/Y/Z 永遠對應機台座標，不隨模型旋轉而傾斜）
+  // 旋轉＝以物件本身（檔案原點）為準的 local 座標
+  transformControls.setSpace(gizmoMode==='translate' ? 'world' : 'local');
   transformControls.attach(threeModel);
   transformControls.enabled=true; transformControls.visible=true;
   applyGizmoAxis();
@@ -952,15 +964,19 @@ function resetTransform(){
   threeModel.rotation.set(0,0,0);
   const sgn=Math.sign(threeModel.scale.x)||1; threeModel.scale.set(sgn,1,1);
   document.getElementById('scale-input').value=100;
-  syncTransformInputs(); afterManualTransform();
-  showToast('已歸零變形','ok');
+  syncTransformInputs();
+  if(!afterManualTransform()) showToast('已歸零變形','ok');
 }
 
 // 精確/手動變形後：更新尺寸/體積/超出/估價，但「不」自動貼地（保留使用者擺放）
+// 回傳 true=動作因超出真實列印範圍而被還原
 function afterManualTransform(){
-  refreshDims(); checkOverflow(); calcQuote();
+  checkOverflow();
+  const reverted = enforcePrintVolume();
+  refreshDims(); calcQuote();
   if(sliceMode) toggleSliceView();
   if(overhangMode){ restoreOriginalColors(); applyOverhangColors(); }
+  return reverted;
 }
 
 // ══ 真實實體體積（有 STL 時取代包圍盒×填充率的粗估）══
@@ -1077,20 +1093,25 @@ function autoOrient(){
   );
 
   checkOverflow();
+  // 硬性保證：自動擺放的結果不可超出真實列印範圍；不合就還原（並提示）
+  const fits = isWithinRealPrintVolume();
+  const reverted = enforcePrintVolume();
   calcQuote();
 
-  const actualAngle = Math.round((bestOrient.rx + r.angle * Math.PI/180) * 180 / Math.PI);
-  document.getElementById('pill-angle').textContent   = actualAngle + '°';
-  document.getElementById('pill-rot').textContent     = 'X+' + r.xrot + '°';
-  document.getElementById('pill-support').textContent = r.support + '支撐';
-  document.getElementById('orient-pills').style.display = 'flex';
-
-  updateOrientResult(r);
-  // 告知是否在範圍內
-  const bbox2 = new THREE.Box3().setFromObject(threeModel);
-  const size2 = bbox2.getSize(new THREE.Vector3());
-  const fits = size2.x <= p.w && size2.y <= p.h && size2.z <= p.d;
-  showToast(fits ? '已放入最佳擺放位置' : '已找最佳方向，但尺寸超出列印範圍', fits ? 'ok' : 'err');
+  if(fits){
+    const actualAngle = Math.round((bestOrient.rx + r.angle * Math.PI/180) * 180 / Math.PI);
+    document.getElementById('pill-angle').textContent   = actualAngle + '°';
+    document.getElementById('pill-rot').textContent     = 'X+' + r.xrot + '°';
+    document.getElementById('pill-support').textContent = r.support + '支撐';
+    document.getElementById('orient-pills').style.display = 'flex';
+    updateOrientResult(r);
+    showToast('已放入最佳擺放位置','ok');
+  } else {
+    document.getElementById('orient-pills').style.display = 'none';
+    if(!reverted) showToast('沒有任何方向能塞進列印範圍（模型可能過大），請縮小模型或更換機型','err');
+    // reverted=true 時，enforcePrintVolume() 內部已顯示「已還原」提示，這裡不重複
+    return;   // 不進行後續 PFS 重新估算（結果本來就不合法，估了也沒意義）
+  }
   // 若 PFS 已有場景，重新估算時間
   if(pfsSceneId && pfsAvail){
     pfsReq('POST',`/scene/${pfsSceneId}/auto-orient/`,{}).then(()=>
@@ -1186,6 +1207,11 @@ async function runPFSAnalysis(filePath){
     const PFS_RX = 38 * Math.PI / 180;
     const PFS_RZ = 15 * Math.PI / 180;
     syncOrientFromPFS(PFS_RX, PFS_RZ);
+    // 硬性保證：本頁 3D 畫面同步後的擺放不可超出真實列印範圍（若超出則還原視覺擺放；
+    // PreFormServer 本身是機台真實限制的權威來源，其估算數字仍照常套用，不因此中止）
+    if(enforcePrintVolume()){
+      showToast('本頁 3D 預覽的擺放同步超出列印範圍，畫面已還原；PreFormServer 精確數字仍會套用','err');
+    }
 
     // 4. 自動支撐
     showToast('PreFormServer 自動支撐…','ok');
@@ -1278,17 +1304,20 @@ function loadGeometry(geom){
   ));
   scene.add(threeModel);
   resetSlice();   // 新模型：清除層切狀態
-  // 新模型：重置 gizmo、單軸鎖定與變形數值
+  // 新模型：重置 gizmo、單軸鎖定、變形數值與「合法擺放」快照
   gizmoMode=null;
   if(transformControls) deselectModel();
   setGizmoAxis('all');
+  lastValidTransform=null;
   syncTransformInputs();
 
   const size=geom.boundingBox.getSize(new THREE.Vector3());
   document.getElementById('dim-x').value=Math.round(size.x);
   document.getElementById('dim-y').value=Math.round(size.z);
   document.getElementById('dim-z').value=Math.round(size.y);
-  calcQuote(); checkOverflow(); fitView();
+  calcQuote(); checkOverflow();
+  enforcePrintVolume();   // 若初始貼地置中後已在範圍內，記錄為第一個合法快照；若本身就超出則僅維持警示色
+  fitView();
 }
 
 // ══ STL 分析引擎 ══
@@ -1557,24 +1586,29 @@ function initThree(){
 }
 
 // ── 列印框架 ──
+// 顯示範圍緩衝：畫出來的框比「真實列印範圍」大 10mm，純視覺參考，不影響實際限制
+const PRINT_DISPLAY_MARGIN = 10;
+
 function buildPrintVolume(){
   if(printVolMesh){scene.remove(printVolMesh);printVolMesh.geometry.dispose();}
   if(printVolEdges){scene.remove(printVolEdges);printVolEdges.geometry.dispose();}
   const p=PRINTERS[selectedPrinter];
-  const geo=new THREE.BoxGeometry(p.w,p.h,p.d);
+  const M=PRINT_DISPLAY_MARGIN;
+  const dw=p.w+M, dh=p.h+M, dd=p.d+M;   // 顯示尺寸（水平方向左右各+M/2對稱；高度地板固定於0，只往上多10mm）
+  const geo=new THREE.BoxGeometry(dw,dh,dd);
   printVolMesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({
     color:0x0c7a99,transparent:true,opacity:0.07,side:THREE.BackSide,depthWrite:false
   }));
-  printVolMesh.position.set(0,p.h/2,0);
+  printVolMesh.position.set(0,dh/2,0);
   scene.add(printVolMesh);
   const eg=new THREE.EdgesGeometry(geo);
   printVolEdges=new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x0c7a99,opacity:0.6,transparent:true}));
-  printVolEdges.position.set(0,p.h/2,0);
+  printVolEdges.position.set(0,dh/2,0);
   scene.add(printVolEdges);
   checkOverflow();
 }
 
-// ── 超出偵測 ──
+// ── 超出偵測（用「真實列印範圍」判定，不含顯示緩衝）──
 function checkOverflow(){
   if(!threeModel||!printVolEdges) return;
   const p=PRINTERS[selectedPrinter];
@@ -1589,6 +1623,41 @@ function checkOverflow(){
   printVolMesh.material.opacity=over?0.1:0.07;
   document.getElementById('ovr-warn').classList.toggle('on',over);
   document.getElementById('ovr-ok').classList.toggle('on',!over);
+}
+
+// ══ 硬性限制：模型觸碰到「真實列印範圍」邊界即還原上一個合法狀態 ══
+// 只用真實列印範圍(p.w/p.h/p.d)判定，不含上面 buildPrintVolume 的 +10mm 顯示緩衝
+let lastValidTransform = null;   // {pos, rot, scale}：最近一次確認「在範圍內」的變形快照
+function isWithinRealPrintVolume(){
+  if(!threeModel) return true;
+  const p=PRINTERS[selectedPrinter];
+  const bb=new THREE.Box3().setFromObject(threeModel);
+  const EPS=1e-6;
+  return bb.min.x>=-p.w/2-EPS && bb.max.x<=p.w/2+EPS
+      && bb.min.z>=-p.d/2-EPS && bb.max.z<=p.d/2+EPS
+      && bb.min.y>=-EPS       && bb.max.y<=p.h+EPS;
+}
+// 回傳 true = 剛剛把動作還原了（超出範圍）；false = 動作合法（或尚無可還原的快照）
+function enforcePrintVolume(){
+  if(!threeModel) return false;
+  if(isWithinRealPrintVolume()){
+    lastValidTransform = {
+      pos:   threeModel.position.clone(),
+      rot:   threeModel.rotation.clone(),
+      scale: threeModel.scale.clone(),
+    };
+    return false;
+  }
+  if(lastValidTransform){
+    threeModel.position.copy(lastValidTransform.pos);
+    threeModel.rotation.copy(lastValidTransform.rot);
+    threeModel.scale.copy(lastValidTransform.scale);
+    checkOverflow();
+    syncTransformInputs();
+    showToast('已達最大列印範圍邊界，動作已還原','err');
+    return true;
+  }
+  return false;   // 一開始就超出（例如剛載入的模型本身比列印範圍大），沒有合法狀態可還原
 }
 
 // ── 預設方塊 ──
