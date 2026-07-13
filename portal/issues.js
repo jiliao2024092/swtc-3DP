@@ -181,6 +181,10 @@
   // 樣品是否借出中：存在未歸還（無 returnDate）的出借紀錄
   function isSampleOut(loans) { return (loans||[]).some(l => !l.returnDate); }
 
+  // 借出時段（比照 3D 列印機預約：上午/下午/晚上）
+  const SLOT_LABELS = { AM:'上午', PM:'下午', EV:'晚上' };
+  const SLOT_ORDER = ['AM','PM','EV'];
+
   // 借出人顯示：一律「中文 (英文)」；依 borrowers 清單({key:英文,label:中文})比對，非清單內則原樣顯示
   function borrowerDisplay(value, borrowers) {
     if (!value) return '';
@@ -221,9 +225,11 @@
   }
 
   // ── 出借登記 Modal（開放 viewer 登記出借/歸還）──
-  function LoanModal({ sample, loans, borrowers, canManage, onClose, onAddLoan, onReturnLoan, onDelLoan }) {
+  // prefill：從甘特圖雙擊帶入的預設值 { loanDate, slot }（選填）
+  function LoanModal({ sample, loans, borrowers, canManage, prefill, onClose, onAddLoan, onReturnLoan, onDelLoan }) {
     const today = new Date().toISOString().split('T')[0];
-    const [form, setForm] = useState({ loanDate: today, returnDate:'', remark:'' });
+    const [form, setForm] = useState({ loanDate: (prefill&&prefill.loanDate)||today, returnDate:'', remark:'' });
+    const [slotSel, setSlotSel] = useState((prefill&&prefill.slot)||'AM');
     const [borrowerSel,   setBorrowerSel]   = useState('');   // 下拉選的 key，或 '__other__'
     const [borrowerOther, setBorrowerOther] = useState('');   // 選「其他」時自行輸入的名稱
     const [busy, setBusy] = useState(false);
@@ -236,8 +242,8 @@
       setBusy(true);
       try {
         await onAddLoan({ itemId: sample._id, itemName: sample.name, material: sample.material||'',
-                          borrower: borrowerVal, loanDate: form.loanDate, returnDate: form.returnDate||'', remark: form.remark||'' });
-        setForm({ loanDate: today, returnDate:'', remark:'' }); setBorrowerSel(''); setBorrowerOther('');
+                          borrower: borrowerVal, loanDate: form.loanDate, slot: slotSel, returnDate: form.returnDate||'', remark: form.remark||'' });
+        setForm({ loanDate: today, returnDate:'', remark:'' }); setSlotSel('AM'); setBorrowerSel(''); setBorrowerOther('');
       } catch(e){ showToast(e.message||'失敗','err'); }
       finally { setBusy(false); }
     };
@@ -266,9 +272,14 @@
                 <div className="m-field"><label style={LBL}>借出日期 *</label><input style={S_INP} type="date" value={form.loanDate} onChange={e=>set('loanDate',e.target.value)}/></div>
               </div>
               <div className="m-row">
+                <div className="m-field"><label style={LBL}>時段</label>
+                  <select style={S_INP} value={slotSel} onChange={e=>setSlotSel(e.target.value)}>
+                    {SLOT_ORDER.map(s=><option key={s} value={s}>{SLOT_LABELS[s]}</option>)}
+                  </select>
+                </div>
                 <div className="m-field"><label style={LBL}>歸還日期（未歸還留空）</label><input style={S_INP} type="date" value={form.returnDate} onChange={e=>set('returnDate',e.target.value)}/></div>
-                <div className="m-field"><label style={LBL}>備註</label><input style={S_INP} value={form.remark} onChange={e=>set('remark',e.target.value)}/></div>
               </div>
+              <div className="m-field"><label style={LBL}>備註</label><input style={S_INP} value={form.remark} onChange={e=>set('remark',e.target.value)}/></div>
               <div style={{textAlign:'right',marginTop:8}}><button className="btn-save" onClick={submit} disabled={busy}>{busy?'登記中...':'＋ 登記出借'}</button></div>
             </div>
 
@@ -276,11 +287,12 @@
             <div style={{fontSize:12,fontWeight:600,color:'#5a6270',marginBottom:6}}>出借紀錄（{sorted.length}）</div>
             <div style={{maxHeight:200,overflow:'auto',border:'1px solid #e6e8ec',borderRadius:6}}>
               <table className="kt" style={{fontSize:12}}><thead><tr>
-                <th>借出人／客戶</th><th>借出日期</th><th>歸還日期</th><th>備註</th><th style={{width:80}}></th>
+                <th>借出人／客戶</th><th>借出日期</th><th>時段</th><th>歸還日期</th><th>備註</th><th style={{width:80}}></th>
               </tr></thead><tbody>
                 {sorted.map(l=>(<tr key={l._id}>
                   <td>{borrowerDisplay(l.borrower, borrowers)}</td>
                   <td className="col-date">{l.loanDate||'—'}</td>
+                  <td className="col-date">{SLOT_LABELS[l.slot]||'—'}</td>
                   <td className="col-date">{l.returnDate
                     ? l.returnDate
                     : <span style={{color:'#c0392b',fontWeight:600}}>借出中</span>}</td>
@@ -290,11 +302,99 @@
                     {canManage && <button className="kt-actbtn danger" title="刪除" style={{marginLeft:4}} onClick={()=>onDelLoan(l)}>✕</button>}
                   </td>
                 </tr>))}
-                {!sorted.length&&<tr><td colSpan={5}><div className="kt-empty" style={{padding:16}}>尚無出借紀錄</div></td></tr>}
+                {!sorted.length&&<tr><td colSpan={6}><div className="kt-empty" style={{padding:16}}>尚無出借紀錄</div></td></tr>}
               </tbody></table>
             </div>
           </div>
           <div className="m-foot"><button className="btn-cancel" onClick={onClose}>關閉</button></div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 樣品甘特圖（比照 3D 列印機預約：列=樣品、欄=日期，雙擊格子快速登記出借）──
+  function SampleGanttView({ samples, loans, borrowers, onOpenSample, onQuickAdd }) {
+    const { useState: useStateG } = React;
+    const K = window.K;
+    const DAY = K.DAY;
+    const mondayOf = (d) => { const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; };
+    const [weekStart, setWeekStart] = useStateG(()=>mondayOf(new Date()));
+    const days = Array.from({length:7},(_,i)=> new Date(weekStart.getTime()+i*DAY));
+    const todayKey = K.fmtYmd(new Date());
+    const weekdayNames=['一','二','三','四','五','六','日'];
+
+    const loansFor = (sampleId, dateKey, slot) => loans.filter(l=>l.itemId===sampleId && l.loanDate===dateKey && (l.slot||'AM')===slot);
+
+    const STICKY_TH = {position:'sticky',left:0,background:'var(--bg)',zIndex:2,minWidth:130,whiteSpace:'nowrap'};
+    const STICKY_TD = {position:'sticky',left:0,background:'var(--bg)',zIndex:1,fontWeight:600,whiteSpace:'nowrap'};
+
+    return (
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'0 2px',flexWrap:'wrap'}}>
+          <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} onClick={()=>setWeekStart(d=>new Date(d.getTime()-7*DAY))}>‹ 上週</button>
+          <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} onClick={()=>setWeekStart(mondayOf(new Date()))}>本週</button>
+          <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} onClick={()=>setWeekStart(d=>new Date(d.getTime()+7*DAY))}>下週 ›</button>
+          <span style={{fontSize:12,color:'#8a93a3',marginLeft:6}}>{K.fmtYmd(days[0])} ~ {K.fmtYmd(days[6])}</span>
+          <span style={{fontSize:11,color:'#8a93a3',marginLeft:'auto'}}>雙擊格子快速登記出借；點擊已有紀錄可管理／歸還</span>
+        </div>
+        <div className="table-wrap" style={{overflow:'auto'}}>
+          <table className="kt" style={{borderCollapse:'collapse',minWidth:960}}>
+            <thead>
+              <tr>
+                <th style={STICKY_TH}>樣品</th>
+                {days.map((d,i)=>{
+                  const isToday = K.fmtYmd(d)===todayKey;
+                  return <th key={i} colSpan={3} style={{textAlign:'center',background:isToday?'#e6f1f6':undefined}}>
+                    {d.getMonth()+1}/{d.getDate()}（{weekdayNames[i]}）
+                  </th>;
+                })}
+              </tr>
+              <tr>
+                <th style={STICKY_TH}></th>
+                {days.flatMap((d,i)=>SLOT_ORDER.map(s=>(
+                  <th key={`${i}-${s}`} style={{fontSize:10,fontWeight:400,color:'#8a93a3',textAlign:'center',minWidth:58}}>{SLOT_LABELS[s]}</th>
+                )))}
+              </tr>
+            </thead>
+            <tbody>
+              {samples.map(sample=>(
+                <tr key={sample._id}>
+                  <td style={STICKY_TD}>
+                    {sample.name}
+                    <div style={{fontSize:10,color:'#8a93a3',fontWeight:400}}>{sample.material||'—'}</div>
+                  </td>
+                  {days.flatMap((d)=>{
+                    const dateKey = K.fmtYmd(d);
+                    const isToday = dateKey===todayKey;
+                    return SLOT_ORDER.map(slot=>{
+                      const cellLoans = loansFor(sample._id, dateKey, slot);
+                      return (
+                        <td key={`${dateKey}-${slot}`}
+                          onDoubleClick={()=>onQuickAdd(sample, dateKey, slot)}
+                          title="雙擊新增出借登記"
+                          style={{cursor:'pointer',minWidth:58,height:38,verticalAlign:'top',padding:2,background:isToday?'#f7fbfd':undefined}}>
+                          {cellLoans.map(l=>{
+                            const out=!l.returnDate;
+                            const bName = borrowerDisplay(l.borrower,borrowers)||'—';
+                            return (
+                              <div key={l._id}
+                                onClick={e=>{e.stopPropagation(); onOpenSample(sample);}}
+                                title={`${bName} · ${l.loanDate}${out?'（借出中）':`（已歸還 ${l.returnDate}）`}`}
+                                style={{fontSize:10,padding:'1px 4px',borderRadius:4,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
+                                  background:out?'#fdecea':'#e6f1ea', color:out?'#c0392b':'#1d6f43', fontWeight:600}}>
+                                {bName.split(' ')[0]}
+                              </div>
+                            );
+                          })}
+                        </td>
+                      );
+                    });
+                  })}
+                </tr>
+              ))}
+              {!samples.length&&<tr><td colSpan={22}><div className="kt-empty">無樣品資料</div></td></tr>}
+            </tbody>
+          </table>
         </div>
       </div>
     );
@@ -779,7 +879,11 @@
     const [search4,   setSearch4]   = useState('');   // 樣品搜尋
     const [outF,      setOutF]      = useState('');    // 樣品借出狀態篩選
     const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
-    const [sampleView, setSampleView] = useState('list'); // 樣品分頁檢視：list 清冊 / ledger 出借總表 / stats 借出統計
+    const [ganttPrefill, setGanttPrefill] = useState(null); // 甘特圖雙擊帶入的 { loanDate, slot }
+    const [sampleView, setSampleView] = useState('list'); // 樣品分頁檢視：list 清冊 / gantt 甘特圖 / ledger 出借總表 / stats 借出統計
+    const openSampleLoans = (sample) => { setGanttPrefill(null); setLoanSample(sample); };
+    const openQuickAdd = (sample, dateKey, slot) => { setGanttPrefill({ loanDate:dateKey, slot }); setLoanSample(sample); };
+    const closeLoanModal = () => { setLoanSample(null); setGanttPrefill(null); };
     const [labelVer,  setLabelVer]  = useState(0);
     const [editMode,   setEditMode]  = useState(false);
     const [anomalySort, setAnomalySort] = useState({field:'score',dir:'asc'});
@@ -791,6 +895,7 @@
 
     const canE = window.hasPerm(user, 'edit_issues');
     const canD = window.hasPerm(user, 'delete_issues');
+    const isAdmin = window.hasPerm(user, 'admin');   // 樣品清冊(項目本身)新增/刪除限 admin
 
     useEffect(() => {
       const prev = window._onSettingsUpdated;
@@ -976,7 +1081,7 @@
       anomaly: canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('a');}}>+ 新增異常</button>,
       ipa:     canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('i');}}>+ 新增採購</button>,
       tools:   canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('e');}}>+ 新增設備</button>,
-      samples: canE && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('s');}}>+ 新增樣品</button>,
+      samples: isAdmin && <button className="btn-add" onClick={()=>{setEditItem(null);setModal('s');}}>+ 新增樣品</button>,
       stats:   null,
     };
 
@@ -1170,13 +1275,16 @@
               <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
               <span className="toolbar-sub">共 <b style={{color:'#0a0e14'}}>{filtS.length}</b> 件，借出中 <b style={{color:'#c0392b'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
+              <button className={'btn-edit-mode'+(sampleView==='gantt'?' active':'')} onClick={()=>setSampleView(v=>v==='gantt'?'list':'gantt')} title="切換甘特圖行事曆（雙擊格子快速登記出借）">
+                🗓 {sampleView==='gantt'?'回清冊':'甘特圖'}
+              </button>
               <button className={'btn-edit-mode'+(sampleView==='ledger'?' active':'')} onClick={()=>setSampleView(v=>v==='ledger'?'list':'ledger')} title="切換出借總表（原始表單樣式，一覽借出/歸還）">
                 📋 {sampleView==='ledger'?'回清冊':'出借總表'}
               </button>
               <button className={'btn-edit-mode'+(sampleView==='stats'?' active':'')} onClick={()=>setSampleView(v=>v==='stats'?'list':'stats')} title="切換樣品借出統計">
                 📊 {sampleView==='stats'?'回清冊':'借出統計'}
               </button>
-              {canE&&<SettingsBtn/>}
+              {isAdmin&&<SettingsBtn/>}
             </div>
             {sampleView==='list' && <div className="table-wrap">
               <table className="kt"><thead><tr>
@@ -1185,7 +1293,7 @@
                 <SortTh label="材質" field="material" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
                 <SortTh label="位置" field="location" cur={sampleSort} onSort={mkSort(setSampleSort)}/>
                 <th>狀態</th><th>出借</th>
-                {editMode&&<th className="col-actions">操作</th>}
+                {editMode&&isAdmin&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
                 {sortArr(filtS,sampleSort).map((it,idx)=>{
                   const myLoans=loansOf(it._id);
@@ -1196,16 +1304,19 @@
                     <td>{it.material||'—'}</td>
                     <td>{it.location||'—'}</td>
                     <td><span className={out?'kt-pill kt-pill-暫停':'kt-pill kt-pill-完成'}>{out?'借出中':'可借出'}</span></td>
-                    <td><button className="btn-cancel" style={{padding:'2px 10px',fontSize:11}} onClick={()=>setLoanSample(it)}>登記/歸還{myLoans.length?` (${myLoans.length})`:''}</button></td>
-                    {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
-                      {canE&&<button className="kt-actbtn" title="編輯" onClick={()=>{setEditItem(it);setModal('s');}}>✎</button>}
-                      {canD&&<button className="kt-actbtn danger" title="刪除" onClick={()=>delS(it)}>✕</button>}
+                    <td><button className="btn-cancel" style={{padding:'2px 10px',fontSize:11}} onClick={()=>openSampleLoans(it)}>登記/歸還{myLoans.length?` (${myLoans.length})`:''}</button></td>
+                    {editMode&&isAdmin&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
+                      <button className="kt-actbtn" title="編輯" onClick={()=>{setEditItem(it);setModal('s');}}>✎</button>
+                      <button className="kt-actbtn danger" title="刪除（直接刪除，不可復原）" onClick={()=>delS(it)}>✕</button>
                     </span></td>}
                   </tr>);
                 })}
-                {!filtS.length&&<tr><td colSpan={editMode?7:6}><div className="kt-empty">無樣品資料</div></td></tr>}
+                {!filtS.length&&<tr><td colSpan={(editMode&&isAdmin)?7:6}><div className="kt-empty">無樣品資料</div></td></tr>}
               </tbody></table>
             </div>}
+
+            {/* 甘特圖行事曆（列=樣品、欄=日期，雙擊格子快速登記出借） */}
+            {sampleView==='gantt' && <SampleGanttView samples={sortArr(filtS,sampleSort)} loans={loans} borrowers={borrowers} onOpenSample={openSampleLoans} onQuickAdd={openQuickAdd}/>}
 
             {/* 出借總表（原始表單樣式：每列一樣品，展開其所有借出/歸還紀錄） */}
             {sampleView==='ledger' && <LoanLedger samples={sortArr(filtS,sampleSort)} loansOf={loansOf} borrowers={borrowers} canManage={canD} onDelLoan={delLoan}/>}
@@ -1224,8 +1335,8 @@
           {modal==='i'&&<IPAModal     item={editItem} onClose={()=>setModal(null)} onSave={saveI}/>}
           {modal==='e'&&<EquipModal   item={editItem} onClose={()=>setModal(null)} onSave={saveE}/>}
           {modal==='s'&&<SampleModal  item={editItem} onClose={()=>setModal(null)} onSave={saveS}/>}
-          {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} borrowers={borrowers} canManage={canD}
-                                  onClose={()=>setLoanSample(null)} onAddLoan={addLoan} onReturnLoan={returnLoan} onDelLoan={delLoan}/>}
+          {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} borrowers={borrowers} canManage={canD} prefill={ganttPrefill}
+                                  onClose={closeLoanModal} onAddLoan={addLoan} onReturnLoan={returnLoan} onDelLoan={delLoan}/>}
         </div>
       </div>
     );

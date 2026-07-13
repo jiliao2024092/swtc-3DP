@@ -107,11 +107,10 @@ service cloud.firestore {
       allow delete: if hasPerm('delete_issues');
     }
 
-    // 樣品清冊：維護限編輯者/admin
+    // 樣品清冊：項目本身（新增/編輯/刪除）限 admin；刪除為直接刪除，不做隱藏/停用
     match /sample_items/{id} {
       allow read: if hasPerm('view_issues');
-      allow create, update: if hasPerm('edit_issues');
-      allow delete: if hasPerm('delete_issues');
+      allow create, update, delete: if isAdmin();
     }
     // 出借紀錄：開放 viewer 登記/歸還（有 view_issues 即可 create/update）；刪除限編輯者
     match /sample_loans/{id} {
