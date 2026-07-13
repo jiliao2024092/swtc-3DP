@@ -53,7 +53,8 @@
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
     admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','admin'],
-    manager:  ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
+    // 主管：比工程師多「刪除」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote'],
     operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
     viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote'],
   };

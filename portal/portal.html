@@ -416,10 +416,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260708d"></script>
+<script src="firebase-config.js?v=20260708e"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260708d"></script>
+<script src="firebase-service.js?v=20260708e"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1556,8 +1556,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260708d"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260708d"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260708e"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260708e"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -1724,8 +1724,19 @@ function AdminPanel({ user }) {
   const DEF_BORR = [{key:'Wang',label:'王小明'},{key:'Lee',label:'李美華'},{key:'Chang',label:'張大偉'},{key:'Chen',label:'陳怡君'},{key:'Lin',label:'林志豪'}];
   const DEF_SALES = [{key:'Amber',label:'安柏'},{key:'Charlie',label:'查理'}];
 
-  // 使用者排序：依姓名/Email 字母（localeCompare）、依權限等級（管理員>工程師>查閱）
-  const roleRank = u => u.permissions?.includes('admin') ? 0 : u.permissions?.includes('edit_board') ? 1 : 2;
+  // 角色分級：管理員(admin) > 主管(有刪除權，但非 admin) > 工程師(有編輯權) > 查閱
+  // 主管與工程師的差異在於「刪除」權（delete_board/delete_issues），單靠 edit_board 無法區分兩者
+  const roleTierOf = u => {
+    const p = u.permissions || [];
+    if (p.includes('admin')) return 'admin';
+    if (p.includes('delete_board') || p.includes('delete_issues')) return 'manager';
+    if (p.includes('edit_board')) return 'operator';
+    return 'viewer';
+  };
+  const ROLE_TIER_LABEL = { admin:'管理員', manager:'主管', operator:'工程師', viewer:'查閱' };
+  const ROLE_TIER_RANK  = { admin:0, manager:1, operator:2, viewer:3 };
+  // 使用者排序：依姓名/Email 字母（localeCompare）、依權限等級（管理員>主管>工程師>查閱）
+  const roleRank = u => ROLE_TIER_RANK[roleTierOf(u)];
   const toggleSort = k => { if(sortKey===k) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(k); setSortDir('asc'); } };
   const sortedUsers = [...users].sort((a,b)=>{
     let r = 0;
@@ -1741,7 +1752,7 @@ function AdminPanel({ user }) {
     const rows = sortedUsers.map(u=>({
       '姓名': u.displayName||'',
       'Email': u.email||'',
-      '權限': u.permissions?.includes('admin') ? '管理員' : u.permissions?.includes('edit_board') ? '工程師' : '查閱',
+      '權限': ROLE_TIER_LABEL[roleTierOf(u)],
       '個別權限清單': (u.permissions||[]).join(', '),
       '狀態': u.active?'啟用':'停用',
     }));
@@ -1935,13 +1946,7 @@ function AdminPanel({ user }) {
                   <tr key={u._id}>
                     <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{(u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
                     <td style={{color:'#5a6270',fontSize:12}}>{u.email}</td>
-                    <td>
-                      {u.permissions?.includes('admin')
-                        ? <span className="role-chip admin">管理員</span>
-                        : u.permissions?.includes('edit_board')
-                          ? <span className="role-chip operator">工程師</span>
-                          : <span className="role-chip viewer">查閱</span>}
-                    </td>
+                    <td><span className={`role-chip ${roleTierOf(u)}`}>{ROLE_TIER_LABEL[roleTierOf(u)]}</span></td>
                     <td><span className={`st-dot${u.active?' on':' off'}`}>{u.active?'● 啟用':'● 停用'}</span></td>
                     <td><span className="kt-act">
                       <button className="kt-actbtn" onClick={()=>{setEditUser(u);setUserModal(true);}}>✎</button>
