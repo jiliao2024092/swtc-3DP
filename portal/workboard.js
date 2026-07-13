@@ -491,9 +491,9 @@
                 // 實際完成日晚於期望交期 → 逾期天數（計算標記，不寫入 remark）
                 const lateDays = (o.actualEndDate && o.dueDate && !Number.isNaN(new Date(o.actualEndDate).getTime()) && !Number.isNaN(new Date(o.dueDate).getTime()))
                   ? Math.round((new Date(o.actualEndDate) - new Date(o.dueDate)) / K.DAY) : null;
-                // 實際消耗量超過預估 → 超耗量（計算標記，不寫入 remark）
+                // 實際消耗量超過預估 → 超耗量（計算標記，不寫入 remark）；顯示值無條件進位至整數
                 const overUse = (o.actUsage!=null && o.actUsage!=='' && o.estUsage!=null && o.estUsage!=='' && +o.actUsage > +o.estUsage)
-                  ? (+o.actUsage - +o.estUsage) : null;
+                  ? Math.ceil(+o.actUsage - +o.estUsage) : null;
                 const rowNo = (page-1)*PAGE_SIZE + idx + 1;   // 序號＝目前顯示清單的位置（1~N，不隨排序改變）
                 return (
                   <tr key={o._id || o.seq}
