@@ -57,6 +57,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 .mtype-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .mtype-btn{padding:5px 4px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink-3);font:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all .12s}
 .mtype-btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.mtype-btn.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
 .dim-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
 .dim-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
 .dim-inp{width:100%;padding:5px 4px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;font-family:var(--font-mono);text-align:center}
@@ -268,12 +269,41 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
             </div>
           </div>
           <div class="sec">
+            <div class="sec-lbl">精確變形（以檔案原點）</div>
+            <div class="mtype-grid" style="grid-template-columns:1fr 1fr;margin-bottom:5px">
+              <button class="mtype-btn" id="gz-move" onclick="setGizmo('translate')">✥ 移動</button>
+              <button class="mtype-btn" id="gz-rot"  onclick="setGizmo('rotate')">⟳ 旋轉</button>
+            </div>
+            <div style="display:grid;grid-template-columns:14px 1fr;gap:4px 5px;align-items:center;margin-bottom:5px">
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">X</span>
+              <input class="dim-inp" id="tf-x" type="number" step="0.1" value="0" onchange="onTransformInput()" title="X 位移 (mm)">
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Y</span>
+              <input class="dim-inp" id="tf-y" type="number" step="0.1" value="0" onchange="onTransformInput()" title="Y 位移 (mm)">
+              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Z</span>
+              <input class="dim-inp" id="tf-z" type="number" step="0.1" value="0" onchange="onTransformInput()" title="Z 位移 (mm)">
+            </div>
+            <div style="display:grid;grid-template-columns:20px 1fr;gap:4px 5px;align-items:center">
+              <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Rx</span>
+              <input class="dim-inp" id="tf-rx" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 X 軸旋轉 (°)">
+              <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Ry</span>
+              <input class="dim-inp" id="tf-ry" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 Y 軸旋轉 (°)">
+              <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Rz</span>
+              <input class="dim-inp" id="tf-rz" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 Z 軸旋轉 (°)">
+            </div>
+            <div class="f-hint" style="margin-top:5px">位移 mm · 旋轉 °，以檔案原點為基準（與 PreForm 一致）</div>
+            <button class="mtype-btn" onclick="resetTransform()" style="width:100%;margin-top:5px">↺ 歸零變形</button>
+          </div>
+          <div class="sec">
             <div class="sec-lbl">擺放與計算</div>
             <button class="calc-btn" onclick="autoOrient()" style="margin-bottom:6px">⚡ 自動擺放</button>
-            <button class="calc-btn" onclick="manualCalc()" style="background:var(--bg);color:var(--ink);border:1px solid var(--line)">
+            <button class="calc-btn" onclick="manualCalc()" style="margin-bottom:6px;background:var(--bg);color:var(--ink);border:1px solid var(--line)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5M8 17h3"/></svg>
               手動擺放後計算
             </button>
+            <button class="calc-btn" onclick="pfsOneClick()" style="background:var(--accent);color:#fff;border:none" title="一鍵連線 PreFormServer 取得精確體積/支撐/時間">
+              🔗 PreForm 精確估價（一鍵）
+            </button>
+            <div class="f-hint" style="margin-top:4px">需先開啟 PreFormServer，並於「設定」填一次伺服器位址與 STL 資料夾</div>
           </div>
         </div>
         <div class="cost-panel">
@@ -414,12 +444,37 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
           · 材料清單存於 Firestore：<code>settings/quote_materials</code><br>
           · 儲存後所有裝置立即同步
         </div>
+
+        <div class="settings-title" style="margin-top:26px">PreFormServer 連線設定</div>
+        <div class="settings-sub">精確估價（真實體積/支撐/列印時間）需連線本機 PreFormServer · 設定存本機瀏覽器</div>
+        <div style="display:flex;flex-direction:column;gap:10px;max-width:560px">
+          <label style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:11px;color:var(--ink-3);font-weight:600">伺服器位址</span>
+            <input class="add-inp" id="pfs-url" placeholder="http://localhost:44389" style="font-family:var(--font-mono)">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px">
+            <span style="font-size:11px;color:var(--ink-3);font-weight:600">STL 存放資料夾（一次設定，之後一鍵自動組路徑）</span>
+            <input class="add-inp" id="pfs-folder" placeholder="例：C:\Users\你的帳號\Downloads" style="font-family:var(--font-mono)">
+          </label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="save-btn" onclick="savePfsSettings()">💾 儲存連線設定</button>
+            <button class="add-btn" onclick="testPfsConnection()">🔌 測試連線</button>
+            <span id="pfs-conn-status" style="font-size:12px;color:var(--ink-4);font-family:var(--font-mono)"></span>
+          </div>
+        </div>
+        <div class="settings-note">
+          · 一鍵估價會用「資料夾路徑 + 上傳的檔名」組出完整路徑給 PreFormServer（瀏覽器無法直接取得絕對路徑）<br>
+          · 若頁面以 https 開啟而 PreFormServer 為 http，瀏覽器可能擋混合內容；建議在本機以 http 開啟本頁測試<br>
+          · 設定僅存於本機瀏覽器（localStorage），不上傳雲端
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- TransformControls（拖拉式 gizmo，對應 three r128 全域版本）-->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -562,7 +617,7 @@ function switchPage(p){
     document.getElementById('pg-'+k).classList.toggle('on',k===p);
     document.getElementById('btn-'+k).classList.toggle('active',k===p);
   });
-  if(p==='settings') renderMatTable();
+  if(p==='settings'){ renderMatTable(); fillPfsSettings(); }
 }
 
 // ══ Controls ══
@@ -585,10 +640,50 @@ function selectLayer(el,val){
 }
 function onDimChange(){ updateDefaultBox(); calcQuote(); }
 
-// ══ PreFormServer proxy 位址 ══
-const PFS = 'http://localhost:44389';
+// ══ PreFormServer 連線設定（可在設定頁一次性設定，存 localStorage）══
+let PFS        = localStorage.getItem('pfs_url')    || 'http://localhost:44389';
+let pfsFolder  = localStorage.getItem('pfs_folder') || '';   // STL 存放資料夾（一次性設定，一鍵用）
+let pfsLastFile= '';     // 最近上傳的 STL 檔名（一鍵組路徑用）
 let pfsSceneId = null;   // 目前 PreFormServer 場景 ID
 let pfsAvail   = null;   // null=未知, true=可用, false=不可用
+
+function savePfsSettings(){
+  const url = (document.getElementById('pfs-url')?.value || '').trim().replace(/\/+$/,'');
+  const dir = (document.getElementById('pfs-folder')?.value || '').trim();
+  if(url){ PFS = url; localStorage.setItem('pfs_url', url); }
+  pfsFolder = dir; localStorage.setItem('pfs_folder', dir);
+  pfsAvail = null;   // 重設連線狀態，下次重測
+  showToast('PreFormServer 連線設定已儲存','ok');
+}
+// 組出檔案完整路徑（資料夾 + 檔名，自動補分隔符號；資料夾用 \ 視為 Windows）
+function pfsBuildPath(fileName){
+  if(!pfsFolder) return '';
+  const sep = pfsFolder.includes('/') && !pfsFolder.includes('\\') ? '/' : '\\';
+  const base = pfsFolder.replace(/[\\/]+$/,'');
+  return base + sep + fileName;
+}
+// 把已存的連線設定填回設定頁欄位
+function fillPfsSettings(){
+  const u=document.getElementById('pfs-url'), d=document.getElementById('pfs-folder');
+  if(u) u.value = PFS;
+  if(d) d.value = pfsFolder;
+}
+// 測試 PreFormServer 連線
+async function testPfsConnection(){
+  const el = document.getElementById('pfs-conn-status');
+  const url = (document.getElementById('pfs-url')?.value || '').trim().replace(/\/+$/,'');
+  if(url){ PFS = url; }
+  if(el){ el.textContent = '測試中…'; el.style.color = 'var(--ink-4)'; }
+  pfsAvail = null;
+  try {
+    const r = await fetch(PFS + '/', { signal: AbortSignal.timeout(3000) });
+    pfsAvail = r.ok;
+    if(el){ el.textContent = r.ok ? '✓ 已連線 '+PFS : '✗ 有回應但狀態異常 ('+r.status+')'; el.style.color = r.ok ? 'var(--ok)' : 'var(--danger)'; }
+  } catch(e) {
+    pfsAvail = false;
+    if(el){ el.textContent = '✗ 連線失敗（未開啟 PreFormServer 或被瀏覽器混合內容阻擋）'; el.style.color = 'var(--danger)'; }
+  }
+}
 
 // PreFormServer machine_type 對照
 const PFS_MACHINE = { f4:'FORM-4-0', f4l:'FRML-4-0' };
@@ -639,9 +734,14 @@ function calcQuote(){
   if(!x||!y||!z) return;
   const mat = materials.find(m=>m.code===document.getElementById('mat-sel').value);
   if(!mat) return;
-  // 公式估算（無 STL 時使用）
+  // 體積：有 STL → 用真實實體 mesh 體積（精確、隨變形/縮放連動）；無 STL → 包圍盒×填充率粗估
   const fillRate={exterior:.40,engineering:.60,hollow:.20,thin:.30}[selectedType]||.40;
-  const vol    = (x/10)*(y/10)*(z/10)*fillRate;
+  let vol;
+  if(threeModel && threeModel.userData.isSTL){
+    vol = computeMeshVolumeMM3(threeModel)/1000;        // mm³ → mL
+  } else {
+    vol = (x/10)*(y/10)*(z/10)*fillRate;
+  }
   const supVol = vol*0.15;
   const ppc    = mat.price/1000;
   const matCost  = Math.round(vol*ppc);
@@ -743,7 +843,91 @@ function applyScale(){
   threeModel.scale.set(f * sgnX, f, f);                  // 以原始網格為基準縮放
   document.getElementById('scale-input').value = Math.round(pct);
   afterTransform();
+  syncTransformInputs();
   showToast(`已縮放至 ${Math.round(pct)}%`, 'ok');
+}
+
+// ══ 精確變形：TransformControls 拖拉 gizmo + 數值輸入（以檔案原點為基準）══
+let transformControls=null, gizmoDragging=false, gizmoMode=null;
+
+function initGizmo(){
+  if(!window.THREE || !THREE.TransformControls){ console.warn('TransformControls 未載入'); return; }
+  transformControls = new THREE.TransformControls(camera, renderer.domElement);
+  transformControls.setSize(0.85);
+  transformControls.setSpace('local');   // 以物件（檔案原點）本地座標操作
+  transformControls.addEventListener('dragging-changed', e=>{ gizmoDragging = e.value; });
+  transformControls.addEventListener('objectChange', ()=>{ syncTransformInputs(); afterManualTransform(); });
+  transformControls.enabled=false; transformControls.visible=false;
+  scene.add(transformControls);
+}
+
+function setGizmo(mode){
+  if(!needModel()) return;
+  if(!transformControls){ showToast('gizmo 元件未載入','err'); return; }
+  if(gizmoMode===mode){                       // 再按一次 → 關閉
+    gizmoMode=null; transformControls.detach();
+    transformControls.enabled=false; transformControls.visible=false;
+  } else {
+    gizmoMode=mode; transformControls.setMode(mode); transformControls.attach(threeModel);
+    transformControls.enabled=true; transformControls.visible=true;
+    showToast(mode==='translate'?'拖曳箭頭平移（以原點）':'拖曳弧線旋轉（以原點）','ok');
+  }
+  document.getElementById('gz-move').classList.toggle('active', gizmoMode==='translate');
+  document.getElementById('gz-rot').classList.toggle('active', gizmoMode==='rotate');
+}
+
+function syncTransformInputs(){
+  if(!threeModel) return;
+  const R2D = 180/Math.PI;
+  document.getElementById('tf-x').value  = threeModel.position.x.toFixed(1);
+  document.getElementById('tf-y').value  = threeModel.position.y.toFixed(1);
+  document.getElementById('tf-z').value  = threeModel.position.z.toFixed(1);
+  document.getElementById('tf-rx').value = Math.round(threeModel.rotation.x*R2D);
+  document.getElementById('tf-ry').value = Math.round(threeModel.rotation.y*R2D);
+  document.getElementById('tf-rz').value = Math.round(threeModel.rotation.z*R2D);
+}
+
+function onTransformInput(){
+  if(!needModel()) return;
+  const D2R=Math.PI/180, gv=id=>parseFloat(document.getElementById(id).value)||0;
+  threeModel.position.set(gv('tf-x'), gv('tf-y'), gv('tf-z'));
+  threeModel.rotation.set(gv('tf-rx')*D2R, gv('tf-ry')*D2R, gv('tf-rz')*D2R);
+  afterManualTransform();
+}
+
+function resetTransform(){
+  if(!needModel()) return;
+  threeModel.position.set(0,0,0);
+  threeModel.rotation.set(0,0,0);
+  const sgn=Math.sign(threeModel.scale.x)||1; threeModel.scale.set(sgn,1,1);
+  document.getElementById('scale-input').value=100;
+  syncTransformInputs(); afterManualTransform();
+  showToast('已歸零變形','ok');
+}
+
+// 精確/手動變形後：更新尺寸/體積/超出/估價，但「不」自動貼地（保留使用者擺放）
+function afterManualTransform(){
+  refreshDims(); checkOverflow(); calcQuote();
+  if(sliceMode) toggleSliceView();
+  if(overhangMode){ restoreOriginalColors(); applyOverhangColors(); }
+}
+
+// ══ 真實實體體積（有 STL 時取代包圍盒×填充率的粗估）══
+// 對每個三角形做「原點四面體」有號體積加總，取絕對值；再乘上縮放倍率
+function computeMeshVolumeMM3(mesh){
+  if(!mesh || !mesh.geometry || !mesh.geometry.attributes.position) return 0;
+  const geom=mesh.geometry, pos=geom.attributes.position, idx=geom.index;
+  let v=0;
+  const tri=(iA,iB,iC)=>{
+    const ax=pos.getX(iA),ay=pos.getY(iA),az=pos.getZ(iA);
+    const bx=pos.getX(iB),by=pos.getY(iB),bz=pos.getZ(iB);
+    const cx=pos.getX(iC),cy=pos.getY(iC),cz=pos.getZ(iC);
+    v += (ax*(by*cz-bz*cy) - ay*(bx*cz-bz*cx) + az*(bx*cy-by*cx))/6;
+  };
+  if(idx){ for(let i=0;i<idx.count;i+=3) tri(idx.getX(i),idx.getX(i+1),idx.getX(i+2)); }
+  else   { for(let i=0;i<pos.count;i+=3) tri(i,i+1,i+2); }
+  const s=mesh.scale;
+  return Math.abs(v) * Math.abs(s.x*s.y*s.z);   // mm³（同時支援 indexed / 非 indexed 幾何）
 }
 
 // ══ 層切預覽（Z 高度裁切面）══
@@ -895,36 +1079,37 @@ function onFileChange(input){
   document.getElementById('uz-icon').textContent = '📄';
   document.getElementById('upload-zone').classList.add('has-file');
   document.getElementById('top-aux').textContent = f.name + ' · 解析中…';
+  pfsLastFile = f.name;   // 記住檔名，供「一鍵 PreForm 精確估價」組路徑
   const reader = new FileReader();
   reader.onload = async e => {
     try{
       const geom = parseSTL(e.target.result);
       loadGeometry(geom);
       runSTLAnalysis(geom);
-      document.getElementById('top-aux').textContent = f.name + ' · 3D 載入完成';
-      showToast('STL 3D 預覽載入', 'ok');
+      document.getElementById('top-aux').textContent = f.name + ' · 3D 載入完成（可按「PreForm 精確估價」取得精確數字）';
+      showToast('STL 3D 預覽載入，體積已依實體 mesh 計算', 'ok');
     } catch(err){
       showToast('STL 解析失敗：'+err.message, 'err');
     }
-    // 同步送 PreFormServer 計算（需要檔案路徑，但瀏覽器無法取得絕對路徑）
-    // 改用 prompt 請使用者輸入路徑
-    await sendSTLtoPFS(f.name);
   };
   reader.readAsArrayBuffer(f);
 }
 
-async function sendSTLtoPFS(fileName){
+// ══ 一鍵 PreForm 精確估價：連線 → 匯入 → 擺放/支撐 → 估時 → 驗證 → 更新面板 ══
+async function pfsOneClick(){
+  if(!pfsLastFile){ showToast('請先上傳 STL','err'); return; }
   const avail = await checkPFS();
   if(!avail){
-    document.getElementById('top-aux').textContent = fileName + ' · PreFormServer 未連線，使用公式估算';
+    showToast('PreFormServer 未連線：請確認已開啟 PreFormServer，並於「設定」填寫伺服器位址','err');
+    document.getElementById('top-aux').textContent = 'PreFormServer 未連線（' + PFS + '）';
     return;
   }
-  // 請使用者輸入檔案完整路徑
-  const filePath = prompt(
-    `PreFormServer 需要檔案的完整路徑才能精確計算。\n\n請輸入此 STL 的完整路徑：\n（例如 C:\\Users\\20030024\\Downloads\\${fileName}）`,
-    `C:\\Users\\20030024\\Downloads\\${fileName}`
-  );
-  if(!filePath){ showToast('已跳過 PreFormServer 計算，使用公式估算','ok'); return; }
+  if(!pfsFolder){
+    showToast('尚未設定 STL 資料夾路徑，請到「設定」填寫一次','err');
+    switchPage('settings');
+    return;
+  }
+  const filePath = pfsBuildPath(pfsLastFile);
   await runPFSAnalysis(filePath);
 }
 
@@ -1042,6 +1227,12 @@ function loadGeometry(geom){
   ));
   scene.add(threeModel);
   resetSlice();   // 新模型：清除層切狀態
+  // 新模型：重置 gizmo 與變形數值
+  if(transformControls){ transformControls.detach(); transformControls.enabled=false; transformControls.visible=false; }
+  gizmoMode=null;
+  const gm=document.getElementById('gz-move'), gr=document.getElementById('gz-rot');
+  if(gm) gm.classList.remove('active'); if(gr) gr.classList.remove('active');
+  syncTransformInputs();
 
   const size=geom.boundingBox.getSize(new THREE.Vector3());
   document.getElementById('dim-x').value=Math.round(size.x);
@@ -1283,8 +1474,10 @@ function initThree(){
 
   buildPrintVolume();
   addDefaultBox();
+  initGizmo();
 
   cv.addEventListener('mousedown',e=>{
+    if(gizmoDragging) return;                 // 正在拖 gizmo → 不啟動相機拖曳
     isDragging=true; isRightDrag=e.button===2;
     lastX=e.clientX; lastY=e.clientY;
     document.getElementById('viewer-hint').style.opacity='0';
@@ -1384,6 +1577,7 @@ function setCtrlMode(m){
 
 // ── 滑鼠 ──
 function onMouseMove(e){
+  if(gizmoDragging) return;                   // gizmo 拖曳中 → 交給 TransformControls
   if(!isDragging) return;
   const dx=e.clientX-lastX, dy=e.clientY-lastY;
   lastX=e.clientX; lastY=e.clientY;
