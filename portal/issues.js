@@ -930,6 +930,72 @@
     const delI  = async it => { if(!confirm('刪除？'))return; await FBIPA.del(it._id); showToast('已刪除','inf'); };
     const saveE = async f => { if(editItem){await FBEquipment.update(editItem._id,f);showToast('已更新 ✓');}else{await FBEquipment.add({...f,seq:nextSeq(equipment)});showToast('已新增 ✓');}setModal(null); };
     const delE  = async it => { if(!confirm('刪除？'))return; await FBEquipment.del(it._id); showToast('已刪除','inf'); };
+
+    // 匯出 Excel：客戶異常（含後續進度展開為多列）
+    const exportAnomalies = () => {
+      if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
+      const rows = [];
+      [...anomalies].sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach(it=>{
+        const progresses = it.progresses && it.progresses.length ? it.progresses : [{date:'',status:''}];
+        progresses.forEach((p,i)=>{
+          rows.push({
+            '客戶': i===0 ? it.customer||'' : '',
+            '異常日期': i===0 ? it.date||'' : '',
+            '品名': i===0 ? it.product||'' : '',
+            '工程師': i===0 ? (K.ENG_FULLLABEL[it.engineer]||K.ENG_LABEL[it.engineer]||it.engineer||'') : '',
+            '狀態': i===0 ? it.status||'' : '',
+            '保固日期': i===0 ? it.warranty||'' : '',
+            '異常原因': i===0 ? it.cause||'' : '',
+            '進度日期': p.date||'',
+            '進度說明': p.status||'',
+          });
+        });
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{'客戶':''}]), '客戶異常');
+      const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
+      XLSX.writeFile(wb, `客戶異常_${today}.xlsx`);
+      showToast('已匯出 Excel ✓');
+    };
+
+    // 匯出 Excel：IPA 採購
+    const exportIPA = () => {
+      if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
+      const rows = [...ipa].sort((a,b)=>(a.seq||0)-(b.seq||0)).map(it=>({
+        '採購日期': it.purchaseDate||'',
+        '使用區間': ipaRangeText(it),
+        '使用天數': ipaUseDays(it.useStart,it.useEnd) ?? '',
+        '品名': it.product||'',
+        '數量(桶)': it.quantity ?? '',
+        '採購人員': K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person||'',
+        '備註': it.remark||'',
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{'採購日期':''}]), 'IPA採購');
+      const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
+      XLSX.writeFile(wb, `IPA採購_${today}.xlsx`);
+      showToast('已匯出 Excel ✓');
+    };
+
+    // 匯出 Excel：設備清單
+    const exportTools = () => {
+      if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
+      const rows = [...equipment].sort((a,b)=>(a.seq||0)-(b.seq||0)).map(it=>({
+        '採購日期': it.purchaseDate||'',
+        '品名': it.product||'',
+        '數量': it.quantity ?? '',
+        '採購方式': it.method||'',
+        '單號': it.number||'',
+        '備註': it.remark||'',
+        '金額': Number(it.price||0)*Number(it.quantity||1),
+      }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{'採購日期':''}]), '設備清單');
+      const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
+      XLSX.writeFile(wb, `設備清單_${today}.xlsx`);
+      showToast('已匯出 Excel ✓');
+    };
+
     // 樣品清冊（限編輯者）
     const saveS = async f => { if(editItem){await FBSampleItems.update(editItem._id,f);showToast('已更新 ✓');}else{await FBSampleItems.add({...f,seq:nextSeq(samples)});showToast('已新增 ✓');}setModal(null); };
     const delS  = async it => { if(!confirm(`刪除樣品「${it.name}」？其出借紀錄不會一併刪除。`))return; await FBSampleItems.del(it._id); showToast('已刪除','inf'); };
@@ -1124,6 +1190,7 @@
                 style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'#e6f1f6',color:hideDoneA?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
                 {hideDoneA ? '顯示已完成' : '👁 顯示已完成'}
               </button>
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出客戶異常為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">
@@ -1193,6 +1260,7 @@
               </div>
               <span className="toolbar-sub">合計 <b style={{color:'#0a0e14'}}>{filtI.reduce((s,r)=>s+Number(r.quantity||0),0)}</b> 桶</span>
               <select className="t-sel" value={personF} onChange={e=>setPersonF(e.target.value)}><option value="">所有人員</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportIPA} title="匯出 IPA 採購為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">
@@ -1236,6 +1304,7 @@
               </div>
               <span className="toolbar-sub">合計 <b style={{color:'#0a0e14'}}>NT$ {filtT.reduce((s,r)=>s+(Number(r.price||0)*Number(r.quantity||1)),0).toLocaleString()}</b></span>
               <select className="t-sel" value={methodF} onChange={e=>setMethodF(e.target.value)}><option value="">所有方式</option><option>Easy Flow</option><option>零用金</option></select>
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportTools} title="匯出設備清單為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">

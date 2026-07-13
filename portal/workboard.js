@@ -375,6 +375,38 @@
     };
     const thCls = key => sortKey===key ? (sortDir==='asc'?'sort-asc':'sort-desc') : '';
 
+    // 匯出 Excel：匯出全部工作（不受目前篩選影響），欄位對齊總表顯示內容
+    const exportWorkTable = () => {
+      if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試', 'err'); return; }
+      const rows = data.map(o => {
+        const st = K.statusOf(o);
+        return {
+          '序': o.seq ?? '',
+          '單號': o.id || '',
+          '客戶': o.customer || '',
+          '工程師': K.ENG_FULLLABEL[o.engineer] || K.ENG_LABEL[o.engineer] || o.engineer || '',
+          '機台': o.machine || '',
+          '開始日': o.startDate || '',
+          '預計完成日': o.endDate || '',
+          '期望交期': o.dueDate || '',
+          '實際完成日': o.actualEndDate || '',
+          '材料庫存': o.material || '',
+          '樹脂': o.resin || '',
+          '類型': o.category || '',
+          '進度(%)': o.progress ?? 0,
+          '狀態': (K.STATUS_TONE[st] && K.STATUS_TONE[st].label) || st,
+          '預估消耗量(mL)': o.estUsage ?? '',
+          '實際消耗量(mL)': o.actUsage ?? '',
+          '備註': o.remark || '',
+        };
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{'序':'','客戶':''}]), '工作看板總表');
+      const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
+      XLSX.writeFile(wb, `工作看板總表_${today}.xlsx`);
+      showToast('已匯出 Excel ✓');
+    };
+
     // 狀態顏色
     const STATUS_STYLE = {
       done:      { bg:'#e6f1ea', color:'#1d6f43' },
@@ -422,6 +454,7 @@
             style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'#e6f1f6',color:hideDone?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
             {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
           </button>
+          <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出全部工作看板資料為 Excel">⬇ 匯出Excel</button>
           <span style={{fontSize:12,color:'#8a93a3',marginLeft:'auto'}}>共 {filtered.length} 筆</span>
         </div>
 

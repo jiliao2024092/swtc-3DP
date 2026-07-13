@@ -416,10 +416,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260708c"></script>
+<script src="firebase-config.js?v=20260708d"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260708c"></script>
+<script src="firebase-service.js?v=20260708d"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1556,8 +1556,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260708c"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260708c"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260708d"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260708d"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -1736,6 +1736,22 @@ function AdminPanel({ user }) {
     return sortDir==='asc' ? r : -r;
   });
 
+  const exportUsers = () => {
+    if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
+    const rows = sortedUsers.map(u=>({
+      '姓名': u.displayName||'',
+      'Email': u.email||'',
+      '權限': u.permissions?.includes('admin') ? '管理員' : u.permissions?.includes('edit_board') ? '工程師' : '查閱',
+      '個別權限清單': (u.permissions||[]).join(', '),
+      '狀態': u.active?'啟用':'停用',
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length?rows:[{'姓名':''}]), '使用者清單');
+    const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
+    XLSX.writeFile(wb, `使用者清單_${today}.xlsx`);
+    showToast('已匯出 Excel ✓');
+  };
+
   useEff(()=>{
     // 使用者清單改為即時訂閱（儲存後自動更新，免 F5）
     const unsubUsers = FBAuth.onUsersSnapshot(us => { setUsers(us); });
@@ -1902,7 +1918,10 @@ function AdminPanel({ user }) {
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
               <h2 style={{fontSize:16,fontWeight:700}}>使用者管理</h2>
-              <button className="btn-add" onClick={()=>{setEditUser(null);setUserModal(true);}}>+ 新增使用者</button>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportUsers} title="匯出使用者清單為 Excel">⬇ 匯出Excel</button>
+                <button className="btn-add" onClick={()=>{setEditUser(null);setUserModal(true);}}>+ 新增使用者</button>
+              </div>
             </div>
             <table className="u-tbl">
               <thead><tr>
