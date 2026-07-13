@@ -407,8 +407,7 @@
                     </select>
                     <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
                         <option value="">全部類型</option>
-                        <option value="consume" selected>列印消耗</option>
-                        <option value="aborted">列印中止</option>
+                        <option value="consume" selected>列印消耗（含中止）</option>
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
@@ -436,6 +435,7 @@
                             <th class="p-3 border-b font-medium">類型</th>
                             <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">備註</th>
+                            <th class="p-3 border-b font-medium w-14 text-center" data-admin-only>操作</th>
                         </tr>
                     </thead>
                     <tbody id="history-body" class="divide-y divide-gray-100"></tbody>
@@ -2081,7 +2081,8 @@ function renderHistory() {
     let filtered = inv.history.filter(h=>{
         if(fMat     && matCode(h.material) !== matCode(fMat)) return false;
         if(fPrinter && !(h.printer||'').includes(fPrinter)) return false;
-        if(fType    && h.type !== fType) return false;
+        if(fType==='consume' && !(h.type==='consume'||h.type==='aborted')) return false;
+        else if(fType && fType!=='consume' && h.type !== fType) return false;
         if(fFrom    && (h.ts||'').slice(0,10) < fFrom) return false;
         if(fTo      && (h.ts||'').slice(0,10) > fTo) return false;
         return true;
@@ -2106,7 +2107,7 @@ function renderHistory() {
     const page=filtered.slice((historyPage-1)*HISTORY_PAGE_SIZE,historyPage*HISTORY_PAGE_SIZE);
 
     const tbody=document.getElementById('history-body');
-    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="6" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="7" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
         const typeMap={
@@ -2127,6 +2128,7 @@ function renderHistory() {
             ? `− ${amtStr}`
             : `${(h.ml||0)>=0?'+':'−'} ${amtStr}`;
         const mlColor = isConsumeLike ? 'text-red-500' : (h.type==='stockin'?'text-green-600':'');
+        const isAdmin = currentUser && currentUser.role === 'admin';
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
@@ -2134,9 +2136,15 @@ function renderHistory() {
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
             <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
+            <td class="p-3 text-center" ${isAdmin?'':'style="display:none"'} data-admin-only>
+                <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（僅刪除紀錄，不會反向調整庫存）" class="text-gray-400 hover:text-red-600 transition-colors">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+            </td>
         `;
         tbody.appendChild(tr);
     });
+    lucide.createIcons();
     // Pagination
     const pgDiv=document.getElementById('history-pagination');
     const pgInfo=document.getElementById('history-page-info');
@@ -2538,6 +2546,33 @@ async function reloadData() {
     }
 }
 
+// ══ 刪除單筆消耗/歷史紀錄 (admin only) ══
+// 僅刪除 inventory_history 這筆文件，不會反向調整庫存/樹脂罐存量
+// （guid 仍留在 inventory/main.last_processed_prints，Cloud Function 不會重新寫回這筆）
+async function deleteHistoryEntry(id) {
+    if (!currentUser || currentUser.role !== 'admin') {
+        showToast('僅 admin 可執行此操作', 'error');
+        return;
+    }
+    if (!id) return;
+    const h = inv.history.find(x => x.id === id);
+    const label = h ? `${matName(h.material)||''} · ${printerDisplay(h.printer)||''} · ${h.note||''}` : id;
+    if (!confirm(`確定要刪除這筆紀錄嗎？\n\n${label}\n\n此操作僅刪除紀錄本身，不會反向調整目前庫存/樹脂罐存量，且無法復原。`)) return;
+    try {
+        await deleteDoc(doc(db, 'inventory_history', id));
+        extraHistory = extraHistory.filter(x => x.id !== id);
+        historyFromSubscription = historyFromSubscription.filter(x => x.id !== id);
+        rebuildInvHistory();
+        renderHistory();
+        renderOverview();
+        if (currentTab === 'monthly') renderMonthly();
+        showToast('已刪除該筆紀錄', 'success');
+    } catch (err) {
+        console.error('[deleteHistoryEntry] 失敗:', err);
+        showToast('刪除失敗：' + err.message, 'error');
+    }
+}
+
 // ══ 清除所有消耗紀錄並重新匯入 (admin only) ══
 async function purgeAndRebuildHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
@@ -2612,6 +2647,7 @@ window.switchTab = switchTab;
 window.setOverviewCols = setOverviewCols;
 window.toggleOverviewCards = toggleOverviewCards;
 window.reloadData = reloadData;
+window.deleteHistoryEntry = deleteHistoryEntry;
 // ══ 去除重複紀錄 (admin only) ══
 async function deduplicateHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
