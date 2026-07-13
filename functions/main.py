@@ -445,7 +445,8 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
                 # ★ 針對使用者回報一直沒抓到的特定 print 印詳細資料（依名稱比對）
                 _pname = pr.get("name", "") or ""
-                _is_debug_print = "202606180001" in _pname or "百盛鐵氟龍" in _pname
+                _DEBUG_PRINT_MARKERS = ("202606180001", "百盛鐵氟龍", "FC-118", "壓輪支撐架")
+                _is_debug_print = any(m in _pname for m in _DEBUG_PRINT_MARKERS)
                 if _is_debug_print:
                     print(f"[sync][DEBUG目標print] name={_pname!r} guid={guid} "
                           f"status={status} printer={pr.get('printer')!r} "
@@ -523,6 +524,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
                 volume_num = round(float(volume), 1)
                 record_type = "aborted" if is_abort else "consume"
+                if _is_debug_print:
+                    print(f"[sync][DEBUG目標print] 分類結果 name={_pname!r} status={status!r} "
+                          f"is_done={is_done} is_error={is_error} is_abort={is_abort} "
+                          f"is_consume={is_consume} → record_type={record_type!r}")
 
                 # 寫紀錄 — 完成時間優先；但 Formlabs 偶爾對 FINISHED 的 print 回傳
                 # epoch(1970) 的 print_finished_at（見「百盛鐵氟龍」案例），會把紀錄
