@@ -365,9 +365,6 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
           <button class="vtb-btn" onclick="fitView()">□ 適合</button>
           <button class="vtb-btn" onclick="resetView()">↺ 重設</button>
           <div class="vtb-sep"></div>
-          <button class="vtb-mode scene" id="btn-scene" onclick="setCtrlMode('scene')">場景旋轉</button>
-          <button class="vtb-mode" id="btn-obj" onclick="setCtrlMode('object')">物件操控</button>
-          <div class="vtb-sep"></div>
           <button class="vtb-btn" id="btn-overhang" onclick="toggleOverhangView()" style="border-color:var(--warn);color:var(--warn)">⚠ 懸垂分析</button>
           <button class="vtb-btn" id="btn-slice" onclick="toggleSliceView()" style="border-color:var(--accent);color:var(--accent)">▤ 層切預覽</button>
           <div class="vtb-sep"></div>
@@ -636,6 +633,7 @@ function selectPrinter(id){
   lastValidTransform=null;
   if(scene) buildPrintVolume();
   enforcePrintVolume();   // 目前位置若在新範圍內就記錄為新快照；不在範圍內僅顯示警示色（無舊快照可還原）
+  if(scene) clampCameraZoom();   // 換機型後相機縮放範圍也跟著變，立即夾回合理範圍
   onDimChange(); calcQuote();
 }
 function selectType(el,type){
@@ -864,71 +862,85 @@ function applyScale(){
 }
 
 // ══ 精確變形：TransformControls 拖拉 gizmo + 數值輸入（以檔案原點為基準）══
-let transformControls=null, gizmoDragging=false, gizmoMode=null, gizmoAxis='all';
+// 兩組 TransformControls 同時存在：tcMove 固定移動模式(世界座標)、tcRotate 固定旋轉模式(物件本身座標)
+// 點擊模型後兩者一起顯示（不用再切換「移動/旋轉」模式），按鈕改為各自獨立顯示/隱藏
+let tcMove=null, tcRotate=null, gizmoDragging=false, gizmoAxis='all';
+let gzMoveOn=true, gzRotateOn=true;   // 選取模型時預設兩者皆顯示
 const gizmoRaycaster=new THREE.Raycaster(), gizmoMouseNDC=new THREE.Vector2();
 let mouseDownX=0, mouseDownY=0;
 
 function initGizmo(){
   if(!window.THREE || !THREE.TransformControls){ console.warn('TransformControls 未載入'); return; }
-  transformControls = new THREE.TransformControls(camera, renderer.domElement);
-  transformControls.setSize(0.85);
-  transformControls.setSpace('world');   // 預設：移動用絕對(世界)座標；旋轉會在 selectModel() 內切換為 local
-  transformControls.addEventListener('dragging-changed', e=>{ gizmoDragging = e.value; });
-  transformControls.addEventListener('objectChange', ()=>{ syncTransformInputs(); afterManualTransform(); });
-  transformControls.enabled=false; transformControls.visible=false;
-  scene.add(transformControls);
+  const onDragChange = e=>{ gizmoDragging = e.value; };
+  const onObjChange  = ()=>{ syncTransformInputs(); afterManualTransform(); };
+
+  tcMove = new THREE.TransformControls(camera, renderer.domElement);
+  tcMove.setSize(0.85);
+  tcMove.setMode('translate');
+  tcMove.setSpace('world');   // 移動＝絕對世界座標軸向（X/Y/Z 永遠對應機台座標，不隨模型旋轉而傾斜）
+  tcMove.addEventListener('dragging-changed', onDragChange);
+  tcMove.addEventListener('objectChange', onObjChange);
+  tcMove.enabled=false; tcMove.visible=false;
+  scene.add(tcMove);
+
+  tcRotate = new THREE.TransformControls(camera, renderer.domElement);
+  tcRotate.setSize(0.85);
+  tcRotate.setMode('rotate');
+  tcRotate.setSpace('local');   // 旋轉＝以物件本身（檔案原點）為準
+  tcRotate.addEventListener('dragging-changed', onDragChange);
+  tcRotate.addEventListener('objectChange', onObjChange);
+  tcRotate.enabled=false; tcRotate.visible=false;
+  scene.add(tcRotate);
 }
 
-// 選取模型：直接顯示操控軸（移動/旋轉，依目前模式），不需先按按鈕
+// 選取模型：移動(XYZ)與旋轉(RxRyRz)軸同時顯示，不需先按按鈕
 function selectModel(){
-  if(!transformControls || !threeModel) return;
-  if(!gizmoMode) gizmoMode='translate';        // 第一次選取預設用移動模式
-  transformControls.setMode(gizmoMode);
-  // 移動＝絕對世界座標軸向（X/Y/Z 永遠對應機台座標，不隨模型旋轉而傾斜）
-  // 旋轉＝以物件本身（檔案原點）為準的 local 座標
-  transformControls.setSpace(gizmoMode==='translate' ? 'world' : 'local');
-  transformControls.attach(threeModel);
-  transformControls.enabled=true; transformControls.visible=true;
+  if(!tcMove || !tcRotate || !threeModel) return;
+  tcMove.attach(threeModel);
+  tcRotate.attach(threeModel);
+  tcMove.enabled=gzMoveOn;     tcMove.visible=gzMoveOn;
+  tcRotate.enabled=gzRotateOn; tcRotate.visible=gzRotateOn;
   applyGizmoAxis();
   syncTransformInputs();
-  document.getElementById('gz-move').classList.toggle('active', gizmoMode==='translate');
-  document.getElementById('gz-rot').classList.toggle('active', gizmoMode==='rotate');
+  document.getElementById('gz-move').classList.toggle('active', gzMoveOn);
+  document.getElementById('gz-rot').classList.toggle('active', gzRotateOn);
 }
 function deselectModel(){
-  if(!transformControls) return;
-  transformControls.detach();
-  transformControls.enabled=false; transformControls.visible=false;
+  if(!tcMove || !tcRotate) return;
+  tcMove.detach();   tcMove.enabled=false;   tcMove.visible=false;
+  tcRotate.detach(); tcRotate.enabled=false; tcRotate.visible=false;
   document.getElementById('gz-move').classList.remove('active');
   document.getElementById('gz-rot').classList.remove('active');
 }
 
+// 個別顯示/隱藏移動或旋轉軸（不互斥，兩者可同時開）；未選取模型時先選取再套用
 function setGizmo(mode){
   if(!needModel()) return;
-  if(!transformControls){ showToast('gizmo 元件未載入','err'); return; }
-  if(gizmoMode===mode && transformControls.object){   // 同一模式已顯示中 → 再按一次關閉
-    gizmoMode=null; deselectModel();
-  } else {
-    gizmoMode=mode; selectModel();
-    showToast(mode==='translate'?'拖曳箭頭平移（以原點）':'拖曳弧線旋轉（可於上方鎖定單一軸向）','ok');
+  if(!tcMove || !tcRotate){ showToast('gizmo 元件未載入','err'); return; }
+  if(mode==='translate') gzMoveOn=!gzMoveOn; else gzRotateOn=!gzRotateOn;
+  if(!tcMove.object) selectModel();   // 尚未選取 → 直接選取（會套用上面切換後的顯示狀態）
+  else {
+    tcMove.enabled=gzMoveOn;     tcMove.visible=gzMoveOn;
+    tcRotate.enabled=gzRotateOn; tcRotate.visible=gzRotateOn;
+    document.getElementById('gz-move').classList.toggle('active', gzMoveOn);
+    document.getElementById('gz-rot').classList.toggle('active', gzRotateOn);
   }
 }
 
-// 點選/單軸鎖定：X/Y/Z 只留該軸可操作，避免不小心拖到其他軸
+// 點選/單軸鎖定：X/Y/Z 只留該軸可操作（移動與旋轉共用同一個鎖定），避免不小心拖到其他軸
 function setGizmoAxis(axis){
   gizmoAxis=axis;
   ['all','x','y','z'].forEach(a=>document.getElementById('gz-axis-'+a).classList.toggle('active', a===axis));
   applyGizmoAxis();
 }
 function applyGizmoAxis(){
-  if(!transformControls) return;
-  transformControls.showX = (gizmoAxis==='all' || gizmoAxis==='x');
-  transformControls.showY = (gizmoAxis==='all' || gizmoAxis==='y');
-  transformControls.showZ = (gizmoAxis==='all' || gizmoAxis==='z');
+  const showX=(gizmoAxis==='all'||gizmoAxis==='x'), showY=(gizmoAxis==='all'||gizmoAxis==='y'), showZ=(gizmoAxis==='all'||gizmoAxis==='z');
+  [tcMove, tcRotate].forEach(tc=>{ if(!tc) return; tc.showX=showX; tc.showY=showY; tc.showZ=showZ; });
 }
 
 // 點擊模型 → 直接選取顯示操控軸；點空白處 → 取消選取（不影響 gizmo 拖曳本身）
 function trySelectAtPointer(e){
-  if(!threeModel || !threeModel.userData.isSTL || !transformControls) return;
+  if(!threeModel || !threeModel.userData.isSTL || !tcMove) return;
   const cv=document.getElementById('three-canvas');
   const rect=cv.getBoundingClientRect();
   gizmoMouseNDC.x=((e.clientX-rect.left)/rect.width)*2-1;
@@ -936,7 +948,7 @@ function trySelectAtPointer(e){
   gizmoRaycaster.setFromCamera(gizmoMouseNDC, camera);
   const hit=gizmoRaycaster.intersectObject(threeModel, true);
   if(hit.length) selectModel();
-  else if(transformControls.object) deselectModel();
+  else if(tcMove.object) deselectModel();
 }
 
 function syncTransformInputs(){
@@ -1304,9 +1316,9 @@ function loadGeometry(geom){
   ));
   scene.add(threeModel);
   resetSlice();   // 新模型：清除層切狀態
-  // 新模型：重置 gizmo、單軸鎖定、變形數值與「合法擺放」快照
-  gizmoMode=null;
-  if(transformControls) deselectModel();
+  // 新模型：重置 gizmo(移動/旋轉皆預設開)、單軸鎖定、變形數值與「合法擺放」快照
+  gzMoveOn=true; gzRotateOn=true;
+  if(tcMove) deselectModel();
   setGizmoAxis('all');
   lastValidTransform=null;
   syncTransformInputs();
@@ -1531,7 +1543,6 @@ let printVolMesh=null, printVolEdges=null;
 let panOffset=new THREE.Vector3();
 let isDragging=false, isRightDrag=false, lastX=0, lastY=0;
 let spherical={theta:0.7,phi:1.1,radius:600};
-let ctrlMode='scene';
 
 function initThree(){
   const vc=document.getElementById('viewer-canvas');
@@ -1628,6 +1639,7 @@ function checkOverflow(){
 // ══ 硬性限制：模型觸碰到「真實列印範圍」邊界即還原上一個合法狀態 ══
 // 只用真實列印範圍(p.w/p.h/p.d)判定，不含上面 buildPrintVolume 的 +10mm 顯示緩衝
 let lastValidTransform = null;   // {pos, rot, scale}：最近一次確認「在範圍內」的變形快照
+let boundaryBlockedNotified = false;   // 避免拖曳持續頂在邊界時，同一次操作內重複跳出提醒
 function isWithinRealPrintVolume(){
   if(!threeModel) return true;
   const p=PRINTERS[selectedPrinter];
@@ -1638,6 +1650,8 @@ function isWithinRealPrintVolume(){
       && bb.min.y>=-EPS       && bb.max.y<=p.h+EPS;
 }
 // 回傳 true = 剛剛把動作還原了（超出範圍）；false = 動作合法（或尚無可還原的快照）
+// 每一幀（gizmo 拖曳中會連續觸發）都會強制還原，等於在邊界就直接卡住、無法再往外移；
+// 提醒只在「剛頂到邊界」時跳一次，持續頂著不會洗版
 function enforcePrintVolume(){
   if(!threeModel) return false;
   if(isWithinRealPrintVolume()){
@@ -1646,6 +1660,7 @@ function enforcePrintVolume(){
       rot:   threeModel.rotation.clone(),
       scale: threeModel.scale.clone(),
     };
+    boundaryBlockedNotified = false;
     return false;
   }
   if(lastValidTransform){
@@ -1654,7 +1669,10 @@ function enforcePrintVolume(){
     threeModel.scale.copy(lastValidTransform.scale);
     checkOverflow();
     syncTransformInputs();
-    showToast('已達最大列印範圍邊界，動作已還原','err');
+    if(!boundaryBlockedNotified){
+      showToast('已達最大列印範圍邊界，動作已強制停止','err');
+      boundaryBlockedNotified = true;
+    }
     return true;
   }
   return false;   // 一開始就超出（例如剛載入的模型本身比列印範圍大），沒有合法狀態可還原
@@ -1691,55 +1709,29 @@ function updateDefaultBox(){
 }
 
 // ── 控制模式 ──
-function setCtrlMode(m){
-  ctrlMode=m;
-  const isObj=m==='object';
-  document.getElementById('btn-scene').className='vtb-mode'+(isObj?'':' scene');
-  document.getElementById('btn-obj').className='vtb-mode'+(isObj?' obj':'');
-  const hint=document.getElementById('viewer-hint');
-  hint.style.opacity='1';
-  hint.textContent=isObj?'左鍵旋轉物件 · 右鍵平移物件 · Shift縮放':'左鍵旋轉場景 · 滾輪縮放 · 右鍵平移';
-  setTimeout(()=>hint.style.opacity='0',3000);
-}
-
-// ── 滑鼠 ──
+// ── 滑鼠：只控制相機（場景旋轉/平移/縮放）。物件本身一律只能用 XYZ/RxRyRz 軸操控（gizmo/數值欄），
+//   不再支援用滑鼠直接拖拉/右鍵平移/Shift縮放模型 ──
 function onMouseMove(e){
   if(gizmoDragging) return;                   // gizmo 拖曳中 → 交給 TransformControls
   if(!isDragging) return;
   const dx=e.clientX-lastX, dy=e.clientY-lastY;
   lastX=e.clientX; lastY=e.clientY;
-  if(ctrlMode==='object'&&threeModel){
-    if(isRightDrag){
-      const right=new THREE.Vector3(); camera.getWorldDirection(right);
-      right.cross(camera.up).normalize();
-      threeModel.position.addScaledVector(right,dx*0.5);
-      threeModel.position.addScaledVector(new THREE.Vector3(0,1,0),-dy*0.5);
-    } else if(e.shiftKey){
-      const f=1-dy*0.006;
-      threeModel.scale.multiplyScalar(Math.max(0.05,Math.min(20,f)));
-    } else {
-      threeModel.rotation.y+=dx*0.012;
-      threeModel.rotation.x+=dy*0.012;
-    }
-    checkOverflow();
+  if(isRightDrag){
+    const right=new THREE.Vector3(); camera.getWorldDirection(right);
+    right.cross(camera.up).normalize();
+    panOffset.addScaledVector(right,-dx*0.5);
+    panOffset.addScaledVector(new THREE.Vector3(0,1,0),dy*0.5);
   } else {
-    if(isRightDrag){
-      const right=new THREE.Vector3(); camera.getWorldDirection(right);
-      right.cross(camera.up).normalize();
-      panOffset.addScaledVector(right,-dx*0.5);
-      panOffset.addScaledVector(new THREE.Vector3(0,1,0),dy*0.5);
-    } else {
-      spherical.theta-=dx*0.007;
-      spherical.phi-=dy*0.007;
-      spherical.phi=Math.max(0.05,Math.min(Math.PI-0.05,spherical.phi));
-    }
-    updateCamera();
+    spherical.theta-=dx*0.007;
+    spherical.phi-=dy*0.007;
+    spherical.phi=Math.max(0.05,Math.min(Math.PI-0.05,spherical.phi));
   }
+  updateCamera();
 }
 function onWheel(e){
   e.preventDefault();
   spherical.radius*=1+e.deltaY*0.001;
-  spherical.radius=Math.max(60,Math.min(3000,spherical.radius));
+  spherical.radius=Math.max(cameraZoomMin(),Math.min(cameraZoomMax(),spherical.radius));
   updateCamera();
 }
 function updateCamera(){
@@ -1750,6 +1742,17 @@ function updateCamera(){
     panOffset.z+radius*Math.sin(phi)*Math.cos(theta)
   );
   camera.lookAt(panOffset);
+}
+
+// ── 相機縮放範圍：限制在「列印範圍附近」，不能縮到很遠只剩一個小點 ──
+function cameraZoomMin(){ return 40; }
+function cameraZoomMax(){
+  const p=PRINTERS[selectedPrinter];
+  return Math.max(p.w,p.h,p.d) * 3;   // 最遠只能退到列印範圍最大邊的 3 倍
+}
+function clampCameraZoom(){
+  spherical.radius = Math.max(cameraZoomMin(), Math.min(cameraZoomMax(), spherical.radius));
+  updateCamera();
 }
 
 // ── 視角 ──
