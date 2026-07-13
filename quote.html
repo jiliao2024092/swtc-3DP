@@ -274,6 +274,13 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
               <button class="mtype-btn" id="gz-move" onclick="setGizmo('translate')">✥ 移動</button>
               <button class="mtype-btn" id="gz-rot"  onclick="setGizmo('rotate')">⟳ 旋轉</button>
             </div>
+            <div class="mtype-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:5px">
+              <button class="mtype-btn active" id="gz-axis-all" onclick="setGizmoAxis('all')" title="三軸皆可操作">全部</button>
+              <button class="mtype-btn" id="gz-axis-x" onclick="setGizmoAxis('x')" title="只操作 X 軸">X</button>
+              <button class="mtype-btn" id="gz-axis-y" onclick="setGizmoAxis('y')" title="只操作 Y 軸">Y</button>
+              <button class="mtype-btn" id="gz-axis-z" onclick="setGizmoAxis('z')" title="只操作 Z 軸">Z</button>
+            </div>
+            <div class="f-hint" style="margin-bottom:5px">點擊模型即可直接操控；選單軸可鎖定只轉動/移動該軸</div>
             <div style="display:grid;grid-template-columns:14px 1fr;gap:4px 5px;align-items:center;margin-bottom:5px">
               <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">X</span>
               <input class="dim-inp" id="tf-x" type="number" step="0.1" value="0" onchange="onTransformInput()" title="X 位移 (mm)">
@@ -848,7 +855,9 @@ function applyScale(){
 }
 
 // ══ 精確變形：TransformControls 拖拉 gizmo + 數值輸入（以檔案原點為基準）══
-let transformControls=null, gizmoDragging=false, gizmoMode=null;
+let transformControls=null, gizmoDragging=false, gizmoMode=null, gizmoAxis='all';
+const gizmoRaycaster=new THREE.Raycaster(), gizmoMouseNDC=new THREE.Vector2();
+let mouseDownX=0, mouseDownY=0;
 
 function initGizmo(){
   if(!window.THREE || !THREE.TransformControls){ console.warn('TransformControls 未載入'); return; }
@@ -861,19 +870,61 @@ function initGizmo(){
   scene.add(transformControls);
 }
 
+// 選取模型：直接顯示操控軸（移動/旋轉，依目前模式），不需先按按鈕
+function selectModel(){
+  if(!transformControls || !threeModel) return;
+  if(!gizmoMode) gizmoMode='translate';        // 第一次選取預設用移動模式
+  transformControls.setMode(gizmoMode);
+  transformControls.attach(threeModel);
+  transformControls.enabled=true; transformControls.visible=true;
+  applyGizmoAxis();
+  syncTransformInputs();
+  document.getElementById('gz-move').classList.toggle('active', gizmoMode==='translate');
+  document.getElementById('gz-rot').classList.toggle('active', gizmoMode==='rotate');
+}
+function deselectModel(){
+  if(!transformControls) return;
+  transformControls.detach();
+  transformControls.enabled=false; transformControls.visible=false;
+  document.getElementById('gz-move').classList.remove('active');
+  document.getElementById('gz-rot').classList.remove('active');
+}
+
 function setGizmo(mode){
   if(!needModel()) return;
   if(!transformControls){ showToast('gizmo 元件未載入','err'); return; }
-  if(gizmoMode===mode){                       // 再按一次 → 關閉
-    gizmoMode=null; transformControls.detach();
-    transformControls.enabled=false; transformControls.visible=false;
+  if(gizmoMode===mode && transformControls.object){   // 同一模式已顯示中 → 再按一次關閉
+    gizmoMode=null; deselectModel();
   } else {
-    gizmoMode=mode; transformControls.setMode(mode); transformControls.attach(threeModel);
-    transformControls.enabled=true; transformControls.visible=true;
-    showToast(mode==='translate'?'拖曳箭頭平移（以原點）':'拖曳弧線旋轉（以原點）','ok');
+    gizmoMode=mode; selectModel();
+    showToast(mode==='translate'?'拖曳箭頭平移（以原點）':'拖曳弧線旋轉（可於上方鎖定單一軸向）','ok');
   }
-  document.getElementById('gz-move').classList.toggle('active', gizmoMode==='translate');
-  document.getElementById('gz-rot').classList.toggle('active', gizmoMode==='rotate');
+}
+
+// 點選/單軸鎖定：X/Y/Z 只留該軸可操作，避免不小心拖到其他軸
+function setGizmoAxis(axis){
+  gizmoAxis=axis;
+  ['all','x','y','z'].forEach(a=>document.getElementById('gz-axis-'+a).classList.toggle('active', a===axis));
+  applyGizmoAxis();
+}
+function applyGizmoAxis(){
+  if(!transformControls) return;
+  transformControls.showX = (gizmoAxis==='all' || gizmoAxis==='x');
+  transformControls.showY = (gizmoAxis==='all' || gizmoAxis==='y');
+  transformControls.showZ = (gizmoAxis==='all' || gizmoAxis==='z');
+}
+
+// 點擊模型 → 直接選取顯示操控軸；點空白處 → 取消選取（不影響 gizmo 拖曳本身）
+function trySelectAtPointer(e){
+  if(!threeModel || !threeModel.userData.isSTL || !transformControls) return;
+  const cv=document.getElementById('three-canvas');
+  const rect=cv.getBoundingClientRect();
+  gizmoMouseNDC.x=((e.clientX-rect.left)/rect.width)*2-1;
+  gizmoMouseNDC.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  gizmoRaycaster.setFromCamera(gizmoMouseNDC, camera);
+  const hit=gizmoRaycaster.intersectObject(threeModel, true);
+  if(hit.length) selectModel();
+  else if(transformControls.object) deselectModel();
 }
 
 function syncTransformInputs(){
@@ -1227,11 +1278,10 @@ function loadGeometry(geom){
   ));
   scene.add(threeModel);
   resetSlice();   // 新模型：清除層切狀態
-  // 新模型：重置 gizmo 與變形數值
-  if(transformControls){ transformControls.detach(); transformControls.enabled=false; transformControls.visible=false; }
+  // 新模型：重置 gizmo、單軸鎖定與變形數值
   gizmoMode=null;
-  const gm=document.getElementById('gz-move'), gr=document.getElementById('gz-rot');
-  if(gm) gm.classList.remove('active'); if(gr) gr.classList.remove('active');
+  if(transformControls) deselectModel();
+  setGizmoAxis('all');
   syncTransformInputs();
 
   const size=geom.boundingBox.getSize(new THREE.Vector3());
@@ -1480,9 +1530,17 @@ function initThree(){
     if(gizmoDragging) return;                 // 正在拖 gizmo → 不啟動相機拖曳
     isDragging=true; isRightDrag=e.button===2;
     lastX=e.clientX; lastY=e.clientY;
+    mouseDownX=e.clientX; mouseDownY=e.clientY;   // 記錄起點，供放開時判斷是否為「單純點擊」
     document.getElementById('viewer-hint').style.opacity='0';
   });
-  window.addEventListener('mouseup',()=>isDragging=false);
+  window.addEventListener('mouseup',e=>{
+    // 幾乎沒移動、左鍵、且不是正在拖 gizmo → 視為「點擊」，嘗試選取/取消選取模型
+    if(!gizmoDragging && e.button===0 && isDragging){
+      const moved=Math.hypot(e.clientX-mouseDownX, e.clientY-mouseDownY);
+      if(moved<5) trySelectAtPointer(e);
+    }
+    isDragging=false;
+  });
   window.addEventListener('mousemove',onMouseMove);
   cv.addEventListener('wheel',onWheel,{passive:false});
   cv.addEventListener('contextmenu',e=>e.preventDefault());
