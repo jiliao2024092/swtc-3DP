@@ -467,7 +467,7 @@
                         <option value="AdroitSauropod">Form4L (AdroitSauropod)</option>
                     </select>
                     <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                    <select id="monthly-month" onchange="renderMonthlyPie()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="monthly-month" onchange="onMonthlySelChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
             </div>
             <!-- 圓餅圖 -->
@@ -2062,6 +2062,35 @@ function rebuildInvHistory() {
     inv.history = [...map.values()].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
 }
 
+// 一次性(不訂閱) getDocs 撈 [lowerBound, upperBound) 這段區間，去重後追加到 extraHistory
+// 回傳新增筆數；lowerBound 會被設為 extraHistorySinceDate（往前擴大已載入範圍）
+async function fetchHistoryRange(lowerBound, upperBound) {
+    const q = query(
+        collection(db, 'inventory_history'),
+        where('tsDate', '>=', Timestamp.fromDate(lowerBound)),
+        where('tsDate', '<',  Timestamp.fromDate(upperBound)),
+        orderBy('tsDate', 'desc')
+    );
+    const snap = await getDocs(q);
+    const newEntries = snap.docs.map(d => {
+        const data = d.data();
+        return {
+            id: d.id,
+            ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
+            type: data.type, material: data.material, printer: data.printer,
+            ml: data.ml, note: data.note, print_guid: data.print_guid,
+            apiStatus: data.apiStatus,
+        };
+    });
+    const existingIds = new Set(extraHistory.map(e => e.id));
+    const added = newEntries.filter(e => !existingIds.has(e.id));
+    extraHistory = [...extraHistory, ...added];
+    extraHistorySinceDate = lowerBound;
+    rebuildInvHistory();
+    updateHistoryRangeLabel();
+    return added.length;
+}
+
 async function loadEarlierMonth() {
     if (!historySinceDate) return;
     // 計算新範圍：從 extraHistorySinceDate（或 historySinceDate，首次點擊時）往前推一個月
@@ -2073,33 +2102,7 @@ async function loadEarlierMonth() {
     if (loadIcon) loadIcon.classList.remove('hidden');
 
     try {
-        // 只 query 這一個月的範圍（[lowerBound, upperBound)），用 getDocs 一次性，不訂閱
-        const q = query(
-            collection(db, 'inventory_history'),
-            where('tsDate', '>=', Timestamp.fromDate(lowerBound)),
-            where('tsDate', '<',  Timestamp.fromDate(upperBound)),
-            orderBy('tsDate', 'desc')
-        );
-        const snap = await getDocs(q);
-        const newEntries = snap.docs.map(d => {
-            const data = d.data();
-            return {
-                id: d.id,
-                ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
-                type: data.type, material: data.material, printer: data.printer,
-                ml: data.ml, note: data.note, print_guid: data.print_guid,
-                apiStatus: data.apiStatus,
-            };
-        });
-
-        // 去重後追加到 extraHistory
-        const existingIds = new Set(extraHistory.map(e => e.id));
-        const addedCount = newEntries.filter(e => !existingIds.has(e.id)).length;
-        extraHistory = [...extraHistory, ...newEntries.filter(e => !existingIds.has(e.id))];
-        extraHistorySinceDate = lowerBound;
-
-        rebuildInvHistory();
-        updateHistoryRangeLabel();
+        const addedCount = await fetchHistoryRange(lowerBound, upperBound);
         renderHistory();
         renderOverview();
         if (currentTab === 'monthly') renderMonthly();
@@ -2109,6 +2112,27 @@ async function loadEarlierMonth() {
     } catch (err) {
         console.error('loadEarlierMonth 失敗:', err);
         showToast('載入失敗：' + err.message, 'error');
+    } finally {
+        if (loadIcon) loadIcon.classList.add('hidden');
+    }
+}
+
+// 確保「該年度」資料已經涵蓋在 inv.history 內（月度分析選「全年」時用）。
+// 只補撈目前已載入範圍以外的缺口（[yearStart, 目前已載入的最早日期)），已涵蓋就不重撈，避免浪費 Firestore 讀取額度。
+async function ensureYearLoaded(year) {
+    if (!historySinceDate) return;
+    const yearStart = new Date(year, 0, 1);
+    const earliest = extraHistorySinceDate || historySinceDate;
+    if (earliest <= yearStart) return;   // 已經涵蓋整年，不用再撈
+
+    const loadIcon = document.getElementById('history-loading');
+    if (loadIcon) loadIcon.classList.remove('hidden');
+    try {
+        const addedCount = await fetchHistoryRange(yearStart, earliest);
+        showToast(`✓ 已載入 ${year}年整年資料：新增 ${addedCount} 筆（本次 session 暫存）`, 'success');
+    } catch (err) {
+        console.error('ensureYearLoaded 失敗:', err);
+        showToast('載入年度資料失敗：' + err.message, 'error');
     } finally {
         if (loadIcon) loadIcon.classList.add('hidden');
     }
@@ -2246,11 +2270,13 @@ function renderMonthly() {
     yearSel.innerHTML='';
     years.forEach(y=>{const o=document.createElement('option');o.value=y;o.textContent=y+'年';if(y===curYear)o.selected=true;yearSel.appendChild(o);});
 
-    // 月份選擇器（預設當月）
+    // 月份選擇器（預設當月，另有「全年」選項一次看整年彙總）
     const monthSel=document.getElementById('monthly-month');
     if(!monthSel.value){
         const nowMonth=new Date().getMonth()+1;
         monthSel.innerHTML='';
+        const allOpt=document.createElement('option');allOpt.value='all';allOpt.textContent='全年';
+        monthSel.appendChild(allOpt);
         for(let mo=1;mo<=12;mo++){
             const o=document.createElement('option');o.value=mo;o.textContent=mo+'月';
             if(mo===nowMonth)o.selected=true;
@@ -2416,20 +2442,21 @@ function renderMonthlyTrend() {
     });
 }
 
-// 當月消耗紀錄明細：列出每筆列印消耗，依用量由大到小，看哪些列印佔比較大
+// 當月(或全年)消耗紀錄明細：列出每筆列印消耗，依用量由大到小，看哪些列印佔比較大
 function renderMonthlyConsume() {
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
-    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const curMonth = getCurMonthSel();
     const printerFilter = document.getElementById('monthly-printer').value;
     const esc = escHtml;
+    const monthLabel = curMonth === 'all' ? '全年' : `${curMonth}月`;
 
     const title = document.getElementById('consume-detail-title');
-    if(title) title.textContent = `${curYear}年 ${curMonth}月 消耗紀錄（依用量排序）${printerFilter?` · ${printerFilter}`:''}`;
+    if(title) title.textContent = `${curYear}年 ${monthLabel} 消耗紀錄（依用量排序）${printerFilter?` · ${printerFilter}`:''}`;
 
     const recs = inv.history
         .filter(h=>(h.type==='consume'||h.type==='aborted')
             && (!printerFilter || (h.printer||'').includes(printerFilter))
-            && h.ts && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth)
+            && h.ts && new Date(h.ts).getFullYear()===curYear && matchesCurMonth(h.ts, curMonth))
         .slice()
         .sort((a,b)=>(b.ml||0)-(a.ml||0));
 
@@ -2475,15 +2502,16 @@ function renderMonthlyConsume() {
 // 當月工作類別佔比（依備註解析：客戶簡稱-工作類別-EF單號，取第2欄位）
 function renderMonthlyWorkCategory() {
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
-    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const curMonth = getCurMonthSel();
     const printerFilter = document.getElementById('monthly-printer').value;
+    const monthLabel = curMonth === 'all' ? '全年' : `${curMonth}月`;
 
     const title = document.getElementById('workcat-title');
-    if(title) title.textContent = `${curYear}年 ${curMonth}月 工作類別佔比${printerFilter?` · ${printerFilter}`:''}`;
+    if(title) title.textContent = `${curYear}年 ${monthLabel} 工作類別佔比${printerFilter?` · ${printerFilter}`:''}`;
 
     const recs = inv.history.filter(h=>(h.type==='consume'||h.type==='aborted')
         && (!printerFilter || (h.printer||'').includes(printerFilter))
-        && h.ts && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth);
+        && h.ts && new Date(h.ts).getFullYear()===curYear && matchesCurMonth(h.ts, curMonth));
 
     const box   = document.getElementById('workcat-breakdown');
     const empty = document.getElementById('workcat-empty');
@@ -2533,12 +2561,12 @@ function setWorkcatMatChartType(t) {
 
 function renderWorkcatMaterialChart() {
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
-    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const curMonth = getCurMonthSel();
     const printerFilter = document.getElementById('monthly-printer').value;
 
     const recs = inv.history.filter(h=>(h.type==='consume'||h.type==='aborted')
         && (!printerFilter || (h.printer||'').includes(printerFilter))
-        && h.ts && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth);
+        && h.ts && new Date(h.ts).getFullYear()===curYear && matchesCurMonth(h.ts, curMonth));
 
     const canvas = document.getElementById('workcat-material-chart');
     const empty  = document.getElementById('workcat-material-empty');
@@ -2610,23 +2638,43 @@ function renderWorkcatMaterialChart() {
     });
 }
 
+// 月份選單改變：選「全年」時先確保該年度資料已載入(不足才補撈)，再重繪圖表
+async function onMonthlySelChange() {
+    const monthVal = document.getElementById('monthly-month').value;
+    if (monthVal === 'all') {
+        const curYear = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+        await ensureYearLoaded(curYear);
+    }
+    renderMonthlyPie();
+}
+
+// 取得目前選的月份：'all' 代表全年彙總，否則回傳 1~12 的月份數字
+function getCurMonthSel() {
+    const v = document.getElementById('monthly-month').value;
+    return v === 'all' ? 'all' : (parseInt(v) || (new Date().getMonth()+1));
+}
+function matchesCurMonth(ts, curMonth) {
+    return curMonth === 'all' || new Date(ts).getMonth()+1 === curMonth;
+}
+
 function renderMonthlyPie() {
     renderMonthlyConsume();
     renderMonthlyWorkCategory();
     renderWorkcatMaterialChart();
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
-    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const curMonth = getCurMonthSel();
     const printerFilter = document.getElementById('monthly-printer').value;
+    const monthLabel = curMonth === 'all' ? '全年' : `${curMonth}月`;
 
     const printerLabel = printerFilter ? ` · ${printerFilter}` : '';
-    document.getElementById('pie-title').textContent = `${curYear}年 ${curMonth}月 各材料消耗佔比${printerLabel}`;
+    document.getElementById('pie-title').textContent = `${curYear}年 ${monthLabel} 各材料消耗佔比${printerLabel}`;
 
-    // 統計當月各材料消耗（依機台篩選）
+    // 統計當月(或全年)各材料消耗（依機台篩選）
     const byMaterial = {};
     inv.history
         .filter(h=>(h.type==='consume'||h.type==='aborted')
             && (!printerFilter || (h.printer||'').includes(printerFilter))
-            && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth)
+            && new Date(h.ts).getFullYear()===curYear && matchesCurMonth(h.ts, curMonth))
         .forEach(h=>{ const fam=matCode(h.material); byMaterial[fam]=(byMaterial[fam]||0)+(h.ml||0); });
 
     const entries = Object.entries(byMaterial).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
@@ -2985,6 +3033,9 @@ window.renderStockTable = renderStockTable;
 window.startStockEdit = startStockEdit;
 window.cancelStockEdit = cancelStockEdit;
 window.saveStockEdits = saveStockEdits;
+window.setWorkcatMatChartType = setWorkcatMatChartType;
+window.onMonthlySelChange = onMonthlySelChange;
+window.purgeAndRebuildHistory = purgeAndRebuildHistory;   // 既有的「清空並重新匯入」按鈕先前漏了曝露到window，一直是壞的
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
