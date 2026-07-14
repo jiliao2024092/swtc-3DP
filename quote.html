@@ -21,7 +21,7 @@
 html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;-webkit-font-smoothing:antialiased;overflow:hidden}
 
 .shell{display:flex;flex-direction:column;height:100vh}
-.topbar{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96);min-height:46px;flex-shrink:0}
+.topbar{display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.96);min-height:46px;flex-shrink:0;position:relative;z-index:10000}
 .ptitle{font-size:13.5px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:7px}
 .badge{height:17px;padding:0 8px;font-size:10px;border-radius:999px;font-family:var(--font-mono);font-weight:600;background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center}
 .sp{flex:1}
@@ -57,6 +57,9 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 .collapse-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
 .collapse-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;flex-shrink:0}
 .collapse-toggle.open .collapse-arrow{transform:rotate(90deg)}
+.collapse-toggle-boxed{border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:var(--bg-soft);color:var(--ink-2);font-weight:600;transition:border-color .12s,background .12s}
+.collapse-toggle-boxed:hover{border-color:var(--accent);background:var(--accent-soft)}
+.collapse-toggle-boxed.open{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .mtype-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .mtype-btn{padding:5px 4px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink-3);font:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all .12s}
 .mtype-btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -188,6 +191,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
   <!-- ── Topbar ── -->
   <div class="topbar">
     <div class="ptitle">3D列印估價 <span class="badge">QUOTE</span></div>
+    <button class="vc-fs-btn" id="vc-fs-btn" onclick="toggleViewerFullscreen()" title="全視窗檢視" style="position:static;margin-left:8px">⛶</button>
     <div class="sp"></div>
     <div class="aux" id="top-aux">上傳 STL 後自動計算材積 · 費用 · 時間</div>
     <button class="top-btn active" id="btn-quote" onclick="switchPage('quote')">估價</button>
@@ -278,7 +282,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
               <button class="mtype-btn" id="gz-axis-z" onclick="setGizmoAxis('z')" title="只操作 Z 軸">Z</button>
             </div>
             <div class="f-hint" style="margin-bottom:5px">點擊並拖曳模型可直接移動（沿地板）；移動軸與旋轉軸可同時操控，選單軸可鎖定只轉動/移動該軸</div>
-            <div class="collapse-toggle f-hint" id="tf-toggle" onclick="toggleCollapse('tf-panel','tf-toggle')" style="margin-bottom:5px">
+            <div class="collapse-toggle collapse-toggle-boxed" id="tf-toggle" onclick="toggleCollapse('tf-panel','tf-toggle')" style="margin-bottom:5px;font-size:11px">
               <span>位移／角度數值</span><span class="collapse-arrow">▸</span>
             </div>
             <div id="tf-panel" style="display:none">
@@ -379,7 +383,6 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
         </div>
         <div class="viewer-canvas" id="viewer-canvas">
           <canvas id="three-canvas"></canvas>
-          <button class="vc-fs-btn" id="vc-fs-btn" onclick="toggleViewerFullscreen()" title="全視窗檢視">⛶</button>
           <div class="viewer-hint" id="viewer-hint">右鍵旋轉視角 · 左鍵拖曳模型可直接移動 · 空白處左鍵平移視角 · 滾輪縮放</div>
           <div id="slice-ctrl" style="display:none;position:absolute;top:12px;right:12px;bottom:44px;flex-direction:column;align-items:center;gap:8px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:10px 8px;box-shadow:0 2px 8px rgba(10,14,20,.08)">
             <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono)">層切 Z</span>
@@ -908,6 +911,14 @@ function initGizmo(){
   tcRotate.addEventListener('objectChange', ()=>{ syncTransformInputs(); afterManualTransform(); });
   tcRotate.enabled=false; tcRotate.visible=false;
   scene.add(tcRotate);
+
+  // 移除旋轉gizmo外圍那圈黃色自由旋轉環（E軸，screen-space rotate）：
+  // 半徑比XYZ移動箭頭大一圈、又跟移動/旋轉軸同時顯示，拖曳XYZ位移時很容易誤觸到它變成旋轉
+  ['gizmo','picker','helper'].forEach(part=>{
+    const grp = tcRotate._gizmo && tcRotate._gizmo[part] && tcRotate._gizmo[part].rotate;
+    if(!grp) return;
+    [...grp.children].filter(c=>c.name==='E').forEach(c=>grp.remove(c));
+  });
 }
 
 // 選取模型：XYZ(移動)與RxRyRz(旋轉)兩組軸同時顯示、同時可操作，依 showMoveGizmo/showRotateGizmo 決定是否顯示
@@ -1697,6 +1708,16 @@ function isWithinRealPrintVolume(){
 function enforcePrintVolume(){
   if(!threeModel) return false;
   const midDrag = gizmoDragging || modelDragging;
+
+  // 貼地修正：若只是最低點略低於地板(Y<0)，直接把模型抬高貼齊地板，而不是把整個動作(旋轉/平移)都回退。
+  // 常見情境是旋轉後模型底部穿到地板下，使用者通常是想「轉這個角度」，不是想被擋下來。
+  // 抬高後若X/Z或高度上限仍然超出，下面的 isWithinRealPrintVolume 檢查一樣會抓到、照舊整個回退。
+  const bb = new THREE.Box3().setFromObject(threeModel);
+  if(bb.min.y < -1e-6){
+    threeModel.position.y -= bb.min.y;
+    if(moveProxy) moveProxy.position.copy(threeModel.position);
+  }
+
   if(isWithinRealPrintVolume()){
     lastValidTransform = {
       pos:   threeModel.position.clone(),
@@ -1853,11 +1874,21 @@ function toggleCollapse(bodyId, toggleId){
   document.getElementById(toggleId).classList.toggle('open', open);
 }
 
+// 本頁以 iframe 嵌在 portal.html 裡，全視窗時順便把 portal 左側選單(.shell-sidebar)藏起來，
+// 讓 iframe 本身也跟著撐滿整個瀏覽器視窗（同源 iframe 才能直接摸到 parent DOM，非iframe/跨網域環境下靜默略過）
+function setPortalSidebarHidden(hidden){
+  try{
+    if(window.parent === window) return;   // 不是被嵌在 iframe 裡，跳過
+    const sidebar = window.parent.document.querySelector('.shell-sidebar');
+    if(sidebar) sidebar.style.display = hidden ? 'none' : '';
+  }catch(e){ /* 跨網域或其他限制時靜默忽略，不影響本頁自身的全視窗功能 */ }
+}
 function toggleViewerFullscreen(){
   const col=document.getElementById('col-C');
   const on=col.classList.toggle('vc-fullscreen');
   document.getElementById('vc-fs-btn').textContent = on ? '⤢' : '⛶';
   document.getElementById('vc-fs-btn').title = on ? '離開全視窗' : '全視窗檢視';
+  setPortalSidebarHidden(on);
 }
 window.addEventListener('keydown', e=>{
   if(e.key==='Escape'){
