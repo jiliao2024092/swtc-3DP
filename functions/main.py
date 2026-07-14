@@ -41,7 +41,11 @@ FORMLABS_CLIENT_SECRET = SecretParam("FORMLABS_CLIENT_SECRET")
 FORMLABS_API_BASE  = "https://api.formlabs.com/developer/v1"
 TRACKED_ALIASES    = ["AluminumBowfin", "AdroitSauropod"]   # 我們真的會扣材料的兩台
 
-DONE_STATUSES               = ("FINISHED", "SUCCESS", "COMPLETE", "DONE", "COMPLETED", "PRINTED")
+#   ★ 已確認案例：FC-118_壓輪支撐架 這類實際印完的 print，Formlabs API 回傳的 status
+#   是 "PRINTING"（不是 FINISHED），導致落入下方「未知狀態一律當中止」的保險分支，
+#   誤判成列印中止。真正還在列印中、尚無實際用量的 print 會在後面的
+#   volume 檢查（material/volume 皆空則 continue）被過濾掉，不會被這裡誤收。
+DONE_STATUSES               = ("FINISHED", "SUCCESS", "COMPLETE", "DONE", "COMPLETED", "PRINTED", "PRINTING")
 ERROR_AS_CONSUME_STATUSES   = ("ERROR", "FAILED")
 ABORT_STATUSES              = ("ABORTED", "ABORTING")
 NON_DEDUCT_STATUSES         = ("IN_PROGRESS", "QUEUED", "CANCELED", "CANCELLED",
