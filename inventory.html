@@ -493,6 +493,22 @@
                 </div>
                 <div id="workcat-breakdown" class="space-y-2"></div>
                 <p id="workcat-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+
+                <!-- 各工作類別的材料種類佔比（例：評估佔工作類型33%，其中 black佔25%、tough2000佔75%）-->
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                        <h4 class="text-xs font-semibold text-gray-600">各工作類別的材料種類佔比</h4>
+                        <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                            <button onclick="setWorkcatMatChartType('bar')" id="wcm-bar-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">直條圖</button>
+                            <button onclick="setWorkcatMatChartType('barh')" id="wcm-barh-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">橫條圖</button>
+                            <button onclick="setWorkcatMatChartType('line')" id="wcm-line-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">折線圖</button>
+                        </div>
+                    </div>
+                    <div style="position:relative; height:300px;">
+                        <canvas id="workcat-material-chart"></canvas>
+                    </div>
+                    <p id="workcat-material-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                </div>
             </div>
 
             <!-- 當月消耗紀錄（依用量排序，看哪些列印佔比大）-->
@@ -594,6 +610,7 @@ let inv = {
     history: [],
     safety: {},
     partno: {},              // 手動品號（familyCode → 品號字串）
+    matNames: {},            // 手動材料名稱覆寫（familyCode → 顯示名稱），給新材料/未收錄代碼用
     last_processed_prints: [],
     disabled_materials: [],  // 使用者主動停用的材料代碼
     disabled_overrides: []   // 使用者覆寫「預設停用」的清單（讓系統預設停用的材料重新顯示）
@@ -840,6 +857,7 @@ function subscribeAll() {
                 inv.stock      = d.stock      || {};
                 inv.safety     = d.safety     || {};
                 inv.partno     = d.partno     || {};
+                inv.matNames   = d.matNames   || {};
                 inv.last_processed_prints = d.last_processed_prints || [];
                 inv.disabled_materials    = d.disabled_materials    || [];
                 inv.disabled_overrides    = d.disabled_overrides    || [];
@@ -847,7 +865,7 @@ function subscribeAll() {
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
-                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
             const merged = mergeMaterialAliases();
@@ -986,7 +1004,7 @@ function matCode(input) {
 function matName(input) {
     if(!input) return input;
     const fam = familyCode(canonCode(input));
-    return FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
+    return (inv.matNames && inv.matNames[fam]) || FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
 }
 
 // ══ 機台代號 → 顯示名稱 ══
@@ -1069,6 +1087,7 @@ async function saveAll(reason) {
             stock:      inv.stock      || {},
             safety:     inv.safety     || {},
             partno:     inv.partno     || {},
+            matNames:   inv.matNames   || {},
             last_processed_prints: inv.last_processed_prints || [],
             disabled_materials: inv.disabled_materials || [],
             disabled_overrides: inv.disabled_overrides || [],
@@ -1902,10 +1921,14 @@ function showSafetyModal() {
     mats.forEach(m=>{
         const safety=getSafetyStock(m);
         const partno=getPartNo(m).replace(/"/g,'&quot;');
+        const name=matName(m).replace(/"/g,'&quot;');
+        const isUnnamed = !FAMILY_TO_NAME[m] && !(inv.matNames && inv.matNames[m]);   // 未收錄代碼，顯示原始碼當名稱，提醒admin可改
         const row=document.createElement('div');
         row.className='flex items-center gap-3';
         row.innerHTML=`
-            <label class="flex-1 text-sm font-medium text-gray-700">${matName(m)}</label>
+            <input type="text" value="${name}" placeholder="材料名稱" data-material="${m}"
+                title="${isUnnamed?'尚未命名，目前顯示原始代碼，可直接改成好記的名稱':'點擊可修改顯示名稱'}"
+                class="matname-input flex-1 p-2 border ${isUnnamed?'border-amber-300 bg-amber-50':'border-gray-300'} rounded-md text-sm font-medium text-gray-700 focus:ring-2 focus:ring-amber-500 outline-none">
             <input type="text" value="${partno}" placeholder="品號" data-material="${m}"
                 class="partno-input w-32 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none">
             <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="1" data-material="${m}"
@@ -1927,6 +1950,13 @@ async function saveSafetyStock() {
         const fam = matCode(el.dataset.material);
         const v = (el.value||'').trim();
         if(v) inv.partno[fam] = v; else delete inv.partno[fam];
+    });
+    if(!inv.matNames) inv.matNames = {};
+    document.querySelectorAll('.matname-input').forEach(el=>{
+        const fam = matCode(el.dataset.material);
+        const v = (el.value||'').trim();
+        // 若改回跟系統預設名稱一樣就不用存覆寫，減少 Firestore 資料量
+        if(v && v !== (FAMILY_TO_NAME[fam] || fam)) inv.matNames[fam] = v; else delete inv.matNames[fam];
     });
     closeSafetyModal();
     renderAll();
@@ -2275,6 +2305,8 @@ function renderMonthly() {
 // ══ 月度趨勢圖（折線/長條切換）══
 let monthlyTrendChart = null;
 let trendChartType = 'line';
+let workcatMatChart = null;
+let workcatMatChartType = 'bar';
 
 function setTrendType(t) {
     trendChartType = t;
@@ -2490,9 +2522,98 @@ function renderMonthlyWorkCategory() {
     }).join('');
 }
 
+// 各工作類別的材料種類佔比：兩層彙總（工作類別 → 材料家族），支援 直條/橫條/折線 三種圖表類型
+function setWorkcatMatChartType(t) {
+    workcatMatChartType = t;
+    ['bar','barh','line'].forEach(k=>{
+        document.getElementById('wcm-'+k+'-btn').className = 'px-3 py-1.5 transition-colors ' + (t===k ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+    });
+    renderWorkcatMaterialChart();
+}
+
+function renderWorkcatMaterialChart() {
+    const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const printerFilter = document.getElementById('monthly-printer').value;
+
+    const recs = inv.history.filter(h=>(h.type==='consume'||h.type==='aborted')
+        && (!printerFilter || (h.printer||'').includes(printerFilter))
+        && h.ts && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth);
+
+    const canvas = document.getElementById('workcat-material-chart');
+    const empty  = document.getElementById('workcat-material-empty');
+    if(!canvas) return;
+    if(workcatMatChart){ workcatMatChart.destroy(); workcatMatChart=null; }
+
+    if(!recs.length){
+        canvas.style.display='none';
+        empty.classList.remove('hidden');
+        return;
+    }
+    canvas.style.display='';
+    empty.classList.add('hidden');
+
+    // 工作類別 → 材料家族 兩層彙總（例：評估 → { black: 25%量, tough2000: 75%量 }）
+    const ALL_CATS = [...WORK_CATEGORIES, '未分類'];
+    const byCatMat = {};
+    const matSet = new Set();
+    ALL_CATS.forEach(c=>{ byCatMat[c] = {}; });
+    recs.forEach(h=>{
+        const cat = parseWorkCategory(h.note);
+        const fam = matCode(h.material);
+        byCatMat[cat][fam] = (byCatMat[cat][fam]||0) + (h.ml||0);
+        matSet.add(fam);
+    });
+    const cats = ALL_CATS.filter(c=>Object.keys(byCatMat[c]).length>0);
+    const materials = [...matSet];
+
+    const isHorizontal = workcatMatChartType==='barh';
+    const chartType = isHorizontal ? 'bar' : workcatMatChartType;   // 橫條圖＝type:'bar' + indexAxis:'y'
+    const stacked = chartType==='bar';   // 折線圖不堆疊，各材料各自一條線比較好讀
+
+    const datasets = materials.map((fam,i)=>({
+        label: fam,
+        data: cats.map(c=>+((byCatMat[c][fam]||0)/1000).toFixed(2)),
+        backgroundColor: PIE_COLORS[i%PIE_COLORS.length],
+        borderColor: PIE_COLORS[i%PIE_COLORS.length],
+        borderWidth: chartType==='line' ? 2 : 1,
+        fill: false,
+        tension: 0.3,
+    }));
+
+    const ctx = canvas.getContext('2d');
+    workcatMatChart = new Chart(ctx, {
+        type: chartType,
+        data: { labels: cats, datasets },
+        options: {
+            indexAxis: isHorizontal ? 'y' : 'x',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.raw} L` } }
+            },
+            scales: {
+                x: {
+                    stacked,
+                    grid: { display: isHorizontal },
+                    title: { display: isHorizontal, text: '消耗量 (L)', color: '#6b7280' }
+                },
+                y: {
+                    stacked,
+                    beginAtZero: true,
+                    grid: { display: !isHorizontal },
+                    title: { display: !isHorizontal, text: '消耗量 (L)', color: '#6b7280' }
+                }
+            }
+        }
+    });
+}
+
 function renderMonthlyPie() {
     renderMonthlyConsume();
     renderMonthlyWorkCategory();
+    renderWorkcatMaterialChart();
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
     const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
     const printerFilter = document.getElementById('monthly-printer').value;
