@@ -435,6 +435,7 @@
                             <th class="p-3 border-b font-medium">類型</th>
                             <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">備註</th>
+                            <th class="p-3 border-b font-medium w-32" title="Formlabs 原始回傳狀態，用於排查分類問題">API狀態</th>
                             <th class="p-3 border-b font-medium w-14 text-center" data-admin-only>操作</th>
                         </tr>
                     </thead>
@@ -2107,7 +2108,7 @@ function renderHistory() {
     const page=filtered.slice((historyPage-1)*HISTORY_PAGE_SIZE,historyPage*HISTORY_PAGE_SIZE);
 
     const tbody=document.getElementById('history-body');
-    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="7" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
         const typeMap={
@@ -2136,6 +2137,7 @@ function renderHistory() {
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
             <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
+            <td class="p-3 text-xs text-gray-500 font-mono">${h.apiStatus||'—'}</td>
             <td class="p-3 text-center" ${isAdmin?'':'style="display:none"'} data-admin-only>
                 <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（僅刪除紀錄，不會反向調整庫存）" class="text-gray-400 hover:text-red-600 transition-colors">
                     <i data-lucide="trash-2" class="w-4 h-4"></i>
