@@ -461,8 +461,8 @@ window.showToast = window.showToast || function (msg, type) {
   K.MATERIALS = ['足夠', '需調撥'];
   // 樹脂材料清單（固定清單，對齊常見 Formlabs 樹脂；日後可改為同步庫存/後台設定）
   K.RESINS = ['Clear V5','White V5','Grey V5','Black V5','Draft V2','Tough 1500','Tough 2000','Rigid 4000','Rigid 10K','Flexible 80A','Elastic 50A','High Temp','其他'];
-  // 工作類型：代工（實際生產）/ 評估（試印評估）
-  K.CATEGORIES = ['代工', '評估'];
+  // 工作類型：代工（實際生產）。評估選項已移除（既有舊資料的「評估」標籤仍會正常顯示/計分，只是新工作不能再選）
+  K.CATEGORIES = ['代工'];
   K.PROGRESS_VALUES = [0, 25, 50, 75, 100];
   K.STATUS_TONE = {
     todo:      { fg:'#5a6270', bg:'#eef0f3', label:'待開始' },

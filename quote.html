@@ -372,7 +372,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
         </div>
         <div class="viewer-canvas" id="viewer-canvas">
           <canvas id="three-canvas"></canvas>
-          <div class="viewer-hint" id="viewer-hint">左鍵旋轉場景 · 滾輪縮放 · 右鍵平移</div>
+          <div class="viewer-hint" id="viewer-hint">右鍵旋轉視角 · 左鍵平移視角 · 滾輪縮放 · 模型請用 XYZ/RxRyRz 軸操控</div>
           <div id="slice-ctrl" style="display:none;position:absolute;top:12px;right:12px;bottom:44px;flex-direction:column;align-items:center;gap:8px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:10px 8px;box-shadow:0 2px 8px rgba(10,14,20,.08)">
             <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono)">層切 Z</span>
             <input id="slice-slider" type="range" min="0" max="100" value="100" oninput="onSliceInput(this.value)" orient="vertical" style="writing-mode:vertical-lr;direction:rtl;width:10px;flex:1;cursor:pointer">
@@ -863,9 +863,10 @@ function applyScale(){
 
 // ══ 精確變形：TransformControls 拖拉 gizmo + 數值輸入（以檔案原點為基準）══
 // 兩組 TransformControls 同時存在：tcMove 固定移動模式(世界座標)、tcRotate 固定旋轉模式(物件本身座標)
-// 點擊模型後兩者一起顯示（不用再切換「移動/旋轉」模式），按鈕改為各自獨立顯示/隱藏
+// 點擊模型後兩者「都會顯示」（視覺上同時看到 XYZ 與 RxRyRz），但比照 Blender 的做法：
+// 同一時間只有一組「可操作」(enabled)，避免兩組控制器互相干擾/誤觸；用 移動/旋轉 按鈕切換哪一組可操作
 let tcMove=null, tcRotate=null, gizmoDragging=false, gizmoAxis='all';
-let gzMoveOn=true, gzRotateOn=true;   // 選取模型時預設兩者皆顯示
+let gizmoActiveMode='translate';   // 'translate' | 'rotate'：目前「可操作」的是哪一組
 const gizmoRaycaster=new THREE.Raycaster(), gizmoMouseNDC=new THREE.Vector2();
 let mouseDownX=0, mouseDownY=0;
 
@@ -893,17 +894,18 @@ function initGizmo(){
   scene.add(tcRotate);
 }
 
-// 選取模型：移動(XYZ)與旋轉(RxRyRz)軸同時顯示，不需先按按鈕
+// 選取模型：XYZ(移動)與RxRyRz(旋轉)兩組軸都會顯示，不需先按按鈕；
+// 但只有 gizmoActiveMode 那一組可實際拖曳操作（比照 Blender 一次只能做一種變形）
 function selectModel(){
   if(!tcMove || !tcRotate || !threeModel) return;
   tcMove.attach(threeModel);
   tcRotate.attach(threeModel);
-  tcMove.enabled=gzMoveOn;     tcMove.visible=gzMoveOn;
-  tcRotate.enabled=gzRotateOn; tcRotate.visible=gzRotateOn;
+  tcMove.visible=true;   tcMove.enabled  = (gizmoActiveMode==='translate');
+  tcRotate.visible=true; tcRotate.enabled= (gizmoActiveMode==='rotate');
   applyGizmoAxis();
   syncTransformInputs();
-  document.getElementById('gz-move').classList.toggle('active', gzMoveOn);
-  document.getElementById('gz-rot').classList.toggle('active', gzRotateOn);
+  document.getElementById('gz-move').classList.toggle('active', gizmoActiveMode==='translate');
+  document.getElementById('gz-rot').classList.toggle('active', gizmoActiveMode==='rotate');
 }
 function deselectModel(){
   if(!tcMove || !tcRotate) return;
@@ -913,17 +915,18 @@ function deselectModel(){
   document.getElementById('gz-rot').classList.remove('active');
 }
 
-// 個別顯示/隱藏移動或旋轉軸（不互斥，兩者可同時開）；未選取模型時先選取再套用
+// 切換目前「可操作」的是移動還是旋轉（兩者皆可見，但只有一組可拖曳，避免同時選取到兩種變形）
 function setGizmo(mode){
   if(!needModel()) return;
   if(!tcMove || !tcRotate){ showToast('gizmo 元件未載入','err'); return; }
-  if(mode==='translate') gzMoveOn=!gzMoveOn; else gzRotateOn=!gzRotateOn;
-  if(!tcMove.object) selectModel();   // 尚未選取 → 直接選取（會套用上面切換後的顯示狀態）
+  gizmoActiveMode = mode;
+  if(!tcMove.object) selectModel();   // 尚未選取 → 直接選取（會套用上面切換後的可操作模式）
   else {
-    tcMove.enabled=gzMoveOn;     tcMove.visible=gzMoveOn;
-    tcRotate.enabled=gzRotateOn; tcRotate.visible=gzRotateOn;
-    document.getElementById('gz-move').classList.toggle('active', gzMoveOn);
-    document.getElementById('gz-rot').classList.toggle('active', gzRotateOn);
+    tcMove.visible=true;   tcMove.enabled  = (mode==='translate');
+    tcRotate.visible=true; tcRotate.enabled= (mode==='rotate');
+    document.getElementById('gz-move').classList.toggle('active', mode==='translate');
+    document.getElementById('gz-rot').classList.toggle('active', mode==='rotate');
+    showToast(mode==='translate'?'目前可拖曳移動（旋轉軸僅顯示，暫不可操作）':'目前可拖曳旋轉（移動軸僅顯示，暫不可操作）','ok');
   }
 }
 
@@ -1316,8 +1319,8 @@ function loadGeometry(geom){
   ));
   scene.add(threeModel);
   resetSlice();   // 新模型：清除層切狀態
-  // 新模型：重置 gizmo(移動/旋轉皆預設開)、單軸鎖定、變形數值與「合法擺放」快照
-  gzMoveOn=true; gzRotateOn=true;
+  // 新模型：重置 gizmo(預設可操作移動)、單軸鎖定、變形數值與「合法擺放」快照
+  gizmoActiveMode='translate';
   if(tcMove) deselectModel();
   setGizmoAxis('all');
   lastValidTransform=null;
@@ -1709,22 +1712,24 @@ function updateDefaultBox(){
 }
 
 // ── 控制模式 ──
-// ── 滑鼠：只控制相機（場景旋轉/平移/縮放）。物件本身一律只能用 XYZ/RxRyRz 軸操控（gizmo/數值欄），
-//   不再支援用滑鼠直接拖拉/右鍵平移/Shift縮放模型 ──
+// ── 滑鼠：只控制相機（右鍵旋轉視角／左鍵平移視角／滾輪縮放）。物件本身一律只能用
+//   XYZ/RxRyRz 軸操控（gizmo/數值欄），不再支援用滑鼠直接拖拉/轉動/縮放模型 ──
 function onMouseMove(e){
   if(gizmoDragging) return;                   // gizmo 拖曳中 → 交給 TransformControls
   if(!isDragging) return;
   const dx=e.clientX-lastX, dy=e.clientY-lastY;
   lastX=e.clientX; lastY=e.clientY;
   if(isRightDrag){
+    // 右鍵 = 旋轉視角
+    spherical.theta-=dx*0.007;
+    spherical.phi-=dy*0.007;
+    spherical.phi=Math.max(0.05,Math.min(Math.PI-0.05,spherical.phi));
+  } else {
+    // 左鍵(空白處) = 平移視角
     const right=new THREE.Vector3(); camera.getWorldDirection(right);
     right.cross(camera.up).normalize();
     panOffset.addScaledVector(right,-dx*0.5);
     panOffset.addScaledVector(new THREE.Vector3(0,1,0),dy*0.5);
-  } else {
-    spherical.theta-=dx*0.007;
-    spherical.phi-=dy*0.007;
-    spherical.phi=Math.max(0.05,Math.min(Math.PI-0.05,spherical.phi));
   }
   updateCamera();
 }
