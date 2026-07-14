@@ -54,6 +54,9 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 .pcard-dim{font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono)}
 .f-sel{width:100%;height:29px;padding:0 22px 0 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink-2);font:inherit;font-size:12px;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%235a6270' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 7px center;cursor:pointer}
 .f-hint{font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono);margin-top:3px}
+.collapse-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none}
+.collapse-arrow{font-size:9px;color:var(--ink-4);transition:transform .15s;flex-shrink:0}
+.collapse-toggle.open .collapse-arrow{transform:rotate(90deg)}
 .mtype-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .mtype-btn{padding:5px 4px;border-radius:5px;border:1px solid var(--line);background:var(--bg);color:var(--ink-3);font:inherit;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all .12s}
 .mtype-btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
@@ -83,6 +86,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 
 /* ── CENTER col ── */
 .col-C{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);border-right:1px solid var(--line)}
+.col-C.vc-fullscreen{position:fixed;inset:0;z-index:9999;border-right:none}
 .viewer-toolbar{display:flex;align-items:center;gap:5px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--bg-soft);flex-shrink:0;flex-wrap:wrap}
 .view-tab{padding:4px 9px;border-radius:4px;border:1px solid transparent;font-size:11.5px;font-weight:600;color:var(--ink-4);cursor:pointer;font-family:var(--font-ui);background:transparent}
 .view-tab.on{background:var(--bg);border-color:var(--line);color:var(--ink)}
@@ -97,6 +101,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 .viewer-canvas{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--bg-panel)}
 #three-canvas{display:block;position:absolute;inset:0;width:100%;height:100%}
 .viewer-hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--ink-4);background:rgba(255,255,255,.85);padding:3px 10px;border-radius:999px;pointer-events:none;white-space:nowrap;transition:opacity .3s}
+.vc-fs-btn{position:absolute;top:8px;left:8px;z-index:20;width:26px;height:26px;border-radius:6px;border:1px solid var(--line);background:rgba(255,255,255,.92);color:var(--ink-3);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;line-height:1}
+.vc-fs-btn:hover{color:var(--ink);border-color:var(--accent)}
 .viewer-foot{padding:6px 10px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;background:var(--bg-soft);flex-shrink:0;flex-wrap:wrap;gap:6px}
 .vf-item{font-size:10px;font-family:var(--font-mono);color:var(--ink-4)}
 .vf-val{color:var(--ink-2);font-weight:500}
@@ -221,15 +227,6 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
             <div class="f-hint" id="mat-hint">—</div>
           </div>
           <div class="sec">
-            <div class="sec-lbl">模型類型</div>
-            <div class="mtype-grid">
-              <button class="mtype-btn on" onclick="selectType(this,'exterior')">外觀件</button>
-              <button class="mtype-btn" onclick="selectType(this,'engineering')">工程件</button>
-              <button class="mtype-btn" onclick="selectType(this,'hollow')">中空件</button>
-              <button class="mtype-btn" onclick="selectType(this,'thin')">薄件</button>
-            </div>
-          </div>
-          <div class="sec">
             <div class="sec-lbl">模型尺寸 (MM)</div>
             <div class="dim-grid">
               <div class="dim-wrap"><input class="dim-inp" id="dim-x" value="50" oninput="onDimChange()"><div class="dim-lbl">X</div></div>
@@ -271,8 +268,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
           <div class="sec">
             <div class="sec-lbl">精確變形（以檔案原點）</div>
             <div class="mtype-grid" style="grid-template-columns:1fr 1fr;margin-bottom:5px">
-              <button class="mtype-btn" id="gz-move" onclick="setGizmo('translate')">✥ 移動</button>
-              <button class="mtype-btn" id="gz-rot"  onclick="setGizmo('rotate')">⟳ 旋轉</button>
+              <button class="mtype-btn active" id="gz-move" onclick="setGizmo('translate')" title="顯示/隱藏移動軸">✥ 移動軸</button>
+              <button class="mtype-btn active" id="gz-rot"  onclick="setGizmo('rotate')" title="顯示/隱藏旋轉軸">⟳ 旋轉軸</button>
             </div>
             <div class="mtype-grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:5px">
               <button class="mtype-btn active" id="gz-axis-all" onclick="setGizmoAxis('all')" title="三軸皆可操作">全部</button>
@@ -280,24 +277,29 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
               <button class="mtype-btn" id="gz-axis-y" onclick="setGizmoAxis('y')" title="只操作 Y 軸">Y</button>
               <button class="mtype-btn" id="gz-axis-z" onclick="setGizmoAxis('z')" title="只操作 Z 軸">Z</button>
             </div>
-            <div class="f-hint" style="margin-bottom:5px">點擊模型即可直接操控；選單軸可鎖定只轉動/移動該軸</div>
-            <div style="display:grid;grid-template-columns:14px 1fr;gap:4px 5px;align-items:center;margin-bottom:5px">
-              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">X</span>
-              <input class="dim-inp" id="tf-x" type="number" step="0.1" value="0" onchange="onTransformInput()" title="X 位移 (mm)">
-              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Y</span>
-              <input class="dim-inp" id="tf-y" type="number" step="0.1" value="0" onchange="onTransformInput()" title="Y 位移 (mm)">
-              <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Z</span>
-              <input class="dim-inp" id="tf-z" type="number" step="0.1" value="0" onchange="onTransformInput()" title="Z 位移 (mm)">
+            <div class="f-hint" style="margin-bottom:5px">點擊並拖曳模型可直接移動（沿地板）；移動軸與旋轉軸可同時操控，選單軸可鎖定只轉動/移動該軸</div>
+            <div class="collapse-toggle f-hint" id="tf-toggle" onclick="toggleCollapse('tf-panel','tf-toggle')" style="margin-bottom:5px">
+              <span>位移／角度數值</span><span class="collapse-arrow">▸</span>
             </div>
-            <div style="display:grid;grid-template-columns:20px 1fr;gap:4px 5px;align-items:center">
-              <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Rx</span>
-              <input class="dim-inp" id="tf-rx" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 X 軸旋轉 (°)">
-              <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Ry</span>
-              <input class="dim-inp" id="tf-ry" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 Y 軸旋轉 (°)">
-              <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Rz</span>
-              <input class="dim-inp" id="tf-rz" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 Z 軸旋轉 (°)">
+            <div id="tf-panel" style="display:none">
+              <div style="display:grid;grid-template-columns:14px 1fr;gap:4px 5px;align-items:center;margin-bottom:5px">
+                <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">X</span>
+                <input class="dim-inp" id="tf-x" type="number" step="0.1" value="0" onchange="onTransformInput()" title="X 位移 (mm)">
+                <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Y</span>
+                <input class="dim-inp" id="tf-y" type="number" step="0.1" value="0" onchange="onTransformInput()" title="Y 位移 (mm)">
+                <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Z</span>
+                <input class="dim-inp" id="tf-z" type="number" step="0.1" value="0" onchange="onTransformInput()" title="Z 位移 (mm)">
+              </div>
+              <div style="display:grid;grid-template-columns:20px 1fr;gap:4px 5px;align-items:center">
+                <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Rx</span>
+                <input class="dim-inp" id="tf-rx" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 X 軸旋轉 (°)">
+                <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Ry</span>
+                <input class="dim-inp" id="tf-ry" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 Y 軸旋轉 (°)">
+                <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono);text-align:center">Rz</span>
+                <input class="dim-inp" id="tf-rz" type="number" step="1" value="0" onchange="onTransformInput()" title="繞 Z 軸旋轉 (°)">
+              </div>
+              <div class="f-hint" style="margin-top:5px">位移 mm · 旋轉 °，以檔案原點為基準（與 PreForm 一致）</div>
             </div>
-            <div class="f-hint" style="margin-top:5px">位移 mm · 旋轉 °，以檔案原點為基準（與 PreForm 一致）</div>
             <button class="mtype-btn" onclick="resetTransform()" style="width:100%;margin-top:5px">↺ 歸零變形</button>
           </div>
           <div class="sec">
@@ -315,39 +317,44 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
         </div>
         <div class="cost-panel">
           <div class="cost-rows" style="padding:8px 11px 5px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-              <span style="font-size:9.5px;font-weight:600;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.07em">費用明細</span>
-              <span id="pfs-badge" style="display:none;font-size:9px;padding:1px 7px;border-radius:999px;background:var(--ok-soft);color:var(--ok);border:1px solid #b6d9c4;font-family:var(--font-mono)">✓ PreForm 精確</span>
-              <span id="formula-badge" style="font-size:9px;padding:1px 7px;border-radius:999px;background:var(--bg-panel);color:var(--ink-4);border:1px solid var(--line);font-family:var(--font-mono)">公式估算</span>
+            <div class="collapse-toggle" id="cost-toggle" onclick="toggleCollapse('cost-body','cost-toggle')" style="margin-bottom:6px">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span style="font-size:9.5px;font-weight:600;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.07em">費用明細</span>
+                <span id="pfs-badge" style="display:none;font-size:9px;padding:1px 7px;border-radius:999px;background:var(--ok-soft);color:var(--ok);border:1px solid #b6d9c4;font-family:var(--font-mono)">✓ PreForm 精確</span>
+                <span id="formula-badge" style="font-size:9px;padding:1px 7px;border-radius:999px;background:var(--bg-panel);color:var(--ink-4);border:1px solid var(--line);font-family:var(--font-mono)">公式估算</span>
+              </span>
+              <span class="collapse-arrow">▸</span>
             </div>
-            <!-- 本體材料 -->
-            <div style="background:var(--bg-soft);border-radius:5px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--line-soft)">
-              <div style="font-size:10.5px;color:var(--ink-3);margin-bottom:4px;display:flex;align-items:center;gap:5px">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0"></span>本體材料
+            <div id="cost-body" style="display:none">
+              <!-- 本體材料 -->
+              <div style="background:var(--bg-soft);border-radius:5px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--line-soft)">
+                <div style="font-size:10.5px;color:var(--ink-3);margin-bottom:4px;display:flex;align-items:center;gap:5px">
+                  <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0"></span>本體材料
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <span style="font-size:11px;color:var(--ink-4);font-family:var(--font-mono)" id="c-mat-vol">— mL</span>
+                  <span style="font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--ink)" id="c-material">—</span>
+                </div>
               </div>
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <span style="font-size:11px;color:var(--ink-4);font-family:var(--font-mono)" id="c-mat-vol">— mL</span>
-                <span style="font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--ink)" id="c-material">—</span>
+              <!-- 支撐材料 -->
+              <div style="background:var(--bg-soft);border-radius:5px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--line-soft)">
+                <div style="font-size:10.5px;color:var(--ink-3);margin-bottom:4px;display:flex;align-items:center;gap:5px">
+                  <span style="width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;flex-shrink:0"></span>支撐材料
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <span style="font-size:11px;color:var(--ink-4);font-family:var(--font-mono)" id="c-sup-vol">— mL</span>
+                  <span style="font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--ink)" id="c-support">—</span>
+                </div>
               </div>
-            </div>
-            <!-- 支撐材料 -->
-            <div style="background:var(--bg-soft);border-radius:5px;padding:7px 9px;margin-bottom:5px;border:1px solid var(--line-soft)">
-              <div style="font-size:10.5px;color:var(--ink-3);margin-bottom:4px;display:flex;align-items:center;gap:5px">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--warn);display:inline-block;flex-shrink:0"></span>支撐材料
+              <!-- 列印時間 + 後處理 -->
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft)">
+                <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ok);display:inline-block"></span>列印時間</span>
+                <span style="font-size:13px;font-family:var(--font-mono);color:var(--ink-2);font-weight:600" id="c-time">—</span>
               </div>
-              <div style="display:flex;justify-content:space-between;align-items:baseline">
-                <span style="font-size:11px;color:var(--ink-4);font-family:var(--font-mono)" id="c-sup-vol">— mL</span>
-                <span style="font-size:17px;font-weight:600;font-family:var(--font-mono);color:var(--ink)" id="c-support">—</span>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft)">
+                <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ink-4);display:inline-block"></span>後處理</span>
+                <span style="font-size:13px;font-family:var(--font-mono);color:var(--ink-2)" id="c-post">—</span>
               </div>
-            </div>
-            <!-- 列印時間 + 後處理 -->
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft)">
-              <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ok);display:inline-block"></span>列印時間</span>
-              <span style="font-size:13px;font-family:var(--font-mono);color:var(--ink-2);font-weight:600" id="c-time">—</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:1px solid var(--line-soft)">
-              <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ink-4);display:inline-block"></span>後處理</span>
-              <span style="font-size:13px;font-family:var(--font-mono);color:var(--ink-2)" id="c-post">—</span>
             </div>
           </div>
           <div class="total-strip"><span class="total-lbl">估計總費用</span><span class="total-val" id="c-total">—</span></div>
@@ -355,7 +362,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
       </div>
 
       <!-- CENTER: Three.js viewer -->
-      <div class="col-C">
+      <div class="col-C" id="col-C">
         <div class="viewer-toolbar">
           <button class="view-tab on" onclick="setView('persp',this)">透視</button>
           <button class="view-tab" onclick="setView('top',this)">頂視</button>
@@ -372,7 +379,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
         </div>
         <div class="viewer-canvas" id="viewer-canvas">
           <canvas id="three-canvas"></canvas>
-          <div class="viewer-hint" id="viewer-hint">右鍵旋轉視角 · 左鍵平移視角 · 滾輪縮放 · 模型請用 XYZ/RxRyRz 軸操控</div>
+          <button class="vc-fs-btn" id="vc-fs-btn" onclick="toggleViewerFullscreen()" title="全視窗檢視">⛶</button>
+          <div class="viewer-hint" id="viewer-hint">右鍵旋轉視角 · 左鍵拖曳模型可直接移動 · 空白處左鍵平移視角 · 滾輪縮放</div>
           <div id="slice-ctrl" style="display:none;position:absolute;top:12px;right:12px;bottom:44px;flex-direction:column;align-items:center;gap:8px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:10px 8px;box-shadow:0 2px 8px rgba(10,14,20,.08)">
             <span style="font-size:9px;color:var(--ink-4);font-family:var(--font-mono)">層切 Z</span>
             <input id="slice-slider" type="range" min="0" max="100" value="100" oninput="onSliceInput(this.value)" orient="vertical" style="writing-mode:vertical-lr;direction:rtl;width:10px;flex:1;cursor:pointer">
@@ -524,7 +532,7 @@ const DEFAULT_MATERIALS = [
 
 let materials = [...DEFAULT_MATERIALS];
 let selectedPrinter = 'f4';
-let selectedType = 'exterior';
+let selectedType = 'exterior';   // 已移除模型類型選單，固定用外觀件的填充率/建議角度公式
 let selectedLayer = 0.050;
 let selectedQty = 1;      // 數量（費用/材料 ×N）
 let stlAnalysis = null;   // 儲存分析結果
@@ -635,11 +643,6 @@ function selectPrinter(id){
   enforcePrintVolume();   // 目前位置若在新範圍內就記錄為新快照；不在範圍內僅顯示警示色（無舊快照可還原）
   if(scene) clampCameraZoom();   // 換機型後相機縮放範圍也跟著變，立即夾回合理範圍
   onDimChange(); calcQuote();
-}
-function selectType(el,type){
-  selectedType=type;
-  document.querySelectorAll('.mtype-btn').forEach(b=>b.classList.remove('on'));
-  el.classList.add('on'); calcQuote();
 }
 function selectLayer(el,val){
   selectedLayer=val;
@@ -863,24 +866,37 @@ function applyScale(){
 
 // ══ 精確變形：TransformControls 拖拉 gizmo + 數值輸入（以檔案原點為基準）══
 // 兩組 TransformControls 同時存在：tcMove 固定移動模式(世界座標)、tcRotate 固定旋轉模式(物件本身座標)
-// 點擊模型後兩者「都會顯示」（視覺上同時看到 XYZ 與 RxRyRz），但比照 Blender 的做法：
-// 同一時間只有一組「可操作」(enabled)，避免兩組控制器互相干擾/誤觸；用 移動/旋轉 按鈕切換哪一組可操作
+// 點擊模型後兩者同時顯示且同時可操作（比照 Blender combined 工具，不需切換模式）
+// 移動/旋轉 按鈕改為「顯示/隱藏」該組軸（兩者預設都顯示），方便畫面太亂時暫時收起某一組
 let tcMove=null, tcRotate=null, gizmoDragging=false, gizmoAxis='all';
-let gizmoActiveMode='translate';   // 'translate' | 'rotate'：目前「可操作」的是哪一組
+let showMoveGizmo=true, showRotateGizmo=true;
+// three r128 的 TransformControls 有個已知限制：translate 模式的「視覺」軸向繪製一律跟著被attach物件的旋轉走
+// （只有 scale 模式會真的尊重 setSpace('world')），實際拖曳運算雖然仍是world正確，但畫面上的箭頭方向會誤導。
+// 解法：tcMove 改附加在一個「永遠不旋轉」的代理物件 moveProxy 上，畫面自然維持世界座標方向；
+// 拖曳 moveProxy 產生位移後，再同步回真正的 threeModel.position（見 checkOverflow/enforcePrintVolume 內的同步）
+let moveProxy=null;
 const gizmoRaycaster=new THREE.Raycaster(), gizmoMouseNDC=new THREE.Vector2();
 let mouseDownX=0, mouseDownY=0;
+let modelDragging=false, dragPlane=null;
+const dragOffset=new THREE.Vector3();   // 左鍵直接拖曳模型（鎖地板XZ平面，Y不變）
 
 function initGizmo(){
   if(!window.THREE || !THREE.TransformControls){ console.warn('TransformControls 未載入'); return; }
-  const onDragChange = e=>{ gizmoDragging = e.value; };
-  const onObjChange  = ()=>{ syncTransformInputs(); afterManualTransform(); };
+  const onDragChange = e=>{ gizmoDragging = e.value; if(e.value) boundaryBlockedNotified=false; };   // 新的一次拖曳開始→重置提醒旗標
+
+  moveProxy = new THREE.Object3D();   // 永遠不旋轉，只用來讓 tcMove 的視覺軸向保持世界座標
+  scene.add(moveProxy);
 
   tcMove = new THREE.TransformControls(camera, renderer.domElement);
   tcMove.setSize(0.85);
   tcMove.setMode('translate');
   tcMove.setSpace('world');   // 移動＝絕對世界座標軸向（X/Y/Z 永遠對應機台座標，不隨模型旋轉而傾斜）
   tcMove.addEventListener('dragging-changed', onDragChange);
-  tcMove.addEventListener('objectChange', onObjChange);
+  tcMove.addEventListener('objectChange', ()=>{
+    threeModel.position.copy(moveProxy.position);   // 代理物件的位移同步回真正的模型
+    syncTransformInputs();
+    afterManualTransform();
+  });
   tcMove.enabled=false; tcMove.visible=false;
   scene.add(tcMove);
 
@@ -889,44 +905,41 @@ function initGizmo(){
   tcRotate.setMode('rotate');
   tcRotate.setSpace('local');   // 旋轉＝以物件本身（檔案原點）為準
   tcRotate.addEventListener('dragging-changed', onDragChange);
-  tcRotate.addEventListener('objectChange', onObjChange);
+  tcRotate.addEventListener('objectChange', ()=>{ syncTransformInputs(); afterManualTransform(); });
   tcRotate.enabled=false; tcRotate.visible=false;
   scene.add(tcRotate);
 }
 
-// 選取模型：XYZ(移動)與RxRyRz(旋轉)兩組軸都會顯示，不需先按按鈕；
-// 但只有 gizmoActiveMode 那一組可實際拖曳操作（比照 Blender 一次只能做一種變形）
+// 選取模型：XYZ(移動)與RxRyRz(旋轉)兩組軸同時顯示、同時可操作，依 showMoveGizmo/showRotateGizmo 決定是否顯示
 function selectModel(){
   if(!tcMove || !tcRotate || !threeModel) return;
-  tcMove.attach(threeModel);
+  moveProxy.position.copy(threeModel.position);   // 代理物件先貼齊模型目前位置，再讓 tcMove 附加上去
+  tcMove.attach(moveProxy);
   tcRotate.attach(threeModel);
-  tcMove.visible=true;   tcMove.enabled  = (gizmoActiveMode==='translate');
-  tcRotate.visible=true; tcRotate.enabled= (gizmoActiveMode==='rotate');
+  tcMove.visible=showMoveGizmo;     tcMove.enabled  = showMoveGizmo;
+  tcRotate.visible=showRotateGizmo; tcRotate.enabled= showRotateGizmo;
   applyGizmoAxis();
   syncTransformInputs();
-  document.getElementById('gz-move').classList.toggle('active', gizmoActiveMode==='translate');
-  document.getElementById('gz-rot').classList.toggle('active', gizmoActiveMode==='rotate');
+  document.getElementById('gz-move').classList.toggle('active', showMoveGizmo);
+  document.getElementById('gz-rot').classList.toggle('active', showRotateGizmo);
 }
 function deselectModel(){
   if(!tcMove || !tcRotate) return;
   tcMove.detach();   tcMove.enabled=false;   tcMove.visible=false;
   tcRotate.detach(); tcRotate.enabled=false; tcRotate.visible=false;
-  document.getElementById('gz-move').classList.remove('active');
-  document.getElementById('gz-rot').classList.remove('active');
 }
 
-// 切換目前「可操作」的是移動還是旋轉（兩者皆可見，但只有一組可拖曳，避免同時選取到兩種變形）
+// 切換某一組軸是否顯示／可操作；移動軸與旋轉軸互不影響，可同時開啟一起拖曳
 function setGizmo(mode){
   if(!needModel()) return;
   if(!tcMove || !tcRotate){ showToast('gizmo 元件未載入','err'); return; }
-  gizmoActiveMode = mode;
-  if(!tcMove.object) selectModel();   // 尚未選取 → 直接選取（會套用上面切換後的可操作模式）
+  if(mode==='translate') showMoveGizmo=!showMoveGizmo; else showRotateGizmo=!showRotateGizmo;
+  if(!tcMove.object) selectModel();
   else {
-    tcMove.visible=true;   tcMove.enabled  = (mode==='translate');
-    tcRotate.visible=true; tcRotate.enabled= (mode==='rotate');
-    document.getElementById('gz-move').classList.toggle('active', mode==='translate');
-    document.getElementById('gz-rot').classList.toggle('active', mode==='rotate');
-    showToast(mode==='translate'?'目前可拖曳移動（旋轉軸僅顯示，暫不可操作）':'目前可拖曳旋轉（移動軸僅顯示，暫不可操作）','ok');
+    tcMove.visible=showMoveGizmo;     tcMove.enabled  = showMoveGizmo;
+    tcRotate.visible=showRotateGizmo; tcRotate.enabled= showRotateGizmo;
+    document.getElementById('gz-move').classList.toggle('active', showMoveGizmo);
+    document.getElementById('gz-rot').classList.toggle('active', showRotateGizmo);
   }
 }
 
@@ -941,17 +954,36 @@ function applyGizmoAxis(){
   [tcMove, tcRotate].forEach(tc=>{ if(!tc) return; tc.showX=showX; tc.showY=showY; tc.showZ=showZ; });
 }
 
-// 點擊模型 → 直接選取顯示操控軸；點空白處 → 取消選取（不影響 gizmo 拖曳本身）
-function trySelectAtPointer(e){
-  if(!threeModel || !threeModel.userData.isSTL || !tcMove) return;
+// 滑鼠位置 → NDC 座標（供 raycaster 使用）
+function mouseToNDC(e){
   const cv=document.getElementById('three-canvas');
   const rect=cv.getBoundingClientRect();
   gizmoMouseNDC.x=((e.clientX-rect.left)/rect.width)*2-1;
   gizmoMouseNDC.y=-((e.clientY-rect.top)/rect.height)*2+1;
-  gizmoRaycaster.setFromCamera(gizmoMouseNDC, camera);
+  return gizmoMouseNDC;
+}
+// 對模型本體做 raycast，回傳第一個交點（沒打到回傳 null）
+function raycastModelAt(e){
+  if(!threeModel) return null;
+  gizmoRaycaster.setFromCamera(mouseToNDC(e), camera);
   const hit=gizmoRaycaster.intersectObject(threeModel, true);
-  if(hit.length) selectModel();
+  return hit.length ? hit[0] : null;
+}
+
+// 點擊模型 → 直接選取顯示操控軸；點空白處 → 取消選取（不影響 gizmo 拖曳本身）
+function trySelectAtPointer(e){
+  if(!threeModel || !threeModel.userData.isSTL || !tcMove) return;
+  if(raycastModelAt(e)) selectModel();
   else if(tcMove.object) deselectModel();
+}
+
+// 左鍵按在模型上 → 開始直接拖曳（鎖地板XZ平面，Y不變），同時選取顯示操控軸
+function startModelDrag(hit){
+  modelDragging=true;
+  boundaryBlockedNotified=false;   // 新的一次拖曳開始→重置提醒旗標
+  selectModel();
+  dragPlane=new THREE.Plane(new THREE.Vector3(0,1,0), -hit.point.y);
+  dragOffset.copy(threeModel.position).sub(hit.point);
 }
 
 function syncTransformInputs(){
@@ -1570,19 +1602,24 @@ function initThree(){
   initGizmo();
 
   cv.addEventListener('mousedown',e=>{
-    if(gizmoDragging) return;                 // 正在拖 gizmo → 不啟動相機拖曳
-    isDragging=true; isRightDrag=e.button===2;
-    lastX=e.clientX; lastY=e.clientY;
+    if(gizmoDragging) return;                 // 正在拖 gizmo → 不啟動相機/模型拖曳
     mouseDownX=e.clientX; mouseDownY=e.clientY;   // 記錄起點，供放開時判斷是否為「單純點擊」
     document.getElementById('viewer-hint').style.opacity='0';
+    if(e.button===0 && threeModel && threeModel.userData.isSTL){
+      const hit=raycastModelAt(e);
+      if(hit){ startModelDrag(hit); return; }   // 左鍵按在模型上 → 直接拖曳移動，不啟動相機平移
+    }
+    isDragging=true; isRightDrag=e.button===2;
+    lastX=e.clientX; lastY=e.clientY;
   });
   window.addEventListener('mouseup',e=>{
-    // 幾乎沒移動、左鍵、且不是正在拖 gizmo → 視為「點擊」，嘗試選取/取消選取模型
-    if(!gizmoDragging && e.button===0 && isDragging){
+    // 幾乎沒移動、左鍵、且不是正在拖 gizmo/模型 → 視為「點擊空白處」，取消選取模型
+    if(!gizmoDragging && !modelDragging && e.button===0 && isDragging){
       const moved=Math.hypot(e.clientX-mouseDownX, e.clientY-mouseDownY);
       if(moved<5) trySelectAtPointer(e);
     }
     isDragging=false;
+    modelDragging=false;
   });
   window.addEventListener('mousemove',onMouseMove);
   cv.addEventListener('wheel',onWheel,{passive:false});
@@ -1625,6 +1662,7 @@ function buildPrintVolume(){
 // ── 超出偵測（用「真實列印範圍」判定，不含顯示緩衝）──
 function checkOverflow(){
   if(!threeModel||!printVolEdges) return;
+  if(moveProxy) moveProxy.position.copy(threeModel.position);   // 移動代理物件貼齊模型目前位置，讓 tcMove gizmo 視覺位置正確
   const p=PRINTERS[selectedPrinter];
   const bbox=new THREE.Box3().setFromObject(threeModel);
   const over=bbox.min.x<-p.w/2||bbox.max.x>p.w/2||
@@ -1654,22 +1692,26 @@ function isWithinRealPrintVolume(){
 }
 // 回傳 true = 剛剛把動作還原了（超出範圍）；false = 動作合法（或尚無可還原的快照）
 // 每一幀（gizmo 拖曳中會連續觸發）都會強制還原，等於在邊界就直接卡住、無法再往外移；
-// 提醒只在「剛頂到邊界」時跳一次，持續頂著不會洗版
+// 提醒只在「一次拖曳操作」中跳一次：拖曳中即使暫時回到合法邊緣（例如射線接近掠射角導致單幀抖動）
+// 也不會重置提醒旗標，避免同一次拖曳內大量刷提醒；旗標只在「新的一次拖曳開始」時重置
 function enforcePrintVolume(){
   if(!threeModel) return false;
+  const midDrag = gizmoDragging || modelDragging;
   if(isWithinRealPrintVolume()){
     lastValidTransform = {
       pos:   threeModel.position.clone(),
       rot:   threeModel.rotation.clone(),
       scale: threeModel.scale.clone(),
     };
-    boundaryBlockedNotified = false;
+    if(!midDrag) boundaryBlockedNotified = false;
+    if(moveProxy) moveProxy.position.copy(threeModel.position);
     return false;
   }
   if(lastValidTransform){
     threeModel.position.copy(lastValidTransform.pos);
     threeModel.rotation.copy(lastValidTransform.rot);
     threeModel.scale.copy(lastValidTransform.scale);
+    if(moveProxy) moveProxy.position.copy(threeModel.position);
     checkOverflow();
     syncTransformInputs();
     if(!boundaryBlockedNotified){
@@ -1712,10 +1754,26 @@ function updateDefaultBox(){
 }
 
 // ── 控制模式 ──
-// ── 滑鼠：只控制相機（右鍵旋轉視角／左鍵平移視角／滾輪縮放）。物件本身一律只能用
-//   XYZ/RxRyRz 軸操控（gizmo/數值欄），不再支援用滑鼠直接拖拉/轉動/縮放模型 ──
+// ── 滑鼠：右鍵永遠旋轉視角／滾輪縮放。左鍵按在模型上＝直接拖曳移動模型（鎖地板XZ平面，Y不變）；
+//   左鍵按在空白處＝平移視角。精確變形（含旋轉）另有 XYZ/RxRyRz 軸操控（gizmo/數值欄），可與拖曳同時使用 ──
 function onMouseMove(e){
   if(gizmoDragging) return;                   // gizmo 拖曳中 → 交給 TransformControls
+  if(modelDragging){
+    gizmoRaycaster.setFromCamera(mouseToNDC(e), camera);
+    // 視線幾乎貼著地板平面（掠射角）時，交點會在螢幕上小幅移動就暴衝到很遠處，造成模型位置抖動、
+    // 進而讓邊界偵測在合法/超出間狂跳。掠射角時直接跳過這一幀，等角度沒那麼刁鑽再繼續拖曳
+    const denom = Math.abs(dragPlane.normal.dot(gizmoRaycaster.ray.direction));
+    if(denom > 1e-3){
+      const ix=new THREE.Vector3();
+      if(gizmoRaycaster.ray.intersectPlane(dragPlane, ix)){
+        threeModel.position.x = ix.x + dragOffset.x;
+        threeModel.position.z = ix.z + dragOffset.z;
+        syncTransformInputs();
+        afterManualTransform();
+      }
+    }
+    return;
+  }
   if(!isDragging) return;
   const dx=e.clientX-lastX, dy=e.clientY-lastY;
   lastX=e.clientX; lastY=e.clientY;
@@ -1784,6 +1842,29 @@ function resetView(){
   spherical={theta:0.7,phi:1.1,radius:600};
   panOffset.set(0,0,0); updateCamera(); checkOverflow();
 }
+
+// ── 全視窗檢視：col-C（工具列＋畫布＋底部資訊）整組切換 fixed 覆蓋全螢幕，
+//   畫布尺寸變化交給既有的 ResizeObserver 自動處理，不用手動呼叫 renderer.setSize ──
+// 通用收合/展開：點擊標籤切換內容區塊顯示，箭頭方向跟著轉
+function toggleCollapse(bodyId, toggleId){
+  const body=document.getElementById(bodyId);
+  const open = body.style.display==='none';
+  body.style.display = open ? '' : 'none';
+  document.getElementById(toggleId).classList.toggle('open', open);
+}
+
+function toggleViewerFullscreen(){
+  const col=document.getElementById('col-C');
+  const on=col.classList.toggle('vc-fullscreen');
+  document.getElementById('vc-fs-btn').textContent = on ? '⤢' : '⛶';
+  document.getElementById('vc-fs-btn').title = on ? '離開全視窗' : '全視窗檢視';
+}
+window.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    const col=document.getElementById('col-C');
+    if(col && col.classList.contains('vc-fullscreen')) toggleViewerFullscreen();
+  }
+});
 
 // ══ Toast ══
 // ══ 手動擺放後計算 ══
