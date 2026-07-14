@@ -130,6 +130,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 .sec-hdr{padding:5px 12px 3px;background:var(--bg-soft);border-bottom:1px solid var(--line-soft);border-top:1px solid var(--line-soft)}
 .sec-hdr-lbl{font-size:9px;font-weight:700;font-family:var(--font-mono);color:var(--ink-4);text-transform:uppercase;letter-spacing:.09em}
 .ci{display:flex;align-items:flex-start;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line-soft)}
+.ci-clickable{cursor:pointer;transition:background .12s}
+.ci-clickable:hover{background:var(--bg-soft)}
 .ci:last-child{border-bottom:none}
 .ci-icon{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
 .ic-ok{background:var(--ok-soft);color:var(--ok)}
@@ -1398,9 +1400,15 @@ function runSTLAnalysis(geom){
       edgeMap[e]=(edgeMap[e]||0)+1;
     }
   }
-  const boundaryEdges=Object.values(edgeMap).filter(v=>v===1).length;
+  const boundaryEdgeKeys=Object.keys(edgeMap).filter(k=>edgeMap[k]===1);
+  const boundaryEdges=boundaryEdgeKeys.length;
   const isWatertight=boundaryEdges===0;
   const holeCount=Math.max(0,Math.floor(boundaryEdges/3));
+  // 邊界邊的真實座標（從edge key字串還原），供「封閉模型/空洞」報告項目點擊後在模型上畫出破面位置
+  const boundaryEdgeCoords=boundaryEdgeKeys.map(k=>{
+    const [p1,p2]=k.split('|');
+    return [p1.split(',').map(Number), p2.split(',').map(Number)];
+  });
 
   // 2. 壁厚估計（用面法向量分析相鄰面角度）
   const normals=geom.attributes.normal;
@@ -1462,11 +1470,12 @@ function runSTLAnalysis(geom){
   score=Math.max(0,Math.round(score));
 
   stlAnalysis = {
-    isWatertight, holeCount, boundaryEdges, loosefaces,
+    isWatertight, holeCount, boundaryEdges, boundaryEdgeCoords, loosefaces,
     minWall, thinWallCount, maxOverhang, overhangRatio,
     islandRisk, floatingCount, supportArea, supportPoints,
     triCount, size, score, surfaceAreaCm2,
   };
+  clearBoundaryHighlight();   // 換了新模型/重新分析，舊的破面標示線要跟著清掉
   renderAnalysis();
 }
 
@@ -1487,18 +1496,20 @@ function renderAnalysis(){
     ${ci(a.isWatertight?'ok':'err',
       '封閉模型 (Watertight)',
       a.isWatertight?'通過 · 無破面':'未封閉 · '+a.boundaryEdges+' 條邊界邊',
-      a.isWatertight?'所有面邊界封閉，可正常切片列印':'建議在 Meshmixer 或 NetFabb 修復後列印'
+      a.isWatertight?'所有面邊界封閉，可正常切片列印':'建議在 Meshmixer 或 NetFabb 修復後列印',
+      null,null,'boundary'
     )}
     ${ci(a.loosefaces===0?'ok':'warn',
       '孤立面 (Loose Face)',
       a.loosefaces===0?'0 個孤立面':`偵測到約 ${a.loosefaces} 個孤立面`,
-      a.loosefaces===0?'無與主體脫離的浮空面片':'孤立面可能導致切片異常'
+      a.loosefaces===0?'無與主體脫離的浮空面片':'孤立面可能導致切片異常',
+      null,null,'estimate-only'
     )}
     ${ci(a.holeCount===0?'ok':'warn',
       '空洞 (Hole)',
       a.holeCount===0?'無空洞':'偵測到約 '+a.holeCount+' 個空洞',
       a.holeCount===0?'模型無開放邊界':'建議修復空洞以確保切片品質',
-      a.holeCount===0?0:Math.min(100,a.holeCount*20), a.holeCount===0?'':'warn'
+      a.holeCount===0?0:Math.min(100,a.holeCount*20), a.holeCount===0?'':'warn', 'boundary'
     )}
 
     ${secHdr('壁厚分析')}
@@ -1506,13 +1517,13 @@ function renderAnalysis(){
       '最小壁厚 (Min Wall)',
       `${a.minWall.toFixed(1)} mm · 建議 ≥ 0.8 mm`,
       a.minWall>=0.8?'壁厚充足，列印風險低':a.minWall>=0.5?'部分薄壁區域，建議謹慎':'壁厚不足，列印失敗風險高',
-      Math.round((a.minWall/2)*100), a.minWall>=0.8?'ok':a.minWall>=0.5?'warn':'err'
+      Math.round((a.minWall/2)*100), a.minWall>=0.8?'ok':a.minWall>=0.5?'warn':'err', 'estimate-only'
     )}
     ${ci(a.thinWallCount===0?'ok':'warn',
       '薄壁區域',
       a.thinWallCount===0?'無薄壁風險區域':`約 ${a.thinWallCount} 處 < 1.0 mm`,
       a.thinWallCount===0?'壁厚均勻，列印穩定':'建議補強或調整列印方向',
-      a.thinWallCount===0?0:Math.min(80,a.thinWallCount*15), a.thinWallCount===0?'':'warn'
+      a.thinWallCount===0?0:Math.min(80,a.thinWallCount*15), a.thinWallCount===0?'':'warn', 'estimate-only'
     )}
 
     ${secHdr('懸垂 / 孤島分析')}
@@ -1520,17 +1531,19 @@ function renderAnalysis(){
       '懸垂角度 (Overhang)',
       `最大約 ${a.maxOverhang}° · 建議 ≤ 45°`,
       a.maxOverhang<=45?'懸垂角度安全，支撐需求低':a.maxOverhang<=60?'建議在懸垂區域加支撐':'懸垂嚴重，必須加支撐否則列印失敗',
-      Math.round(a.maxOverhang/90*100), a.maxOverhang<=45?'ok':a.maxOverhang<=60?'warn':'err'
+      Math.round(a.maxOverhang/90*100), a.maxOverhang<=45?'ok':a.maxOverhang<=60?'warn':'err', 'overhang'
     )}
     ${ci(a.islandRisk?'warn':'ok',
       '孤島偵測 (Island)',
       a.islandRisk?'偵測到孤島風險':'無孤島風險',
-      a.islandRisk?'切片中可能出現完全脫離上層的孤立區域，建議加支撐':'每層切片無完全脫離的孤立區域'
+      a.islandRisk?'切片中可能出現完全脫離上層的孤立區域，建議加支撐':'每層切片無完全脫離的孤立區域',
+      null,null,'estimate-only'
     )}
     ${ci(a.floatingCount===0?'ok':'warn',
       '懸空偵測 (Floating)',
       a.floatingCount===0?'無懸空結構':`約 ${a.floatingCount} 處懸空`,
-      a.floatingCount===0?'模型無懸空結構，穩定性佳':'懸空部分需加支撐'
+      a.floatingCount===0?'模型無懸空結構，穩定性佳':'懸空部分需加支撐',
+      null,null,'estimate-only'
     )}
 
     ${secHdr('支撐需求')}
@@ -1556,11 +1569,15 @@ function renderAnalysis(){
 function secHdr(t){
   return `<div class="sec-hdr"><span class="sec-hdr-lbl">${t}</span></div>`;
 }
-function ci(type,name,val,sub,barPct,barType){
+// action: 點擊該提醒/錯誤項目時要做什麼('boundary'=標示破面邊界、'overhang'=開啟懸垂分析、'estimate-only'=僅為整體估算無精確位置)
+// 只有 warn/err（有問題）才會做成可點擊，ok（正常）沒什麼好標示的
+function ci(type,name,val,sub,barPct,barType,action){
   const iconMap={ok:'✓',warn:'!',err:'✕',info:'i',gray:'—'};
   const iconClassMap={ok:'ic-ok',warn:'ic-warn',err:'ic-err',info:'ic-info',gray:'ic-gray'};
   const bar=barPct!=null?`<div class="ci-bar"><div class="ci-bar-fill bf-${barType||type}" style="width:${barPct}%"></div></div>`:'';
-  return `<div class="ci">
+  const clickable = action && (type==='warn'||type==='err');
+  const attrs = clickable ? ` class="ci ci-clickable" onclick="handleReportClick('${action}')" title="點擊查看模型上的問題位置"` : ` class="ci"`;
+  return `<div${attrs}>
     <div class="ci-icon ${iconClassMap[type]||'ic-gray'}">${iconMap[type]||'—'}</div>
     <div class="ci-body">
       <div class="ci-name">${name}</div>
@@ -1945,6 +1962,42 @@ async function autoConnectPFS(){
 }
 let overhangMode = false;
 let originalMaterial = null;
+
+// ══ 分析報告點擊 → 在模型上標示問題位置 ══
+let boundaryEdgeLines = null;   // 破面/空洞邊界的紅線標示（封閉模型/空洞兩個報告項目共用）
+
+function handleReportClick(action){
+  if(action==='overhang'){
+    if(!overhangMode) toggleOverhangView();
+    else showToast('懸垂分析已經開啟中','ok');
+  } else if(action==='boundary'){
+    toggleBoundaryHighlight();
+  } else if(action==='estimate-only'){
+    showToast('此項目為模型整體估算，暫無精確定位資料可標示','info');
+  }
+}
+
+// 用真實的邊界邊座標（僅被1個三角形使用的邊＝破面/空洞邊緣）畫紅線標示在模型上，再點一次關閉
+function toggleBoundaryHighlight(){
+  if(boundaryEdgeLines){ clearBoundaryHighlight(); showToast('已隱藏破面標示','ok'); return; }
+  if(!stlAnalysis || !stlAnalysis.boundaryEdgeCoords || !stlAnalysis.boundaryEdgeCoords.length){
+    showToast('沒有偵測到破面邊界','ok'); return;
+  }
+  const pts=[];
+  stlAnalysis.boundaryEdgeCoords.forEach(([p1,p2])=>{ pts.push(p1[0],p1[1],p1[2], p2[0],p2[1],p2[2]); });
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+  boundaryEdgeLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({color:0xff2222, linewidth:2, depthTest:false}));
+  threeModel.add(boundaryEdgeLines);   // 加為模型子物件，跟著模型一起移動/旋轉
+  showToast(`已標示 ${stlAnalysis.boundaryEdgeCoords.length} 條破面邊界（紅線）`,'err');
+}
+function clearBoundaryHighlight(){
+  if(!boundaryEdgeLines) return;
+  boundaryEdgeLines.parent && boundaryEdgeLines.parent.remove(boundaryEdgeLines);
+  boundaryEdgeLines.geometry.dispose();
+  boundaryEdgeLines.material.dispose();
+  boundaryEdgeLines=null;
+}
 
 function toggleOverhangView(){
   if(!threeModel || !threeModel.userData.isSTL){
