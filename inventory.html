@@ -2572,7 +2572,7 @@ function renderWorkcatMaterialChart() {
     const stacked = chartType==='bar';   // 折線圖不堆疊，各材料各自一條線比較好讀
 
     const datasets = materials.map((fam,i)=>({
-        label: fam,
+        label: matName(fam),   // 顯示材料名稱，不顯示API代碼
         data: cats.map(c=>+((byCatMat[c][fam]||0)/1000).toFixed(2)),
         backgroundColor: PIE_COLORS[i%PIE_COLORS.length],
         borderColor: PIE_COLORS[i%PIE_COLORS.length],
@@ -2646,7 +2646,7 @@ function renderMonthlyPie() {
     canvas.style.display='block';
     empty.classList.add('hidden');
 
-    const labels = entries.map(e=>e[0]);
+    const labels = entries.map(e=>matName(e[0]));   // 圖表(含滑鼠提示)一律顯示材料名稱，不顯示API代碼
     const data   = entries.map(e=>Math.round(e[1]));
     const total  = data.reduce((s,v)=>s+v,0);
     const colors = labels.map((_,i)=>PIE_COLORS[i%PIE_COLORS.length]);
