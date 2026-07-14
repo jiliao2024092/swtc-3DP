@@ -411,6 +411,14 @@
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
+                    <select id="history-filter-workcat" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="依備註解析出的工作類別篩選（備註格式：客戶簡稱-工作類別-EF單號）">
+                        <option value="">全部工作類別</option>
+                        <option value="評估">評估</option>
+                        <option value="代工">代工</option>
+                        <option value="工程測試">工程測試</option>
+                        <option value="其他">其他</option>
+                        <option value="未分類">未分類（備註不符格式）</option>
+                    </select>
                     <input type="date" id="history-filter-from" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="起始日期">
                     <span class="text-xs text-gray-400">～</span>
                     <input type="date" id="history-filter-to" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="結束日期">
@@ -475,6 +483,16 @@
                     <h3 class="text-sm font-semibold text-gray-700 mb-3">當月消耗明細</h3>
                     <div id="pie-legend" class="space-y-2"></div>
                 </div>
+            </div>
+
+            <!-- 工作類別佔比（依備註解析：客戶簡稱-工作類別-EF單號）-->
+            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 id="workcat-title" class="text-sm font-semibold text-gray-700">當月工作類別佔比</h3>
+                    <span class="text-xs text-gray-400">依備註解析：客戶簡稱-工作類別-EF單號</span>
+                </div>
+                <div id="workcat-breakdown" class="space-y-2"></div>
+                <p id="workcat-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
             </div>
 
             <!-- 當月消耗紀錄（依用量排序，看哪些列印佔比大）-->
@@ -542,6 +560,18 @@
 const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 const DEFAULT_CARTRIDGE_ML = 1000;
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
+
+// ══ 工作類別（依備註解析）══
+// 備註(檔名)規範：客戶簡稱-工作類別-EF單號，例：鑫元鴻-代工-202607020001、實威-工程測試
+// 取第2欄位([1])比對這4種狀態；不符合規範或無備註 → 歸類「未分類」
+const WORK_CATEGORIES = ['評估','代工','工程測試','其他'];
+function parseWorkCategory(note){
+    if(!note) return '未分類';
+    const seg = String(note).split('-')[1];
+    const trimmed = (seg||'').trim();
+    return WORK_CATEGORIES.includes(trimmed) ? trimmed : '未分類';
+}
+const escHtml = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 列印機即時狀態與消耗紀錄全部由 Cloud Function 同步至 Firestore，前端 onSnapshot 訂閱
 
 // 預設安全庫存（ml）
@@ -1976,6 +2006,7 @@ function resetHistoryFilters(){
     document.getElementById('history-filter').value='';
     document.getElementById('history-filter-printer').value='';
     document.getElementById('history-filter-type').value='';
+    document.getElementById('history-filter-workcat').value='';
     document.getElementById('history-filter-from').value='';
     document.getElementById('history-filter-to').value='';
     renderHistory();
@@ -2076,6 +2107,7 @@ function renderHistory() {
     const fMat     = sel.value;
     const fPrinter = document.getElementById('history-filter-printer').value;
     const fType    = document.getElementById('history-filter-type').value;
+    const fWorkCat = document.getElementById('history-filter-workcat').value;
     const fFrom    = document.getElementById('history-filter-from').value;
     const fTo      = document.getElementById('history-filter-to').value;
 
@@ -2084,6 +2116,7 @@ function renderHistory() {
         if(fPrinter && !(h.printer||'').includes(fPrinter)) return false;
         if(fType==='consume' && !(h.type==='consume'||h.type==='aborted')) return false;
         else if(fType && fType!=='consume' && h.type !== fType) return false;
+        if(fWorkCat && parseWorkCategory(h.note) !== fWorkCat) return false;
         if(fFrom    && (h.ts||'').slice(0,10) < fFrom) return false;
         if(fTo      && (h.ts||'').slice(0,10) > fTo) return false;
         return true;
@@ -2136,7 +2169,12 @@ function renderHistory() {
             <td class="p-3 text-sm text-gray-600">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
-            <td class="p-3 text-xs text-gray-400">${h.note||'—'}</td>
+            <td class="p-3 text-xs text-gray-400">
+                <div class="flex items-center gap-1.5">
+                    <span class="truncate max-w-[200px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
+                    ${isEditor?`<button onclick="editHistoryNote('${h.id}')" title="編輯備註" class="text-gray-300 hover:text-blue-600 flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
+                </div>
+            </td>
             <td class="p-3 text-xs text-gray-500 font-mono">${h.apiStatus||'—'}</td>
             <td class="p-3 text-center" ${isAdmin?'':'style="display:none"'} data-admin-only>
                 <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（僅刪除紀錄，不會反向調整庫存）" class="text-gray-400 hover:text-red-600 transition-colors">
@@ -2351,7 +2389,7 @@ function renderMonthlyConsume() {
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
     const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
     const printerFilter = document.getElementById('monthly-printer').value;
-    const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const esc = escHtml;
 
     const title = document.getElementById('consume-detail-title');
     if(title) title.textContent = `${curYear}年 ${curMonth}月 消耗紀錄（依用量排序）${printerFilter?` · ${printerFilter}`:''}`;
@@ -2402,8 +2440,59 @@ function renderMonthlyConsume() {
     }).join('');
 }
 
+// 當月工作類別佔比（依備註解析：客戶簡稱-工作類別-EF單號，取第2欄位）
+function renderMonthlyWorkCategory() {
+    const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
+    const printerFilter = document.getElementById('monthly-printer').value;
+
+    const title = document.getElementById('workcat-title');
+    if(title) title.textContent = `${curYear}年 ${curMonth}月 工作類別佔比${printerFilter?` · ${printerFilter}`:''}`;
+
+    const recs = inv.history.filter(h=>(h.type==='consume'||h.type==='aborted')
+        && (!printerFilter || (h.printer||'').includes(printerFilter))
+        && h.ts && new Date(h.ts).getFullYear()===curYear && new Date(h.ts).getMonth()+1===curMonth);
+
+    const box   = document.getElementById('workcat-breakdown');
+    const empty = document.getElementById('workcat-empty');
+    if(!box) return;
+
+    if(!recs.length){
+        box.innerHTML=''; if(empty) empty.classList.remove('hidden');
+        return;
+    }
+    if(empty) empty.classList.add('hidden');
+
+    const byCat = {};
+    const ALL_CATS = [...WORK_CATEGORIES, '未分類'];
+    ALL_CATS.forEach(c=>{ byCat[c] = { ml:0, count:0 }; });
+    recs.forEach(h=>{
+        const cat = parseWorkCategory(h.note);
+        byCat[cat].ml += (h.ml||0);
+        byCat[cat].count += 1;
+    });
+    const total = recs.reduce((s,h)=>s+(h.ml||0), 0);
+    const CAT_COLOR = { '評估':'bg-sky-500', '代工':'bg-teal-500', '工程測試':'bg-purple-500', '其他':'bg-amber-500', '未分類':'bg-gray-400' };
+
+    box.innerHTML = ALL_CATS.filter(c=>byCat[c].count>0).map(c=>{
+        const ml = byCat[c].ml;
+        const pct = total>0 ? (ml/total*100) : 0;
+        const qty = ml>=1000 ? (ml/1000).toFixed(2)+' L' : Math.round(ml)+' mL';
+        return `<div class="flex items-center gap-2">
+            <span class="text-sm text-gray-700 w-20 flex-shrink-0">${escHtml(c)}</span>
+            <div class="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+                <div class="h-full ${CAT_COLOR[c]||'bg-gray-400'} rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
+            </div>
+            <span class="text-xs text-gray-500 w-16 text-right">${byCat[c].count} 筆</span>
+            <span class="text-xs text-gray-700 font-medium w-16 text-right">${qty}</span>
+            <span class="text-xs text-gray-400 w-10 text-right">${Math.round(pct)}%</span>
+        </div>`;
+    }).join('');
+}
+
 function renderMonthlyPie() {
     renderMonthlyConsume();
+    renderMonthlyWorkCategory();
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
     const curMonth = parseInt(document.getElementById('monthly-month').value) || (new Date().getMonth()+1);
     const printerFilter = document.getElementById('monthly-printer').value;
@@ -2575,6 +2664,42 @@ async function deleteHistoryEntry(id) {
     }
 }
 
+// ══ 編輯單筆消耗/歷史紀錄的備註 (editor/admin) ══
+// 備註建議格式：客戶簡稱-工作類別-EF單號（例：鑫元鴻-代工-202607020001），
+// 用於「工作類別」篩選與月度分析的解析依據；不影響庫存數字，僅修正顯示文字
+async function editHistoryNote(id) {
+    if (!isEditor) {
+        showToast('僅編輯者/admin 可執行此操作', 'error');
+        return;
+    }
+    if (!id) return;
+    const h = inv.history.find(x => x.id === id);
+    if (!h) return;
+    const newNote = prompt(
+        '編輯備註（建議格式：客戶簡稱-工作類別-EF單號）\n' +
+        '例：鑫元鴻-代工-202607020001 / 高禎-評估-202606300001 / 實威-工程測試\n' +
+        '第2欄位需為：評估、代工、工程測試、其他 之一，才能被正確分類統計',
+        h.note || ''
+    );
+    if (newNote === null) return;   // 取消
+    const trimmed = newNote.trim();
+    try {
+        await updateDoc(doc(db, 'inventory_history', id), { note: trimmed });
+        // 樂觀更新本地快取，立即反映（Firestore onSnapshot 稍後會再確認一次）
+        h.note = trimmed;
+        const inExtra = extraHistory.find(x => x.id === id);
+        if (inExtra) inExtra.note = trimmed;
+        const inSub = historyFromSubscription.find(x => x.id === id);
+        if (inSub) inSub.note = trimmed;
+        renderHistory();
+        if (currentTab === 'monthly') renderMonthly();
+        showToast('備註已更新', 'success');
+    } catch (err) {
+        console.error('[editHistoryNote] 失敗:', err);
+        showToast('更新失敗：' + err.message, 'error');
+    }
+}
+
 // ══ 清除所有消耗紀錄並重新匯入 (admin only) ══
 async function purgeAndRebuildHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
@@ -2650,6 +2775,7 @@ window.setOverviewCols = setOverviewCols;
 window.toggleOverviewCards = toggleOverviewCards;
 window.reloadData = reloadData;
 window.deleteHistoryEntry = deleteHistoryEntry;
+window.editHistoryNote = editHistoryNote;
 // ══ 去除重複紀錄 (admin only) ══
 async function deduplicateHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
