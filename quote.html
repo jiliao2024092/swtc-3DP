@@ -950,12 +950,15 @@ function initGizmo(){
   tcRotate.enabled=false; tcRotate.visible=false;
   scene.add(tcRotate);
 
-  // 移除旋轉gizmo外圍那圈黃色自由旋轉環（E軸，screen-space rotate）：
-  // 半徑比XYZ移動箭頭大一圈、又跟移動/旋轉軸同時顯示，拖曳XYZ位移時很容易誤觸到它變成旋轉
+  // 移除旋轉gizmo的 E（外圍黃色自由旋轉環）與 XYZE（真正的元兇：一顆半徑很大、完全透明看不見的
+  // 自由旋轉picker圓球，把模型原點整個包住）。實測證實：由於移動/旋轉gizmo同時作用中，
+  // 點在Y移動箭頭上時，這顆隱形球也會同時被 raycast 命中，導致 tcRotate 同時以 XYZE 模式開始拖曳，
+  // 一次拖曳變成「Y平移＋自由旋轉」同時發生，看起來就像「拖Y軸時所有軸向都跟著動」。
+  // E/XYZE 兩者都不是使用者要的鎖定軸旋轉（那個功能由 X/Y/Z 圓環負責），拿掉不影響正常旋轉操作。
   ['gizmo','picker','helper'].forEach(part=>{
     const grp = tcRotate._gizmo && tcRotate._gizmo[part] && tcRotate._gizmo[part].rotate;
     if(!grp) return;
-    [...grp.children].filter(c=>c.name==='E').forEach(c=>grp.remove(c));
+    [...grp.children].filter(c=>c.name==='E'||c.name==='XYZE').forEach(c=>grp.remove(c));
   });
 }
 
