@@ -89,7 +89,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 
 /* ── CENTER col ── */
 .col-C{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);border-right:1px solid var(--line)}
-.col-C.vc-fullscreen{position:fixed;inset:0;z-index:9999;border-right:none}
+/* 全視窗 fallback（真Fullscreen API被iframe權限擋下時）：整個估價頁面覆蓋視窗 */
+.shell.vc-fullscreen{position:fixed;inset:0;z-index:9999;width:100vw;height:100vh}
 .viewer-toolbar{display:flex;align-items:center;gap:5px;padding:6px 10px;border-bottom:1px solid var(--line);background:var(--bg-soft);flex-shrink:0;flex-wrap:wrap}
 .view-tab{padding:4px 9px;border-radius:4px;border:1px solid transparent;font-size:11.5px;font-weight:600;color:var(--ink-4);cursor:pointer;font-family:var(--font-ui);background:transparent}
 .view-tab.on{background:var(--bg);border-color:var(--line);color:var(--ink)}
@@ -890,6 +891,12 @@ let showMoveGizmo=true, showRotateGizmo=true;
 // 解法：tcMove 改附加在一個「永遠不旋轉」的代理物件 moveProxy 上，畫面自然維持世界座標方向；
 // 拖曳 moveProxy 產生位移後，再同步回真正的 threeModel.position（見 checkOverflow/enforcePrintVolume 內的同步）
 let moveProxy=null;
+// 同理，旋轉gizmo的「圓環」視覺在 three r128 也一律跟著被attach物件的旋轉走（rotate模式同樣忽略setSpace的視覺），
+// 導致模型旋轉後圓環會傾斜、看起來像「軸向跟著模型轉」。解法：tcRotate 也附加在永遠不旋轉的 rotateProxy 上，
+// 圓環永遠維持世界對齊；拖曳圓環時 rotateProxy 產生的旋轉量，即時以「世界座標」套用到模型後把 proxy 歸零，
+// 使圓環拖曳中/靜止都不傾斜（＝繞世界XYZ軸旋轉，比照多數CAD的世界旋轉gizmo）
+let rotateProxy=null;
+const rotStartModelQuat=new THREE.Quaternion();   // 旋轉拖曳開始時模型的姿態快照
 const gizmoRaycaster=new THREE.Raycaster(), gizmoMouseNDC=new THREE.Vector2();
 let mouseDownX=0, mouseDownY=0;
 let modelDragging=false, dragPlane=null;
@@ -915,12 +922,31 @@ function initGizmo(){
   tcMove.enabled=false; tcMove.visible=false;
   scene.add(tcMove);
 
+  rotateProxy = new THREE.Object3D();   // 永遠維持identity旋轉，讓旋轉圓環的視覺保持世界對齊
+  scene.add(rotateProxy);
+
   tcRotate = new THREE.TransformControls(camera, renderer.domElement);
   tcRotate.setSize(0.85);
   tcRotate.setMode('rotate');
-  tcRotate.setSpace('local');   // 旋轉＝以物件本身（檔案原點）為準
-  tcRotate.addEventListener('dragging-changed', onDragChange);
-  tcRotate.addEventListener('objectChange', ()=>{ syncTransformInputs(); afterManualTransform(); });
+  tcRotate.setSpace('local');   // proxy恆為identity，local即等同world；圓環繞世界XYZ
+  tcRotate.addEventListener('dragging-changed', e=>{
+    gizmoDragging = e.value;
+    if(e.value){                              // 開始拖曳：記住模型當前姿態、確保proxy從identity起算
+      boundaryBlockedNotified=false;
+      rotStartModelQuat.copy(threeModel.quaternion);
+      rotateProxy.quaternion.identity();
+    }else{
+      rotateProxy.quaternion.identity();      // 結束拖曳：歸零，圓環回到世界對齊
+    }
+  });
+  tcRotate.addEventListener('objectChange', ()=>{
+    // rotateProxy.quaternion = 本次拖曳從identity起算的累計旋轉（因proxy為identity，等同繞世界軸）
+    // 以世界座標套用到模型：世界旋轉在左（premultiply）。套用後立刻把proxy歸零，圓環拖曳中也不傾斜
+    threeModel.quaternion.copy(rotStartModelQuat).premultiply(rotateProxy.quaternion);
+    rotateProxy.quaternion.identity();
+    syncTransformInputs();
+    afterManualTransform();
+  });
   tcRotate.enabled=false; tcRotate.visible=false;
   scene.add(tcRotate);
 
@@ -937,8 +963,10 @@ function initGizmo(){
 function selectModel(){
   if(!tcMove || !tcRotate || !threeModel) return;
   moveProxy.position.copy(threeModel.position);   // 代理物件先貼齊模型目前位置，再讓 tcMove 附加上去
+  rotateProxy.position.copy(threeModel.position);  // 旋轉圓環的樞紐貼齊模型原點
+  rotateProxy.quaternion.identity();
   tcMove.attach(moveProxy);
-  tcRotate.attach(threeModel);
+  tcRotate.attach(rotateProxy);
   tcMove.visible=showMoveGizmo;     tcMove.enabled  = showMoveGizmo;
   tcRotate.visible=showRotateGizmo; tcRotate.enabled= showRotateGizmo;
   applyGizmoAxis();
@@ -1702,6 +1730,7 @@ function buildPrintVolume(){
 function checkOverflow(){
   if(!threeModel||!printVolEdges) return;
   if(moveProxy) moveProxy.position.copy(threeModel.position);   // 移動代理物件貼齊模型目前位置，讓 tcMove gizmo 視覺位置正確
+  if(rotateProxy) rotateProxy.position.copy(threeModel.position);   // 旋轉圓環樞紐同步貼齊
   const p=PRINTERS[selectedPrinter];
   const bbox=new THREE.Box3().setFromObject(threeModel);
   const over=bbox.min.x<-p.w/2||bbox.max.x>p.w/2||
@@ -1744,6 +1773,7 @@ function enforcePrintVolume(){
   if(bb.min.y < -1e-6){
     threeModel.position.y -= bb.min.y;
     if(moveProxy) moveProxy.position.copy(threeModel.position);
+    if(rotateProxy) rotateProxy.position.copy(threeModel.position);
   }
 
   if(isWithinRealPrintVolume()){
@@ -1754,6 +1784,7 @@ function enforcePrintVolume(){
     };
     if(!midDrag) boundaryBlockedNotified = false;
     if(moveProxy) moveProxy.position.copy(threeModel.position);
+    if(rotateProxy) rotateProxy.position.copy(threeModel.position);
     return false;
   }
   if(lastValidTransform){
@@ -1761,6 +1792,7 @@ function enforcePrintVolume(){
     threeModel.rotation.copy(lastValidTransform.rot);
     threeModel.scale.copy(lastValidTransform.scale);
     if(moveProxy) moveProxy.position.copy(threeModel.position);
+    if(rotateProxy) rotateProxy.position.copy(threeModel.position);
     checkOverflow();
     syncTransformInputs();
     if(!boundaryBlockedNotified){
@@ -1902,7 +1934,7 @@ function toggleCollapse(bodyId, toggleId){
   document.getElementById(toggleId).classList.toggle('open', open);
 }
 
-// 本頁以 iframe 嵌在 portal.html 裡，全視窗時順便把 portal 左側選單(.shell-sidebar)藏起來，
+// 本頁以 iframe 嵌在 portal.html 裡；CSS fallback 模式時順便把 portal 左側選單(.shell-sidebar)藏起來，
 // 讓 iframe 本身也跟著撐滿整個瀏覽器視窗（同源 iframe 才能直接摸到 parent DOM，非iframe/跨網域環境下靜默略過）
 function setPortalSidebarHidden(hidden){
   try{
@@ -1911,18 +1943,55 @@ function setPortalSidebarHidden(hidden){
     if(sidebar) sidebar.style.display = hidden ? 'none' : '';
   }catch(e){ /* 跨網域或其他限制時靜默忽略，不影響本頁自身的全視窗功能 */ }
 }
-function toggleViewerFullscreen(){
-  const col=document.getElementById('col-C');
-  const on=col.classList.toggle('vc-fullscreen');
-  document.getElementById('vc-fs-btn').textContent = on ? '⤢' : '⛶';
-  document.getElementById('vc-fs-btn').title = on ? '離開全視窗' : '全視窗檢視';
+function updateFsBtn(on){
+  const btn=document.getElementById('vc-fs-btn');
+  if(!btn) return;
+  btn.textContent = on ? '⤢' : '⛶';
+  btn.title = on ? '離開全螢幕' : '全螢幕檢視';
+}
+// 全螢幕：把整個估價頁面(document.documentElement)送進瀏覽器原生全螢幕，真正填滿整個實體螢幕、
+// 蓋過 portal 側欄與瀏覽器工具列。portal 端的 iframe 已加 allow="fullscreen" 允許此行為。
+// 若原生 API 不可用或被權限擋下，退回 CSS fallback（整頁 position:fixed 覆蓋視窗 + 藏 portal 側欄）。
+function fallbackFullscreen(){
+  const shell=document.querySelector('.shell');
+  const on=shell.classList.toggle('vc-fullscreen');
+  updateFsBtn(on);
   setPortalSidebarHidden(on);
 }
-window.addEventListener('keydown', e=>{
-  if(e.key==='Escape'){
-    const col=document.getElementById('col-C');
-    if(col && col.classList.contains('vc-fullscreen')) toggleViewerFullscreen();
+function isNativeFs(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function toggleViewerFullscreen(){
+  const usingFallback = document.querySelector('.shell').classList.contains('vc-fullscreen');
+  if(isNativeFs() || usingFallback){
+    if(isNativeFs()){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+    else fallbackFullscreen();   // 目前是 fallback 模式 → 用 fallback 關閉
+    return;
   }
+  const el=document.documentElement;
+  const req=el.requestFullscreen||el.webkitRequestFullscreen;
+  if(req){
+    try{
+      const p=req.call(el);
+      if(p&&p.catch) p.catch(()=>fallbackFullscreen());   // 被iframe權限擋下 → 退回CSS
+    }catch(e){ fallbackFullscreen(); }
+  }else{
+    fallbackFullscreen();
+  }
+}
+// 原生全螢幕進出（含使用者按 Esc 或 F11 離開）時，同步按鈕圖示並補觸發一次畫布尺寸重算
+function onFsChange(){
+  updateFsBtn(isNativeFs());
+  const vc=document.getElementById('viewer-canvas');
+  if(renderer && vc && vc.clientWidth && vc.clientHeight){
+    renderer.setSize(vc.clientWidth, vc.clientHeight);
+    camera.aspect=vc.clientWidth/vc.clientHeight;
+    camera.updateProjectionMatrix();
+  }
+}
+document.addEventListener('fullscreenchange', onFsChange);
+document.addEventListener('webkitfullscreenchange', onFsChange);
+window.addEventListener('keydown', e=>{
+  // CSS fallback 模式沒有原生Esc行為，手動處理；原生全螢幕的Esc由瀏覽器處理並觸發onFsChange
+  if(e.key==='Escape' && document.querySelector('.shell').classList.contains('vc-fullscreen')) fallbackFullscreen();
 });
 
 // ══ Toast ══

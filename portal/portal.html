@@ -2226,7 +2226,7 @@ function Shell({ user, onLogout }) {
         {page==='admin'     && isAdmin && <AdminPanel          user={user}/>}
         {page==='booking'   && canBooking && <iframe src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印機預約"/>}
         {page==='inventory' && canInventory && <iframe src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
-        {page==='quote'     && canQuote && <iframe src="../quote.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價"/>}
+        {page==='quote'     && canQuote && <iframe src="../quote.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價"/>}
       </main>
     </div>
   );
