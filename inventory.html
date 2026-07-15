@@ -498,10 +498,14 @@
                 <div class="mt-4 pt-4 border-t border-gray-100">
                     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                         <h4 class="text-xs font-semibold text-gray-600">各工作類別的材料種類佔比</h4>
-                        <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
-                            <button onclick="setWorkcatMatChartType('bar')" id="wcm-bar-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">直條圖</button>
-                            <button onclick="setWorkcatMatChartType('barh')" id="wcm-barh-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">橫條圖</button>
-                            <button onclick="setWorkcatMatChartType('line')" id="wcm-line-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">折線圖</button>
+                        <div class="flex items-center gap-2">
+                            <select id="wcm-pie-cat" onchange="renderWorkcatMaterialChart()" class="hidden text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white"></select>
+                            <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                                <button onclick="setWorkcatMatChartType('bar')" id="wcm-bar-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">直條圖</button>
+                                <button onclick="setWorkcatMatChartType('barh')" id="wcm-barh-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">橫條圖</button>
+                                <button onclick="setWorkcatMatChartType('line')" id="wcm-line-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">折線圖</button>
+                                <button onclick="setWorkcatMatChartType('pie')" id="wcm-pie-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">圓餅圖</button>
+                            </div>
                         </div>
                     </div>
                     <div style="position:relative; height:300px;">
@@ -2553,9 +2557,10 @@ function renderMonthlyWorkCategory() {
 // 各工作類別的材料種類佔比：兩層彙總（工作類別 → 材料家族），支援 直條/橫條/折線 三種圖表類型
 function setWorkcatMatChartType(t) {
     workcatMatChartType = t;
-    ['bar','barh','line'].forEach(k=>{
+    ['bar','barh','line','pie'].forEach(k=>{
         document.getElementById('wcm-'+k+'-btn').className = 'px-3 py-1.5 transition-colors ' + (t===k ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
     });
+    document.getElementById('wcm-pie-cat').classList.toggle('hidden', t!=='pie');   // 圓餅圖一次只能看一個工作類別，需要選單挑選
     renderWorkcatMaterialChart();
 }
 
@@ -2594,6 +2599,40 @@ function renderWorkcatMaterialChart() {
     });
     const cats = ALL_CATS.filter(c=>Object.keys(byCatMat[c]).length>0);
     const materials = [...matSet];
+    const ctx = canvas.getContext('2d');
+
+    // 圓餅圖一次只能看「一個工作類別」的材料組成（例：評估 → black 25%、tough2000 75%），用選單挑選要看哪個類別
+    if(workcatMatChartType==='pie'){
+        const catSel = document.getElementById('wcm-pie-cat');
+        const prevVal = catSel.value;
+        catSel.innerHTML = cats.map(c=>`<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+        const selectedCat = cats.includes(prevVal) ? prevVal : cats[0];
+        catSel.value = selectedCat;
+
+        const pieEntries = Object.entries(byCatMat[selectedCat]||{}).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+        if(!pieEntries.length){
+            canvas.style.display='none';
+            empty.classList.remove('hidden');
+            return;
+        }
+        const pieLabels = pieEntries.map(([fam])=>matName(fam));
+        const pieData   = pieEntries.map(([,v])=>+(v/1000).toFixed(2));
+        const pieTotal  = pieData.reduce((s,v)=>s+v,0);
+        const pieColors = pieLabels.map((_,i)=>PIE_COLORS[i%PIE_COLORS.length]);
+
+        workcatMatChart = new Chart(ctx, {
+            type:'pie',
+            data:{ labels: pieLabels, datasets:[{ data: pieData, backgroundColor: pieColors, borderWidth:2, borderColor:'#fff' }] },
+            options:{
+                responsive:true, maintainAspectRatio:false,
+                plugins:{
+                    legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{size:10} } },
+                    tooltip:{ callbacks:{ label:c=>{ const pct=Math.round(c.parsed/pieTotal*100); return ` ${c.label}: ${c.parsed} L (${pct}%)`; } } }
+                }
+            }
+        });
+        return;
+    }
 
     const isHorizontal = workcatMatChartType==='barh';
     const chartType = isHorizontal ? 'bar' : workcatMatChartType;   // 橫條圖＝type:'bar' + indexAxis:'y'
@@ -2609,7 +2648,6 @@ function renderWorkcatMaterialChart() {
         tension: 0.3,
     }));
 
-    const ctx = canvas.getContext('2d');
     workcatMatChart = new Chart(ctx, {
         type: chartType,
         data: { labels: cats, datasets },
@@ -3036,6 +3074,7 @@ window.saveStockEdits = saveStockEdits;
 window.setWorkcatMatChartType = setWorkcatMatChartType;
 window.onMonthlySelChange = onMonthlySelChange;
 window.purgeAndRebuildHistory = purgeAndRebuildHistory;   // 既有的「清空並重新匯入」按鈕先前漏了曝露到window，一直是壞的
+window.renderWorkcatMaterialChart = renderWorkcatMaterialChart;
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
