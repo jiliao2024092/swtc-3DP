@@ -132,6 +132,13 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 .ci{display:flex;align-items:flex-start;gap:8px;padding:7px 12px;border-bottom:1px solid var(--line-soft)}
 .ci-clickable{cursor:pointer;transition:background .12s}
 .ci-clickable:hover{background:var(--bg-soft)}
+.manifold-status{padding:9px 12px;font-size:11.5px;line-height:1.5;border-bottom:1px solid var(--line)}
+.manifold-status.mf-loading{background:var(--bg-soft);color:var(--ink-3)}
+.manifold-status.mf-ok{background:var(--ok-soft);color:var(--ok)}
+.manifold-status.mf-repaired{background:var(--warn-soft);color:var(--warn)}
+.manifold-status.mf-broken{background:var(--danger-soft);color:var(--danger)}
+.manifold-status-title{font-weight:700;margin-bottom:2px}
+.manifold-status-btn{margin-top:6px;padding:4px 9px;border-radius:5px;border:1px solid currentColor;background:transparent;color:inherit;font-size:10.5px;font-weight:600;cursor:pointer;font-family:var(--font-ui)}
 .ci:last-child{border-bottom:none}
 .ci-icon{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px}
 .ic-ok{background:var(--ok-soft);color:var(--ok)}
@@ -421,6 +428,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
           <span class="r-title">STL 分析報告</span>
           <span class="score-pill score-warn" id="analysis-score" style="display:none">—</span>
         </div>
+        <div id="manifold-status" class="manifold-status" style="display:none"></div>
         <div class="col-R-scroll" id="analysis-panel">
           <div class="no-stl" id="no-stl-msg">
             上傳 STL 後<br>自動執行分析
@@ -492,6 +500,8 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <!-- TransformControls（拖拉式 gizmo，對應 three r128 全域版本）-->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+<!-- STLExporter（匯出修復後STL用，檔案很小~4KB，不用像Manifold那樣延遲載入）-->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -1218,6 +1228,7 @@ function onFileChange(input){
       const geom = parseSTL(e.target.result);
       loadGeometry(geom);
       runSTLAnalysis(geom);
+      runManifoldHealthCheck(geom);   // 背景執行，不等待（CDN延遲載入Manifold，不卡首屏）
       document.getElementById('top-aux').textContent = f.name + ' · 3D 載入完成（可按「PreForm 精確估價」取得精確數字）';
       showToast('STL 3D 預覽載入，體積已依實體 mesh 計算', 'ok');
     } catch(err){
@@ -1364,8 +1375,8 @@ function loadGeometry(geom){
   ));
   scene.add(threeModel);
   resetSlice();   // 新模型：清除層切狀態
-  // 新模型：重置 gizmo(預設可操作移動)、單軸鎖定、變形數值與「合法擺放」快照
-  gizmoActiveMode='translate';
+  // 新模型：重置 gizmo(移動/旋轉都預設顯示)、單軸鎖定、變形數值與「合法擺放」快照
+  showMoveGizmo=true; showRotateGizmo=true;
   if(tcMove) deselectModel();
   setGizmoAxis('all');
   lastValidTransform=null;
@@ -1997,6 +2008,111 @@ function clearBoundaryHighlight(){
   boundaryEdgeLines.geometry.dispose();
   boundaryEdgeLines.material.dispose();
   boundaryEdgeLines=null;
+}
+
+// ══ Manifold 網格健檢與修復（階段一：健檢+修復判定+STL匯出，CDN延遲載入不影響首屏）══
+// API 用法已用真實 CDN 上的 manifold-3d@3.5.1 實測驗證：
+//   Manifold.ofMesh(mesh) 對非流形網格會直接 throw（不是回傳錯誤狀態），
+//   mesh.merge() 能焊接微小縫隙，成功後 Manifold.ofMesh() 才會過。
+let manifoldWasm = null;          // 快取已載入的 wasm module（含 Manifold, Mesh 類別）
+let manifoldLoadPromise = null;   // 避免同時觸發多次載入
+let manifoldRepairedMesh = null;  // 健檢通過(含merge修復)後的乾淨網格資料{vertProperties,triVerts,numProp}，供匯出用；null=沒有可用的修復結果
+
+async function loadManifoldLazy(){
+  if(manifoldWasm) return manifoldWasm;
+  if(!manifoldLoadPromise){
+    manifoldLoadPromise = (async()=>{
+      const mod = await import('https://cdn.jsdelivr.net/npm/manifold-3d@3.5.1/manifold.js');
+      const wasm = await mod.default();
+      wasm.setup();
+      return wasm;
+    })();
+  }
+  manifoldWasm = await manifoldLoadPromise;
+  return manifoldWasm;
+}
+
+// 把 STL 解析出的非索引 BufferGeometry（每個三角形3個獨立頂點，無共用index）轉成 Manifold 的 Mesh 建構參數
+function geometryToManifoldMeshArgs(geom){
+  const pos = geom.attributes.position;
+  const vertProperties = new Float32Array(pos.array);
+  const triVerts = new Uint32Array(pos.count);
+  for(let i=0;i<pos.count;i++) triVerts[i]=i;   // 非索引：第i個頂點剛好就是第i個三角形角
+  return { numProp:3, vertProperties, triVerts };
+}
+
+function renderManifoldStatus(state, html){
+  const box = document.getElementById('manifold-status');
+  if(!box) return;
+  box.className = 'manifold-status mf-'+state;
+  box.style.display = '';
+  box.innerHTML = html;
+}
+
+// 健檢流程：merge(焊接頂點)後嘗試建立 Manifold；成功=健康可信賴，失敗=無法自動修復
+// 註：原本設計是「先直接嘗試、失敗才merge」兩段式，但實測發現 STL 格式本身完全不記錄
+// 共用頂點的index（每個三角形各自存3個獨立座標），所以「不merge就直接建立」對任何STL輸入
+// （不管原始模型乾不乾淨）都一定會失敗，這一步在STL情境下是死路，因此拿掉、直接從merge開始，
+// 且不要對使用者說「偵測到您的檔案有縫隙」這種誤導文案（那只是STL格式本身的必經步驟，不代表檔案有問題）
+async function runManifoldHealthCheck(geom){
+  manifoldRepairedMesh = null;
+  renderManifoldStatus('loading', `<div class="manifold-status-title">⏳ 網格健檢中…</div>載入檢查引擎並分析網格結構`);
+
+  let wasm;
+  try{
+    wasm = await loadManifoldLazy();
+  }catch(e){
+    renderManifoldStatus('broken', `<div class="manifold-status-title">⚠ 健檢引擎載入失敗</div>不影響其餘估價功能，僅略過本項檢查（${e.message}）`);
+    return;
+  }
+  // 使用者可能在載入期間已經換了另一個模型，此時這次檢查結果已經過時，直接放棄更新畫面
+  if(geom !== threeModel?.geometry) return;
+
+  const { Manifold, Mesh } = wasm;
+  const args = geometryToManifoldMeshArgs(geom);
+
+  try{
+    const mesh = new Mesh(args);
+    mesh.merge();
+    const m = Manifold.ofMesh(mesh);
+    manifoldRepairedMesh = m.getMesh();
+    m.delete && m.delete();
+    if(geom !== threeModel?.geometry) return;
+    renderManifoldStatus('ok', `<div class="manifold-status-title">✓ 網格結構健康</div>通過流形檢查，體積計算與匯出皆可信賴`
+      + `<button class="manifold-status-btn" onclick="exportRepairedSTL()">💾 匯出 STL</button>`);
+    return;
+  }catch(e){ /* 無法自動修復 */ }
+
+  if(geom !== threeModel?.geometry) return;
+  renderManifoldStatus('broken', `<div class="manifold-status-title">🔴 模型結構嚴重損毀（非流形）</div>此模型含有自相交表面、破洞或懸空面，可能導致列印失敗，請使用 Blender、Meshmixer 或您的建模軟體執行「重構網格（Remesh）」或「補洞」後重新上傳`);
+}
+
+// 匯出健檢/修復後的乾淨網格為 STL(binary)；沒有修復結果時（例如引擎載入失敗）退回匯出目前畫面上的原始網格
+function exportRepairedSTL(){
+  if(!threeModel){ showToast('請先上傳 STL','err'); return; }
+  let exportObj = threeModel;
+  if(manifoldRepairedMesh){
+    const geo = new THREE.BufferGeometry();
+    geo.setIndex(new THREE.BufferAttribute(manifoldRepairedMesh.triVerts, 1));
+    geo.setAttribute('position', new THREE.BufferAttribute(manifoldRepairedMesh.vertProperties, manifoldRepairedMesh.numProp||3));
+    geo.computeVertexNormals();
+    exportObj = new THREE.Mesh(geo);
+    exportObj.position.copy(threeModel.position);
+    exportObj.rotation.copy(threeModel.rotation);
+    exportObj.scale.copy(threeModel.scale);
+    exportObj.updateMatrixWorld(true);   // 沒加進scene，matrixWorld不會被render loop自動更新，要手動算
+  }
+  const exporter = new THREE.STLExporter();
+  const result = exporter.parse(exportObj, {binary:true});
+  const buf = result.buffer ? result.buffer : result;
+  const blob = new Blob([buf], {type:'application/octet-stream'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const baseName = (pfsLastFile||'model').replace(/\.stl$/i,'');
+  a.download = baseName + (manifoldRepairedMesh?'_repaired':'') + '.stl';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+  showToast('已匯出 STL'+(manifoldRepairedMesh?'（修復後版本）':''), 'ok');
 }
 
 function toggleOverhangView(){
