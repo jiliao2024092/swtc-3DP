@@ -273,6 +273,7 @@ html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--fo
               <button class="mtype-btn" onclick="dropToFloorBtn()">⬇ 貼地</button>
               <button class="mtype-btn" onclick="mirrorModel()">⇋ 鏡像</button>
             </div>
+            <button class="mtype-btn" id="btn-face-flatten" onclick="toggleFaceFlattenMode()" style="width:100%;margin-bottom:4px" title="開啟後點選模型上的一個面，該面會轉正朝下貼齊底板">⬇▦ 點選面貼平</button>
             <div style="display:flex;gap:4px;align-items:center">
               <input class="dim-inp" id="scale-input" type="number" min="1" value="100" style="flex:1">
               <span style="font-size:10px;color:var(--ink-4);font-family:var(--font-mono)">%</span>
@@ -863,6 +864,35 @@ function dropToFloorBtn(){
   dropToFloor(); checkOverflow();
   if(!enforcePrintVolume()) showToast('已貼地置中','ok');
 }
+
+// 點選面貼平：開啟後點模型上任一面，把該面的世界法向量轉到朝下(-Y)，等於把該面轉正貼齊底板
+let faceFlattenMode = false;
+function toggleFaceFlattenMode(){
+  if(!needModel()) return;
+  faceFlattenMode = !faceFlattenMode;
+  document.getElementById('btn-face-flatten').classList.toggle('active', faceFlattenMode);
+  const hint=document.getElementById('viewer-hint');
+  if(faceFlattenMode){
+    hint.textContent='點選模型上要貼底的面（再點一次「點選面貼平」按鈕可取消）';
+    hint.style.opacity='1';
+    showToast('請點選模型上要貼底的面','ok');
+  }else{
+    hint.textContent='右鍵旋轉視角 · 左鍵拖曳模型可直接移動 · 空白處左鍵平移視角 · 滾輪縮放';
+  }
+}
+function flattenFaceToFloor(hit){
+  if(!hit.face || !threeModel) return;
+  const worldNormal = hit.face.normal.clone().transformDirection(threeModel.matrixWorld).normalize();
+  const targetDown = new THREE.Vector3(0,-1,0);
+  const rotQuat = new THREE.Quaternion().setFromUnitVectors(worldNormal, targetDown);
+  threeModel.quaternion.premultiply(rotQuat);   // 世界座標旋轉（跟旋轉gizmo同一套，不受目前姿態影響）
+  syncTransformInputs();
+  afterManualTransform();   // 內含貼地修正，轉正後自動落到底板上
+  faceFlattenMode = false;
+  document.getElementById('btn-face-flatten').classList.remove('active');
+  document.getElementById('viewer-hint').textContent='右鍵旋轉視角 · 左鍵拖曳模型可直接移動 · 空白處左鍵平移視角 · 滾輪縮放';
+  showToast('已將選取面貼平底板','ok');
+}
 function mirrorModel(){
   if(!needModel()) return;
   threeModel.scale.x *= -1;
@@ -1424,7 +1454,10 @@ function loadGeometry(geom){
 
 // ══ STL 分析引擎 ══
 function runSTLAnalysis(geom){
-  document.getElementById('no-stl-msg').style.display='none';
+  // #no-stl-msg 是「尚未分析過」的初始提示，第一次分析後 renderAnalysis() 會整個覆蓋掉analysis-panel的innerHTML，
+  // 此元素會跟著消失；之後每次重新上傳STL都會再跑一次這裡，所以要判斷元素還在不在，避免對null取.style爆錯
+  const noStlMsg = document.getElementById('no-stl-msg');
+  if(noStlMsg) noStlMsg.style.display='none';
   const pos = geom.attributes.position;
   const triCount = pos.count/3;
   const size = geom.boundingBox.getSize(new THREE.Vector3());
@@ -1452,14 +1485,12 @@ function runSTLAnalysis(geom){
     return [p1.split(',').map(Number), p2.split(',').map(Number)];
   });
 
-  // 2. 壁厚估計（用面法向量分析相鄰面角度）
+  // 2. 懸垂比例（用面法向量分析）
   const normals=geom.attributes.normal;
-  const upVec=new THREE.Vector3(0,1,0);
-  let minWall=999, thinWallCount=0;
   let overhangFaceCount=0, islandRisk=false;
   const overhangThresh=Math.cos((90-45)*Math.PI/180);
 
-  // 取樣分析（每10個面取一個，避免太慢）
+  // 取樣分析（避免三角面數太多時太慢）
   const step=Math.max(1,Math.floor(triCount/500));
   let facesSampled=0;
   for(let i=0;i<triCount;i+=step){
@@ -1474,10 +1505,43 @@ function runSTLAnalysis(geom){
   const overhangRatio=overhangFaceCount/facesSampled;
   const maxOverhang=Math.round(30+overhangRatio*80);
 
-  // 壁厚估算（依 bounding box 最小維度粗估）
-  const minDim=Math.min(size.x,size.y,size.z);
-  minWall=Math.max(0.2,minDim*0.03).toFixed(1)*1;
-  thinWallCount=minWall<0.8?4:minWall<1.2?2:0;
+  // 壁厚：真的用射線量測，不是包圍盒公式粗估（舊版用 minDim*0.03，跟模型實際幾何完全無關，
+  // 導致不同模型只要最小維度接近，壁厚警告就會長得一樣）。做法：取樣面的中心點，往「反法向量」
+  // (往實體內部)方向射線，量到對面內壁的距離＝該點的局部壁厚；同時記錄薄壁點座標供點擊標示用
+  const THIN_WALL_MM = 0.8;   // 跟下面 ci() 報告的建議值一致
+  let minWall = Infinity, thinWallCount = 0;
+  const thinWallSpots = [];
+  {
+    const wallRaycaster = new THREE.Raycaster();
+    wallRaycaster.far = Math.max(size.x,size.y,size.z) * 1.5;
+    const a=new THREE.Vector3(), b=new THREE.Vector3(), c=new THREE.Vector3();
+    const centroid=new THREE.Vector3(), faceNormal=new THREE.Vector3(), rayOrigin=new THREE.Vector3();
+    let measured=0;
+    for(let i=0;i<triCount;i+=step){
+      const i3=i*3;
+      a.set(pos.getX(i3),pos.getY(i3),pos.getZ(i3));
+      b.set(pos.getX(i3+1),pos.getY(i3+1),pos.getZ(i3+1));
+      c.set(pos.getX(i3+2),pos.getY(i3+2),pos.getZ(i3+2));
+      centroid.copy(a).add(b).add(c).divideScalar(3);
+      faceNormal.set(normals.getX(i3),normals.getY(i3),normals.getZ(i3));
+      if(faceNormal.lengthSq()<0.25) continue;   // 退化的法向量，略過
+      faceNormal.normalize();
+      rayOrigin.copy(centroid).addScaledVector(faceNormal, -0.01);   // 稍微縮進去一點，避免打到自己這個面
+      wallRaycaster.set(rayOrigin, faceNormal.clone().negate());
+      const hits = wallRaycaster.intersectObject(threeModel, false);
+      if(hits.length && hits[0].distance>0.001){
+        measured++;
+        const thickness = hits[0].distance;
+        if(thickness < minWall) minWall = thickness;
+        if(thickness < THIN_WALL_MM){
+          thinWallCount++;
+          if(thinWallSpots.length<300) thinWallSpots.push([centroid.x,centroid.y,centroid.z]);
+        }
+      }
+    }
+    if(!measured) minWall = Math.min(size.x,size.y,size.z);   // 完全量不到（例如開放曲面），退回用最小外框維度避免顯示無限大
+  }
+  minWall = Math.round(minWall*10)/10;
 
   // 孤立面（簡化：邊界環數）
   const loosefaces=Math.floor(boundaryEdges/15);
@@ -1513,11 +1577,12 @@ function runSTLAnalysis(geom){
 
   stlAnalysis = {
     isWatertight, holeCount, boundaryEdges, boundaryEdgeCoords, loosefaces,
-    minWall, thinWallCount, maxOverhang, overhangRatio,
+    minWall, thinWallCount, thinWallSpots, maxOverhang, overhangRatio,
     islandRisk, floatingCount, supportArea, supportPoints,
     triCount, size, score, surfaceAreaCm2,
   };
   clearBoundaryHighlight();   // 換了新模型/重新分析，舊的破面標示線要跟著清掉
+  clearThinWallHighlight();   // 舊的薄壁標示點也要跟著清掉
   renderAnalysis();
 }
 
@@ -1559,13 +1624,13 @@ function renderAnalysis(){
       '最小壁厚 (Min Wall)',
       `${a.minWall.toFixed(1)} mm · 建議 ≥ 0.8 mm`,
       a.minWall>=0.8?'壁厚充足，列印風險低':a.minWall>=0.5?'部分薄壁區域，建議謹慎':'壁厚不足，列印失敗風險高',
-      Math.round((a.minWall/2)*100), a.minWall>=0.8?'ok':a.minWall>=0.5?'warn':'err', 'estimate-only'
+      Math.round((a.minWall/2)*100), a.minWall>=0.8?'ok':a.minWall>=0.5?'warn':'err', 'thinwall'
     )}
     ${ci(a.thinWallCount===0?'ok':'warn',
       '薄壁區域',
-      a.thinWallCount===0?'無薄壁風險區域':`約 ${a.thinWallCount} 處 < 1.0 mm`,
+      a.thinWallCount===0?'無薄壁風險區域':`約 ${a.thinWallCount} 處 < 0.8 mm`,
       a.thinWallCount===0?'壁厚均勻，列印穩定':'建議補強或調整列印方向',
-      a.thinWallCount===0?0:Math.min(80,a.thinWallCount*15), a.thinWallCount===0?'':'warn', 'estimate-only'
+      a.thinWallCount===0?0:Math.min(80,a.thinWallCount*15), a.thinWallCount===0?'':'warn', 'thinwall'
     )}
 
     ${secHdr('懸垂 / 孤島分析')}
@@ -1677,6 +1742,7 @@ function initThree(){
     document.getElementById('viewer-hint').style.opacity='0';
     if(e.button===0 && threeModel && threeModel.userData.isSTL){
       const hit=raycastModelAt(e);
+      if(hit && faceFlattenMode){ flattenFaceToFloor(hit); return; }   // 點選貼面模式 → 轉正該面，不啟動拖曳
       if(hit){ startModelDrag(hit); return; }   // 左鍵按在模型上 → 直接拖曳移動，不啟動相機平移
     }
     isDragging=true; isRightDrag=e.button===2;
@@ -2048,6 +2114,7 @@ let originalMaterial = null;
 
 // ══ 分析報告點擊 → 在模型上標示問題位置 ══
 let boundaryEdgeLines = null;   // 破面/空洞邊界的紅線標示（封閉模型/空洞兩個報告項目共用）
+let thinWallPoints = null;      // 薄壁位置的紅點標示（最小壁厚/薄壁區域兩個報告項目共用）
 
 function handleReportClick(action){
   if(action==='overhang'){
@@ -2055,6 +2122,8 @@ function handleReportClick(action){
     else showToast('懸垂分析已經開啟中','ok');
   } else if(action==='boundary'){
     toggleBoundaryHighlight();
+  } else if(action==='thinwall'){
+    toggleThinWallHighlight();
   } else if(action==='estimate-only'){
     showToast('此項目為模型整體估算，暫無精確定位資料可標示','info');
   }
@@ -2080,6 +2149,29 @@ function clearBoundaryHighlight(){
   boundaryEdgeLines.geometry.dispose();
   boundaryEdgeLines.material.dispose();
   boundaryEdgeLines=null;
+}
+
+// 用射線量測到的真實薄壁取樣點畫紅點標示在模型上，再點一次關閉
+function toggleThinWallHighlight(){
+  if(thinWallPoints){ clearThinWallHighlight(); showToast('已隱藏薄壁標示','ok'); return; }
+  if(!stlAnalysis || !stlAnalysis.thinWallSpots || !stlAnalysis.thinWallSpots.length){
+    showToast('沒有偵測到薄壁區域','ok'); return;
+  }
+  const pts=[];
+  stlAnalysis.thinWallSpots.forEach(p=>pts.push(p[0],p[1],p[2]));
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+  const mat=new THREE.PointsMaterial({color:0xff2222, size:5, sizeAttenuation:true, depthTest:false});
+  thinWallPoints = new THREE.Points(geo, mat);
+  threeModel.add(thinWallPoints);
+  showToast(`已標示 ${stlAnalysis.thinWallSpots.length} 處薄壁位置（紅點）`,'err');
+}
+function clearThinWallHighlight(){
+  if(!thinWallPoints) return;
+  thinWallPoints.parent && thinWallPoints.parent.remove(thinWallPoints);
+  thinWallPoints.geometry.dispose();
+  thinWallPoints.material.dispose();
+  thinWallPoints=null;
 }
 
 // ══ Manifold 網格健檢與修復（階段一：健檢+修復判定+STL匯出，CDN延遲載入不影響首屏）══
