@@ -617,7 +617,8 @@ let inv = {
     matNames: {},            // 手動材料名稱覆寫（familyCode → 顯示名稱），給新材料/未收錄代碼用
     last_processed_prints: [],
     disabled_materials: [],  // 使用者主動停用的材料代碼
-    disabled_overrides: []   // 使用者覆寫「預設停用」的清單（讓系統預設停用的材料重新顯示）
+    disabled_overrides: [],  // 使用者覆寫「預設停用」的清單（讓系統預設停用的材料重新顯示）
+    family_latest_version: {}   // 家族代碼 → 目前看過的最新版本原始代碼（Cloud Function 自動追蹤）
 };
 let currentTab = 'stock';
 let historyPage = 1;
@@ -865,11 +866,12 @@ function subscribeAll() {
                 inv.last_processed_prints = d.last_processed_prints || [];
                 inv.disabled_materials    = d.disabled_materials    || [];
                 inv.disabled_overrides    = d.disabled_overrides    || [];
+                inv.family_latest_version = d.family_latest_version || {};
                 invLoadedFromFirestore = true;
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
-                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = [];
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = []; inv.family_latest_version = {};
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
             const merged = mergeMaterialAliases();
@@ -1008,7 +1010,11 @@ function matCode(input) {
 function matName(input) {
     if(!input) return input;
     const fam = familyCode(canonCode(input));
-    return (inv.matNames && inv.matNames[fam]) || FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
+    // 自動抓取到的最新版本代碼（來自 Cloud Function 同步）優先於寫死的家族泛用名稱，
+    // 讓顯示名稱自動反映最新版本（如 FLTO2002 → "Tough 2000 V2"），不用手動改 FAMILY_TO_NAME
+    const latestRaw = inv.family_latest_version && inv.family_latest_version[fam];
+    const latestName = latestRaw && CODE_TO_NAME[latestRaw];
+    return (inv.matNames && inv.matNames[fam]) || latestName || FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
 }
 
 // ══ 機台代號 → 顯示名稱 ══

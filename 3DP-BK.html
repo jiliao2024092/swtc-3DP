@@ -128,6 +128,10 @@
                 <input type="date" id="edit-date" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
             <div class="space-y-1">
+                <label class="text-sm font-medium text-gray-700">結束日期<span class="text-xs text-gray-400 ml-1">(跨天預約才填)</span></label>
+                <input type="date" id="edit-end-date" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+            <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">時段</label>
                 <select id="edit-slot" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                     <option value="AM">上午</option>
@@ -156,6 +160,19 @@
                     <option>已完成</option>
                     <option>異常/取消</option>
                 </select>
+            </div>
+            <div class="space-y-1">
+                <label class="text-sm font-medium text-gray-700">用途類別</label>
+                <select id="edit-category" onchange="onEditCategoryChange(this.value)" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    <option value="">請選擇</option>
+                    <option value="活動展示">活動展示</option>
+                    <option value="工程測試">工程測試</option>
+                    <option value="其他">其他</option>
+                </select>
+            </div>
+            <div class="space-y-1 hidden" id="edit-category-other-wrap">
+                <label class="text-sm font-medium text-gray-700">其他用途說明</label>
+                <input type="text" id="edit-category-other-input" placeholder="請填寫用途" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
             <div class="col-span-2 space-y-1">
                 <div class="flex items-center justify-between">
@@ -392,6 +409,10 @@
                     <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 </div>
                 <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">結束日期<span class="text-xs text-gray-400 ml-1">(跨天預約才填)</span></label>
+                    <input type="date" id="end-date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                </div>
+                <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">時段</label>
                     <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                         <option value="AM">上午</option>
@@ -407,6 +428,19 @@
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">選擇設備</label>
                     <select id="printer-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-sm font-medium text-gray-700">用途類別</label>
+                    <select id="category-select" onchange="onCategoryChange(this.value)" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="">請選擇</option>
+                        <option value="活動展示">活動展示</option>
+                        <option value="工程測試">工程測試</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+                <div class="space-y-1 hidden" id="category-other-wrap">
+                    <label class="text-sm font-medium text-gray-700">其他用途說明</label>
+                    <input type="text" id="category-other-input" placeholder="請填寫用途" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 </div>
                 <div class="space-y-1 lg:col-span-2">
                     <div class="flex items-center justify-between">
@@ -480,10 +514,15 @@ let ENG_LABEL = {};       // { key: 中文 }
 let ENG_FULLLABEL = {};   // { key: '中文 (英文)' }
 let unsubscribeSettings = null;
 let salesOptions = SALES.map(s=>({key:s,label:s}));  // booking 業務清單（admin settings/workspace.bk_sales 覆蓋）
-const PRINTERS  = ['Form4','Form4L','MarkTwo','UR','Other'];
+const DEFAULT_PRINTERS = ['Form4','Form4L','MarkTwo','UR','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 const DONE_STATUSES = new Set(['已完成','異常/取消']);
-const GANTT_PRINTERS = ['Form4','Form4L','UR'];
+// 甘特圖原本排除 MarkTwo（mk2），依需求加回甘特圖顯示
+const DEFAULT_GANTT_PRINTERS = ['Form4','Form4L','MarkTwo','UR'];
+// 機台清單：預設值先頂著，admin 於後台「3D列印機預約設定」新增機台後，
+// subscribeSettings() 會用 settings/workspace.bk_machines 覆蓋這兩個陣列並重新渲染甘特圖/下拉選單
+let PRINTERS = DEFAULT_PRINTERS.slice();
+let GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
 
 // 應用程式狀態
 let currentUser = null;            // {uid, email, displayName, role}
@@ -735,9 +774,12 @@ function getConflictKeys() {
     const counts = {};
     bookings.forEach(b=>{
         if(!b.date || !b.printer) return;
+        const days = dateRangeList(b.date, b.endDate||b.date);
         getOccupiedSlots(b).forEach(s=>{
-            const k = `${b.printer}|${b.date}|${s}`;
-            counts[k] = (counts[k]||0) + 1;
+            days.forEach(dk=>{
+                const k = `${b.printer}|${dk}|${s}`;
+                counts[k] = (counts[k]||0) + 1;
+            });
         });
     });
     const cs = new Set();
@@ -745,7 +787,8 @@ function getConflictKeys() {
     return cs;
 }
 function bookingHasConflict(b, cs) {
-    return getOccupiedSlots(b).some(s => cs.has(`${b.printer}|${b.date||''}|${s}`));
+    const days = dateRangeList(b.date||'', b.endDate||b.date||'');
+    return getOccupiedSlots(b).some(s => days.some(dk => cs.has(`${b.printer}|${dk}|${s}`)));
 }
 function populateFilterSelects() {
     const fills = [
@@ -778,7 +821,7 @@ function getSortKey(b, field) {
     if(field==='engineer') return b.engineer || '';
     if(field==='status'){
         const order={'執行中':0,'待確認':1,'已完成':2,'異常/取消':3};
-        return order[b.status] ?? 9;
+        return order[effectiveStatus(b)] ?? 9;
     }
     return '';
 }
@@ -828,11 +871,11 @@ window.renderTable = function() {
 
     let filtered = bookings.filter(b => {
         if(fEng     && b.engineer !== fEng)     return false;
-        if(fStatus  && b.status   !== fStatus)  return false;
+        if(fStatus  && effectiveStatus(b) !== fStatus)  return false;
         if(fPrinter && b.printer  !== fPrinter) return false;
         if(fSales   && b.sales    !== fSales)   return false;
-        if(fSpecial==='overdue'  && !(b.date && b.date<today && !DONE_STATUSES.has(b.status))) return false;
-        if(fSpecial==='active'   && DONE_STATUSES.has(b.status)) return false;
+        if(fSpecial==='overdue'  && !(b.date && b.date<today && !DONE_STATUSES.has(effectiveStatus(b)))) return false;
+        if(fSpecial==='active'   && DONE_STATUSES.has(effectiveStatus(b))) return false;
         if(fSpecial==='conflict' && !bookingHasConflict(b, conflicts)) return false;
         return true;
     });
@@ -849,8 +892,8 @@ window.renderTable = function() {
 
     const dir = sortDir==='asc' ? 1 : -1;
     const sorted = filtered.slice().sort((a,b)=>{
-        const aDone = DONE_STATUSES.has(a.status) ? 1 : 0;
-        const bDone = DONE_STATUSES.has(b.status) ? 1 : 0;
+        const aDone = DONE_STATUSES.has(effectiveStatus(a)) ? 1 : 0;
+        const bDone = DONE_STATUSES.has(effectiveStatus(b)) ? 1 : 0;
         if(aDone !== bDone) return aDone - bDone;
         const ka = getSortKey(a, sortField);
         const kb = getSortKey(b, sortField);
@@ -867,14 +910,15 @@ window.renderTable = function() {
     tbody.innerHTML = '';
     pageData.forEach(b => {
         const tr = document.createElement('tr');
-        const isDone = DONE_STATUSES.has(b.status);
+        const dispStatus = effectiveStatus(b);
+        const isDone = DONE_STATUSES.has(dispStatus);
         const isConflict = bookingHasConflict(b, conflicts);
         tr.className = 'hover:bg-gray-50 transition-colors' + (isDone?' opacity-60':'') + (isConflict?' bg-orange-50':'');
-        const opts = STATUSES.map(s=>`<option value="${s}" ${b.status===s?'selected':''}>${s}</option>`).join('');
+        const opts = STATUSES.map(s=>`<option value="${s}" ${dispStatus===s?'selected':''}>${s}</option>`).join('');
         const displayDate = b.date
             ? new Date(b.date+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
             : '—';
-        const isOverdue = b.date && b.date<today && !DONE_STATUSES.has(b.status);
+        const isOverdue = b.date && b.date<today && !DONE_STATUSES.has(dispStatus);
         const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='EV' ? '晚上' : b.slot==='ALL' ? '全天' : '—';
         const slotColor = isConflict ? 'bg-orange-200 text-orange-800' : (b.slot==='PM' ? 'bg-orange-100 text-orange-700' : b.slot==='EV' ? 'bg-indigo-100 text-indigo-700' : b.slot==='ALL' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700');
         const printerCell = isConflict
@@ -892,7 +936,7 @@ window.renderTable = function() {
 
         tr.innerHTML = `
             <td class="p-3 font-medium ${isOverdue?'text-red-500':'text-gray-800'}">
-                ${displayDate}${isOverdue?' <span class="text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>':''}
+                ${displayDate}${(b.endDate && b.endDate!==b.date) ? ` <span class="text-xs text-gray-400">~${new Date(b.endDate+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})}</span>` : ''}${isOverdue?' <span class="text-xs bg-red-100 text-red-600 px-1 rounded">逾期</span>':''}
             </td>
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
             <td class="p-3"><span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">${salesDisplay(b.sales)}</span></td>
@@ -901,7 +945,7 @@ window.renderTable = function() {
             <td class="p-3">${purposeCell}</td>
             <td class="p-3">
                 <select ${canEdit?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
-                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit?'cursor-pointer':''} ${getStatusColor(b.status)}">
+                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit?'cursor-pointer':''} ${getStatusColor(dispStatus)}">
                     ${opts}
                 </select>
             </td>
@@ -1014,6 +1058,16 @@ function updateGanttModeButtons(){
 function ganttStatusColor(status) {
     return {'待確認':'bg-yellow-300 text-yellow-900','執行中':'bg-blue-400 text-white','已完成':'bg-green-400 text-white','異常/取消':'bg-red-300 text-red-900'}[status] || 'bg-gray-300 text-gray-700';
 }
+// 依日期自動判斷「顯示用」狀態：已完成/異常取消 不自動變動；今天在[date,endDate]內→執行中；
+// 超過結束日期還沒人工結案→已完成。純顯示層計算，不寫回 Firestore（避免每次讀取都多一次寫入）。
+function effectiveStatus(b){
+    if(DONE_STATUSES.has(b.status)) return b.status;
+    const today = fmtDateLocal(new Date());
+    const end = (b.endDate && b.endDate>=b.date) ? b.endDate : b.date;
+    if(today > end) return '已完成';
+    if(today >= b.date) return '執行中';
+    return b.status || '待確認';
+}
 function renderGantt() {
     updateGanttModeButtons();
     if(ganttMode === 'month') return renderGanttMonth();
@@ -1045,7 +1099,7 @@ function renderGantt() {
         days.forEach(d=>{
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
-            const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
+            const dayBookings = bookings.filter(b=>b.printer===printer && bookingCoversDay(b,dayKey));
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
             const SLOTS = ['AM','PM','EV'];
             const indiv = { AM: dayBookings.filter(b=>(b.slot||'AM')==='AM'),
@@ -1058,10 +1112,10 @@ function renderGantt() {
 
             // 渲染一個預約色塊
             const renderItem = (b) => {
-                const color = ganttStatusColor(b.status);
+                const color = ganttStatusColor(effectiveStatus(b));
                 const text = b.engineer ? `${engDisplay(b.engineer)}: ${b.purpose||'—'}` : (b.purpose||salesDisplay(b.sales));
                 const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${b.status}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
+                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
                     ${text}${allDayMark}
                 </div>`;
             };
@@ -1134,7 +1188,7 @@ function renderGanttMonth() {
             const wd = d.getDay();
             const isWeekend = wd===0 || wd===6;
             const todayBg = isToday ? 'bg-blue-50/40' : (isWeekend ? 'bg-gray-50/60' : '');
-            const dayBookings = bookings.filter(b=>b.printer===printer && b.date===dayKey);
+            const dayBookings = bookings.filter(b=>b.printer===printer && bookingCoversDay(b,dayKey));
             if(!dayBookings.length){ html += `<td class="border border-gray-200 ${todayBg}"></td>`; return; }
             // 衝突：同一時段(AM/PM)>1 視為衝突（與週視圖一致）
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
@@ -1145,9 +1199,9 @@ function renderGanttMonth() {
             const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : '';
             const bg   = conflict ? 'bg-orange-100' : todayBg;
             const blocks = dayBookings.map(b=>{
-                const color   = ganttStatusColor(b.status);
+                const color   = ganttStatusColor(effectiveStatus(b));
                 const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':b.slot==='EV'?'晚上':'上午';
-                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${b.status}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
+                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${effectiveStatus(b)}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
             }).join('');
             html += `<td class="p-0.5 border border-gray-200 align-top ${bg}${ring}">${blocks}</td>`;
         });
@@ -1161,6 +1215,14 @@ function renderGanttMonth() {
 // ══════════════════════════════════════════════
 // ══ 6. CRUD bookings ══════════════════════════
 // ══════════════════════════════════════════════
+window.onCategoryChange = function(val){
+    document.getElementById('category-other-wrap').classList.toggle('hidden', val!=='其他');
+    if(val!=='其他') document.getElementById('category-other-input').value = '';
+};
+window.onEditCategoryChange = function(val){
+    document.getElementById('edit-category-other-wrap').classList.toggle('hidden', val!=='其他');
+    if(val!=='其他') document.getElementById('edit-category-other-input').value = '';
+};
 window.setHasOrder = function(val){
     hasOrder=val;
     document.getElementById('btn-yes').className='toggle-btn'+(val===true?' active-yes':'');
@@ -1171,27 +1233,49 @@ window.setHasOrder = function(val){
     input.disabled = false; input.value=''; input.focus();
 };
 
+// 兩個日期(含)之間每天的 yyyy-mm-dd 字串（date/endDate 皆為字串，字串比較即可判斷順序）
+function dateRangeList(date, endDate){
+    const end = endDate && endDate>=date ? endDate : date;
+    const out = []; let d = new Date(date+'T00:00:00');
+    const endD = new Date(end+'T00:00:00');
+    while(d<=endD){ out.push(fmtDateLocal(d)); d.setDate(d.getDate()+1); }
+    return out;
+}
+// 判斷某預約(b)是否佔用某一天(dayKey)：跨天預約(b.endDate)每天都算佔用
+function bookingCoversDay(b, dayKey){
+    const end = b.endDate && b.endDate>=b.date ? b.endDate : b.date;
+    return b.date<=dayKey && dayKey<=end;
+}
+
 document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const purpose = document.getElementById('purpose-input').value.trim();
     const date    = document.getElementById('date-input').value;
+    const endDate = document.getElementById('end-date-input').value || date;
+    const category = document.getElementById('category-select').value;
+    const categoryOther = document.getElementById('category-other-input').value.trim();
     if(!date){ showToast('請選擇預約日期','error'); return; }
+    if(endDate < date){ showToast('結束日期不能早於預約日期','error'); return; }
+    if(!category){ showToast('請選擇用途類別','error'); return; }
+    if(category==='其他' && !categoryOther){ showToast('請填寫其他用途說明','error'); return; }
     if(hasOrder===null){ showToast('請選擇是否有單號','error'); return; }
     if(!purpose){ showToast(hasOrder?'請填寫單號':'請填寫備註','error'); return; }
 
     const printer = document.getElementById('printer-select').value;
     const slot    = document.getElementById('slot-input').value;
-    // 衝突檢查：以「佔用時段」重疊判定，全天(ALL)與任一時段重疊也算衝突
+    // 衝突檢查：以「佔用時段」重疊判定，全天(ALL)與任一時段重疊也算衝突；跨天預約逐日檢查
     const newSlots = getOccupiedSlots({slot});
-    const conflicts = bookings.filter(b=>b.printer===printer && b.date===date
+    const newDays = dateRangeList(date, endDate);
+    const conflicts = bookings.filter(b=>b.printer===printer
+        && newDays.some(dk=>bookingCoversDay(b,dk))
         && getOccupiedSlots(b).some(s=>newSlots.includes(s)));
     if(conflicts.length > 0){
         const slotTxt = slot==='ALL'?'全天':slot==='PM'?'下午':slot==='EV'?'晚上':'上午';
         const detail = conflicts.slice(0,5).map(b=>{
             const bs = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':b.slot==='EV'?'晚上':'上午';
-            return `・${bs}：${salesDisplay(b.sales)}${b.purpose?' / '+b.purpose:''}`;
+            return `・${b.date}${b.endDate&&b.endDate!==b.date?'~'+b.endDate:''} ${bs}：${salesDisplay(b.sales)}${b.purpose?' / '+b.purpose:''}`;
         }).join('\n');
-        if(!confirm(`注意：${printer} 在 ${date} ${slotTxt} 與現有 ${conflicts.length} 筆預約時段重疊：\n${detail}\n\n確定仍要新增嗎？`)) return;
+        if(!confirm(`注意：${printer} 在 ${date}${endDate!==date?'~'+endDate:''} ${slotTxt} 與現有 ${conflicts.length} 筆預約時段重疊：\n${detail}\n\n確定仍要新增嗎？`)) return;
     }
 
     const btn = document.getElementById('submit-btn');
@@ -1200,9 +1284,12 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     try {
         await addDoc(collection(db,'bookings'), {
             date,
+            endDate,
             slot,
             sales:    document.getElementById('sales-select').value,
             printer,
+            category,
+            categoryOther: category==='其他' ? categoryOther : '',
             hasOrder,
             purpose,
             engineer: document.getElementById('engineer-select').value,
@@ -1218,6 +1305,10 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
         showToast('✓ 預約已新增','success');
         // 重置表單
         document.getElementById('date-input').value = fmtDateLocal(new Date());
+        document.getElementById('end-date-input').value = '';
+        document.getElementById('category-select').value = '';
+        document.getElementById('category-other-input').value = '';
+        document.getElementById('category-other-wrap').classList.add('hidden');
         document.getElementById('purpose-input').value = '';
         document.getElementById('purpose-input').disabled = true;
         document.getElementById('purpose-input').placeholder = '請先選擇是否有單號';
@@ -1262,7 +1353,11 @@ window.openEditModal = function(id){
     if(!b) return;
     editingId = id; editHasOrder = b.hasOrder ?? null;
     document.getElementById('edit-date').value = b.date || '';
+    document.getElementById('edit-end-date').value = (b.endDate && b.endDate!==b.date) ? b.endDate : '';
     document.getElementById('edit-slot').value = b.slot || 'AM';
+    document.getElementById('edit-category').value = b.category || '';
+    document.getElementById('edit-category-other-input').value = b.categoryOther || '';
+    document.getElementById('edit-category-other-wrap').classList.toggle('hidden', b.category!=='其他');
     document.getElementById('edit-purpose').value = b.purpose || '';
     document.getElementById('edit-sales').value = b.sales;
     document.getElementById('edit-printer').value = b.printer;
@@ -1287,17 +1382,26 @@ window.setEditHasOrder = function(val){
 window.saveEdit = async function(){
     const purpose = document.getElementById('edit-purpose').value.trim();
     const date    = document.getElementById('edit-date').value;
+    const endDate = document.getElementById('edit-end-date').value || date;
+    const category = document.getElementById('edit-category').value;
+    const categoryOther = document.getElementById('edit-category-other-input').value.trim();
     if(!date){ showToast('請選擇日期','error'); return; }
+    if(endDate < date){ showToast('結束日期不能早於預約日期','error'); return; }
+    if(!category){ showToast('請選擇用途類別','error'); return; }
+    if(category==='其他' && !categoryOther){ showToast('請填寫其他用途說明','error'); return; }
     if(editHasOrder===null){ showToast('請選擇是否有單號','error'); return; }
     if(!purpose){ showToast(editHasOrder?'請填寫單號':'請填寫備註','error'); return; }
     try {
         await updateDoc(doc(db,'bookings',editingId), {
             date,
+            endDate,
             slot:     document.getElementById('edit-slot').value,
             sales:    document.getElementById('edit-sales').value,
             printer:  document.getElementById('edit-printer').value,
             engineer: document.getElementById('edit-engineer').value,
             status:   document.getElementById('edit-status').value,
+            category,
+            categoryOther: category==='其他' ? categoryOther : '',
             hasOrder: editHasOrder,
             purpose,
             updatedBy:      currentUser.uid,
@@ -1429,18 +1533,20 @@ window.exportExcel = function(){
     if(!bookings.length){ showToast('沒有資料可以匯出','error'); return; }
     const rows = bookings.map(b=>({
         '預約日期': b.date||'',
+        '結束日期': (b.endDate && b.endDate!==b.date) ? b.endDate : '',
         '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='EV'?'晚上':b.slot==='ALL'?'全天':'',
         '申請業務': salesDisplay(b.sales),
         '設備':     b.printer||'',
+        '用途類別': b.category==='其他' ? `其他：${b.categoryOther||''}` : (b.category||''),
         '類型':     b.hasOrder?'單號':'備註',
         '內容':     b.purpose||'',
         '負責工程師':engDisplay(b.engineer)||'',
-        '任務狀態': b.status||'',
+        '任務狀態': effectiveStatus(b),
         '建立者':   b.createdByEmail||'',
         '最後修改': b.updatedAt ? fmtRelTime(b.updatedAt) : '',
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{wch:14},{wch:8},{wch:10},{wch:10},{wch:8},{wch:30},{wch:12},{wch:10},{wch:25},{wch:18}];
+    ws['!cols'] = [{wch:14},{wch:14},{wch:8},{wch:10},{wch:10},{wch:16},{wch:8},{wch:30},{wch:12},{wch:10},{wch:25},{wch:18}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '預約清單');
     const now = new Date();
@@ -1756,11 +1862,6 @@ window.showToast = function(msg,type){
     t._timer = setTimeout(()=>t.classList.add('hidden'), 3500);
 };
 
-function populateSelect(id, options){
-    const sel = document.getElementById(id);
-    options.forEach(o=>{ const opt=document.createElement('option'); opt.value=opt.textContent=o; sel.appendChild(opt); });
-}
-
 // 工程師顯示：「中文 (英文)」；無中文或中文=key 時退回 key
 function engDisplay(key){
     if(!key) return '';
@@ -1786,6 +1887,16 @@ function populateEngineerSelects(){
         sel.innerHTML = ENGINEER_ORDER
             .map(k=>`<option value="${k}" ${cur===k?'selected':''}>${engDisplay(k)}</option>`)
             .join('');
+    });
+}
+
+// 填入機台下拉（清單與 admin 後台「3D列印機預約設定」機台清單(bk_machines)同源）
+function populatePrinterSelects(){
+    [['printer-select',PRINTERS],['edit-printer',PRINTERS]].forEach(([id,opts])=>{
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('');
     });
 }
 
@@ -1822,13 +1933,22 @@ function subscribeSettings(){
             ? s.bk_sales.filter(x=>x && (x.key||x.label)).map(x=>({key:x.key||x.label, label:x.label||x.key}))
             : SALES.map(v=>({key:v,label:v}));
         populateSalesSelects();
-        if (currentUser) renderTable();
+        // 機台清單：與 admin 後台「3D列印機預約設定」機台清單(bk_machines)同源；
+        // admin 新增機台後這裡會自動重填下拉選單、甘特圖也會自動多出一列，不用改程式碼
+        if (s && Array.isArray(s.bk_machines) && s.bk_machines.length){
+            PRINTERS = s.bk_machines.map(m=>m.name||m).filter(Boolean);
+            GANTT_PRINTERS = PRINTERS.filter(p=>p!=='Other');   // 甘特圖排除「Other」這種非實體機台的選項
+        } else {
+            PRINTERS = DEFAULT_PRINTERS.slice();
+            GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
+        }
+        populatePrinterSelects();
+        if (currentUser){ renderTable(); renderGantt(); }
     }, (err)=>console.error('讀取 settings/workspace 失敗', err));
 }
 
 // ══ 初始化 ═══════════════════════════════════
-[['printer-select',PRINTERS],['edit-printer',PRINTERS]]
-    .forEach(([id,opts])=>populateSelect(id,opts));
+populatePrinterSelects();   // 機台下拉：settings.bk_machines 載入後會重填
 populateEngineerSelects();  // 工程師下拉：value=key、顯示中文(英文)，settings 載入後會重填
 populateSalesSelects();     // 業務下拉：value=key、顯示中文名，settings.bk_sales 載入後會重填
 document.getElementById('date-input').value = fmtDateLocal(new Date());

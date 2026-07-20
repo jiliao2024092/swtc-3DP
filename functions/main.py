@@ -138,6 +138,35 @@ def material_display_name(code: Optional[str]) -> Optional[str]:
     return FAMILY_TO_NAME.get(fam, code)
 
 
+def raw_version_num(code: Optional[str]) -> Optional[int]:
+    """取 Formlabs 代碼末 2 碼當版本號（數字），供比較同家族的新舊版本。非標準代碼回傳 None。"""
+    if not code:
+        return None
+    c = str(code).upper()
+    if re.fullmatch(r"FL[A-Z0-9]{6}", c) and any(ch.isdigit() for ch in c) and c[6:8].isdigit():
+        return int(c[6:8])
+    return None
+
+
+def note_family_latest_version(raw_code: Optional[str], family_latest: dict) -> None:
+    """記錄每個材料家族目前看過的最新版本原始代碼（只認可解析出版本號的標準代碼），
+    供前端自動判斷「最新版本」使用，取代過去手動維護 DEFAULT_DISABLED_NAMES 的做法。
+    只累加/更新，不刪除舊資料——本來就只影響「以後同步進來的新資料」。"""
+    if not raw_code:
+        return
+    c = str(raw_code).upper()
+    v = raw_version_num(c)
+    if v is None:
+        return
+    fam = family_code(c)
+    cur = family_latest.get(fam)
+    cur_v = raw_version_num(cur) if cur else -1
+    if cur_v is None:
+        cur_v = -1
+    if v > cur_v:
+        family_latest[fam] = c
+
+
 def parse_valid_ts(val, floor_year: int = 2000):
     """解析 ISO 時間字串。空值、無法解析、或落在 epoch 附近（年份 < floor_year）
     一律視為無效並回傳 None。
@@ -200,6 +229,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         "skipped_status":   {},
         "errors":           [],
     }
+    # 本次同步過程中看到的各材料家族最新版本原始代碼（cartridge/print 都會回報，
+    # 抓取當下就記錄，最後與 Firestore 既有值合併，取版本號較大者）
+    family_latest_seen = {}
 
     try:
         # 1. OAuth
@@ -277,9 +309,12 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 initial    = c.get("initial_volume_ml")
                 dispensed  = c.get("volume_dispensed_ml", 0) or 0
                 remaining  = round(float(initial) - float(dispensed), 1) if initial is not None else None
+                raw_cart_material = c.get("material") or c.get("display_name")
+                note_family_latest_version(raw_cart_material, family_latest_seen)
                 cartridges.append({
                     "slot":         c.get("cartridge_slot") or c.get("slot") or "SINGLE",
-                    "material":     canon_material(c.get("material") or c.get("display_name")),
+                    "material":     canon_material(raw_cart_material),
+                    "material_raw": raw_cart_material,
                     "remaining_ml": remaining,
                     "initial_ml":   initial,
                     "serial":       c.get("serial"),
@@ -333,6 +368,8 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         inv.setdefault("last_processed_prints", [])
         inv.setdefault("disabled_materials", [])
         inv.setdefault("disabled_overrides", [])
+        inv.setdefault("family_latest_version", {})
+        family_latest = inv["family_latest_version"]
 
         # backfill 模式：清空 history + last_processed_prints
         if backfill:
@@ -379,6 +416,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     {
                         "slot":         c.get("slot"),
                         "material":     c["material"],
+                        "material_raw": c.get("material_raw"),
                         "remaining_ml": c["remaining_ml"],
                         "initial_ml":   c["initial_ml"] or ML_PER_BOTTLE,
                         "serial":       c.get("serial"),
@@ -483,6 +521,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 raw_material = (pr.get("material") or pr.get("material_name")
                                 or pr.get("resin") or pr.get("material_code"))
                 material = canon_material(raw_material)
+                note_family_latest_version(raw_material, family_latest_seen)
 
                 # 體積：容錯多個可能的欄位名（Formlabs 不同版本/端點欄位名不一）
                 volume = (pr.get("volume_ml") or pr.get("material_used_ml")
@@ -553,6 +592,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         "tsDate":      ts_dt,
                         "type":        record_type,
                         "material":    material,
+                        "material_raw": raw_material,   # 原始代碼（未截斷版本），供日後版本判斷用；舊紀錄沒有此欄位
                         "printer":     alias,
                         "ml":          volume_num,
                         "note":        pr.get("name", "") or f"列印 {guid[:8]}",
@@ -608,6 +648,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
         inv["last_processed_prints"] = list(processed)[-2000:]  # 保留最近 2000 個
         inv["deducted_prints"]       = list(deducted)[-2000:]   # 已扣庫存的 print
+        # 把本次同步看到的各家族最新版本代碼併入既有記錄（版本號較大者勝出，只會前進不會倒退）
+        for raw in family_latest_seen.values():
+            note_family_latest_version(raw, family_latest)
         inv_ref.set({
             "cartridges":            inv["cartridges"],
             "stock":                 inv["stock"],
@@ -616,6 +659,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             "deducted_prints":       inv["deducted_prints"],
             "disabled_materials":    inv["disabled_materials"],
             "disabled_overrides":    inv["disabled_overrides"],
+            "family_latest_version": family_latest,
             "updatedAt":             firestore.SERVER_TIMESTAMP,
             "updatedBy":             "cloud-function",
             "updatedByEmail":        "sync-formlabs@cloud-function",
