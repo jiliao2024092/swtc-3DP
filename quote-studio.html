@@ -417,6 +417,7 @@ body.big{--fs:1.16}
     <div class="vsep"></div>
     <button class="abtn" id="btnFs" title="字級切換：小字 / 大字"><span style="font-size:9px;font-weight:700">A</span><span style="font-size:13px;font-weight:700">A</span></button>
     <button class="abtn" id="btnDark" title="切換黑暗模式">🌙 黑暗</button>
+    <button class="abtn" id="btnFullscreen" title="全螢幕檢視（填滿瀏覽器視窗，保留書籤列與工作列）">⛶ 全螢幕</button>
   </div>
   <div id="cubeWrap">
     <div id="cube"><div id="cubeInner">
@@ -521,6 +522,16 @@ const FIREBASE_CONFIG = {
 };
 const FB = { ready:false, db:null, uid:null, unsubOrders:null, unsubHistory:null };
 
+// 全螢幕檢視：本頁以 iframe 嵌在 portal.html 裡時，隱藏 portal 左側選單(.shell-sidebar)讓本頁填滿整個
+// 瀏覽器視窗；刻意不用原生 Fullscreen API，因為那會連瀏覽器書籤列都蓋掉，使用者要求保留書籤列/工作列。
+// 同源 iframe 才能直接摸到 parent DOM，非iframe/跨網域環境下靜默略過（本頁本身已是滿版版面，不受影響）。
+function setPortalSidebarHidden(hidden){
+  try{
+    if(window.parent === window) return;
+    const sidebar = window.parent.document.querySelector('.shell-sidebar');
+    if(sidebar) sidebar.style.display = hidden ? 'none' : '';
+  }catch(e){ /* 跨網域或其他限制時靜默忽略 */ }
+}
 function genNo(prefix){
   const d = new Date().toISOString().slice(2,10).replace(/-/g,'');
   const rand = Math.random().toString(36).slice(2,6).toUpperCase();
@@ -735,6 +746,7 @@ const S = {
   rangeBoxOn: true,     // 列印範圍框線
   fontBig: false,       // 大字模式
   darkMode: false,      // 黑暗模式
+  appFullscreen: false, // 全螢幕檢視（隱藏 portal 側欄，填滿瀏覽器視窗；非原生Fullscreen API，保留書籤列/工作列）
   orientGoal: 'time',   // 自動擺放目標：balance | time | support
   undoStack: [],        // 擺放操作復原（Ctrl+Z，同 PreForm）
   autoOrientAngles: '20, 25, 30, 35, 40, 45',    // 可自訂候選角
@@ -2999,6 +3011,15 @@ function bindEvents(){
     $('#btnDark').classList.toggle('on', S.darkMode);
     try { localStorage.setItem('aps_darkMode', S.darkMode?'1':'0'); } catch(e){}
     toast(S.darkMode ? '🌙 黑暗模式' : '☀ 一般模式','ok');
+  });
+  $('#btnFullscreen').addEventListener('click', ()=>{
+    S.appFullscreen = !S.appFullscreen;
+    setPortalSidebarHidden(S.appFullscreen);
+    $('#btnFullscreen').classList.toggle('on', S.appFullscreen);
+    $('#btnFullscreen').innerHTML = S.appFullscreen ? '⤢ 離開全螢幕' : '⛶ 全螢幕';
+  });
+  addEventListener('keydown', e=>{
+    if (e.key==='Escape' && S.appFullscreen) $('#btnFullscreen').click();
   });
   $('#clipRange').addEventListener('input', e=>{ S.clipPct=+e.target.value; applyClip(); });
   $$('.cface, #cubeHome').forEach(b=>b.addEventListener('click', ()=>setCam(b.dataset.cam==='home'?'home':b.dataset.cam)));
