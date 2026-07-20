@@ -19,6 +19,19 @@
   --mono:'JetBrains Mono',monospace;
   --shadow:0 10px 32px rgba(10,14,20,.12);
   --shadowSm:0 4px 16px rgba(10,14,20,.08);
+  --panelBg:#ffffff;
+}
+:root[data-theme="dark"]{
+  --bg1:#12151b; --bg2:#0a0d12;
+  --glass:rgba(24,28,36,.9); --glass2:rgba(24,28,36,.85);
+  --line:#2a2f3a; --lineGlass:rgba(42,47,58,.95);
+  --ink:#eef1f5; --ink2:#c3c9d4; --ink3:#9aa2b0; --ink4:#6b7280;
+  --accent:#3fb6d8; --accentBg:#173540;
+  --ok:#4bcf8b; --okBg:#123a29; --okLine:#1f5c40;
+  --warn:#e0b64a; --err:#e0605a; --purple:#a68af0; --purpleBg:#251c40;
+  --shadow:0 10px 32px rgba(0,0,0,.4);
+  --shadowSm:0 4px 16px rgba(0,0,0,.3);
+  --panelBg:#1b1f27;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
@@ -47,9 +60,9 @@ button{font-family:inherit}
 #viewbar{display:flex;gap:5px;border-radius:8px;padding:5px;align-items:center}
 .vtab{padding:4px 10px;border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs));font-weight:600;
   color:var(--ink4);cursor:pointer;background:transparent}
-.vtab.on{border-color:var(--line);color:var(--ink);background:#fff}
+.vtab.on{border-color:var(--line);color:var(--ink);background:var(--panelBg)}
 .vsep{width:1px;background:var(--line);align-self:stretch;margin:2px 2px}
-.abtn{padding:4px 9px;border-radius:5px;border:1px solid var(--line);font-size:calc(11px * var(--fs));cursor:pointer;background:#fff;color:var(--ink3)}
+.abtn{padding:4px 9px;border-radius:5px;border:1px solid var(--line);font-size:calc(11px * var(--fs));cursor:pointer;background:var(--panelBg);color:var(--ink3)}
 .abtn.warnb{border-color:var(--warn);color:var(--warn)}
 .abtn.warnb.on{background:#faf3df}
 .abtn.purpleb{border-color:var(--purple);color:var(--purple);background:var(--purpleBg)}
@@ -72,12 +85,12 @@ button{font-family:inherit}
 #stepHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:6px}
 #stepHead b{font-size:calc(13px * var(--fs));flex:1}
 #stepHead span{font-size:calc(10px * var(--fs));color:var(--ink4);font-family:var(--mono)}
-#stepHide{border:1px solid var(--line);background:#fff;border-radius:5px;width:22px;height:22px;cursor:pointer;color:var(--ink3);font-size:calc(10px * var(--fs));flex-shrink:0}
+#stepHide{border:1px solid var(--line);background:var(--panelBg);border-radius:5px;width:22px;height:22px;cursor:pointer;color:var(--ink3);font-size:calc(10px * var(--fs));flex-shrink:0}
 #stepHide:hover{color:var(--accent);border-color:var(--accent)}
 #stepShow{position:absolute;top:80px;left:14px;z-index:15;padding:8px 11px;border-radius:8px;cursor:pointer;font-size:calc(11.5px * var(--fs));font-weight:600;color:var(--ink3)}
 #stepShow:hover{color:var(--accent)}
 
-.fileRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:6px 9px;background:#fff;margin-bottom:5px;cursor:pointer}
+.fileRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:6px 9px;background:var(--panelBg);margin-bottom:5px;cursor:pointer}
 .fileRow.on{border-color:var(--accent);background:var(--accentBg)}
 .fileRow .fname{font-size:calc(11.5px * var(--fs));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fileRow .fmeta{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono)}
@@ -89,7 +102,7 @@ button{font-family:inherit}
 #dropZone .t2{font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono)}
 #dropZone.drag{background:#d3ecf5;border-color:#0a6a86}
 
-.machRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:#fff;cursor:pointer;margin-bottom:4px}
+.machRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:var(--panelBg);cursor:pointer;margin-bottom:4px}
 .machRow.on{border-color:var(--accent);background:var(--accentBg)}
 .machRow .dot{width:7px;height:7px;border-radius:50%;background:var(--line);flex-shrink:0}
 .machRow.on .dot{background:var(--accent)}
@@ -99,12 +112,12 @@ button{font-family:inherit}
 .okNote{font-size:calc(10px * var(--fs));padding:6px 9px;border-radius:6px;background:var(--okBg);border:1px solid var(--okLine);color:var(--ok);font-weight:600;margin-top:6px}
 .errNote{font-size:calc(10px * var(--fs));padding:6px 9px;border-radius:6px;background:#faecec;border:1px solid #ecc9c9;color:var(--err);font-weight:600;margin-top:6px}
 
-select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink2);font:inherit;font-size:calc(12px * var(--fs))}
+select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--panelBg);color:var(--ink2);font:inherit;font-size:calc(12px * var(--fs))}
 .selMeta{font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono);margin-top:3px}
 
 .segGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
 .segRow{display:flex;gap:4px}
-.seg{flex:1;padding:6px 3px;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink3);font-size:calc(10.5px * var(--fs));font-weight:600;cursor:pointer}
+.seg{flex:1;padding:6px 3px;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);color:var(--ink3);font-size:calc(10.5px * var(--fs));font-weight:600;cursor:pointer}
 .seg.mono{font-family:var(--mono)}
 .seg.on{border-color:var(--ink);background:var(--ink);color:#fff}
 .seg.onA{border-color:var(--accent);background:var(--accent);color:#fff}
@@ -117,10 +130,10 @@ select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);bor
 .bigBtn{width:100%;padding:8px;border-radius:6px;background:var(--accent);color:#fff;border:0;font:inherit;font-size:calc(12px * var(--fs));font-weight:600;cursor:pointer}
 .bigBtn:hover{background:#0a6a86}
 .bigBtn:disabled{background:#9db8c2;cursor:not-allowed}
-.ghostBtn{width:100%;padding:7px;border-radius:6px;background:#fff;color:var(--ink3);border:1px solid var(--line);font:inherit;font-size:calc(11.5px * var(--fs));font-weight:600;cursor:pointer}
+.ghostBtn{width:100%;padding:7px;border-radius:6px;background:var(--panelBg);color:var(--ink3);border:1px solid var(--line);font:inherit;font-size:calc(11.5px * var(--fs));font-weight:600;cursor:pointer}
 .ghostBtn:hover{border-color:var(--accent);color:var(--accent)}
 
-.chk{border:1px solid #eef0f3;border-left:3px solid var(--ink4);background:#fff;border-radius:4px;padding:5px 8px;margin-bottom:4px}
+.chk{border:1px solid #eef0f3;border-left:3px solid var(--ink4);background:var(--panelBg);border-radius:4px;padding:5px 8px;margin-bottom:4px}
 .chk.err{border-left-color:var(--err)}
 .chk.warn{border-left-color:var(--warn)}
 .chk .t{font-size:calc(10.5px * var(--fs));font-weight:600}
@@ -129,7 +142,7 @@ select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);bor
 .chk .act{color:var(--accent);cursor:pointer;text-decoration:underline}
 #passBar{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:var(--okBg);border:1px solid var(--okLine);border-radius:5px;font-size:calc(10.5px * var(--fs));font-weight:600;color:var(--ok);cursor:pointer}
 #passChips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
-.pchip{font-size:calc(9px * var(--fs));padding:2px 7px;border-radius:999px;background:#fff;border:1px solid #cde3d6;color:var(--ok);cursor:default}
+.pchip{font-size:calc(9px * var(--fs));padding:2px 7px;border-radius:999px;background:var(--panelBg);border:1px solid #cde3d6;color:var(--ok);cursor:default}
 
 /* ============ 檔案檢查報告（步驟1 下方） ============ */
 .fcVerdict{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;margin-bottom:7px}
@@ -148,7 +161,7 @@ select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);bor
 .fcVerdict.fcv-ok .vt{color:var(--ok)}
 @keyframes fcpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.35)}50%{box-shadow:0 0 0 7px rgba(192,57,43,0)}}
 .fcCounts{display:flex;gap:4px;margin-bottom:8px}
-.fcCnt{flex:1;text-align:center;padding:5px 2px;border-radius:6px;border:1px solid var(--line);background:#fff}
+.fcCnt{flex:1;text-align:center;padding:5px 2px;border-radius:6px;border:1px solid var(--line);background:var(--panelBg)}
 .fcCnt b{display:block;font-size:calc(15px * var(--fs));font-family:var(--mono)}
 .fcCnt span{font-size:calc(8.5px * var(--fs));color:var(--ink4);font-weight:600}
 .fcCnt.e{border-color:#ecc9c9;background:#fbe7e3} .fcCnt.e b{color:var(--err)}
@@ -184,12 +197,12 @@ select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);bor
 .ppHint{font-size:calc(9px * var(--fs));color:var(--ink4);line-height:1.6;margin-top:5px}
 .ppHint b{color:var(--ink2)}
 .arrowPad{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-top:8px}
-.arrowPad button{padding:6px 0;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink3);font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer}
+.arrowPad button{padding:6px 0;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);color:var(--ink3);font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer}
 .arrowPad button:hover{border-color:var(--accent);color:var(--accent)}
 .arrowPad button.c{background:var(--accent);color:#fff;border-color:var(--accent)}
 .arrowPad .empty{visibility:hidden}
 .ppFace{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:7px;margin-top:8px;
-  border-radius:6px;border:1.5px solid var(--accent);background:#fff;color:var(--accent);
+  border-radius:6px;border:1.5px solid var(--accent);background:var(--panelBg);color:var(--accent);
   font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
 .ppFace.on{background:var(--accent);color:#fff}
 #placePanel .inRow input.outR{border-color:var(--err);color:var(--err)}
@@ -206,7 +219,7 @@ body.big{--fs:1.16}
 #gizmoTip small{color:#9fdcee;font-weight:400}
 
 /* ============ 自動擺放目標與差異說明 ============ */
-.goalSeg{flex:1;padding:6px 3px;border-radius:6px;border:1px solid var(--line);background:#fff;
+.goalSeg{flex:1;padding:6px 3px;border-radius:6px;border:1px solid var(--line);background:var(--panelBg);
   color:var(--ink3);font-size:calc(10px * var(--fs));font-weight:700;text-align:center;cursor:pointer;line-height:1.35}
 .goalSeg small{display:block;font-size:calc(7.5px * var(--fs));font-weight:400;color:var(--ink4)}
 .goalSeg.on{border-color:var(--accent);background:var(--accent);color:#fff}
@@ -215,13 +228,13 @@ body.big{--fs:1.16}
 .diffBox .t{font-size:calc(10.5px * var(--fs));font-weight:700;color:#8b6b13}
 .diffBox .d{font-size:calc(9px * var(--fs));color:var(--ink3);line-height:1.6;margin-top:3px}
 .diffBox .d b{color:var(--ink2)}
-.pfsRow{border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:#fff;margin-top:6px;
+.pfsRow{border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:var(--panelBg);margin-top:6px;
   font-size:calc(9.5px * var(--fs));color:var(--ink3);line-height:1.55}
 .pfsRow b{color:var(--accent)}
 
 /* ============ 支撐材面板（對齊 PreForm 3.51+） ============ */
 #supMatPanel{position:absolute;top:80px;left:calc(282px * var(--fs) + 22px);width:calc(300px * var(--fs));
-  max-height:calc(100vh - 175px);overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:10px;
+  max-height:calc(100vh - 175px);overflow-y:auto;background:var(--panelBg);border:1px solid var(--line);border-radius:10px;
   box-shadow:0 12px 36px rgba(10,14,20,.16);z-index:18;display:none}
 #supMatPanel.open{display:block}
 #supMatPanel::-webkit-scrollbar{width:5px}
@@ -232,37 +245,37 @@ body.big{--fs:1.16}
 .smSec{font-size:calc(10.5px * var(--fs));font-weight:700;color:var(--ink2);background:#f3f5f7;padding:6px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .smBody{padding:10px 14px}
 .smTabs{display:flex;border:1.5px solid var(--accent);border-radius:6px;overflow:hidden;margin-bottom:9px}
-.smTabs button{flex:1;padding:6px 2px;border:0;background:#fff;color:var(--accent);font:inherit;font-size:calc(10.5px * var(--fs));font-weight:700;cursor:pointer}
+.smTabs button{flex:1;padding:6px 2px;border:0;background:var(--panelBg);color:var(--accent);font:inherit;font-size:calc(10.5px * var(--fs));font-weight:700;cursor:pointer}
 .smTabs button.on{background:var(--accent);color:#fff}
 .smTabs button:disabled{color:var(--ink4);cursor:not-allowed}
 .pRow{display:flex;align-items:center;gap:5px;margin-bottom:6px}
 .pRow>label{flex:1;font-size:calc(10.5px * var(--fs));color:var(--ink2);line-height:1.3}
 .pRow .reset{font-size:calc(10px * var(--fs));color:var(--accent);cursor:pointer;width:14px;text-align:center}
 .pRow .reset.hid{visibility:hidden}
-.spinB{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff}
+.spinB{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panelBg)}
 .spinB input{width:calc(52px * var(--fs));height:24px;border:0;padding:0 5px;font:calc(10.5px * var(--fs)) var(--mono);text-align:right;color:var(--ink);outline:none}
 .spinB .un{font-size:calc(8.5px * var(--fs));color:var(--ink4);padding-right:4px;font-family:var(--mono)}
 .spinB .ar{display:flex;flex-direction:column;border-left:1px solid var(--line)}
-.spinB .ar button{width:15px;height:12px;border:0;background:#fff;font-size:7px;color:var(--ink3);cursor:pointer;line-height:1;padding:0}
+.spinB .ar button{width:15px;height:12px;border:0;background:var(--panelBg);font-size:7px;color:var(--ink3);cursor:pointer;line-height:1;padding:0}
 .spinB .ar button:hover{color:var(--accent)}
 .typeBox{border:1.5px solid;border-radius:7px;padding:6px 9px;margin-bottom:6px}
 .typeBox .th{display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer}
 .typeBox .th input{accent-color:var(--accent)}
 .typeBox .sub{margin-top:5px;padding-left:20px}
-.tb-minima{border-color:#e8930c;background:#fff8ee}.tb-minima .th{color:#a05e00}
+.tb-minima{border-color:#e8930c;background:var(--panelBg)8ee}.tb-minima .th{color:#a05e00}
 .tb-over{border-color:#0d9488;background:#effaf8}.tb-over .th{color:#0b6e63}
 .tb-stab{border-color:#d6409f;background:#fdf1f9}.tb-stab .th{color:#a02877}
 .tb-rein{border-color:#46a758;background:#f0faf1}.tb-rein .th{color:#2f7a3a}
-.smSel{height:26px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:calc(10.5px * var(--fs));color:var(--ink2);background:#fff}
+.smSel{height:26px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:calc(10.5px * var(--fs));color:var(--ink2);background:var(--panelBg)}
 .smTgl{display:flex;align-items:center;justify-content:space-between;font-size:calc(10.5px * var(--fs));color:var(--ink2);padding:3px 0}
 .smTgl input{accent-color:var(--accent)}
-.smFoot{display:flex;gap:7px;padding:11px 14px;border-top:1px solid var(--line);position:sticky;bottom:0;background:#fff}
+.smFoot{display:flex;gap:7px;padding:11px 14px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--panelBg)}
 .smFoot .gen{flex:1.3;padding:8px;border-radius:6px;border:0;background:var(--accent);color:#fff;font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
-.smFoot .clr{flex:1;padding:8px;border-radius:6px;border:1px solid var(--err);background:#fff;color:var(--err);font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
+.smFoot .clr{flex:1;padding:8px;border-radius:6px;border:1px solid var(--err);background:var(--panelBg);color:var(--err);font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
 .smNote{font-size:calc(8.5px * var(--fs));color:var(--ink4);line-height:1.6;padding:8px 14px;background:#fbf3dc;border-top:1px solid #ecdcae}
 .smNote b{color:#8b6b13}
 .smPre{display:flex;gap:4px;margin-bottom:9px}
-.smPre button{flex:1;padding:5px 2px;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink3);font:inherit;font-size:calc(9.5px * var(--fs));font-weight:600;cursor:pointer}
+.smPre button{flex:1;padding:5px 2px;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);color:var(--ink3);font:inherit;font-size:calc(9.5px * var(--fs));font-weight:600;cursor:pointer}
 .smPre button:hover{border-color:var(--accent);color:var(--accent)}
 
 .costRow{display:flex;justify-content:space-between;font-size:calc(10.5px * var(--fs));color:var(--ink4);padding:2px 0}
@@ -275,7 +288,7 @@ body.big{--fs:1.16}
 .railBtn{width:42px;height:42px;border-radius:8px;border:1px solid transparent;background:transparent;
   cursor:pointer;font-size:calc(16px * var(--fs));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--ink3)}
 .railBtn small{font-size:calc(8px * var(--fs));font-weight:600;transform:scale(.92)}
-.railBtn:hover{background:#fff;border-color:var(--line)}
+.railBtn:hover{background:var(--panelBg);border-color:var(--line)}
 .railBtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #modPanel{position:absolute;top:80px;right:72px;width:calc(302px * var(--fs));max-height:calc(100vh - 175px);overflow-y:auto;
   padding:14px;z-index:15;display:none}
@@ -288,7 +301,7 @@ body.big{--fs:1.16}
 .mrow{display:flex;justify-content:space-between;align-items:center;font-size:calc(11px * var(--fs));color:var(--ink3);padding:3px 0}
 .mrow b{font-family:var(--mono);font-weight:600;color:var(--ink)}
 .mrow b.okc{color:var(--ok)} .mrow b.warnc{color:var(--warn)} .mrow b.errc{color:var(--err)}
-.mbox{border:1px solid #eef0f3;border-radius:6px;padding:8px 10px;background:#fff;margin-bottom:8px}
+.mbox{border:1px solid #eef0f3;border-radius:6px;padding:8px 10px;background:var(--panelBg);margin-bottom:8px}
 .mnote{font-size:calc(9px * var(--fs));color:var(--ink4);line-height:1.5;margin-top:4px}
 .inRow{display:flex;align-items:center;gap:6px;margin-bottom:5px}
 .inRow label{font-size:calc(11px * var(--fs));color:var(--ink3);flex:1}
@@ -300,14 +313,14 @@ body.big{--fs:1.16}
 .tgl input{accent-color:var(--accent)}
 
 /* history / orders */
-.ordRow{border:1px solid #eef0f3;border-radius:6px;padding:7px 9px;background:#fff;margin-bottom:5px}
+.ordRow{border:1px solid #eef0f3;border-radius:6px;padding:7px 9px;background:var(--panelBg);margin-bottom:5px}
 .ordRow .oh{display:flex;justify-content:space-between;font-size:calc(10.5px * var(--fs));font-weight:600}
 .ordRow .oh .st{font-size:calc(9px * var(--fs));padding:1px 7px;border-radius:999px;font-weight:600}
 .st.pend{background:#faf3df;color:var(--warn)} .st.done{background:var(--okBg);color:var(--ok)}
 .ordRow .om{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono);margin-top:2px}
 .histRow{font-size:calc(9.5px * var(--fs));color:var(--ink3);padding:3px 0;border-bottom:1px dashed #eef0f3;line-height:1.5}
 .histRow .ht{color:var(--ink4);font-family:var(--mono);font-size:calc(8.5px * var(--fs))}
-#reportBox{white-space:pre-wrap;font-size:calc(10.5px * var(--fs));line-height:1.7;background:#fff;border:1px solid #eef0f3;
+#reportBox{white-space:pre-wrap;font-size:calc(10.5px * var(--fs));line-height:1.7;background:var(--panelBg);border:1px solid #eef0f3;
   border-radius:6px;padding:10px;max-height:300px;overflow-y:auto}
 
 /* ============ layer clip slider ============ */
@@ -391,6 +404,7 @@ body.big{--fs:1.16}
     <button class="vtab" data-view="top">頂視</button>
     <button class="vtab" data-view="front">前視</button>
     <button class="vtab" data-view="side">側視</button>
+    <button class="vtab" data-view="bottom">底視</button>
     <div class="vsep"></div>
     <button class="abtn" id="btnModeNormal" data-mode="normal" title="一般顯示">◻ 一般</button>
     <button class="abtn warnb" id="btnModeOverhang" data-mode="overhang" title="懸垂區域標色">⚠ 懸垂</button>
@@ -402,6 +416,7 @@ body.big{--fs:1.16}
     <button class="abtn on" id="btnRange" title="顯示/隱藏列印範圍框" style="border-color:var(--accent);color:var(--accent)">▦ 範圍框</button>
     <div class="vsep"></div>
     <button class="abtn" id="btnFs" title="字級切換：小字 / 大字"><span style="font-size:9px;font-weight:700">A</span><span style="font-size:13px;font-weight:700">A</span></button>
+    <button class="abtn" id="btnDark" title="切換黑暗模式">🌙 黑暗</button>
   </div>
   <div id="cubeWrap">
     <div id="cube"><div id="cubeInner">
@@ -427,6 +442,7 @@ body.big{--fs:1.16}
   <button class="railBtn" data-mod="ai" title="AI 最佳化">✨<small>AI</small></button>
   <button class="railBtn" data-mod="cost" title="成本分析">💰<small>成本</small></button>
   <button class="railBtn" data-mod="cloud" title="雲端管理">☁<small>雲端</small></button>
+  <button class="railBtn" data-mod="admin" id="railAdmin" title="材料與價格設定（僅限admin）" style="display:none">⚙<small>設定</small></button>
 </div>
 <div id="modPanel" class="glass">
   <div id="modHead"><b id="modTitle"></b><button id="modClose">✕</button></div>
@@ -529,6 +545,8 @@ async function initFirebaseSync(){
       setCloudStatus('online');
       subscribeCloud();
       loadCloudMaterials();
+      loadPricingConfig();
+      checkAdmin(u.uid);
     });
   } catch (e){
     console.error('[FB] 初始化失敗', e);
@@ -563,6 +581,42 @@ async function loadCloudMaterials(){
   } catch(e){
     console.error('[FB] 材料清單載入失敗，沿用內建預設', e);
   }
+}
+/* admin 權限判斷：讀 users/{uid}，與 portal 的 hasPerm('admin') 同邏輯（permissions 含 admin 或 role===admin） */
+async function checkAdmin(uid){
+  try {
+    const snap = await FB.db.collection('users').doc(uid).get();
+    const d = snap.exists ? snap.data() : null;
+    S.isAdmin = !!d && (d.role==='admin' || (Array.isArray(d.permissions) && d.permissions.includes('admin')));
+  } catch(e){ console.error('[FB] 權限檢查失敗', e); S.isAdmin = false; }
+  $('#railAdmin').style.display = S.isAdmin ? '' : 'none';
+}
+/* 計費倍率設定（獨立於 quote_materials，避免被舊版材料設定頁的整份覆寫沖掉） */
+async function loadPricingConfig(){
+  try {
+    const doc = await FB.db.collection('settings').doc('quote_studio_pricing').get();
+    if (doc.exists && doc.data().multipliers) Object.assign(S.multipliers, doc.data().multipliers);
+    updateAllUI();
+  } catch(e){ console.error('[FB] 計費倍率載入失敗，沿用預設', e); }
+}
+async function savePricingConfig(){
+  try {
+    await FB.db.collection('settings').doc('quote_studio_pricing').set({
+      multipliers: S.multipliers, _ts: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('計費倍率已儲存','ok');
+    updateAllUI();
+  } catch(e){ toast('儲存失敗：'+e.message,'err'); }
+}
+/* 材料清單儲存（與 quote.html 材料設定共用同一份 settings/quote_materials） */
+async function saveCloudMaterials(){
+  try {
+    const list = MATERIALS.map(mt=>({ name:mt.name, code:mt.id, price:mt.priceL, density:mt.density }));
+    await FB.db.collection('settings').doc('quote_materials').set({
+      list, _ts: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge:true });
+    toast('材料設定已同步','ok');
+  } catch(e){ toast('儲存失敗：'+e.message,'err'); }
 }
 function setCloudStatus(s){
   S.cloudStatus = s;
@@ -656,7 +710,6 @@ const SUP_DEFAULTS = {
 };
 const cloneSup = () => JSON.parse(JSON.stringify(SUP_DEFAULTS));
 const LAYER_OPTS = [0.025, 0.05, 0.1];
-const MODEL_TYPES = ['外觀件','工程件','中空件','薄件'];
 const NTD = n => 'NT$ ' + Math.round(n).toLocaleString('zh-TW');
 const F = (n,d=2) => (typeof n==='number'&&isFinite(n)) ? n.toFixed(d) : '—';
 
@@ -668,7 +721,6 @@ const S = {
   machine: 'form4',
   materialId: 'grey',
   layerH: 0.05,
-  modelType: '外觀件',
   orient: { tiltX: -35, yaw: 15, tiltZ: 0 },     // 度 (skill 預設 35°+側轉15°)
   sup: cloneSup(),      // PreForm 3.51+ 支撐材參數（見 SUP_DEFAULTS）
   supTab: 'pil',        // 支撐材結構分頁：tp | pil | raft
@@ -682,10 +734,14 @@ const S = {
   selected: false,      // 模型選取狀態（PreForm 式）
   rangeBoxOn: true,     // 列印範圍框線
   fontBig: false,       // 大字模式
+  darkMode: false,      // 黑暗模式
   orientGoal: 'time',   // 自動擺放目標：balance | time | support
   undoStack: [],        // 擺放操作復原（Ctrl+Z，同 PreForm）
   autoOrientAngles: '20, 25, 30, 35, 40, 45',    // 可自訂候選角
   cost: { postCost:90 },   // 舊版計費模型：材料×單價＋支撐＋固定後處理費；單價由材料設定(Firestore)決定
+  workType: '代工',        // 計費倍率模式：代工 | 評估
+  multipliers: { '代工':1, '評估':1 },   // 由 admin 於「材料與價格設定」設定，Firestore settings/quote_studio_pricing
+  isAdmin: false,
   results: {},          // 各分析結果快取（依 active model + orientation）
   orders: [], history: [],
   cloudStatus: 'connecting',   // connecting | online | offline
@@ -853,13 +909,13 @@ function initViewer(){
     if (!dragging && !panning && !dragModel && !ringAxis) return;
     const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
     if (Math.abs(dx)+Math.abs(dy) > 1) moved=true;
-    if (ringAxis){                               // 拖曳旋轉環：15° 吸附，Shift 自由角度
+    if (ringAxis){                               // 拖曳旋轉環：1° 吸附，Shift 自由角度
       const a = ringAngleAt(ringAxis, e);
       if (a!==null){
         let d = a - ringStart;
         while (d >  Math.PI) d -= 2*Math.PI;
         while (d < -Math.PI) d += 2*Math.PI;
-        if (!e.shiftKey){ const st = 15*Math.PI/180; d = Math.round(d/st)*st; }
+        if (!e.shiftKey){ const st = 1*Math.PI/180; d = Math.round(d/st)*st; }
         ringDelta = d;
         applyGizmoLive(ringAxis, d, e);
       }
@@ -885,7 +941,7 @@ function initViewer(){
       }
       return;
     }
-    if (dragging){ V.theta += dx*0.008; V.phi = Math.min(1.55, Math.max(0.12, V.phi - dy*0.006)); }
+    if (dragging){ V.theta += dx*0.008; V.phi = Math.min(Math.PI-0.01, Math.max(0.01, V.phi - dy*0.006)); }
     else { const s=V.radius*0.0016;
       const right=new THREE.Vector3().subVectors(V.camera.position,V.target).cross(V.camera.up).normalize();
       V.target.addScaledVector(right, dx*s); V.target.y += dy*s; }
@@ -903,7 +959,7 @@ function buildPlatform(){
   while(V.platGroup.children.length){ const c=V.platGroup.children[0]; V.platGroup.remove(c); if(c.geometry)c.geometry.dispose(); }
   const W = mach().size[0], dep = mach().size[1], H = mach().size[2];
   // 白色平台板（PreForm 式）
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(W,1.2,dep), new THREE.MeshBasicMaterial({ color:0xf7f9fb }));
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(W,1.2,dep), new THREE.MeshBasicMaterial({ color:0xf7f9fb, transparent:true, opacity:.25, depthWrite:false }));
   plate.position.y = -0.61; V.platGroup.add(plate);
   // 細格網：小格 5mm、每 25mm 一條主線
   V.platGroup.add(gridLines(W, dep, 5,  0xe3e7ec, 0.02));
@@ -983,6 +1039,7 @@ function setCam(v){
   else if (v==='right'){ V.theta=0; V.phi=Math.PI/2-0.02; }
   else if (v==='side'){ V.theta=0; V.phi=Math.PI/2-0.02; }
   else if (v==='top'){ V.phi=0.14; }
+  else if (v==='bottom'){ V.phi=Math.PI-0.14; }
   else { V.theta=0.62; V.phi=1.08; V.radius=300; V.target.set(0,38,0); }
   V.updateCam();
 }
@@ -1987,17 +2044,13 @@ async function autoOrient(){
   logHist('自動擺放', `${G.label} · ${desc(best)} · 評分 ${F(best.score,1)} · 候選 ${results.length}`);
   openModule('ai');
 }
-/* 材料推薦：模型類型 + 幾何特性規則 */
+/* 材料推薦：幾何特性規則 */
 async function recommendMaterial(){
   const m = activeModel(); if(!m) return null;
   const TH = S.results.thickness || await runThickness();
   const list = MATERIALS.map(mt=>{
     let s = 0; const why=[];
-    if (mt.tags.includes(S.modelType)){ s+=40; why.push(`適合${S.modelType}`); }
-    if (S.modelType==='薄件' && TH.minTh<1.0 && mt.id==='rigid'){ s+=25; why.push('高剛性抗薄壁翹曲'); }
-    if (S.modelType==='工程件' && mt.id==='tough'){ s+=20; why.push('抗衝擊功能件'); }
-    if (S.modelType==='中空件' && mt.id==='clear'){ s+=15; why.push('透明利於觀察排液'); }
-    if (S.modelType==='外觀件' && (mt.id==='grey'||mt.id==='white')){ s+=18; why.push('表面細節與噴塗底佳'); }
+    if (TH.minTh<1.0 && mt.id==='rigid'){ s+=15; why.push('高剛性抗薄壁翹曲'); }
     if (TH.minTh < 0.5 && mt.id==='flex'){ s-=25; why.push('軟料薄壁易變形'); }
     s -= mt.priceL/1000;   // 價格微調
     return { mt, s, why };
@@ -2012,7 +2065,7 @@ async function recommendLayer(){
   const CV = S.results.curv || await runCurvature();
   let rec, why;
   if (TH.minTh < 0.5 || CV.sharpPct > 12){ rec=0.025; why='薄壁/高細節密度 → 25µm 保留特徵'; }
-  else if (CV.sharpPct > 4 || S.modelType==='外觀件'){ rec=0.05; why='中等細節 → 50µm 品質/時間均衡'; }
+  else if (CV.sharpPct > 4){ rec=0.05; why='中等細節 → 50µm 品質/時間均衡'; }
   else { rec=0.1; why='幾何單純 → 100µm 快速列印'; }
   if (!mat().layers.includes(rec)) rec = mat().layers[0];
   S.results.layerRec = { rec, why };
@@ -2035,14 +2088,16 @@ function calcCost(){
   const T = calcTime();
   const modelML = m.volMM3/1000;
   const raftML = (S.supportStat?.volRaftMM3 || 0)/1000;
-  // 支撐量：已生成支撐→內建近似的實際體積(含基底)；尚未生成→舊版固定 15% 比例粗估
-  const supML = S.supportStat ? ((S.supportStat.volSupMM3||0)/1000 + raftML) : modelML*0.15;
+  // 支撐量：使用者選「無支撐」→0；已生成支撐→內建近似的實際體積(含基底)；尚未生成→舊版固定 15% 比例粗估
+  const supML = !S.supportsOn ? 0 : S.supportStat ? ((S.supportStat.volSupMM3||0)/1000 + raftML) : modelML*0.15;
   const ppc = mat().priceL/1000;                 // NT$/mL
   const matCost  = Math.round(modelML*ppc);
   const supCost  = Math.round(supML*ppc);
   const postCost = S.cost.postCost ?? 90;
-  const total = matCost + supCost + postCost;
-  return { modelML, supML, raftML, resinML: modelML+supML, matCost, supCost, postCost, total, time:T };
+  const subtotal = matCost + supCost + postCost;
+  const multiplier = (S.multipliers && S.multipliers[S.workType]) || 1;
+  const total = Math.round(subtotal * multiplier);
+  return { modelML, supML, raftML, resinML: modelML+supML, matCost, supCost, postCost, subtotal, multiplier, workType:S.workType, total, time:T };
 }
 function timeStr(T){ return T ? `${T.h}h ${String(T.min).padStart(2,'0')}m` : '—'; }
 /* ============================== 14. 著色模式 ============================== */
@@ -2255,15 +2310,6 @@ function renderStep(){
     B.appendChild(sel);
     B.appendChild(el('div','selMeta',`${mat().note} · 密度 ${mat().density} g/cm³ · 收縮 ${mat().shrink}%（參考）`));
 
-    B.appendChild(el('div','lbl','模型類型（影響 AI 推薦）'));
-    const tg = el('div','segGrid');
-    for (const t of MODEL_TYPES){
-      const b = el('button','seg'+(S.modelType===t?' on':''), t);
-      b.addEventListener('click', ()=>{ S.modelType=t; renderStep(); });
-      tg.appendChild(b);
-    }
-    B.appendChild(tg);
-
     B.appendChild(el('div','lbl','層厚'));
     const lr = el('div','segRow');
     for (const L of LAYER_OPTS){
@@ -2285,6 +2331,21 @@ function renderStep(){
       toast(`✨ 推薦：${mr[0].mt.name} + ${lr2.rec*1000}µm — ${lr2.why}`, 'ok');
     });
     B.appendChild(aiBtn);
+
+    B.appendChild(el('div','lbl','支撐材'));
+    const supTg = el('div','segRow');
+    for (const [lab, on] of [['有支撐',true],['無支撐',false]]){
+      const b = el('button','seg'+(S.supportsOn===on?' on':''), lab);
+      b.addEventListener('click', async ()=>{
+        if (S.supportsOn===on) return;
+        S.supportsOn = on;
+        if (V.supGroup) V.supGroup.visible = on;
+        await rebuildScene(true); renderStep(); updateAllUI();
+        if ($('#supMatPanel').classList.contains('open')) renderSupPanel();
+      });
+      supTg.appendChild(b);
+    }
+    B.appendChild(supTg);
 
     B.appendChild(el('div','lbl','支撐材（參數對齊 PreForm 3.51+）'));
     const sb = el('div','mbox');
@@ -2396,7 +2457,7 @@ function renderDock(){
   });
 }
 /* ============================== 17. 模組面板 ============================== */
-const MODS = { stl:'🧩 STL 分析', print:'🖨 列印分析', ai:'✨ AI 最佳化', cost:'💰 成本分析', cloud:'☁ 雲端管理' };
+const MODS = { stl:'🧩 STL 分析', print:'🖨 列印分析', ai:'✨ AI 最佳化', cost:'💰 成本分析', cloud:'☁ 雲端管理', admin:'⚙ 材料與價格設定' };
 function openModule(mod){
   if (S.openMod===mod && $('#modPanel').classList.contains('open') && !arguments[1]){ /* refresh */ }
   S.openMod = mod;
@@ -2577,7 +2638,7 @@ function openModule(mod){
       b.addEventListener('click', ()=>{ S.materialId=r.mt.id; updateAllUI(); if(S.step===2)renderStep(); toast('已切換材料：'+r.mt.name,'ok'); });
       B.appendChild(b);
     });
-    B.appendChild(btn('✨ 依模型類型與幾何推薦', async ()=>{ await recommendMaterial(); openModule('ai'); }));
+    B.appendChild(btn('✨ 依幾何特性推薦', async ()=>{ await recommendMaterial(); openModule('ai'); }));
 
     B.appendChild(el('div','lbl','最佳層厚推薦'));
     const LR = S.results.layerRec;
@@ -2594,6 +2655,14 @@ function openModule(mod){
   if (mod==='cost'){
     B.appendChild(el('div','lbl','計費設定'));
     B.appendChild(el('div','mnote',`材料單價：<b>NT$${mat().priceL.toLocaleString()}/L</b>（${mat().name}）— 由「材料設定」統一管理，與舊版估價頁共用同一份。`));
+    B.appendChild(el('div','lbl','工作類型（計費倍率）'));
+    const wtRow = el('div','segRow');
+    for (const t of ['代工','評估']){
+      const b = el('button','seg'+(S.workType===t?' on':''), `${t} ×${S.multipliers[t]??1}`);
+      b.addEventListener('click', ()=>{ S.workType=t; updateAllUI(); openModule('cost'); });
+      wtRow.appendChild(b);
+    }
+    B.appendChild(wtRow);
     {
       const r = el('div','inRow',`<label>後處理費</label><input type="number" step="10" value="${S.cost.postCost??90}"><span class="un">NT$</span>`);
       r.querySelector('input').addEventListener('change', e=>{ S.cost.postCost=+e.target.value||0; persist(); updateAllUI(); if(S.step===4)renderStep(); openModule('cost'); });
@@ -2606,10 +2675,58 @@ function openModule(mod){
       box.appendChild(mrow(`本體材料（${F(C.modelML,1)} mL）`, NTD(C.matCost)));
       box.appendChild(mrow(`支撐材料（${F(C.supML,1)} mL${S.supportStat?'':'，未生成以15%粗估'}）`, NTD(C.supCost)));
       box.appendChild(mrow('後處理（清洗 / 固化）', NTD(C.postCost)));
+      box.appendChild(mrow('小計', NTD(C.subtotal)));
+      if (C.multiplier!==1) box.appendChild(mrow(`${C.workType}倍率`, `×${C.multiplier}`));
       box.appendChild(el('div','costTotal',`<span>總計</span><b>${NTD(C.total)}</b>`));
       B.appendChild(box);
       B.appendChild(el('div','mnote',`每層秒數估算：${mach().name} @ ${S.layerH*1000}µm ≈ ${mach().secPerLayer[S.layerH]??'—'}s/層（估算值，可依實測校正）。`));
     } else B.appendChild(el('div','mnote','載入模型後即顯示明細。'));
+  }
+
+  /* ---- 材料與價格設定（僅限admin） ---- */
+  if (mod==='admin'){
+    if (!S.isAdmin){ B.appendChild(el('div','mnote','僅限管理員使用此功能。')); return; }
+    B.appendChild(el('div','lbl','工作類型計費倍率'));
+    B.appendChild(el('div','mnote','代工／評估兩種工作類型套用不同倍率，作用於材料+支撐+後處理小計。'));
+    const mulBox = el('div','mbox');
+    for (const t of ['代工','評估']){
+      const row = el('div','inRow',`<label>${t}倍率</label><input type="number" step="0.05" min="0" value="${S.multipliers[t]??1}">`);
+      row.querySelector('input').addEventListener('change', e=>{ S.multipliers[t] = +e.target.value || 1; });
+      mulBox.appendChild(row);
+    }
+    B.appendChild(mulBox);
+    B.appendChild(btn('💾 儲存計費倍率', savePricingConfig, false));
+
+    B.appendChild(el('div','lbl','材料種類與價格'));
+    B.appendChild(el('div','mnote','與 quote.html「材料設定」共用同一份 Firestore 清單（settings/quote_materials）。'));
+    const matBox = el('div','mbox');
+    MATERIALS.forEach((mt, ix)=>{
+      const row = el('div','mrow','');
+      row.style.cssText='display:flex;gap:5px;align-items:center;margin-bottom:5px';
+      row.innerHTML = `
+        <input type="text" value="${mt.name}" style="flex:1;min-width:0" class="sel">
+        <input type="number" step="10" value="${mt.priceL}" style="width:80px" class="sel">
+        <input type="number" step="0.01" value="${mt.density}" style="width:60px" class="sel" title="密度 g/cm³">
+        <button style="border:1px solid var(--line);background:var(--panelBg);color:var(--err);border-radius:5px;width:24px;height:24px;cursor:pointer;flex-shrink:0" title="刪除">✕</button>`;
+      const [nameI, priceI, densI] = row.querySelectorAll('input');
+      nameI.addEventListener('change', ()=>{ mt.name = nameI.value.trim() || mt.name; });
+      priceI.addEventListener('change', ()=>{ mt.priceL = +priceI.value || mt.priceL; });
+      densI.addEventListener('change', ()=>{ mt.density = +densI.value || mt.density; });
+      row.querySelector('button').addEventListener('click', ()=>{
+        if (MATERIALS.length<=1){ toast('至少需保留一種材料','err'); return; }
+        MATERIALS.splice(ix,1);
+        if (!MATERIALS.find(m=>m.id===S.materialId)) S.materialId = MATERIALS[0].id;
+        openModule('admin');
+      });
+      matBox.appendChild(row);
+    });
+    B.appendChild(matBox);
+    B.appendChild(btn('＋ 新增材料', ()=>{
+      const id = 'mat_'+Date.now().toString(36);
+      MATERIALS.push({ id, name:'新材料', priceL:3000, density:1.10, shrink:0.35, layers:[0.025,0.05,0.1], tags:[], note:id });
+      openModule('admin');
+    }));
+    B.appendChild(btn('💾 儲存材料清單', async ()=>{ await saveCloudMaterials(); renderStep(); updateAllUI(); openModule('admin'); }, false));
   }
 
   /* ---- 雲端管理 ---- */
@@ -2698,7 +2815,7 @@ async function genReport(){
   const axis = S.orient.tiltZ ? 'Z' : 'X';
   const L = [];
   L.push(`📋 AI 列印分析報告 — ${m.name}`);
-  L.push(`機台 ${mach().name} · ${mat().name} · 層厚 ${S.layerH*1000}µm · 模型類型 ${S.modelType}`);
+  L.push(`機台 ${mach().name} · ${mat().name} · 層厚 ${S.layerH*1000}µm`);
   L.push(`產生時間 ${new Date().toLocaleString('zh-TW',{hour12:false})}`);
   L.push('────────────────────');
   L.push(`1. 建議擺放角度`);
@@ -2752,10 +2869,11 @@ function openQuote(){
       <tr><td>本體材料</td><td>${F(C.modelML,1)} mL × NT$${mat().priceL.toLocaleString()}/L</td><td class="r">${NTD(C.matCost)}</td></tr>
       <tr><td>支撐材料</td><td>${F(C.supML,1)} mL${S.supportStat?'':'（未生成，以 15% 粗估）'}</td><td class="r">${NTD(C.supCost)}</td></tr>
       <tr><td>後處理</td><td>IPA 清洗 + UV 固化</td><td class="r">${NTD(C.postCost)}</td></tr>
+      ${C.multiplier!==1 ? `<tr><td>${C.workType}倍率</td><td>小計 ${NTD(C.subtotal)}</td><td class="r">×${C.multiplier}</td></tr>` : ''}
     </table>
     <div class="qtotal"><span>總計（新台幣）</span><b>${NTD(C.total)}</b></div>
     <div class="qnote">
-      列印時間估算 ${timeStr(C.time)}（${C.time.layers.toLocaleString()} 層）· 擺放 傾${Math.max(Math.abs(S.orient.tiltX),Math.abs(S.orient.tiltZ))}°+側轉${S.orient.yaw}°
+      工作類型：${C.workType} · 列印時間估算 ${timeStr(C.time)}（${C.time.layers.toLocaleString()} 層）· 擺放 傾${Math.max(Math.abs(S.orient.tiltX),Math.abs(S.orient.tiltZ))}°+側轉${S.orient.yaw}°
       ${R ? ` · 可行性成功率 ${R.rate}%（失敗 ${R.fail} / 警告 ${R.warn} / 人工確認 ${R.manual}）` : ' · 未執行可行性驗證'}<br>
       本報價由內建近似演算法估算，材料與時間以實際切層為準；報價有效期 14 天。
     </div>
@@ -2773,7 +2891,7 @@ function saveOrder(customer){
   if (!m || !C){ toast('請先載入模型','err'); return; }
   const no = genNo('WO');
   const order = { no, customer, item:m.name, machine:mach().name, material:mat().name,
-    resinML:C.resinML, timeS:timeStr(C.time), total:C.total, status:'pend',
+    resinML:C.resinML, timeS:timeStr(C.time), total:C.total, workType:C.workType, status:'pend',
     t:new Date().toLocaleString('zh-TW',{hour12:false}) };
   cloudAddOrder(order);
   logHist('建立工單', `${no} · ${m.name} · ${NTD(C.total)}`);
@@ -2875,6 +2993,13 @@ function bindEvents(){
     try { localStorage.setItem('aps_fontBig', S.fontBig?'1':'0'); } catch(e){}
     toast(S.fontBig ? 'Ａ 大字模式' : 'A 小字模式','ok');
   });
+  $('#btnDark').addEventListener('click', ()=>{
+    S.darkMode = !S.darkMode;
+    document.documentElement.dataset.theme = S.darkMode ? 'dark' : 'light';
+    $('#btnDark').classList.toggle('on', S.darkMode);
+    try { localStorage.setItem('aps_darkMode', S.darkMode?'1':'0'); } catch(e){}
+    toast(S.darkMode ? '🌙 黑暗模式' : '☀ 一般模式','ok');
+  });
   $('#clipRange').addEventListener('input', e=>{ S.clipPct=+e.target.value; applyClip(); });
   $$('.cface, #cubeHome').forEach(b=>b.addEventListener('click', ()=>setCam(b.dataset.cam==='home'?'home':b.dataset.cam)));
   $$('#rail .railBtn').forEach(b=>b.addEventListener('click', ()=>{
@@ -2911,6 +3036,11 @@ function bindEvents(){
 function boot(){
   restore();
   try { if (localStorage.getItem('aps_fontBig')==='1'){ S.fontBig=true; document.body.classList.add('big'); $('#btnFs').classList.add('on'); } } catch(e){}
+  try {
+    if (localStorage.getItem('aps_darkMode')==='1'){
+      S.darkMode=true; document.documentElement.dataset.theme='dark'; $('#btnDark').classList.add('on');
+    }
+  } catch(e){}
   initViewer();
   bindEvents();
   renderStep();
@@ -3341,8 +3471,7 @@ function buildGizmo(m){
       pts.push(new THREE.Vector3().copy(P).addScaledVector(u, Math.cos(t)*R).addScaledVector(w, Math.sin(t)*R));
     }
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color:a.c, transparent:true, opacity:.9, depthTest:false }));
-    line.renderOrder = 10;
+      new THREE.LineBasicMaterial({ color:a.c, transparent:true, opacity:.95, linewidth:2 }));
     V.gizmo.add(line);
     // 隱形拾取粗環
     const pick = new THREE.Mesh(
@@ -3356,8 +3485,7 @@ function buildGizmo(m){
     // 軸把手小球
     const knob = new THREE.Mesh(
       new THREE.SphereGeometry(Math.max(1.5, R*0.035), 12, 12),
-      new THREE.MeshBasicMaterial({ color:a.c, depthTest:false }));
-    knob.renderOrder = 11;
+      new THREE.MeshBasicMaterial({ color:a.c }));
     knob.position.copy(P).addScaledVector(u, R);
     V.gizmo.add(knob);
   }
