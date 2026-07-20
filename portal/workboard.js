@@ -526,7 +526,7 @@
                     <td>{o.machine}</td>
                     <td>
                       <span style={{
-                        fontSize:11, fontWeight:700,
+                        fontSize:11, fontWeight:700, whiteSpace:'nowrap',
                         color: o.material==='需調撥'?'#8b6b13':'#1d6f43',
                         background: o.material==='需調撥'?'#fbf3dc':'#e6f1ea',
                         padding:'2px 8px', borderRadius:10
@@ -535,7 +535,7 @@
                     <td style={{fontSize:12,color:o.resin?'#3b4250':'#b0b6bf',whiteSpace:'nowrap'}}>{o.resin||'—'}</td>
                     <td>
                       {o.category
-                        ? <span style={{fontSize:11,fontWeight:700,color:o.category==='評估'?'#0c7a99':'#6b3fa0',background:o.category==='評估'?'#e6f1f6':'#efe9f7',padding:'2px 8px',borderRadius:10}}>{o.category}</span>
+                        ? <span style={{fontSize:11,fontWeight:700,whiteSpace:'nowrap',color:o.category==='評估'?'#0c7a99':'#6b3fa0',background:o.category==='評估'?'#e6f1f6':'#efe9f7',padding:'2px 8px',borderRadius:10}}>{o.category}</span>
                         : <span style={{color:'#b0b6bf'}}>—</span>}
                     </td>
                     <td>

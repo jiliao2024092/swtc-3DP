@@ -443,7 +443,7 @@ body.big{--fs:1.16}
   <button class="railBtn" data-mod="ai" title="AI 最佳化">✨<small>AI</small></button>
   <button class="railBtn" data-mod="cost" title="成本分析">💰<small>成本</small></button>
   <button class="railBtn" data-mod="cloud" title="雲端管理">☁<small>雲端</small></button>
-  <button class="railBtn" data-mod="admin" id="railAdmin" title="材料與價格設定（僅限admin）" style="display:none">⚙<small>設定</small></button>
+  <button class="railBtn" data-mod="admin" id="railAdmin" title="材料與價格設定（限管理員／主管）" style="display:none">⚙<small>設定</small></button>
 </div>
 <div id="modPanel" class="glass">
   <div id="modHead"><b id="modTitle"></b><button id="modClose">✕</button></div>
@@ -593,12 +593,13 @@ async function loadCloudMaterials(){
     console.error('[FB] 材料清單載入失敗，沿用內建預設', e);
   }
 }
-/* admin 權限判斷：讀 users/{uid}，與 portal 的 hasPerm('admin') 同邏輯（permissions 含 admin 或 role===admin） */
+/* 材料/價格設定權限判斷：讀 users/{uid}，admin 或個別/角色權限含 manage_quote_pricing 皆可（主管預設有此權限） */
 async function checkAdmin(uid){
   try {
     const snap = await FB.db.collection('users').doc(uid).get();
     const d = snap.exists ? snap.data() : null;
-    S.isAdmin = !!d && (d.role==='admin' || (Array.isArray(d.permissions) && d.permissions.includes('admin')));
+    const perms = (d && Array.isArray(d.permissions)) ? d.permissions : [];
+    S.isAdmin = !!d && (d.role==='admin' || perms.includes('admin') || perms.includes('manage_quote_pricing'));
   } catch(e){ console.error('[FB] 權限檢查失敗', e); S.isAdmin = false; }
   $('#railAdmin').style.display = S.isAdmin ? '' : 'none';
 }
@@ -2539,7 +2540,10 @@ function openModule(mod){
 
     B.appendChild(el('div','lbl','孤島分析（近似）'));
     const IS = S.results.islands;
-    if (IS) B.appendChild(el('div','mbox').appendChild(mrow('孤島起點', IS.clusters.length+' 處', IS.clusters.length?'errc':'okc')).parentNode);
+    if (IS){
+      B.appendChild(el('div','mbox').appendChild(mrow('孤島起點', IS.clusters.length+' 處', IS.clusters.length?'errc':'okc')).parentNode);
+      if (IS.clusters.length) B.appendChild(btn('📍 標示孤島位置', ()=>{ drawIslandMarkers(); toast(`已標示 ${IS.clusters.length} 處孤島位置`,'warn'); }));
+    }
 
     B.appendChild(el('div','lbl','支撐材（PreForm 參數 · 內建近似）'));
     if (S.supportStat){
@@ -2695,9 +2699,9 @@ function openModule(mod){
     } else B.appendChild(el('div','mnote','載入模型後即顯示明細。'));
   }
 
-  /* ---- 材料與價格設定（僅限admin） ---- */
+  /* ---- 材料與價格設定（限管理員／主管） ---- */
   if (mod==='admin'){
-    if (!S.isAdmin){ B.appendChild(el('div','mnote','僅限管理員使用此功能。')); return; }
+    if (!S.isAdmin){ B.appendChild(el('div','mnote','僅限管理員或主管使用此功能。')); return; }
     B.appendChild(el('div','lbl','工作類型計費倍率'));
     B.appendChild(el('div','mnote','代工／評估兩種工作類型套用不同倍率，作用於材料+支撐+後處理小計。'));
     const mulBox = el('div','mbox');
@@ -3379,9 +3383,22 @@ async function applyUnitScale(k){
 }
 
 /* ---------- 步驟卡內的檢查結果渲染 ---------- */
+/* 孤島位置標示：於世界座標畫紅球標記各孤島群集起點（clusters 座標已是 worldBB 座標系） */
+function drawIslandMarkers(){
+  while (V.markGroup.children.length) disposeChild(V.markGroup);
+  const IS = S.results.islands;
+  if (!IS || !IS.clusters.length) return;
+  const m = activeModel();
+  const rad = m ? Math.max(1.4, Math.max(m.worldBB.size[0], m.worldBB.size[1], m.worldBB.size[2])*0.012) : 2;
+  for (const c of IS.clusters){
+    const sph = new THREE.Mesh(new THREE.SphereGeometry(rad, 12, 12), V.matMark);
+    sph.position.set(c.x, c.y, c.z);
+    V.markGroup.add(sph);
+  }
+  V.markGroup.visible = true;
+}
 function fcFixLink(fix){
-  // 註：原本還有 islands(檢視標記)/drain(標記排液位置) 兩個「點選顯示錯誤位置」連結，
-  // 依使用者回饋該類功能實際效果不佳，已移除；保留的都是「修復動作」或全模型著色模式
+  // 註：drain(標記排液位置) 連結依使用者回饋效果不佳已移除；islands(孤島位置) 應使用者要求重新加回
   const map = {
     repair:   ['🔧 一鍵修補', ()=>runAutoRepair()],
     scaleUp:  ['⇱ ×25.4 放大', ()=>{ if(confirm('確定將模型放大 25.4 倍（inch→mm）？')) applyUnitScale(25.4); }],
@@ -3390,6 +3407,7 @@ function fcFixLink(fix){
     overhang: ['⚠ 懸垂標色', ()=>setColorMode('overhang')],
     orient:   ['⚡ 自動擺放', ()=>autoOrient()],
     supports: ['🖊 生成支撐', async ()=>{ S.supportsOn=true; await rebuildScene(true); renderStep(); }],
+    islands:  ['📍 標示孤島位置', async ()=>{ await runIslands(); drawIslandMarkers(); toast(`已標示 ${S.results.islands.clusters.length} 處孤島位置`,'warn'); }],
   };
   return map[fix] || null;
 }
@@ -3485,15 +3503,20 @@ function buildGizmo(m){
     const u = seed.sub(a.v.clone().multiplyScalar(seed.dot(a.v))).normalize();
     const w = new THREE.Vector3().crossVectors(a.v, u);
     V.gizmoBasis[k] = { axis:a.v.clone(), u, w };
-    const tubeR = Math.max(2.2, R*0.05);
-    // 可見粗環：實心圓管（同時作為拾取範圍），較細線更立體、貼近參考圖手感；
-    // 依真實深度測試繪製，被模型擋住的部分會自然隱沒，呈現弧線效果
+    const tubeR = Math.max(2.8, R*0.065);   // 加粗
+    // 可見粗弧：只畫一段弧（不整圈環繞，貼近參考圖），弧線中點對齊箭頭方向(u)。
+    // 直接用 u/w 基底手算弧上的點再做成管狀，不靠 TorusGeometry 的內建旋轉，
+    // 確保弧線visible範圍與箭頭方向精準對齊。依真實深度測試繪製，被模型擋住處自然隱沒。
+    const ARC_SPAN = Math.PI * 0.8;   // 弧長約144°
+    const arcPts = [];
+    const SEG = 40;
+    for (let i=0;i<=SEG;i++){
+      const t = -ARC_SPAN/2 + (i/SEG)*ARC_SPAN;
+      arcPts.push(new THREE.Vector3().copy(P).addScaledVector(u, Math.cos(t)*R).addScaledVector(w, Math.sin(t)*R));
+    }
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(R, tubeR, 12, 64),
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arcPts), 40, tubeR, 10, false),
       new THREE.MeshBasicMaterial({ color:a.c, transparent:true, opacity:.92 }));
-    ring.position.copy(P);
-    if (k==='x') ring.rotation.y = Math.PI/2;
-    else if (k==='y') ring.rotation.x = Math.PI/2;
     ring.userData.axis = k;
     V.gizmo.add(ring); V.gizmoPicks.push(ring);
     // 方向箭頭：圓錐，指向該軸環正旋轉方向的切線，取代原本的把手小球

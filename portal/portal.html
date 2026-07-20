@@ -419,7 +419,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 <script src="firebase-config.js?v=20260708f"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260708f"></script>
+<script src="firebase-service.js?v=20260708g"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1556,7 +1556,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260708f"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260708g"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260708f"></script>
 
 <!-- ⑦ 主 App -->
@@ -1604,7 +1604,7 @@ function LoginPage({ onLogin }) {
 }
 
 /* 使用者 Modal — 獨立元件，使用 React.useState 避免 Hooks alias 問題 */
-function UserModal({ item, onClose, onSaved }) {
+function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
   const PERMS   = window.PERMS_MAP   || {};
   const PRESETS = window.ROLE_PRESETS || {};
   const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid #e6e8ec', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
@@ -1620,6 +1620,9 @@ function UserModal({ item, onClose, onSaved }) {
   const save = async () => {
     if (!form.displayName || !form.email) { showToast('請填姓名與 Email','err'); return; }
     if (!item && !form.password) { showToast('請設定密碼','err'); return; }
+    if (item && (item.permissions||[]).includes('admin') && !form.permissions.includes('admin') && otherAdmins===0) {
+      showToast('至少需保留一位管理員，無法移除此帳號的管理員權限','err'); return;
+    }
     setBusy(true);
     try {
       if (item) {
@@ -1950,7 +1953,11 @@ function AdminPanel({ user }) {
                     <td><span className={`st-dot${u.active?' on':' off'}`}>{u.active?'● 啟用':'● 停用'}</span></td>
                     <td><span className="kt-act">
                       <button className="kt-actbtn" onClick={()=>{setEditUser(u);setUserModal(true);}}>✎</button>
-                      <button className="kt-actbtn danger" onClick={async()=>{if(!confirm('確定刪除？'))return;await FBAuth.deleteUser(u._id);await refreshUsers();showToast('已刪除','inf');}}>✕</button>
+                      <button className="kt-actbtn danger" onClick={async()=>{
+                        if((u.permissions||[]).includes('admin') && users.filter(x=>(x.permissions||[]).includes('admin')).length<=1){
+                          showToast('至少需保留一位管理員，無法刪除','err'); return;
+                        }
+                        if(!confirm('確定刪除？'))return;await FBAuth.deleteUser(u._id);await refreshUsers();showToast('已刪除','inf');}}>✕</button>
                     </span></td>
                   </tr>
                 ))}
@@ -2090,7 +2097,8 @@ function AdminPanel({ user }) {
           </div>
         )}
       </div>
-      {userModal&&<UserModal item={editUser} onClose={()=>setUserModal(false)} onSaved={refreshUsers}/>}
+      {userModal&&<UserModal item={editUser} onClose={()=>setUserModal(false)} onSaved={refreshUsers}
+        otherAdmins={users.filter(x=>x._id!==(editUser&&editUser._id) && (x.permissions||[]).includes('admin')).length}/>}
     </div>
   );
 }
