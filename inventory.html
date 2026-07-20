@@ -444,7 +444,7 @@
                             <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
                             <th class="p-3 border-b font-medium">備註</th>
                             <th class="p-3 border-b font-medium w-32" title="Formlabs 原始回傳狀態，用於排查分類問題">API狀態</th>
-                            <th class="p-3 border-b font-medium w-14 text-center" data-admin-only>操作</th>
+                            <th class="p-3 border-b font-medium w-14 text-center" data-delete-record-only>操作</th>
                         </tr>
                     </thead>
                     <tbody id="history-body" class="divide-y divide-gray-100"></tbody>
@@ -625,6 +625,14 @@ let historyPage = 1;
 const HISTORY_PAGE_SIZE = 20;
 let editingCartridge = null;
 let isEditor = false;
+// 「刪除列印紀錄(回補庫存)」權限：admin 或主管(有 delete_board/delete_issues，與 portal 後台的主管定義一致)
+// role 這個舊欄位只有 admin/editor/viewer 三級、無法分辨主管，故另外檢查 permissions 陣列
+function canDeleteRecords() {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    const p = currentUser.permissions || [];
+    return p.includes('delete_board') || p.includes('delete_issues');
+}
 let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
 // 消耗紀錄載入範圍：預設只訂閱最近 30 天，使用者點「載入更早」按鈕往前推一個月
 let historySinceDate = null;  // Date 物件 - 訂閱起點
@@ -680,7 +688,8 @@ onAuthStateChanged(auth, async (user) => {
                 role = d.role || 'viewer';
                 displayName = d.displayName || user.email.split('@')[0];
             }
-            currentUser = { uid: user.uid, email: user.email, displayName, role };
+            const permissions = (snap.exists() && Array.isArray(snap.data().permissions)) ? snap.data().permissions : [];
+            currentUser = { uid: user.uid, email: user.email, displayName, role, permissions };
             isEditor = (role === 'admin' || role === 'editor');
             showApp();
             subscribeAll();
@@ -840,6 +849,9 @@ function applyRoleUI() {
     });
     document.querySelectorAll('[data-admin-only]').forEach(el=>{
         el.style.display = (currentUser.role === 'admin') ? '' : 'none';
+    });
+    document.querySelectorAll('[data-delete-record-only]').forEach(el=>{
+        el.style.display = canDeleteRecords() ? '' : 'none';
     });
     lucide.createIcons();
 }
@@ -1626,7 +1638,7 @@ async function saveCartridgeEdit() {
         else val = parseFloat(el.value)||0;
         inv.cartridges[printer][idx][field]=val;
         inv.cartridges[printer][idx].updated_at=new Date().toISOString();
-        inv.cartridges[printer][idx].updated_by='manual';
+        inv.cartridges[printer][idx].updated_by=currentUser.email;
     });
     closeCartridgeModal();
     renderAll();
@@ -1724,6 +1736,7 @@ function renderStockTable() {
             </td>
             <td class="p-3 text-xs text-gray-400">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+                ${s.updated_by && s.updated_by!=='cloud-function' ? `<div class="text-gray-400">by ${escHtml(s.updated_by.split('@')[0])}</div>` : ''}
             </td>
             <td class="p-3 text-center">
                 ${!isEditor ? '<span class="text-gray-300">—</span>'
@@ -1795,7 +1808,7 @@ async function saveStockEdits() {
         inv.stock[fam].total_ml   = newMl;
         inv.stock[fam].note       = newNote;
         inv.stock[fam].updated_at = new Date().toISOString();
-        inv.stock[fam].updated_by = 'manual';
+        inv.stock[fam].updated_by = currentUser.email;
 
         if (diff !== 0) {
             historyEntries.push({
@@ -1908,7 +1921,7 @@ async function saveStockIn() {
     inv.stock[mat].bottles  = Math.round(((inv.stock[mat].bottles||0) + bottles) * 10) / 10;
     inv.stock[mat].total_ml = Math.round(((inv.stock[mat].total_ml||0) + totalMl) * 10) / 10;
     inv.stock[mat].updated_at = new Date().toISOString();
-    inv.stock[mat].updated_by = 'manual';
+    inv.stock[mat].updated_by = currentUser.email;
 
     addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${liters.toFixed(1)} L）` });
     closeStockModal();
@@ -2226,7 +2239,7 @@ function renderHistory() {
             ? `− ${amtStr}`
             : `${(h.ml||0)>=0?'+':'−'} ${amtStr}`;
         const mlColor = isConsumeLike ? 'text-red-500' : (h.type==='stockin'?'text-green-600':'');
-        const isAdmin = currentUser && currentUser.role === 'admin';
+        const canDelRec = canDeleteRecords();
         tr.innerHTML=`
             <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
@@ -2240,8 +2253,8 @@ function renderHistory() {
                 </div>
             </td>
             <td class="p-3 text-xs text-gray-500 font-mono">${h.apiStatus||'—'}</td>
-            <td class="p-3 text-center" ${isAdmin?'':'style="display:none"'} data-admin-only>
-                <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（僅刪除紀錄，不會反向調整庫存）" class="text-gray-400 hover:text-red-600 transition-colors">
+            <td class="p-3 text-center" ${canDelRec?'':'style="display:none"'}>
+                <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（消耗/中止類型會自動回補庫存）" class="text-gray-400 hover:text-red-600 transition-colors">
                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
             </td>
@@ -2850,27 +2863,45 @@ async function reloadData() {
     }
 }
 
-// ══ 刪除單筆消耗/歷史紀錄 (admin only) ══
-// 僅刪除 inventory_history 這筆文件，不會反向調整庫存/樹脂罐存量
+// ══ 刪除單筆消耗/歷史紀錄 (admin / 主管) ══
+// 刪除紀錄的同時把該筆消耗量(ml)加回備料庫存(同家族)，並補一筆「回補」歷史紀錄留痕
 // （guid 仍留在 inventory/main.last_processed_prints，Cloud Function 不會重新寫回這筆）
 async function deleteHistoryEntry(id) {
-    if (!currentUser || currentUser.role !== 'admin') {
-        showToast('僅 admin 可執行此操作', 'error');
+    if (!canDeleteRecords()) {
+        showToast('僅 admin / 主管可執行此操作', 'error');
         return;
     }
     if (!id) return;
     const h = inv.history.find(x => x.id === id);
-    const label = h ? `${matName(h.material)||''} · ${printerDisplay(h.printer)||''} · ${h.note||''}` : id;
-    if (!confirm(`確定要刪除這筆紀錄嗎？\n\n${label}\n\n此操作僅刪除紀錄本身，不會反向調整目前庫存/樹脂罐存量，且無法復原。`)) return;
+    if (!h) return;
+    const label = `${matName(h.material)||''} · ${printerDisplay(h.printer)||''} · ${h.note||''}`;
+    const ml = Number(h.ml) || 0;
+    const restockMsg = (ml > 0 && h.type !== 'manual')
+        ? `\n\n刪除後會將此筆消耗量 ${ml.toFixed(1)} mL 加回「${matName(h.material)}」備料庫存。`
+        : '';
+    if (!confirm(`確定要刪除這筆紀錄嗎？\n\n${label}${restockMsg}\n\n此操作無法復原。`)) return;
     try {
         await deleteDoc(doc(db, 'inventory_history', id));
         extraHistory = extraHistory.filter(x => x.id !== id);
         historyFromSubscription = historyFromSubscription.filter(x => x.id !== id);
         rebuildInvHistory();
+        // 回補庫存：只對「消耗/中止」類型且有實際用量的紀錄回補，手動調整類(manual)紀錄本身
+        // 不代表真實列印消耗，刪除它不該動庫存數字
+        if (ml > 0 && h.type !== 'manual') {
+            const fam = matCode(h.material);
+            if (!inv.stock[fam]) inv.stock[fam] = { bottles: 0, total_ml: 0 };
+            inv.stock[fam].total_ml = Math.round(((inv.stock[fam].total_ml || 0) + ml) * 10) / 10;
+            inv.stock[fam].updated_at = new Date().toISOString();
+            inv.stock[fam].updated_by = currentUser.email;
+            await saveAll(`刪除消耗紀錄回補庫存：${matName(h.material)} +${ml.toFixed(1)}mL（${currentUser.displayName}）`);
+            addHistory({ type:'manual', material: h.material, printer:'備料庫存',
+                ml: ml, note: `刪除紀錄回補（原：${h.note||h.print_guid||id}）` });
+        }
         renderHistory();
         renderOverview();
+        renderStockTable();
         if (currentTab === 'monthly') renderMonthly();
-        showToast('已刪除該筆紀錄', 'success');
+        showToast(ml > 0 && h.type !== 'manual' ? `已刪除並回補庫存 ${ml.toFixed(1)} mL` : '已刪除該筆紀錄', 'success');
     } catch (err) {
         console.error('[deleteHistoryEntry] 失敗:', err);
         showToast('刪除失敗：' + err.message, 'error');

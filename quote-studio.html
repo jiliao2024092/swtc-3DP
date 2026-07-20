@@ -3503,7 +3503,7 @@ function buildGizmo(m){
     const u = seed.sub(a.v.clone().multiplyScalar(seed.dot(a.v))).normalize();
     const w = new THREE.Vector3().crossVectors(a.v, u);
     V.gizmoBasis[k] = { axis:a.v.clone(), u, w };
-    const tubeR = Math.max(2.8, R*0.065);   // 加粗
+    const tubeR = Math.max(0.7, R*0.01625);   // 縮小為原本的 1/4
     // 可見粗弧：只畫一段弧（不整圈環繞，貼近參考圖），弧線中點對齊箭頭方向(u)。
     // 直接用 u/w 基底手算弧上的點再做成管狀，不靠 TorusGeometry 的內建旋轉，
     // 確保弧線visible範圍與箭頭方向精準對齊。依真實深度測試繪製，被模型擋住處自然隱沒。

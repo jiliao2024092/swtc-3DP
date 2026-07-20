@@ -6,6 +6,34 @@
 (function () {
   const { useState, useEffect } = React;
 
+  // 從 INVENTORY 消耗紀錄自動帶入實際消耗量：inventory_history 的備註慣例格式為
+  // 「客戶簡稱-工作類別-EF單號」（見 inventory.html 的 editHistoryNote），
+  // 工作類別為 代工/評估 時才計入，EF單號需與工單的 EF 單號（form.id）完全相同，
+  // 同一單號可能有多筆消耗紀錄（分次列印），全部加總。
+  // Firestore 沒有可查「note 內含某字串」的索引，只能抓一段時間內的紀錄再前端解析比對，
+  // 故限制筆數（最近1000筆）並僅在開啟工單/EF單號變更時查一次，不做常駐訂閱以免耗用讀取額度。
+  async function fetchConsumptionForEF(efNo) {
+    if (!efNo || !window.fbDb) return null;
+    try {
+      const snap = await window.fbDb.collection('inventory_history').orderBy('tsDate', 'desc').limit(1000).get();
+      let sum = 0, count = 0;
+      snap.forEach(doc => {
+        const d = doc.data();
+        const parts = (d.note || '').split('-');
+        if (parts.length < 3) return;
+        const category = parts[1].trim();
+        const ef = parts.slice(2).join('-').trim();
+        if ((category === '代工' || category === '評估') && ef === efNo) {
+          sum += Number(d.ml) || 0; count++;
+        }
+      });
+      return count > 0 ? { sum: Math.round(sum * 10) / 10, count } : null;
+    } catch (e) {
+      console.error('[fetchConsumptionForEF] 查詢失敗', e);
+      return null;
+    }
+  }
+
   // ── 訂單 Modal ──
   function OrderModal({ order, onClose, onSave }) {
     const K = window.K;
@@ -28,7 +56,21 @@
     const [form, setForm] = useState(order ? { ...order } : empty);
     const [busy, setBusy] = useState(false);
     const [showLink, setShowLink] = useState(!!(order && order.link));  // 單號超連結輸入是否展開
+    const [consumeInfo, setConsumeInfo] = useState(null);   // INVENTORY 消耗紀錄查詢結果 {sum, count}
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+    // EF 單號變更時，自動查詢 INVENTORY 消耗紀錄合計；首次開啟若「實際消耗量」尚未填寫，直接帶入
+    useEffect(() => {
+      let cancelled = false;
+      setConsumeInfo(null);
+      if (!form.id) return;
+      fetchConsumptionForEF(form.id).then(info => {
+        if (cancelled || !info) return;
+        setConsumeInfo(info);
+        setForm(f => (f.actUsage === '' || f.actUsage == null) ? { ...f, actUsage: info.sum } : f);
+      });
+      return () => { cancelled = true; };
+    }, [form.id]);
 
     const save = async () => {
       if (!form.customer || !form.dueDate) {
@@ -89,7 +131,16 @@
               <div className="m-field"><label style={LBL}>預估消耗量 (mL)</label>
                 <input style={INP} type="number" min="0" step="1" value={form.estUsage??''} onChange={e=>set('estUsage',e.target.value===''?'':+e.target.value)} placeholder="例：120"/></div>
               <div className="m-field"><label style={LBL}>實際消耗量 (mL)</label>
-                <input style={INP} type="number" min="0" step="1" value={form.actUsage??''} onChange={e=>set('actUsage',e.target.value===''?'':+e.target.value)} placeholder="超過預估將於總表標記"/></div>
+                <input style={INP} type="number" min="0" step="1" value={form.actUsage??''} onChange={e=>set('actUsage',e.target.value===''?'':+e.target.value)} placeholder="超過預估將於總表標記"/>
+                {consumeInfo && (
+                  <div style={{fontSize:11,color:'#8a93a3',marginTop:4,display:'flex',alignItems:'center',gap:6}}>
+                    📊 消耗紀錄合計 {consumeInfo.sum}mL（{consumeInfo.count}筆）
+                    {(+form.actUsage||0)!==consumeInfo.sum && (
+                      <button type="button" onClick={()=>set('actUsage',consumeInfo.sum)}
+                        style={{border:'1px solid #0c7a99',color:'#0c7a99',background:'#e6f1f6',borderRadius:4,padding:'1px 7px',fontSize:10.5,cursor:'pointer'}}>套用</button>
+                    )}
+                  </div>
+                )}</div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>期望交期 *</label>
