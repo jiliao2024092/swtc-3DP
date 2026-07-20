@@ -3485,37 +3485,60 @@ function buildGizmo(m){
     const u = seed.sub(a.v.clone().multiplyScalar(seed.dot(a.v))).normalize();
     const w = new THREE.Vector3().crossVectors(a.v, u);
     V.gizmoBasis[k] = { axis:a.v.clone(), u, w };
-    // 可見細環
-    const pts = [];
-    for (let i=0;i<=96;i++){
-      const t = i/96*Math.PI*2;
-      pts.push(new THREE.Vector3().copy(P).addScaledVector(u, Math.cos(t)*R).addScaledVector(w, Math.sin(t)*R));
-    }
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color:a.c, transparent:true, opacity:.95, linewidth:2 }));
-    V.gizmo.add(line);
-    // 隱形拾取粗環
-    const pick = new THREE.Mesh(
-      new THREE.TorusGeometry(R, Math.max(2.4, R*0.055), 8, 48),
-      new THREE.MeshBasicMaterial({ visible:false }));
-    pick.position.copy(P);
-    if (k==='x') pick.rotation.y = Math.PI/2;
-    else if (k==='y') pick.rotation.x = Math.PI/2;
-    pick.userData.axis = k;
-    V.gizmo.add(pick); V.gizmoPicks.push(pick);
-    // 軸把手小球
-    const knob = new THREE.Mesh(
-      new THREE.SphereGeometry(Math.max(1.5, R*0.035), 12, 12),
+    const tubeR = Math.max(2.2, R*0.05);
+    // 可見粗環：實心圓管（同時作為拾取範圍），較細線更立體、貼近參考圖手感；
+    // 依真實深度測試繪製，被模型擋住的部分會自然隱沒，呈現弧線效果
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(R, tubeR, 12, 64),
+      new THREE.MeshBasicMaterial({ color:a.c, transparent:true, opacity:.92 }));
+    ring.position.copy(P);
+    if (k==='x') ring.rotation.y = Math.PI/2;
+    else if (k==='y') ring.rotation.x = Math.PI/2;
+    ring.userData.axis = k;
+    V.gizmo.add(ring); V.gizmoPicks.push(ring);
+    // 方向箭頭：圓錐，指向該軸環正旋轉方向的切線，取代原本的把手小球
+    const arrow = new THREE.Mesh(
+      new THREE.ConeGeometry(tubeR*1.7, tubeR*4.2, 12),
       new THREE.MeshBasicMaterial({ color:a.c }));
-    knob.position.copy(P).addScaledVector(u, R);
-    V.gizmo.add(knob);
+    arrow.position.copy(P).addScaledVector(u, R).addScaledVector(w, tubeR*2.4);
+    arrow.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), w.clone().normalize()));
+    V.gizmo.add(arrow);
   }
+  V.gizmo.add(makeGizmoCenterIcon(P, R));
   V.scene.add(V.gizmo);
+}
+/* 中心圖示：旋轉操控中心標記（白底圓徽章＋風車狀圖案），恆常朝向鏡頭、不受遮擋 */
+function makeGizmoCenterIcon(pos, R){
+  const cv = document.createElement('canvas'); cv.width=96; cv.height=96;
+  const ctx = cv.getContext('2d');
+  const cx=48, cy=48;
+  ctx.beginPath(); ctx.arc(cx,cy,42,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,255,255,.96)'; ctx.fill();
+  ctx.lineWidth=3.5; ctx.strokeStyle='#8a93a3'; ctx.stroke();
+  ctx.fillStyle='#0c7a99';
+  for (let i=0;i<4;i++){
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(i*Math.PI/2 + Math.PI/4);
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.quadraticCurveTo(11,-11,22,0); ctx.quadraticCurveTo(11,11,0,0);
+    ctx.fill(); ctx.restore();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  sp.position.copy(pos);
+  const s = Math.max(6, R*0.16);
+  sp.scale.set(s, s, 1);
+  sp.renderOrder = 20;
+  return sp;
 }
 function removeGizmo(){
   if (!V.gizmo) return;
   V.scene.remove(V.gizmo);
-  V.gizmo.traverse(o=>{ if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  // 注意：THREE.Sprite 共用同一份靜態 geometry（模組層級單例），中心圖示是 Sprite，
+  // 不能對它呼叫 geometry.dispose()，否則會連場景中其他 Sprite（如範圍框文字標籤）一起壞掉。
+  V.gizmo.traverse(o=>{
+    if (o.geometry && !(o instanceof THREE.Sprite)) o.geometry.dispose();
+    if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+  });
   V.gizmo = null; V.gizmoPicks = [];
 }
 function gizmoDragBegin(){
