@@ -1583,12 +1583,16 @@ function openCartridgeModal() {
                     </div>
                     <div class="space-y-1">
                         <label class="text-xs text-gray-600">剩餘 (L)</label>
-                        <input type="number" value="${((s.remaining_ml||0)/1000).toFixed(2)}" min="0" step="1" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
-                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                        <div class="flex items-center gap-1">
+                            <button type="button" onclick="stepCartridgeInput(this,-1)" class="flex-shrink-0 w-7 h-7 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-100" title="-1 L">−</button>
+                            <input type="number" value="${((s.remaining_ml||0)/1000).toFixed(2)}" min="0" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
+                                class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                            <button type="button" onclick="stepCartridgeInput(this,1)" class="flex-shrink-0 w-7 h-7 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-100" title="+1 L">＋</button>
+                        </div>
                     </div>
                     <div class="space-y-1">
                         <label class="text-xs text-gray-600">初始容量 (L)</label>
-                        <input type="number" value="${((s.initial_ml||DEFAULT_CARTRIDGE_ML)/1000).toFixed(2)}" min="0.01" step="1" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
+                        <input type="number" value="${((s.initial_ml||DEFAULT_CARTRIDGE_ML)/1000).toFixed(2)}" min="0.01" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
                             class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                     </div>
                     <div class="space-y-1">
@@ -1618,6 +1622,16 @@ function openCartridgeModal() {
     });
     document.getElementById('cartridge-modal').classList.remove('hidden');
     lucide.createIcons();
+}
+
+// 樹脂罐「剩餘(L)」+1/−1 按鈕：原本用瀏覽器原生 number input 的 step 箭頭，
+// 但 step="1" 搭配 min="0" 時，瀏覽器會先把非整數值(如1.8)「對齊」到最近的合法step值(2)才加減，
+// 導致第一次點擊看起來像失效（1.8→2 而非期望的2.8）。改用按鈕直接對目前值做加減，不受此限制。
+function stepCartridgeInput(btn, delta) {
+    const input = btn.parentElement.querySelector('.cartridge-input[data-field="remaining_ml"]');
+    if (!input) return;
+    const cur = parseFloat(input.value) || 0;
+    input.value = Math.max(0, Math.round((cur + delta) * 100) / 100).toFixed(2);
 }
 
 async function saveCartridgeEdit() {

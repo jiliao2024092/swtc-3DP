@@ -140,6 +140,14 @@
                     <option value="ALL">全天</option>
                 </select>
             </div>
+            <div class="space-y-1" id="edit-end-slot-wrap" style="display:none">
+                <label class="text-sm font-medium text-gray-700">結束時段</label>
+                <select id="edit-end-slot" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    <option value="AM">上午</option>
+                    <option value="PM">下午</option>
+                    <option value="EV">晚上</option>
+                </select>
+            </div>
             <div class="space-y-1">
                 <label class="text-sm font-medium text-gray-700">申請業務</label>
                 <select id="edit-sales" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
@@ -413,12 +421,20 @@
                     <input type="date" id="end-date-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 </div>
                 <div class="space-y-1">
-                    <label class="text-sm font-medium text-gray-700">時段</label>
+                    <label class="text-sm font-medium text-gray-700" id="slot-input-label">時段</label>
                     <select id="slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                         <option value="AM">上午</option>
                         <option value="PM">下午</option>
                         <option value="EV">晚上</option>
                         <option value="ALL">全天</option>
+                    </select>
+                </div>
+                <div class="space-y-1" id="end-slot-wrap" style="display:none">
+                    <label class="text-sm font-medium text-gray-700">結束時段</label>
+                    <select id="end-slot-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                        <option value="AM">上午</option>
+                        <option value="PM">下午</option>
+                        <option value="EV" selected>晚上</option>
                     </select>
                 </div>
                 <div class="space-y-1">
@@ -748,6 +764,58 @@ window.quickAddBooking = function(printer, dateKey, slot){
     showToast('已帶入設備/日期/時段，請補齊資料後送出');
 };
 
+// 甘特圖點選起訖時段建立跨天/跨時段預約：第一次點選記錄起點，第二次點選（同一台機台）算出範圍並帶入表單。
+// 例：先點 7/21 晚上、再點 7/22 下午 → 預約 7/21(晚上起)~7/22(下午止)。
+let pendingSelection = null;
+let cellClickTimer = null;
+// click 與 dblclick 會在雙擊時依序觸發（click, click, dblclick），用計時器讓「這是雙擊的一部分」時取消單擊動作，
+// 交給 ondblclick 的 quickAddBooking 處理，避免兩者同時觸發造成混亂
+window.cellClick = function(printer, dateKey, slot){
+    if (cellClickTimer){ clearTimeout(cellClickTimer); cellClickTimer = null; return; }
+    cellClickTimer = setTimeout(()=>{ cellClickTimer = null; onGanttCellClick(printer, dateKey, slot); }, 260);
+};
+function slotLabel(slot){ return slot==='PM'?'下午':slot==='EV'?'晚上':slot==='ALL'?'全天':'上午'; }
+function slotSortKey(dateKey, slot){ return dateKey + String(SLOT_ORDER.indexOf(slot||'AM')); }
+function onGanttCellClick(printer, dateKey, slot){
+    if (!pendingSelection){
+        pendingSelection = { printer, date: dateKey, slot };
+        renderGantt();
+        showToast(`已選起點：${dateKey} ${slotLabel(slot)}，請再點選結束時段（Esc 取消）`);
+        return;
+    }
+    if (pendingSelection.printer !== printer){
+        pendingSelection = { printer, date: dateKey, slot };
+        renderGantt();
+        showToast(`機台不同，已重新以「${printer}」開始選擇：${dateKey} ${slotLabel(slot)}`, 'error');
+        return;
+    }
+    let start = pendingSelection, end = { date: dateKey, slot };
+    if (slotSortKey(start.date, start.slot) > slotSortKey(end.date, end.slot)) { [start, end] = [end, start]; }
+    pendingSelection = null;
+    quickAddBookingRange(printer, start.date, start.slot, end.date, end.slot);
+}
+function quickAddBookingRange(printer, date, slot, endDate, endSlot){
+    const sec = document.getElementById('booking-section');
+    if (sec.classList.contains('hidden')) sec.classList.remove('hidden');
+    document.getElementById('date-input').value = date;
+    document.getElementById('slot-input').value = slot;
+    const pi = document.getElementById('printer-select');
+    for (const o of pi.options){ if (o.value===printer){ pi.value = printer; break; } }
+    const isMultiDay = endDate !== date;
+    document.getElementById('end-date-input').value = isMultiDay ? endDate : '';
+    document.getElementById('end-slot-wrap').style.display = isMultiDay ? '' : 'none';
+    document.getElementById('slot-input-label').textContent = isMultiDay ? '起始時段' : '時段';
+    if (isMultiDay) document.getElementById('end-slot-input').value = endSlot;
+    renderGantt();
+    sec.scrollIntoView({behavior:'smooth', block:'center'});
+    showToast(isMultiDay
+        ? `已帶入 ${date} ${slotLabel(slot)} ～ ${endDate} ${slotLabel(endSlot)}，請補齊資料後送出`
+        : '已帶入設備/日期/時段，請補齊資料後送出');
+}
+addEventListener('keydown', e=>{
+    if (e.key==='Escape' && pendingSelection){ pendingSelection = null; renderGantt(); showToast('已取消選擇'); }
+});
+
 // ══════════════════════════════════════════════
 // ══ 4. Firestore 即時訂閱 bookings ════════════
 // ══════════════════════════════════════════════
@@ -770,13 +838,24 @@ function getStatusColor(status){
     return {'待確認':'bg-yellow-100 text-yellow-800 border-yellow-200','執行中':'bg-blue-100 text-blue-800 border-blue-200','已完成':'bg-green-100 text-green-800 border-green-200','異常/取消':'bg-red-100 text-red-800 border-red-200'}[status]||'bg-gray-100 text-gray-800';
 }
 function getOccupiedSlots(b) { return b.slot==='ALL' ? ['AM','PM','EV'] : [b.slot||'AM']; }
+const SLOT_ORDER = ['AM','PM','EV'];
+// 跨天預約每一天佔用的時段：起始日從 slot 開始佔到當天結束，中間日全天佔用，結束日從當天開始佔到 endSlot 為止；
+// 未跨天（endDate===date 或沒設）則沿用原本 getOccupiedSlots（含 ALL=全天）
+function occupiedSlotsForDay(b, dayKey){
+    const end = (b.endDate && b.endDate>=b.date) ? b.endDate : b.date;
+    if (end === b.date) return getOccupiedSlots(b);
+    if (b.slot==='ALL') return SLOT_ORDER;   // 跨天+全天時段：每天都算全天佔用
+    if (dayKey === b.date) return SLOT_ORDER.slice(SLOT_ORDER.indexOf(b.slot||'AM'));
+    if (dayKey === end) return SLOT_ORDER.slice(0, SLOT_ORDER.indexOf(b.endSlot||'EV')+1);
+    return SLOT_ORDER;   // 中間日
+}
 function getConflictKeys() {
     const counts = {};
     bookings.forEach(b=>{
         if(!b.date || !b.printer) return;
         const days = dateRangeList(b.date, b.endDate||b.date);
-        getOccupiedSlots(b).forEach(s=>{
-            days.forEach(dk=>{
+        days.forEach(dk=>{
+            occupiedSlotsForDay(b, dk).forEach(s=>{
                 const k = `${b.printer}|${dk}|${s}`;
                 counts[k] = (counts[k]||0) + 1;
             });
@@ -788,7 +867,7 @@ function getConflictKeys() {
 }
 function bookingHasConflict(b, cs) {
     const days = dateRangeList(b.date||'', b.endDate||b.date||'');
-    return getOccupiedSlots(b).some(s => days.some(dk => cs.has(`${b.printer}|${dk}|${s}`)));
+    return days.some(dk => occupiedSlotsForDay(b, dk).some(s => cs.has(`${b.printer}|${dk}|${s}`)));
 }
 function populateFilterSelects() {
     const fills = [
@@ -1100,15 +1179,22 @@ function renderGantt() {
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
             const dayBookings = bookings.filter(b=>b.printer===printer && bookingCoversDay(b,dayKey));
-            const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
+            // 每筆預約在「這一天」實際佔用的時段（跨天預約起訖日可能只佔部分時段，中間日全天佔用）
             const SLOTS = ['AM','PM','EV'];
-            const indiv = { AM: dayBookings.filter(b=>(b.slot||'AM')==='AM'),
-                            PM: dayBookings.filter(b=>b.slot==='PM'),
-                            EV: dayBookings.filter(b=>b.slot==='EV') };
+            const allDayItems = dayBookings.filter(b=>occupiedSlotsForDay(b,dayKey).length===3);
+            const indiv = { AM: [], PM: [], EV: [] };
+            dayBookings.forEach(b=>{
+                const slots = occupiedSlotsForDay(b,dayKey);
+                if (slots.length===3) return;   // 已在 allDayItems
+                slots.forEach(s=>indiv[s].push(b));
+            });
             const anyIndiv = indiv.AM.length || indiv.PM.length || indiv.EV.length;
             const todayBg = isToday?'bg-blue-50/40':'';
-            // 雙擊格子 → 快速新增預約（帶入設備/日期/時段），僅 editor/admin
-            const dbl = (slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增預約"` : '';
+            // 雙擊格子 → 快速新增預約（帶入設備/日期/時段）；單擊格子 → 兩次點選起訖時段建立跨天/跨時段預約
+            // （click 與 dblclick 用計時器互斥，見 cellClick()），僅 editor/admin
+            const dbl = (slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增單一時段預約；單擊兩次選起訖時段"` : '';
+            const pick = (slot)=> canEdit ? ` onclick="cellClick('${printer}','${dayKey}','${slot}')"` : '';
+            const isPending = (slot)=> pendingSelection && pendingSelection.printer===printer && pendingSelection.date===dayKey && pendingSelection.slot===slot;
 
             // 渲染一個預約色塊
             const renderItem = (b) => {
@@ -1135,14 +1221,15 @@ function renderGantt() {
             // 情境 B/C/D：逐時段渲染（每格 = 該時段單獨預約 + 全天預約）
             SLOTS.forEach(sl=>{
                 const combined = [...indiv[sl], ...allDayItems];
+                const pendRing = isPending(sl) ? ' ring-2 ring-blue-400 ring-inset' : '';
                 if(combined.length){
                     const conflict = combined.length > 1;
-                    const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : '';
-                    const bg   = conflict ? 'bg-orange-100' : todayBg;
+                    const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : pendRing;
+                    const bg   = conflict ? 'bg-orange-100' : (isPending(sl) ? 'bg-blue-50' : todayBg);
                     const badge = conflict ? renderConflictBadge(combined.length) : '';
-                    html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
+                    html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl(sl)}${pick(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
                 } else {
-                    html += `<td class="p-1 border border-gray-200 ${todayBg}"${dbl(sl)}></td>`;
+                    html += `<td class="p-1 border border-gray-200 ${isPending(sl)?'bg-blue-50':todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
                 }
             });
         });
@@ -1247,6 +1334,18 @@ function bookingCoversDay(b, dayKey){
     return b.date<=dayKey && dayKey<=end;
 }
 
+// 跨天預約才顯示「結束時段」欄位（未跨天=單日，起訖時段一律等於「時段」欄位）
+document.getElementById('end-date-input').addEventListener('change', e=>{
+    const date = document.getElementById('date-input').value;
+    const isMultiDay = e.target.value && e.target.value !== date;
+    document.getElementById('end-slot-wrap').style.display = isMultiDay ? '' : 'none';
+    document.getElementById('slot-input-label').textContent = isMultiDay ? '起始時段' : '時段';
+});
+document.getElementById('edit-end-date').addEventListener('change', e=>{
+    const date = document.getElementById('edit-date').value;
+    document.getElementById('edit-end-slot-wrap').style.display = (e.target.value && e.target.value !== date) ? '' : 'none';
+});
+
 document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const purpose = document.getElementById('purpose-input').value.trim();
@@ -1263,12 +1362,13 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
 
     const printer = document.getElementById('printer-select').value;
     const slot    = document.getElementById('slot-input').value;
-    // 衝突檢查：以「佔用時段」重疊判定，全天(ALL)與任一時段重疊也算衝突；跨天預約逐日檢查
-    const newSlots = getOccupiedSlots({slot});
+    const endSlot = (endDate!==date) ? document.getElementById('end-slot-input').value : slot;
+    // 衝突檢查：以「佔用時段」重疊判定，全天(ALL)與任一時段重疊也算衝突；跨天預約逐日檢查（含起訖日不同時段）
+    const newBooking = {printer, date, endDate, slot, endSlot};
     const newDays = dateRangeList(date, endDate);
     const conflicts = bookings.filter(b=>b.printer===printer
-        && newDays.some(dk=>bookingCoversDay(b,dk))
-        && getOccupiedSlots(b).some(s=>newSlots.includes(s)));
+        && newDays.some(dk=>bookingCoversDay(b,dk)
+            && occupiedSlotsForDay(b,dk).some(s=>occupiedSlotsForDay(newBooking,dk).includes(s))));
     if(conflicts.length > 0){
         const slotTxt = slot==='ALL'?'全天':slot==='PM'?'下午':slot==='EV'?'晚上':'上午';
         const detail = conflicts.slice(0,5).map(b=>{
@@ -1286,6 +1386,7 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
             date,
             endDate,
             slot,
+            endSlot,
             sales:    document.getElementById('sales-select').value,
             printer,
             category,
@@ -1306,6 +1407,8 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
         // 重置表單
         document.getElementById('date-input').value = fmtDateLocal(new Date());
         document.getElementById('end-date-input').value = '';
+        document.getElementById('end-slot-wrap').style.display = 'none';
+        document.getElementById('slot-input-label').textContent = '時段';
         document.getElementById('category-select').value = '';
         document.getElementById('category-other-input').value = '';
         document.getElementById('category-other-wrap').classList.add('hidden');
@@ -1355,6 +1458,8 @@ window.openEditModal = function(id){
     document.getElementById('edit-date').value = b.date || '';
     document.getElementById('edit-end-date').value = (b.endDate && b.endDate!==b.date) ? b.endDate : '';
     document.getElementById('edit-slot').value = b.slot || 'AM';
+    document.getElementById('edit-end-slot').value = b.endSlot || 'EV';
+    document.getElementById('edit-end-slot-wrap').style.display = (b.endDate && b.endDate!==b.date) ? '' : 'none';
     document.getElementById('edit-category').value = b.category || '';
     document.getElementById('edit-category-other-input').value = b.categoryOther || '';
     document.getElementById('edit-category-other-wrap').classList.toggle('hidden', b.category!=='其他');
@@ -1391,11 +1496,14 @@ window.saveEdit = async function(){
     if(category==='其他' && !categoryOther){ showToast('請填寫其他用途說明','error'); return; }
     if(editHasOrder===null){ showToast('請選擇是否有單號','error'); return; }
     if(!purpose){ showToast(editHasOrder?'請填寫單號':'請填寫備註','error'); return; }
+    const slot = document.getElementById('edit-slot').value;
+    const endSlot = (endDate!==date) ? document.getElementById('edit-end-slot').value : slot;
     try {
         await updateDoc(doc(db,'bookings',editingId), {
             date,
             endDate,
-            slot:     document.getElementById('edit-slot').value,
+            slot,
+            endSlot,
             sales:    document.getElementById('edit-sales').value,
             printer:  document.getElementById('edit-printer').value,
             engineer: document.getElementById('edit-engineer').value,
@@ -1535,6 +1643,7 @@ window.exportExcel = function(){
         '預約日期': b.date||'',
         '結束日期': (b.endDate && b.endDate!==b.date) ? b.endDate : '',
         '時段':     b.slot==='PM'?'下午':b.slot==='AM'?'上午':b.slot==='EV'?'晚上':b.slot==='ALL'?'全天':'',
+        '結束時段': (b.endDate && b.endDate!==b.date) ? (b.endSlot==='PM'?'下午':b.endSlot==='AM'?'上午':'晚上') : '',
         '申請業務': salesDisplay(b.sales),
         '設備':     b.printer||'',
         '用途類別': b.category==='其他' ? `其他：${b.categoryOther||''}` : (b.category||''),
@@ -1546,7 +1655,7 @@ window.exportExcel = function(){
         '最後修改': b.updatedAt ? fmtRelTime(b.updatedAt) : '',
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [{wch:14},{wch:14},{wch:8},{wch:10},{wch:10},{wch:16},{wch:8},{wch:30},{wch:12},{wch:10},{wch:25},{wch:18}];
+    ws['!cols'] = [{wch:14},{wch:14},{wch:8},{wch:8},{wch:10},{wch:10},{wch:16},{wch:8},{wch:30},{wch:12},{wch:10},{wch:25},{wch:18}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '預約清單');
     const now = new Date();

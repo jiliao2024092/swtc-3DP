@@ -290,6 +290,10 @@ body.big{--fs:1.16}
 .railBtn small{font-size:calc(8px * var(--fs));font-weight:600;transform:scale(.92)}
 .railBtn:hover{background:var(--panelBg);border-color:var(--line)}
 .railBtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#railHide{width:42px;height:20px;border:1px solid var(--line);background:var(--panelBg);border-radius:6px;cursor:pointer;color:var(--ink3);font-size:calc(10px * var(--fs))}
+#railHide:hover{color:var(--accent);border-color:var(--accent)}
+#railShow{position:absolute;top:80px;right:14px;z-index:15;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:calc(11.5px * var(--fs));font-weight:600;color:var(--ink3);display:none}
+#railShow:hover{color:var(--accent)}
 #modPanel{position:absolute;top:80px;right:72px;width:calc(302px * var(--fs));max-height:calc(100vh - 175px);overflow-y:auto;
   padding:14px;z-index:15;display:none}
 #modPanel::-webkit-scrollbar{width:5px}
@@ -324,7 +328,9 @@ body.big{--fs:1.16}
   border-radius:6px;padding:10px;max-height:300px;overflow-y:auto}
 
 /* ============ layer clip slider ============ */
-#clipWrap{position:absolute;right:20px;top:50%;transform:translateY(-50%);z-index:14;display:none;
+/* right 從 20px 改 80px：原本跟右側工具列(#rail，佔用 right:14~68px)水平重疊，
+   工具列 z-index 較高會蓋住拉條上半部；改到工具列左側完全錯開，z-index 也提高確保不被蓋住 */
+#clipWrap{position:absolute;right:80px;top:50%;transform:translateY(-50%);z-index:17;display:none;
   flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:999px}
 #clipWrap.show{display:flex}
 #clipRange{writing-mode:vertical-lr;direction:rtl;height:200px;width:20px;accent-color:var(--accent)}
@@ -438,6 +444,7 @@ body.big{--fs:1.16}
 
 <!-- right module rail -->
 <div id="rail" class="glass">
+  <button id="railHide" title="收合右側工具列">▶</button>
   <button class="railBtn" data-mod="stl" title="STL 分析">🧩<small>STL</small></button>
   <button class="railBtn" data-mod="print" title="列印分析">🖨<small>列印</small></button>
   <button class="railBtn" data-mod="ai" title="AI 最佳化">✨<small>AI</small></button>
@@ -445,6 +452,7 @@ body.big{--fs:1.16}
   <button class="railBtn" data-mod="cloud" title="雲端管理">☁<small>雲端</small></button>
   <button class="railBtn" data-mod="admin" id="railAdmin" title="材料與價格設定（限管理員／主管）" style="display:none">⚙<small>設定</small></button>
 </div>
+<button id="railShow" class="glass-sm" title="展開右側工具列">◀</button>
 <div id="modPanel" class="glass">
   <div id="modHead"><b id="modTitle"></b><button id="modClose">✕</button></div>
   <div id="modBody"></div>
@@ -3033,6 +3041,14 @@ function bindEvents(){
     } else openModule(b.dataset.mod);
   }));
   $('#modClose').addEventListener('click', ()=>{ $('#modPanel').classList.remove('open'); $$('#rail .railBtn').forEach(b=>b.classList.remove('on')); S.openMod=null; });
+  // 右側工具列收合/展開；收合時一併關閉展開中的模組面板
+  const setRailPanel = show => {
+    $('#rail').style.display = show ? '' : 'none';
+    $('#railShow').style.display = show ? 'none' : '';
+    if (!show){ $('#modPanel').classList.remove('open'); $$('#rail .railBtn').forEach(b=>b.classList.remove('on')); S.openMod=null; }
+  };
+  $('#railHide').addEventListener('click', ()=>setRailPanel(false));
+  $('#railShow').addEventListener('click', ()=>setRailPanel(true));
   // 左側步驟面板收合/展開（按鈕 + Tab 快速鍵）
   const setStepPanel = show => {
     $('#stepCard').style.display = show ? '' : 'none';
@@ -3503,7 +3519,7 @@ function buildGizmo(m){
     const u = seed.sub(a.v.clone().multiplyScalar(seed.dot(a.v))).normalize();
     const w = new THREE.Vector3().crossVectors(a.v, u);
     V.gizmoBasis[k] = { axis:a.v.clone(), u, w };
-    const tubeR = Math.max(0.7, R*0.01625);   // 縮小為原本的 1/4
+    const tubeR = Math.max(0.35, R*0.008125);   // 再縮小為原本的 1/2（相對加粗前已是 1/8）
     // 可見粗弧：只畫一段弧（不整圈環繞，貼近參考圖），弧線中點對齊箭頭方向(u)。
     // 直接用 u/w 基底手算弧上的點再做成管狀，不靠 TorusGeometry 的內建旋轉，
     // 確保弧線visible範圍與箭頭方向精準對齊。依真實深度測試繪製，被模型擋住處自然隱沒。
