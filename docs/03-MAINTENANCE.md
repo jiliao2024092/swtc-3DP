@@ -18,6 +18,7 @@
 | 異常與資源邏輯 | `portal/issues.js` | portal/ 目錄 |
 | 3D列印機預約 | `3DP-BK.html` | 根目錄 |
 | 材料庫存管理 | `inventory.html` | 根目錄 |
+| 3D列印估價（Beta） | `quote-studio.html` | 根目錄（舊版 `quote.html` 已下線移除） |
 
 #### 修改步驟
 
@@ -25,7 +26,7 @@
 2. 點該檔案 → ✏️ Edit
 3. 改完內容
 4. **若改了 `portal/workboard.js`、`portal/issues.js`、`portal/firebase-*.js`**：
-   - 同時打開 `portal/portal.html`，升 `?v=` cache 版本號（目前 `20260629g` → 改為 `h`）
+   - 同時打開 `portal/portal.html`，升該支 `.js` 對應的 `?v=` cache 版本號（每支 `.js` 各自獨立編號，只需升有改動的那支；目前 `workboard.js`=`20260708h`、`firebase-service.js`=`20260708g`、`issues.js`/`firebase-config.js`=`20260708f`）
    - 只改 portal.html 本身（CSS / React 元件）則不需升號
 5. Commit changes → Commit directly to `main`
 6. 等 GitHub Pages 自動部署（約 1-2 分鐘）
@@ -47,7 +48,7 @@ Cloud Function 程式在 `functions/main.py`。
 2. 改完 → Commit → main
 3. **自動觸發** `deploy-functions.yml` workflow
 4. 等 3-5 分鐘部署完成
-5. 下次 Cloud Scheduler 觸發（10 分鐘內）即用新版
+5. 下次 Cloud Scheduler 觸發（30 分鐘內）即用新版
 
 #### 監測部署
 
@@ -108,7 +109,7 @@ https://console.cloud.google.com/cloudscheduler?project=swtc-3dp-poc
 
 點 `firebase-schedule-sync_formlabs_scheduled-asia-east1` → LOGS
 
-✅ 每 10 分鐘準時觸發、多數綠勾；⚠️ 偶爾紅叉 < 5% 可接受；❌ 連續 3 次以上失敗需處理。
+✅ 每 30 分鐘準時觸發、多數綠勾；⚠️ 偶爾紅叉 < 5% 可接受；❌ 連續 3 次以上失敗需處理。
 
 ### 3.2 Cloud Function logs
 
@@ -153,20 +154,30 @@ https://console.cloud.google.com/billing/projects/swtc-3dp-poc
 
 同樣可在 `inventory.html` 和 `3DP-BK.html` 前端對照表（搜 `FLGPCL05`）補上。
 
+> **v2.2 新增**：同一材料家族出現新版本代碼（如 `FLTO2002`）時，Cloud Function 會自動記錄到 `inventory/main.family_latest_version`，`inventory.html` 顯示名稱會自動改用新版本對應的名稱——**不需要**每次新版本上市都手動改 `FAMILY_TO_NAME`。只有新增「全新材料家族」（前所未見的家族代碼）才需要照上面步驟手動補 `NAME_TO_CODE`/`CODE_TO_NAME`。
+
 ### 4.2 新增追蹤機台
+
+**Formlabs 樹脂罐/消耗自動同步**（需要程式改動）：
 
 1. Formlabs Dashboard 取得新機台 alias（例如 `BrightGiraffe`）
 2. `functions/main.py` → `TRACKED_ALIASES` 加入
 3. `inventory.html` 前端 → `TRACKED_PRINTERS` 加入
 4. Commit → 部署 → 下次 sync 開始追蹤
 
+**3D 列印機預約用的機台清單**（v2.2 起**不需要**改程式碼）：
+
+後台管理 →「3D列印機預約設定」分頁 → 機台清單新增即可，`3DP-BK.html` 會自動從 `settings/workspace.bk_machines` 同步、甘特圖自動多一列。只有 Formlabs API 樹脂罐即時同步（上面那組）才需要動程式碼。
+
 ### 4.3 新增 / 修改使用者
 
-**新增**：使用者用 email 自行註冊 → 首次登入自動建立 `users/{uid}` doc（預設 viewer）
+**新增**：使用者用 email 自行註冊 → 首次登入自動建立 `users/{uid}` doc（預設 viewer）；或由 admin 在後台管理頁面「使用者」分頁手動新增
 
-**修改角色**：Firebase Console → Firestore → `users` collection → 找 uid → 修改 `role` 欄位
+**修改角色/權限**：後台管理頁面「使用者」分頁編輯，或直接改 Firestore `users/{uid}.permissions` 陣列（`role` 欄位是自動推導的舊系統相容值，不需手動同步）
 
-或由 admin 透過 portal.html 後台管理頁面操作。
+**新增角色權限項目**（例如未來要新增新的細權限）：先在 `portal/firebase-service.js` 的 `PERMS_MAP` 加入該權限的中文說明，「角色權限」分頁的 UI 會自動列出來讓 admin 勾選——但**別忘記同時檢查 `firestore.rules`**：新權限若要保護某個 Firestore collection/doc 的寫入，要新增對應的 `hasPerm('新權限')` 判斷；泛用的萬用字元規則（如 `match /settings/{docId}`）不會自動套用新權限，必須寫在更具體的路徑規則裡（見 v2.2 的 `manage_quote_pricing` 範例）。
+
+⚠️ **admin 人數下限只在前端擋**：後台「使用者」分頁會擋下刪除/移除最後一位管理員，但 Firestore rules 沒有對應限制，直接在 Firestore Console 改資料可以繞過，操作時要小心。
 
 ---
 
@@ -184,14 +195,25 @@ F12 → Console 看紅字：
 排查順序：
 1. Cloud Scheduler 最近執行是否成功？
 2. Cloud Function logs 有 `[sync] 完成` 嗎？
-3. Firestore `printer_status/current` 的 `updated_at` 是 10 分鐘內嗎？
+3. Firestore `printer_status/current` 的 `updated_at` 是 30 分鐘內嗎？
 4. 以上正常 → 前端問題，F12 看 onSnapshot 是否有錯
 5. 以上異常 → Formlabs API 失效，看 logs 紅字
 
 ### Q3：庫存數字不對
 
 - **機台上 (L)**（cartridges）：由 Formlabs API 決定，我們不扣減。先對比 Formlabs Dashboard 確認。
-- **備料庫存 (L)**（stock）：使用者手動維護。看 `inventory_history` 的 `manual` 紀錄追蹤。
+- **備料庫存 (L)**（stock）：使用者手動維護。看 `inventory_history` 的 `manual` 紀錄追蹤，v2.2 起也會看到「刪除紀錄回補庫存」的 `manual` 紀錄。
+
+### Q3.1：主管刪除消耗紀錄失敗（permission-denied）
+
+確認該主管帳號的 `permissions` 陣列有 `delete_board` 或 `delete_issues`（後台「使用者」分頁可查看/設定）。若權限正確仍失敗，檢查 `firestore.rules` 的 `inventory_history` delete 規則是否為最新部署版本（v2.2 起才開放主管，之前只有 admin）。
+
+### Q3.2：工作看板「實際消耗量」沒有自動帶入
+
+1. 確認該工單有填 EF 單號
+2. 確認 `inventory_history` 對應紀錄的備註格式是「客戶簡稱-工作類別-EF單號」，且工作類別是「代工」或「評估」（其他類別不計入）
+3. EF 單號需**完全相同**（含大小寫、有無空白），有落差就比對不到
+4. 若欄位已有手動填的值，系統不會覆蓋，需點「套用」按鈕才會同步最新合計
 
 ### Q4：消耗紀錄重複
 
@@ -335,5 +357,5 @@ gcloud firestore export gs://YOUR-BUCKET/backup-$(date +%Y%m%d) --project=swtc-3
 
 ---
 
-**最後更新**：2026/07/01
-**文件版本**：v2.1
+**最後更新**：2026/07/20
+**文件版本**：v2.2

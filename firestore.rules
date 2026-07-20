@@ -77,7 +77,10 @@ service cloud.firestore {
     match /inventory_history/{logId} {
       allow read: if isLoggedIn();
       allow create: if isLegacyEditorOrAdmin();
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin();
+      // 刪除消耗紀錄（回補庫存）：admin 或主管（有 delete_board/delete_issues）都可刪，
+      // 需與 inventory.html 的 canDeleteRecords() 判斷邏輯一致
+      allow delete: if isAdmin() || hasPerm('delete_board') || hasPerm('delete_issues');
     }
 
     match /printer_status/{docId} {
@@ -117,6 +120,18 @@ service cloud.firestore {
       allow read: if hasPerm('view_issues');
       allow create, update: if hasPerm('view_issues');
       allow delete: if hasPerm('edit_issues');
+    }
+
+    // quote-studio.html 材料/價格設定：admin 或有 manage_quote_pricing 權限的主管都可寫入
+    // （必須寫在下面 settings/{docId} 泛用規則之前，Firestore rules 依路徑具體程度比對，
+    //   具體路徑會蓋過萬用字元路徑，而不是兩者疊加）
+    match /settings/quote_materials {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin() || hasPerm('manage_quote_pricing');
+    }
+    match /settings/quote_studio_pricing {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin() || hasPerm('manage_quote_pricing');
     }
 
     match /settings/{docId} {

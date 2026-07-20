@@ -1,6 +1,6 @@
 # SWTC 3D 列印系統 — 技術原理報告
 
-> **版本**：v2.1
+> **版本**：v2.2
 > **適用範圍**：開發 / 維護人員
 > **重點**：架構決策、API 對接、材料計算邏輯
 
@@ -20,7 +20,7 @@
            ↓
 ┌──────────────────────┐         ┌────────────────────┐
 │ Firebase Cloud Func  │ ←─────  │ Cloud Scheduler    │
-│  - sync_formlabs_    │  trigger│ every 10 min       │
+│  - sync_formlabs_    │  trigger│ every 30 min       │
 │    scheduled         │         │ Asia/Taipei TZ     │
 │  - sync_formlabs_    │         └────────────────────┘
 │    manual (HTTPS)    │
@@ -34,9 +34,11 @@
 │  - printer_status    │  ←R/W   │   ├ 異常與資源             │
 │  - bookings          │         │   ├ 後台管理               │
 │  - workboard_orders  │         │   ├ iframe: 3DP-BK.html    │
-│  - issues_*          │         │   └ iframe: inventory.html │
-│  - users             │         └────────────────────────────┘
-│  - settings          │
+│  - issues_*          │         │   ├ iframe: inventory.html │
+│  - users             │         │   └ iframe: quote-studio   │
+│  - settings          │         │       .html (Beta)         │
+│  - print_orders/     │         └────────────────────────────┘
+│    print_history     │
 └──────────────────────┘
            │ onSnapshot (即時推送)
            ↓
@@ -48,7 +50,7 @@
 | 元件 | 職責 | 部署 |
 |------|------|------|
 | **Formlabs Cloud API** | 提供機台、樹脂罐、列印紀錄資料 | Formlabs 自家服務 |
-| **Cloud Scheduler** | 定時觸發（every 10 minutes） | GCP（區域 asia-east1） |
+| **Cloud Scheduler** | 定時觸發（every 30 minutes） | GCP（區域 asia-east1） |
 | **Cloud Function (Python)** | 拉 API、處理邏輯、寫入 Firestore | GCP Cloud Functions v2 |
 | **Firestore** | 資料儲存 + 即時推送 | Firebase |
 | **Firebase Auth** | 使用者登入、權限驗證 | Firebase |
@@ -75,7 +77,7 @@ GitHub Actions (cron) → process_printers.py → printer-status.json (git commi
 ### v2 現行架構
 
 ```
-Cloud Scheduler (10 min) → Cloud Function → Firestore (onSnapshot 即時推送)
+Cloud Scheduler (30 min) → Cloud Function → Firestore (onSnapshot 即時推送)
 ```
 
 **優勢**：
@@ -89,7 +91,7 @@ Cloud Scheduler (10 min) → Cloud Function → Firestore (onSnapshot 即時推�
 
 | 服務 | 用量 | 月費 |
 |------|------|------|
-| Cloud Functions | 4320 次（10 min × 144 days/月） | $0 (200 萬次免費內) |
+| Cloud Functions | 1440 次（每天48次 × 30天/月） | $0 (200 萬次免費內) |
 | Cloud Scheduler | 1 個 job | $0 (3 個 job 免費) |
 | Secret Manager | 2 個 secret + ~4320 次 access | $0 (6 個 + 10K access 免費) |
 | Firestore | ~10MB 儲存 + ~50K 讀寫/天 | $0 (1GB + 50K/天 免費) |
@@ -181,6 +183,15 @@ family = code[:6] if re.match(r'^FL[A-Z0-9]{4}[0-9]', code) else code
 
 前後端使用相同規則；所有計算按「家族」加總與去重。
 
+**⚠️ 重要限制**：家族代碼正規化在資料寫入 Firestore「之前」就發生（`main.py` 的 `raw_material`→`canon_material()`），也就是說 `FLTO2001`／`FLTO2002` 這種版本差異在存進 `inventory_history`/`inventory/main.cartridges` 之前就已經被截斷成同一個 `FLTO20`。若要做版本相關的邏輯，必須在截斷之前（`raw_material` 變數還在時）處理。
+
+### 材料版本自動追蹤（v2.2 新增）
+
+`main.py` 的 `note_family_latest_version()` 會在每次同步時，用截斷前的原始代碼（`raw_material`／cartridge 的 `raw_cart_material`）解析出末 2 碼版本號，記錄每個家族「目前看過的最新版本代碼」，寫入 `inventory/main.family_latest_version`（`{family: rawCode}`）。前端 `matName()` 顯示名稱時優先採用這個最新版本代碼對應的名稱，取代原本寫死的 `FAMILY_TO_NAME` 泛用名稱。
+
+- 只在**寫入前**、只影響**之後同步進來的新資料**；歷史紀錄的 `material` 欄位在寫入當下就已經是截斷後的家族代碼，無法回溯分辨版本
+- 若未來需要對歷史紀錄做版本分析，需另外對 `inventory_history` 加一個 `material_raw` 欄位並重新向 Formlabs API 拉取（目前新寫入的紀錄已含 `material_raw`，見下方 Firestore 結構）
+
 ### 為何不從 prints 自行扣減？
 
 舊版做法：每筆 print 從 cartridges.remaining_ml 扣 volume_ml → double deduction 風險（API 已扣過一次）。
@@ -193,17 +204,34 @@ family = code[:6] if re.match(r'^FL[A-Z0-9]{4}[0-9]', code) else code
 
 ### `users/{uid}`
 ```typescript
-{ email, displayName, role: 'admin'|'editor'|'viewer', createdAt }
+{
+  email, displayName,
+  role: 'admin'|'editor'|'viewer',        // 舊系統相容欄位，由 permissions 推導（roleFromPermissions）
+  permissions: string[],                   // 細權限陣列，如 ['view_board','edit_board','delete_board','manage_quote_pricing',...]
+  active: boolean, createdAt
+}
 ```
+系統至少需保留一位 `permissions` 含 `admin` 的使用者；後台使用者管理頁面會擋下刪除/移除最後一位管理員的操作。
 
 ### `bookings/{auto-id}`
 ```typescript
-{ date, sales, printer, hasOrder, purpose, engineer, status, customer, caseNo, note, createdAt, createdBy, updatedAt }
+{
+  date, endDate,          // endDate 支援跨天預約；未跨天則等於 date
+  slot: 'AM'|'PM'|'EV'|'ALL',
+  sales, printer, hasOrder, purpose,
+  category: '活動展示'|'工程測試'|'其他', categoryOther,   // 用途類別，選「其他」才需 categoryOther
+  engineer, status: '待確認'|'執行中'|'已完成'|'異常/取消',
+  createdAt, createdBy, createdByEmail, updatedAt, updatedBy, updatedByEmail
+}
 ```
+顯示狀態（執行中/已完成）由前端依日期即時計算（`effectiveStatus()`），不寫回 `status` 欄位，避免多餘寫入；已完成/異常取消不會被自動覆蓋。
 
 ### `workboard_orders/{auto-id}`
 ```typescript
-{ orderId, customer, model, status, sales, engineer, note, createdAt, createdBy, updatedAt }
+{ id/*EF單號*/, seq, customer, engineer, machine, resin, category: '代工'|'評估',
+  dueDate, startDate, endDate, actualEndDate,
+  estUsage, actUsage,   // actUsage 可從 inventory_history 消耗紀錄自動帶入
+  progress, complete, remark, link, createdAt, createdBy, updatedAt }
 ```
 
 ### `issues_anomalies/{auto-id}` / `issues_ipa/{auto-id}` / `issues_equipment/{auto-id}`
@@ -213,17 +241,23 @@ family = code[:6] if re.match(r'^FL[A-Z0-9]{4}[0-9]', code) else code
 
 ### `settings/workspace`（單一 doc）
 ```typescript
-{ workspaceName, ... }
+{
+  workspaceName, engineers, machines,       // 工作看板/庫存同步用的預設清單
+  bk_engineers, bk_machines, bk_sales,      // 3D列印機預約獨立設定（bkSync=false 時才會跟 engineers/machines 不同）
+  role_presets: { manager: [...], operator: [...], viewer: [...] },   // 角色權限預設，後台「角色權限」分頁可調整
+  ...
+}
 ```
 
 ### `inventory/main`（單一 doc）
 ```typescript
 {
-  cartridges: { AluminumBowfin: [...], AdroitSauropod: [...] },
-  stock: { FLGPCL05: { bottles, total_ml, note, updated_at, ... }, ... },
+  cartridges: { AluminumBowfin: [{ material, material_raw, remaining_ml, initial_ml, slot, ... }], AdroitSauropod: [...] },
+  stock: { FLGPCL05: { bottles, total_ml, note, updated_at, updated_by, ... }, ... },
   safety: { FLGPCL05: 2000, ... },     // ml
   last_processed_prints: ['guid1', ...],
   disabled_materials: [...],
+  family_latest_version: { FLTO20: 'FLTO2002', ... },   // v2.2 新增：各材料家族目前看過的最新版本原始代碼
   updatedAt, updatedBy, lastReason
 }
 ```
@@ -236,11 +270,15 @@ doc_id 命名：`consume/aborted` = print_guid（防重複）；其他 = auto-id
 {
   ts, tsDate,
   type: 'consume'|'aborted'|'stockin'|'manual',
-  material, printer, ml,
-  note, print_guid, apiStatus,
+  material,               // 家族代碼（截斷後）
+  material_raw,           // v2.2 新增：原始代碼（截斷前），僅新寫入的紀錄才有此欄位
+  printer, ml,
+  note,                   // 建議格式「客戶簡稱-工作類別-EF單號」，供工作看板自動比對消耗量
+  print_guid, apiStatus,
   createdBy, createdByEmail
 }
 ```
+刪除 `consume`/`aborted` 類型的紀錄時，前端會自動把 `ml` 加回 `stock` 對應家族，並另外寫一筆 `manual` 類型的回補紀錄留痕；`manual` 類型本身刪除不影響庫存數字。
 
 ### `printer_status/current`（單一 doc）
 ```typescript
@@ -250,12 +288,32 @@ doc_id 命名：`consume/aborted` = print_guid（防重複）；其他 = auto-id
 }
 ```
 
+### `settings/quote_materials`（單一 doc，quote-studio.html 專用）
+```typescript
+{ list: [{ name, code, price, density }, ...], _ts }
+```
+與舊版 `quote.html` 的材料設定共用同一份清單。admin 或有 `manage_quote_pricing` 權限的主管可在 quote-studio.html 內編輯。
+
+### `settings/quote_studio_pricing`（單一 doc，quote-studio.html 專用）
+```typescript
+{ multipliers: { '代工': 1, '評估': 1.2 }, _ts }
+```
+與 `settings/quote_materials` 分開存放，避免舊版 `quote.html` 材料設定頁的整份覆寫（`.set()` 無 merge）把倍率設定沖掉。
+
+### `print_orders/{auto-id}` / `print_history/{auto-id}`（quote-studio.html 專用）
+```typescript
+// print_orders：估價工單
+{ no, customer, item, machine, material, resinML, timeS, total, workType, status, createdAt }
+// print_history：操作歷史
+{ t, act, sum, createdAt }
+```
+
 ---
 
 ## 六、Cloud Function 內部流程
 
 ```
-sync_formlabs_scheduled（每 10 分鐘）
+sync_formlabs_scheduled（每 30 分鐘）
   1. 取 OAuth token
   2. GET /printers/ → printers_summary
   3. GET /cartridges/ → carts_by_inside
@@ -274,7 +332,7 @@ sync_formlabs_scheduled（每 10 分鐘）
 
 `portal/portal.html` 是 React18 + Babel CDN 的 SPA 外殼：
 - 工作看板、異常與資源、後台管理 → React 元件內建
-- 3D列印機預約、材料庫存管理 → `<iframe src="../3DP-BK.html">` / `<iframe src="../inventory.html">`
+- 3D列印機預約、材料庫存管理、3D列印估價 → `<iframe src="../3DP-BK.html">` / `<iframe src="../inventory.html">` / `<iframe src="../quote-studio.html">`
 
 **改各模組時注意對應檔案**（不是全在 portal.html）：
 
@@ -284,11 +342,12 @@ sync_formlabs_scheduled（每 10 分鐘）
 | 工作看板邏輯 | `portal/workboard.js` |
 | 異常與資源邏輯 | `portal/issues.js` |
 | Firebase 設定 | `portal/firebase-config.js` |
-| Firebase 服務封裝 | `portal/firebase-service.js` |
+| Firebase 服務封裝 | `portal/firebase-service.js`（角色權限定義 `PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 也在這） |
 | 預約系統 | `3DP-BK.html`（根目錄） |
 | 材料庫存 | `inventory.html`（根目錄） |
+| 3D列印估價（Beta） | `quote-studio.html`（根目錄）；舊版 `quote.html` 已下線移除 |
 
-**升 cache 版本號**：改完 `portal/` 下的 `.js` 後，必須升 `portal.html` 的 `?v=` 參數（目前 `20260629g`，下次升 `h`）。只改 portal.html 自身（CSS/元件）不需升號。
+**升 cache 版本號**：改完 `portal/` 下的 `.js` 後，必須升 `portal.html` 的 `?v=` 參數（目前 `workboard.js`/`firebase-service.js` 為 `20260708h`/`20260708g`，`issues.js`/`firebase-config.js` 仍是 `20260708f`；每個 `.js` 檔各自獨立編號，只需升有改動的那支）。只改 portal.html 自身（CSS/元件）不需升號。
 
 ---
 
@@ -313,13 +372,16 @@ sync_formlabs_scheduled（每 10 分鐘）
 | Collection | read | write |
 |-----------|------|-------|
 | `inventory/main` | 任何登入者 | editor / admin |
-| `inventory_history` | 任何登入者 | create: editor+；update/delete: admin |
+| `inventory_history` | 任何登入者 | create: editor+；update: admin；**delete: admin 或主管**（`delete_board`/`delete_issues`，v2.2 為配合刪除回補庫存功能開放） |
 | `printer_status/current` | 任何登入者 | `allow write: if false`（Cloud Function admin SDK 跳過） |
-| `users/{uid}` | 自己 / admin | create: 任何登入者；update/delete: admin |
+| `users/{uid}` | 自己 / admin | create: 任何登入者；update/delete: admin（**注意**：至少保留一位 admin 的檢查目前只在前端 `AdminPanel` 做，Firestore rules 沒有硬性擋，直接改 Firestore 可繞過，屬已知限制） |
 | `bookings` | 任何登入者 | editor / admin |
 | `workboard_orders` | 任何登入者 | editor / admin |
 | `issues_*` | 任何登入者 | editor / admin |
 | `settings/workspace` | 任何登入者 | admin |
+| `settings/quote_materials`、`settings/quote_studio_pricing` | 任何登入者 | **admin 或有 `manage_quote_pricing` 權限者**（v2.2 新增；務必寫在 `settings/{docId}` 泛用規則之前，否則會被泛用規則的 admin-only 蓋掉） |
+| `print_orders` | 任何登入者 | create: 任何登入者；update: editor/admin；delete: admin |
+| `print_history` | 任何登入者 | create: 任何登入者；update/delete: admin |
 
 ---
 
@@ -340,6 +402,9 @@ sync_formlabs_scheduled（每 10 分鐘）
 1. **換罐不自動扣 stock**：無法 100% 確定來源，需人工確認
 2. **每次 sync 拉全部 cartridges**：資料量小，目前不必要增量
 3. **`last_processed_prints` 上限 2000 guid**：每天 10 筆量，足夠 200 天保護期
+4. **材料版本追蹤僅適用未來資料**：`family_latest_version` 只在寫入前用截斷前的原始代碼比對，舊歷史紀錄的原始代碼早已丟失，無法回溯
+5. **admin 人數下限只在前端擋**：`AdminPanel` 會擋下刪除/移除最後一位管理員，但 Firestore rules 沒有對應的硬性限制，直接操作 Firestore 可繞過
+6. **bookings 刪除無 audit log**：3D列印機預約刪除目前沒有留痕紀錄（inventory_history 的刪除已有回補+留痕，bookings 還沒有）
 
 ### 可能的未來改進
 
@@ -348,4 +413,5 @@ sync_formlabs_scheduled（每 10 分鐘）
 | 換罐自動偵測 + 扣 stock | 半天 |
 | events API 增量同步 | 1 天 |
 | 列印失敗自動 email 通知 | 1 天 |
-| audit log（記錄刪除操作） | 半天 |
+| bookings 刪除 audit log | 半天 |
+| Firestore rules 也強制 admin 人數下限（transaction 檢查） | 半天 |

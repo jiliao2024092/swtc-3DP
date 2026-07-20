@@ -21,19 +21,22 @@ portal.html 是 React 外殼（React18 + Babel CDN + Firebase compat SDK），�
 - 工作看板 / 異常與資源 / 後台管理 → portal.html **內嵌** React 元件
 - **3D列印機預約** → portal.html 用 `<iframe src="../3DP-BK.html">`（根目錄檔）
 - **材料庫存管理** → portal.html 用 `<iframe src="../inventory.html">`（根目錄檔）
+- **3D列印估價（Beta）** → portal.html 用 `<iframe src="../quote-studio.html">`（根目錄檔）。舊版 `quote.html` 已下線移除，之後「quote」一律指 `quote-studio.html`
 
-→ 改預約/庫存/列印機狀態的功能，要改根目錄的 `3DP-BK.html` / `inventory.html`，**不是** portal.html。
+→ 改預約/庫存/列印機狀態/估價的功能，要改根目錄的 `3DP-BK.html` / `inventory.html` / `quote-studio.html`，**不是** portal.html。
 
 ## 檔案地圖
-- 根目錄：`inventory.html`（庫存）、`3DP-BK.html`（預約+列印機即時狀態）、`index.html`
-- `portal/`：`portal.html`（外殼 + 看板/異常/後台元件 + 所有 modal/卡片 CSS）、`issues.js`、`workboard.js`、`firebase-config.js`、`firebase-service.js`
-- `functions/`：`main.py`（Formlabs 同步 ~660 行，entry：`sync_formlabs_scheduled` 每30分、`sync_formlabs_manual` admin）、`requirements.txt`
+- 根目錄：`inventory.html`（庫存）、`3DP-BK.html`（預約+列印機即時狀態）、`quote-studio.html`（3D列印估價 Beta）、`index.html`
+- `portal/`：`portal.html`（外殼 + 看板/異常/後台元件 + 所有 modal/卡片 CSS）、`issues.js`、`workboard.js`、`firebase-config.js`、`firebase-service.js`（含 `PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 角色權限定義）
+- `functions/`：`main.py`（Formlabs 同步，entry：`sync_formlabs_scheduled` 每30分、`sync_formlabs_manual` admin）、`requirements.txt`
 - `.github/workflows/`：`deploy-pages.yml`（push main 即全部署）、`deploy-functions.yml`（functions/ 有變動 → firebase deploy）
+- `firestore.rules`：安全規則，改動後隨 push 自動 deploy（見下方部署段落）
 
 ## 部署
 - 前端（根目錄檔或 portal 檔）：`git push` → GitHub Actions 自動部署 → 使用者 **Ctrl+Shift+R**（iframe cache 頑固，建議關分頁重開）
-- **改 portal 本地 js（issues.js/workboard.js/firebase-*.js）後，務必升 portal.html 的 `?v=` cache 版本號**：目前 `20260629g`，下次升 `h`。只改 portal.html 自身（CSS/元件）不需升號
+- **改 portal 本地 js（issues.js/workboard.js/firebase-*.js）後，務必升 portal.html 對應那支 `.js` 的 `?v=` cache 版本號**（每支各自獨立編號，只升有改動的那支；目前 `workboard.js`=`20260708h`、`firebase-service.js`=`20260708g`、`issues.js`/`firebase-config.js`=`20260708f`）。只改 portal.html 自身（CSS/元件）不需升號
 - Cloud Function：`git push`（functions/ 變動觸發），或 `firebase deploy --only functions --project swtc-3dp-poc`
+- `firestore.rules`：`git push` 即自動部署；**新增權限保護某個 collection/doc 時，務必檢查有沒有更泛用的萬用字元規則（如 `match /settings/{docId}`）會先蓋過具體路徑規則**——Firestore rules 是「最具體路徑優先」，不是疊加 OR，泛用規則若寫在前面且路徑更廣，會讓新權限完全不生效（實際踩過：`manage_quote_pricing`、`inventory_history` 主管刪除權限，都要在泛用規則之前另外寫具體路徑）
 
 ## 驗證指令（改完必跑；於 repo 根目錄執行）
 ```bash
@@ -54,12 +57,13 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 
 ## Firebase / 除錯
 - 看 log：`firebase functions:log --project swtc-3dp-poc`。常搜 `[sync]`、`DEBUG目標print`、`DEBUG列印中無檔名`
-- 主要 Firestore collection：`users`、`bookings`、`inventory/main`、`inventory_history/{guid}`（doc_id=guid 防重複）、`printer_status/current`、`workboard_orders`、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`
+- 主要 Firestore collection：`users`（`permissions` 陣列為主，`role` 是自動推導的舊系統相容值）、`bookings`（含跨天 `endDate`、用途 `category`）、`inventory/main`（含 `family_latest_version` 材料版本追蹤）、`inventory_history/{guid}`（doc_id=guid 防重複；刪除消耗類紀錄會自動回補庫存）、`printer_status/current`、`workboard_orders`（`actUsage` 可從 inventory_history 自動帶入）、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`、`settings/quote_materials`、`settings/quote_studio_pricing`、`print_orders`、`print_history`
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
 - 機台：`AluminumBowfin`(serial `Form4-AluminumBowfin`→Form4)、`AdroitSauropod`(serial `Form4L-AdroitSauropod`→Form4L)
 
 ## 領域邏輯地雷
-- **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示
+- **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示（曾詢問過使用者是否要改成樹脂罐也計入總庫存，明確回答**不要**，維持現狀）
+- **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
 - **消耗抓取**：用 `prints/?printer={serial}` 按 serial 過濾、無 date、無 sort、per-printer 分頁去重（勿改回 date+sort 全抓，會漏最新）
 - **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill
