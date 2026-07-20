@@ -1,0 +1,3791 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Print Studio · 3D列印估價（沉浸版）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+:root{
+  --bg1:#ffffff; --bg2:#f6f8fa;
+  --glass:rgba(255,255,255,.9); --glass2:rgba(255,255,255,.85);
+  --line:#e6e8ec; --lineGlass:rgba(230,232,236,.95);
+  --ink:#0a0e14; --ink2:#3b4250; --ink3:#5a6270; --ink4:#8a93a3;
+  --accent:#0c7a99; --accentBg:#e6f1f6;
+  --ok:#1d6f43; --okBg:#e6f1ea; --okLine:#b6d9c4;
+  --warn:#c79b2a; --err:#c0392b; --purple:#7b5ec7; --purpleBg:#efeafb;
+  --mono:'JetBrains Mono',monospace;
+  --shadow:0 10px 32px rgba(10,14,20,.12);
+  --shadowSm:0 4px 16px rgba(10,14,20,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  overflow:hidden;background:linear-gradient(180deg,var(--bg1),var(--bg2));
+  font-family:'Noto Sans TC',system-ui,sans-serif;color:var(--ink);font-size:calc(14px * var(--fs));
+}
+button{font-family:inherit}
+#c3d{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.glass{background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--lineGlass);border-radius:12px;box-shadow:var(--shadow)}
+.glass-sm{background:var(--glass2);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border:1px solid rgba(230,232,236,.9);box-shadow:var(--shadowSm)}
+.mono{font-family:var(--mono)}
+.lbl{font-size:calc(9.5px * var(--fs));font-weight:600;font-family:var(--mono);color:var(--ink4);
+  text-transform:uppercase;letter-spacing:.07em;margin:10px 0 5px}
+.lbl:first-child{margin-top:0}
+
+/* ============ top bar ============ */
+#topbar{position:absolute;top:14px;left:14px;right:14px;display:flex;align-items:flex-start;gap:8px;pointer-events:none;z-index:20}
+#topbar>*{pointer-events:auto}
+#brand{display:flex;align-items:center;gap:8px;border-radius:8px;padding:7px 12px}
+#brand b{font-size:calc(13.5px * var(--fs))}
+#brand .tag{height:17px;padding:0 8px;font-size:calc(10px * var(--fs));border-radius:999px;font-family:var(--mono);
+  font-weight:600;background:var(--accentBg);color:var(--accent);display:inline-flex;align-items:center}
+#viewbar{display:flex;gap:5px;border-radius:8px;padding:5px;align-items:center}
+.vtab{padding:4px 10px;border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs));font-weight:600;
+  color:var(--ink4);cursor:pointer;background:transparent}
+.vtab.on{border-color:var(--line);color:var(--ink);background:#fff}
+.vsep{width:1px;background:var(--line);align-self:stretch;margin:2px 2px}
+.abtn{padding:4px 9px;border-radius:5px;border:1px solid var(--line);font-size:calc(11px * var(--fs));cursor:pointer;background:#fff;color:var(--ink3)}
+.abtn.warnb{border-color:var(--warn);color:var(--warn)}
+.abtn.warnb.on{background:#faf3df}
+.abtn.purpleb{border-color:var(--purple);color:var(--purple);background:var(--purpleBg)}
+.abtn.on{box-shadow:inset 0 0 0 1px currentColor}
+
+/* view cube */
+#cubeWrap{display:flex;flex-direction:column;gap:5px;align-items:center}
+#cube{width:52px;height:52px;perspective:200px}
+#cubeInner{transform-style:preserve-3d;transform:rotateX(-22deg) rotateY(-38deg);width:52px;height:52px;position:relative;transition:transform .18s}
+.cface{position:absolute;width:52px;height:52px;display:flex;align-items:center;justify-content:center;
+  font-size:calc(11px * var(--fs));font-weight:600;color:var(--ink3);background:rgba(255,255,255,.92);border:1px solid var(--line);cursor:pointer;user-select:none}
+.cface:hover{background:var(--accentBg);color:var(--accent)}
+#cubeHome{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.92);font-size:calc(11px * var(--fs));cursor:pointer;color:var(--ink3)}
+
+/* ============ left step card ============ */
+#stepCard{position:absolute;top:80px;left:14px;width:calc(262px * var(--fs));max-height:calc(100vh - 175px);
+  overflow-y:auto;padding:14px;z-index:15}
+#stepCard::-webkit-scrollbar{width:5px}
+#stepCard::-webkit-scrollbar-thumb{background:#cfd6dd;border-radius:3px}
+#stepHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:6px}
+#stepHead b{font-size:calc(13px * var(--fs));flex:1}
+#stepHead span{font-size:calc(10px * var(--fs));color:var(--ink4);font-family:var(--mono)}
+#stepHide{border:1px solid var(--line);background:#fff;border-radius:5px;width:22px;height:22px;cursor:pointer;color:var(--ink3);font-size:calc(10px * var(--fs));flex-shrink:0}
+#stepHide:hover{color:var(--accent);border-color:var(--accent)}
+#stepShow{position:absolute;top:80px;left:14px;z-index:15;padding:8px 11px;border-radius:8px;cursor:pointer;font-size:calc(11.5px * var(--fs));font-weight:600;color:var(--ink3)}
+#stepShow:hover{color:var(--accent)}
+
+.fileRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:6px 9px;background:#fff;margin-bottom:5px;cursor:pointer}
+.fileRow.on{border-color:var(--accent);background:var(--accentBg)}
+.fileRow .fname{font-size:calc(11.5px * var(--fs));font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fileRow .fmeta{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono)}
+.fileRow .fx{font-size:calc(10px * var(--fs));color:var(--ink4);cursor:pointer;padding:2px 4px}
+.fileRow .fx:hover{color:var(--err)}
+#dropZone{border:1.5px dashed var(--accent);border-radius:7px;padding:12px 6px;text-align:center;background:var(--accentBg);display:block;margin-top:6px;cursor:pointer}
+#dropZone .ic{font-size:calc(16px * var(--fs))}
+#dropZone .t1{font-size:calc(10px * var(--fs));color:var(--ink3);margin-top:2px}
+#dropZone .t2{font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono)}
+#dropZone.drag{background:#d3ecf5;border-color:#0a6a86}
+
+.machRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:#fff;cursor:pointer;margin-bottom:4px}
+.machRow.on{border-color:var(--accent);background:var(--accentBg)}
+.machRow .dot{width:7px;height:7px;border-radius:50%;background:var(--line);flex-shrink:0}
+.machRow.on .dot{background:var(--accent)}
+.machRow .mname{font-size:calc(12px * var(--fs));font-weight:600}
+.machRow .mdim{font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono)}
+
+.okNote{font-size:calc(10px * var(--fs));padding:6px 9px;border-radius:6px;background:var(--okBg);border:1px solid var(--okLine);color:var(--ok);font-weight:600;margin-top:6px}
+.errNote{font-size:calc(10px * var(--fs));padding:6px 9px;border-radius:6px;background:#faecec;border:1px solid #ecc9c9;color:var(--err);font-weight:600;margin-top:6px}
+
+select.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:var(--ink2);font:inherit;font-size:calc(12px * var(--fs))}
+.selMeta{font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono);margin-top:3px}
+
+.segGrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.segRow{display:flex;gap:4px}
+.seg{flex:1;padding:6px 3px;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink3);font-size:calc(10.5px * var(--fs));font-weight:600;cursor:pointer}
+.seg.mono{font-family:var(--mono)}
+.seg.on{border-color:var(--ink);background:var(--ink);color:#fff}
+.seg.onA{border-color:var(--accent);background:var(--accent);color:#fff}
+
+.sliderRow{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.sliderRow .sl{font-size:calc(11px * var(--fs));color:var(--ink3);width:60px;flex-shrink:0}
+.sliderRow input[type=range]{flex:1;height:3px;accent-color:var(--accent)}
+.sliderRow .sv{font-size:calc(10px * var(--fs));font-family:var(--mono);width:40px;text-align:right;font-weight:600}
+
+.bigBtn{width:100%;padding:8px;border-radius:6px;background:var(--accent);color:#fff;border:0;font:inherit;font-size:calc(12px * var(--fs));font-weight:600;cursor:pointer}
+.bigBtn:hover{background:#0a6a86}
+.bigBtn:disabled{background:#9db8c2;cursor:not-allowed}
+.ghostBtn{width:100%;padding:7px;border-radius:6px;background:#fff;color:var(--ink3);border:1px solid var(--line);font:inherit;font-size:calc(11.5px * var(--fs));font-weight:600;cursor:pointer}
+.ghostBtn:hover{border-color:var(--accent);color:var(--accent)}
+
+.chk{border:1px solid #eef0f3;border-left:3px solid var(--ink4);background:#fff;border-radius:4px;padding:5px 8px;margin-bottom:4px}
+.chk.err{border-left-color:var(--err)}
+.chk.warn{border-left-color:var(--warn)}
+.chk .t{font-size:calc(10.5px * var(--fs));font-weight:600}
+.chk .t small{font-size:calc(8.5px * var(--fs));color:var(--ink4);font-weight:400;font-family:var(--mono)}
+.chk .d{font-size:calc(9px * var(--fs));color:var(--ink4)}
+.chk .act{color:var(--accent);cursor:pointer;text-decoration:underline}
+#passBar{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:var(--okBg);border:1px solid var(--okLine);border-radius:5px;font-size:calc(10.5px * var(--fs));font-weight:600;color:var(--ok);cursor:pointer}
+#passChips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+.pchip{font-size:calc(9px * var(--fs));padding:2px 7px;border-radius:999px;background:#fff;border:1px solid #cde3d6;color:var(--ok);cursor:default}
+
+/* ============ 檔案檢查報告（步驟1 下方） ============ */
+.fcVerdict{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;margin-bottom:7px}
+.fcVerdict .vic{width:30px;height:30px;border-radius:50%;color:#fff;display:flex;align-items:center;
+  justify-content:center;font-size:calc(14px * var(--fs));font-weight:700;flex-shrink:0}
+.fcVerdict .vt{font-size:calc(12px * var(--fs));font-weight:700}
+.fcVerdict .vd{font-size:calc(9.5px * var(--fs));color:var(--ink3);margin-top:1px}
+.fcVerdict.fcv-err{background:#fbe7e3;border:1px solid #ecc9c9}
+.fcVerdict.fcv-err .vic{background:var(--err);animation:fcpulse 1.6s infinite}
+.fcVerdict.fcv-err .vt{color:var(--err)}
+.fcVerdict.fcv-warn{background:#fbf3dc;border:1px solid #ecdcae}
+.fcVerdict.fcv-warn .vic{background:var(--warn)}
+.fcVerdict.fcv-warn .vt{color:#8b6b13}
+.fcVerdict.fcv-ok{background:var(--okBg);border:1px solid var(--okLine)}
+.fcVerdict.fcv-ok .vic{background:var(--ok)}
+.fcVerdict.fcv-ok .vt{color:var(--ok)}
+@keyframes fcpulse{0%,100%{box-shadow:0 0 0 0 rgba(192,57,43,.35)}50%{box-shadow:0 0 0 7px rgba(192,57,43,0)}}
+.fcCounts{display:flex;gap:4px;margin-bottom:8px}
+.fcCnt{flex:1;text-align:center;padding:5px 2px;border-radius:6px;border:1px solid var(--line);background:#fff}
+.fcCnt b{display:block;font-size:calc(15px * var(--fs));font-family:var(--mono)}
+.fcCnt span{font-size:calc(8.5px * var(--fs));color:var(--ink4);font-weight:600}
+.fcCnt.e{border-color:#ecc9c9;background:#fbe7e3} .fcCnt.e b{color:var(--err)}
+.fcCnt.w{border-color:#ecdcae;background:#fbf3dc} .fcCnt.w b{color:var(--warn)}
+.fcCnt.m b{color:var(--purple)}
+.fcCnt.p{border-color:var(--okLine);background:var(--okBg)} .fcCnt.p b{color:var(--ok)}
+.fcSec{font-size:calc(9.5px * var(--fs));font-weight:700;color:var(--ink3);margin:8px 0 4px;display:flex;align-items:center;gap:5px}
+.fcBadge{font-size:calc(8px * var(--fs));font-family:var(--mono);font-weight:700;padding:0 6px;border-radius:999px}
+.fcBadge.e{background:var(--err);color:#fff}
+.fcheck .chk{border-left-width:4px}
+.fcheck .chk .d b{font-family:var(--mono)}
+.fcheck .chk.err{border-left-color:var(--err);background:linear-gradient(90deg,#fbe7e3,#fff 60%);
+  box-shadow:0 2px 8px rgba(192,57,43,.14);position:relative}
+.fcheck .chk.err .t{color:var(--err)}
+.fcheck .chk.err::after{content:'需處理';position:absolute;top:6px;right:8px;font-size:calc(8px * var(--fs));font-weight:700;
+  color:#fff;background:var(--err);padding:1px 7px;border-radius:999px}
+.fcheck .chk.warn{border-left-color:var(--warn);background:linear-gradient(90deg,#fbf3dc,#fff 60%)}
+.fcheck .chk.warn .t{color:#8b6b13}
+.fcheck .chk.manual{border-left-color:var(--purple)}
+.fcFix{font-size:calc(9.5px * var(--fs));color:var(--accent);font-weight:700;cursor:pointer;text-decoration:underline;white-space:nowrap}
+.fcPassBar{display:flex;justify-content:space-between;align-items:center;padding:6px 9px;background:var(--okBg);
+  border:1px solid var(--okLine);border-radius:6px;font-size:calc(10.5px * var(--fs));font-weight:700;color:var(--ok);cursor:pointer;margin-top:6px}
+.fcChips{display:flex;flex-wrap:wrap;gap:3px;margin-top:5px}
+/* 延後檢查項（步驟3 才計算） */
+.fcheck .chk.defer{border-left-color:var(--ink4);background:#f6f8fa}
+.fcheck .chk.defer .t{color:var(--ink4)}
+
+/* ============ 擺放面板（PreForm 式） ============ */
+#placePanel{position:absolute;top:80px;right:72px;width:calc(218px * var(--fs));padding:12px;z-index:17;display:none}
+#placePanel.open{display:block}
+#placePanel h4{font-size:calc(12px * var(--fs));display:flex;justify-content:space-between;align-items:center}
+#placePanel h4 .x{color:var(--ink4);cursor:pointer;font-weight:400}
+.ppHint{font-size:calc(9px * var(--fs));color:var(--ink4);line-height:1.6;margin-top:5px}
+.ppHint b{color:var(--ink2)}
+.arrowPad{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-top:8px}
+.arrowPad button{padding:6px 0;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink3);font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer}
+.arrowPad button:hover{border-color:var(--accent);color:var(--accent)}
+.arrowPad button.c{background:var(--accent);color:#fff;border-color:var(--accent)}
+.arrowPad .empty{visibility:hidden}
+.ppFace{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:7px;margin-top:8px;
+  border-radius:6px;border:1.5px solid var(--accent);background:#fff;color:var(--accent);
+  font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
+.ppFace.on{background:var(--accent);color:#fff}
+#placePanel .inRow input.outR{border-color:var(--err);color:var(--err)}
+
+/* ============ 大字模式 ============ */
+:root{--fs:1}
+body.big{--fs:1.16}
+#btnFs.on{border-color:var(--accent);color:var(--accent);background:var(--accentBg)}
+
+/* ============ 旋轉角度提示（PreForm 式弧形角度顯示） ============ */
+#gizmoTip{position:fixed;z-index:90;display:none;background:#0a0e14;color:#fff;
+  font:700 calc(11px * var(--fs)) var(--mono);padding:4px 10px;border-radius:6px;
+  box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none;white-space:nowrap}
+#gizmoTip small{color:#9fdcee;font-weight:400}
+
+/* ============ 自動擺放目標與差異說明 ============ */
+.goalSeg{flex:1;padding:6px 3px;border-radius:6px;border:1px solid var(--line);background:#fff;
+  color:var(--ink3);font-size:calc(10px * var(--fs));font-weight:700;text-align:center;cursor:pointer;line-height:1.35}
+.goalSeg small{display:block;font-size:calc(7.5px * var(--fs));font-weight:400;color:var(--ink4)}
+.goalSeg.on{border-color:var(--accent);background:var(--accent);color:#fff}
+.goalSeg.on small{color:rgba(255,255,255,.8)}
+.diffBox{border:1px solid #ecdcae;background:#fbf3dc;border-radius:7px;padding:8px 10px;margin-top:8px}
+.diffBox .t{font-size:calc(10.5px * var(--fs));font-weight:700;color:#8b6b13}
+.diffBox .d{font-size:calc(9px * var(--fs));color:var(--ink3);line-height:1.6;margin-top:3px}
+.diffBox .d b{color:var(--ink2)}
+.pfsRow{border:1px solid var(--line);border-radius:6px;padding:6px 10px;background:#fff;margin-top:6px;
+  font-size:calc(9.5px * var(--fs));color:var(--ink3);line-height:1.55}
+.pfsRow b{color:var(--accent)}
+
+/* ============ 支撐材面板（對齊 PreForm 3.51+） ============ */
+#supMatPanel{position:absolute;top:80px;left:calc(282px * var(--fs) + 22px);width:calc(300px * var(--fs));
+  max-height:calc(100vh - 175px);overflow-y:auto;background:#fff;border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 12px 36px rgba(10,14,20,.16);z-index:18;display:none}
+#supMatPanel.open{display:block}
+#supMatPanel::-webkit-scrollbar{width:5px}
+#supMatPanel::-webkit-scrollbar-thumb{background:#cfd6dd;border-radius:3px}
+.smHead{display:flex;justify-content:space-between;align-items:center;padding:11px 14px 7px;font-size:calc(13.5px * var(--fs));font-weight:700}
+.smHead .hbtn{color:var(--ink4);cursor:pointer;font-weight:400;font-size:calc(13px * var(--fs));margin-left:8px}
+.smHead .hbtn.eyeOff{color:var(--err)}
+.smSec{font-size:calc(10.5px * var(--fs));font-weight:700;color:var(--ink2);background:#f3f5f7;padding:6px 14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.smBody{padding:10px 14px}
+.smTabs{display:flex;border:1.5px solid var(--accent);border-radius:6px;overflow:hidden;margin-bottom:9px}
+.smTabs button{flex:1;padding:6px 2px;border:0;background:#fff;color:var(--accent);font:inherit;font-size:calc(10.5px * var(--fs));font-weight:700;cursor:pointer}
+.smTabs button.on{background:var(--accent);color:#fff}
+.smTabs button:disabled{color:var(--ink4);cursor:not-allowed}
+.pRow{display:flex;align-items:center;gap:5px;margin-bottom:6px}
+.pRow>label{flex:1;font-size:calc(10.5px * var(--fs));color:var(--ink2);line-height:1.3}
+.pRow .reset{font-size:calc(10px * var(--fs));color:var(--accent);cursor:pointer;width:14px;text-align:center}
+.pRow .reset.hid{visibility:hidden}
+.spinB{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff}
+.spinB input{width:calc(52px * var(--fs));height:24px;border:0;padding:0 5px;font:calc(10.5px * var(--fs)) var(--mono);text-align:right;color:var(--ink);outline:none}
+.spinB .un{font-size:calc(8.5px * var(--fs));color:var(--ink4);padding-right:4px;font-family:var(--mono)}
+.spinB .ar{display:flex;flex-direction:column;border-left:1px solid var(--line)}
+.spinB .ar button{width:15px;height:12px;border:0;background:#fff;font-size:7px;color:var(--ink3);cursor:pointer;line-height:1;padding:0}
+.spinB .ar button:hover{color:var(--accent)}
+.typeBox{border:1.5px solid;border-radius:7px;padding:6px 9px;margin-bottom:6px}
+.typeBox .th{display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer}
+.typeBox .th input{accent-color:var(--accent)}
+.typeBox .sub{margin-top:5px;padding-left:20px}
+.tb-minima{border-color:#e8930c;background:#fff8ee}.tb-minima .th{color:#a05e00}
+.tb-over{border-color:#0d9488;background:#effaf8}.tb-over .th{color:#0b6e63}
+.tb-stab{border-color:#d6409f;background:#fdf1f9}.tb-stab .th{color:#a02877}
+.tb-rein{border-color:#46a758;background:#f0faf1}.tb-rein .th{color:#2f7a3a}
+.smSel{height:26px;border:1px solid var(--line);border-radius:6px;padding:0 6px;font:inherit;font-size:calc(10.5px * var(--fs));color:var(--ink2);background:#fff}
+.smTgl{display:flex;align-items:center;justify-content:space-between;font-size:calc(10.5px * var(--fs));color:var(--ink2);padding:3px 0}
+.smTgl input{accent-color:var(--accent)}
+.smFoot{display:flex;gap:7px;padding:11px 14px;border-top:1px solid var(--line);position:sticky;bottom:0;background:#fff}
+.smFoot .gen{flex:1.3;padding:8px;border-radius:6px;border:0;background:var(--accent);color:#fff;font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
+.smFoot .clr{flex:1;padding:8px;border-radius:6px;border:1px solid var(--err);background:#fff;color:var(--err);font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer}
+.smNote{font-size:calc(8.5px * var(--fs));color:var(--ink4);line-height:1.6;padding:8px 14px;background:#fbf3dc;border-top:1px solid #ecdcae}
+.smNote b{color:#8b6b13}
+.smPre{display:flex;gap:4px;margin-bottom:9px}
+.smPre button{flex:1;padding:5px 2px;border-radius:5px;border:1px solid var(--line);background:#fff;color:var(--ink3);font:inherit;font-size:calc(9.5px * var(--fs));font-weight:600;cursor:pointer}
+.smPre button:hover{border-color:var(--accent);color:var(--accent)}
+
+.costRow{display:flex;justify-content:space-between;font-size:calc(10.5px * var(--fs));color:var(--ink4);padding:2px 0}
+.costRow b{font-family:var(--mono);color:var(--ink3);font-weight:500}
+.costTotal{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 2px;margin-top:3px;border-top:1px solid #eef0f3;font-size:calc(12px * var(--fs));font-weight:700}
+.costTotal b{font-family:var(--mono);color:var(--accent);font-size:calc(17px * var(--fs))}
+
+/* ============ right module rail + panel ============ */
+#rail{position:absolute;top:80px;right:14px;display:flex;flex-direction:column;gap:5px;z-index:16;padding:6px;border-radius:10px}
+.railBtn{width:42px;height:42px;border-radius:8px;border:1px solid transparent;background:transparent;
+  cursor:pointer;font-size:calc(16px * var(--fs));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--ink3)}
+.railBtn small{font-size:calc(8px * var(--fs));font-weight:600;transform:scale(.92)}
+.railBtn:hover{background:#fff;border-color:var(--line)}
+.railBtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#modPanel{position:absolute;top:80px;right:72px;width:calc(302px * var(--fs));max-height:calc(100vh - 175px);overflow-y:auto;
+  padding:14px;z-index:15;display:none}
+#modPanel::-webkit-scrollbar{width:5px}
+#modPanel::-webkit-scrollbar-thumb{background:#cfd6dd;border-radius:3px}
+#modPanel.open{display:block}
+#modHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+#modHead b{font-size:calc(13px * var(--fs))}
+#modClose{border:0;background:transparent;color:var(--ink4);cursor:pointer;font-size:calc(13px * var(--fs))}
+.mrow{display:flex;justify-content:space-between;align-items:center;font-size:calc(11px * var(--fs));color:var(--ink3);padding:3px 0}
+.mrow b{font-family:var(--mono);font-weight:600;color:var(--ink)}
+.mrow b.okc{color:var(--ok)} .mrow b.warnc{color:var(--warn)} .mrow b.errc{color:var(--err)}
+.mbox{border:1px solid #eef0f3;border-radius:6px;padding:8px 10px;background:#fff;margin-bottom:8px}
+.mnote{font-size:calc(9px * var(--fs));color:var(--ink4);line-height:1.5;margin-top:4px}
+.inRow{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.inRow label{font-size:calc(11px * var(--fs));color:var(--ink3);flex:1}
+.inRow input[type=number],.inRow input[type=text]{width:86px;height:24px;border:1px solid var(--line);border-radius:5px;
+  padding:0 6px;font:calc(11px * var(--fs)) var(--mono);color:var(--ink2);text-align:right}
+.inRow input[type=text]{text-align:left;width:150px}
+.inRow .un{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono);width:38px}
+.tgl{display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--fs));color:var(--ink3);cursor:pointer;padding:3px 0}
+.tgl input{accent-color:var(--accent)}
+
+/* history / orders */
+.ordRow{border:1px solid #eef0f3;border-radius:6px;padding:7px 9px;background:#fff;margin-bottom:5px}
+.ordRow .oh{display:flex;justify-content:space-between;font-size:calc(10.5px * var(--fs));font-weight:600}
+.ordRow .oh .st{font-size:calc(9px * var(--fs));padding:1px 7px;border-radius:999px;font-weight:600}
+.st.pend{background:#faf3df;color:var(--warn)} .st.done{background:var(--okBg);color:var(--ok)}
+.ordRow .om{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono);margin-top:2px}
+.histRow{font-size:calc(9.5px * var(--fs));color:var(--ink3);padding:3px 0;border-bottom:1px dashed #eef0f3;line-height:1.5}
+.histRow .ht{color:var(--ink4);font-family:var(--mono);font-size:calc(8.5px * var(--fs))}
+#reportBox{white-space:pre-wrap;font-size:calc(10.5px * var(--fs));line-height:1.7;background:#fff;border:1px solid #eef0f3;
+  border-radius:6px;padding:10px;max-height:300px;overflow-y:auto}
+
+/* ============ layer clip slider ============ */
+#clipWrap{position:absolute;right:20px;top:50%;transform:translateY(-50%);z-index:14;display:none;
+  flex-direction:column;align-items:center;gap:6px;padding:10px 6px;border-radius:999px}
+#clipWrap.show{display:flex}
+#clipRange{writing-mode:vertical-lr;direction:rtl;height:200px;width:20px;accent-color:var(--accent)}
+#clipVal{font-size:calc(9px * var(--fs));font-family:var(--mono);color:var(--ink3);font-weight:600;white-space:nowrap}
+
+/* ============ bottom ============ */
+#statsPill{position:absolute;bottom:72px;left:50%;transform:translateX(-50%);font-size:calc(10px * var(--fs));color:var(--ink3);
+  border-radius:999px;padding:4px 14px;white-space:nowrap;font-family:var(--mono);z-index:12}
+#statsPill .okc{color:var(--ok);font-weight:600}
+#statsPill .errc{color:var(--err);font-weight:600}
+#dock{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:4px;
+  border-radius:999px;padding:6px 7px;z-index:13}
+.dockBtn{font-size:calc(11.5px * var(--fs));padding:7px 14px;border-radius:999px;border:0;cursor:pointer;font-weight:600;background:transparent;color:var(--ink4)}
+.dockBtn.cur{background:var(--accent);color:#fff;font-weight:700}
+.dockBtn.done{color:var(--ok)}
+#priceCard{position:absolute;bottom:18px;right:14px;width:calc(200px * var(--fs));padding:12px;z-index:13}
+#priceCard .btn{width:100%;height:28px;border-radius:6px;background:var(--accent);font-size:calc(11px * var(--fs));color:#fff;border:0;font-weight:600;cursor:pointer;margin-top:7px}
+#legend{position:absolute;bottom:18px;left:14px;border-radius:9px;padding:8px 11px;font-size:calc(9.5px * var(--fs));
+  font-family:var(--mono);color:var(--ink3);line-height:1.9;z-index:12}
+#legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px}
+#legend .swr{border-radius:50%}
+
+/* ============ overlays ============ */
+#busy{position:absolute;inset:0;background:rgba(238,243,246,.75);backdrop-filter:blur(3px);z-index:50;
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+#busy.show{display:flex}
+#busy .spin{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#busyMsg{font-size:calc(12px * var(--fs));color:var(--ink3);font-weight:600}
+#toast{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
+.toastItem{font-size:calc(11.5px * var(--fs));font-weight:600;padding:8px 16px;border-radius:999px;background:rgba(10,14,20,.85);color:#fff;
+  box-shadow:var(--shadow);animation:tin .2s ease;max-width:70vw}
+.toastItem.ok{background:rgba(29,111,67,.92)} .toastItem.err{background:rgba(192,57,43,.92)} .toastItem.warn{background:rgba(160,120,20,.92)}
+@keyframes tin{from{opacity:0;transform:translateY(-6px)}to{opacity:1}}
+#dragOverlay{position:absolute;inset:0;z-index:70;background:rgba(12,122,153,.12);border:3px dashed var(--accent);
+  display:none;align-items:center;justify-content:center;font-size:calc(18px * var(--fs));font-weight:700;color:var(--accent)}
+#dragOverlay.show{display:flex}
+
+/* ============ quote modal ============ */
+#quoteModal{position:absolute;inset:0;z-index:80;background:rgba(10,14,20,.35);display:none;align-items:center;justify-content:center}
+#quoteModal.show{display:flex}
+#quoteSheet{width:560px;max-height:88vh;overflow-y:auto;background:#fff;border-radius:12px;padding:28px 32px;box-shadow:0 24px 64px rgba(10,14,20,.3)}
+#quoteSheet h2{font-size:calc(19px * var(--fs));letter-spacing:.05em}
+#quoteSheet .qsub{font-size:calc(10px * var(--fs));color:var(--ink4);font-family:var(--mono);margin-top:2px}
+#quoteSheet table{width:100%;border-collapse:collapse;margin-top:14px;font-size:calc(11.5px * var(--fs))}
+#quoteSheet th{text-align:left;font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono);text-transform:uppercase;
+  letter-spacing:.06em;border-bottom:1px solid var(--line);padding:5px 4px}
+#quoteSheet td{padding:6px 4px;border-bottom:1px solid #f2f4f6}
+#quoteSheet td.r,#quoteSheet th.r{text-align:right;font-family:var(--mono)}
+#quoteSheet .qtotal{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;font-weight:700;font-size:calc(14px * var(--fs))}
+#quoteSheet .qtotal b{font-size:calc(22px * var(--fs));color:var(--accent);font-family:var(--mono)}
+#quoteSheet .qnote{font-size:calc(9.5px * var(--fs));color:var(--ink4);line-height:1.6;margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+#quoteSheet input.qc{border:0;border-bottom:1px dashed var(--line);font:inherit;padding:2px;width:200px;color:var(--ink)}
+.qbtns{display:flex;gap:8px;margin-top:16px}
+.qbtns button{flex:1;padding:9px;border-radius:6px;font:inherit;font-size:calc(12px * var(--fs));font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink3)}
+.qbtns button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media print{
+  body>*{display:none !important}
+  #quoteModal{display:block !important;position:static;background:#fff}
+  #quoteSheet{display:block !important;width:100%;max-height:none;box-shadow:none;border-radius:0}
+  .qbtns{display:none !important}
+}
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<!-- top bar -->
+<div id="topbar">
+  <div id="brand" class="glass-sm">
+    <b>AI Print Studio</b>
+    <span class="tag">3D列印估價 · 沉浸版</span>
+  </div>
+  <div style="flex:1"></div>
+  <div id="viewbar" class="glass-sm">
+    <button class="vtab on" data-view="persp">透視</button>
+    <button class="vtab" data-view="top">頂視</button>
+    <button class="vtab" data-view="front">前視</button>
+    <button class="vtab" data-view="side">側視</button>
+    <div class="vsep"></div>
+    <button class="abtn" id="btnModeNormal" data-mode="normal" title="一般顯示">◻ 一般</button>
+    <button class="abtn warnb" id="btnModeOverhang" data-mode="overhang" title="懸垂區域標色">⚠ 懸垂</button>
+    <button class="abtn" data-mode="thickness" title="厚度熱圖">▤ 厚度</button>
+    <button class="abtn" data-mode="curvature" title="曲率熱圖">◠ 曲率</button>
+    <div class="vsep"></div>
+    <button class="abtn purpleb" id="btnSupports" title="顯示/隱藏支撐">🖊 支撐</button>
+    <button class="abtn" id="btnClip" title="剖層預覽">▥ 剖層</button>
+    <button class="abtn on" id="btnRange" title="顯示/隱藏列印範圍框" style="border-color:var(--accent);color:var(--accent)">▦ 範圍框</button>
+    <div class="vsep"></div>
+    <button class="abtn" id="btnFs" title="字級切換：小字 / 大字"><span style="font-size:9px;font-weight:700">A</span><span style="font-size:13px;font-weight:700">A</span></button>
+  </div>
+  <div id="cubeWrap">
+    <div id="cube"><div id="cubeInner">
+      <div class="cface" style="transform:translateZ(26px)" data-cam="front">前</div>
+      <div class="cface" style="transform:rotateY(90deg) translateZ(26px)" data-cam="right">右</div>
+      <div class="cface" style="transform:rotateX(90deg) translateZ(26px)" data-cam="top">頂</div>
+    </div></div>
+    <button id="cubeHome" data-cam="home" title="回復視角">⌂</button>
+  </div>
+</div>
+
+<!-- left step card -->
+<button id="stepShow" class="glass-sm" title="展開左側面板（Tab）" style="display:none">▶ 步驟面板</button>
+<div id="stepCard" class="glass">
+  <div id="stepHead"><b id="stepTitle">步驟 1 · 上傳檔案</b><span id="stepCount">1/5</span><button id="stepHide" title="收合左側面板（Tab）">◀</button></div>
+  <div id="stepBody"></div>
+</div>
+
+<!-- right module rail -->
+<div id="rail" class="glass">
+  <button class="railBtn" data-mod="stl" title="STL 分析">🧩<small>STL</small></button>
+  <button class="railBtn" data-mod="print" title="列印分析">🖨<small>列印</small></button>
+  <button class="railBtn" data-mod="ai" title="AI 最佳化">✨<small>AI</small></button>
+  <button class="railBtn" data-mod="cost" title="成本分析">💰<small>成本</small></button>
+  <button class="railBtn" data-mod="cloud" title="雲端管理">☁<small>雲端</small></button>
+</div>
+<div id="modPanel" class="glass">
+  <div id="modHead"><b id="modTitle"></b><button id="modClose">✕</button></div>
+  <div id="modBody"></div>
+</div>
+
+<!-- 擺放面板（點選模型時顯示，PreForm 式操作） -->
+<div id="placePanel" class="glass"><div id="ppBody"></div></div>
+
+<!-- 支撐材面板（PreForm 3.51+ 版面） -->
+<div id="supMatPanel"><div id="smBody"></div></div>
+
+<!-- layer clip slider -->
+<div id="clipWrap" class="glass-sm">
+  <span style="font-size:11px">▥</span>
+  <input type="range" id="clipRange" min="0" max="100" value="100">
+  <span id="clipVal">100%</span>
+</div>
+
+<!-- bottom widgets -->
+<div id="statsPill" class="glass-sm">尚未載入模型 · 請先上傳 STL / OBJ / 3MF</div>
+<div id="dock" class="glass"></div>
+<div id="priceCard" class="glass">
+  <div class="costRow"><span id="pcL1">本體 — mL</span><b id="pcV1">NT$ —</b></div>
+  <div class="costRow"><span id="pcL2">支撐＋後處理</span><b id="pcV2">NT$ —</b></div>
+  <div class="costTotal"><span>估計總費用</span><b id="pcTotal">NT$ —</b></div>
+  <button class="btn" id="pcBtn">📋 產生報價單</button>
+</div>
+<div id="legend" class="glass-sm">
+  <div><span class="sw" style="background:#5bb8d4"></span> 模型</div>
+  <div><span class="sw" style="background:#e9ecf0;border:1px solid #ccd2da"></span> 支撐柱 · 底座</div>
+  <div><span class="sw swr" style="background:#e8930c"></span> 懸空點 <span class="sw swr" style="background:#0d9488"></span> 懸空</div>
+  <div><span class="sw swr" style="background:#d6409f"></span> 穩定化 <span class="sw swr" style="background:#46a758"></span> 強化 <span id="legTp" class="mono">0.60</span>mm</div>
+  <div id="legExtra" style="display:none"><span class="sw swr" style="background:#c0392b"></span> 孤島 / 風險標記</div>
+</div>
+
+<!-- overlays -->
+<div id="busy"><div class="spin"></div><div id="busyMsg">處理中…</div></div>
+<div id="toast"></div>
+<div id="dragOverlay">📂 放開以載入模型檔案</div>
+<div id="gizmoTip"></div>
+<input type="file" id="fileInput" accept=".stl,.obj,.3mf" multiple style="display:none">
+
+<!-- quote modal -->
+<div id="quoteModal"><div id="quoteSheet"></div></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+"use strict";
+/* =========================================================================
+   AI Print Studio — 3D列印估價（沉浸版）完整功能
+   模組：STL分析(修復/水密/厚度/曲率) · 列印分析(懸空/孤島/支撐/翹曲/收縮)
+        AI最佳化(擺放/支撐/材料/層厚) · 成本分析(材料/電費/工時/利潤)
+        雲端管理(工單/歷史/AI報告/API)
+   註：支撐與孤島等列印分析為「內建近似演算法」(取樣+射線法)，
+       非 PreForm 重現；精確結果請切換 PFS API 模式 (localhost:44389)。
+   ========================================================================= */
+/* ============================================================
+   0. Firebase 設定與雲端同步（已接上 swtc-3dp-poc 平台）
+   Collections：
+     print_orders          — 本工具產生的列印估價工單
+     print_history         — 本工具的操作歷史紀錄
+     settings/quote_materials — 材料清單（與 quote.html「材料設定」共用同一份）
+   登入沿用入口網站（portal）的帳號 session：同網域下 Firebase Auth
+   自動共用，未登入者顯示提示並擋下操作（與 quote.html 相同模式）。
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
+  authDomain:        "swtc-3dp-poc.firebaseapp.com",
+  projectId:         "swtc-3dp-poc",
+  storageBucket:     "swtc-3dp-poc.firebasestorage.app",
+  messagingSenderId: "1074210451221",
+  appId:             "1:1074210451221:web:quote"
+};
+const FB = { ready:false, db:null, uid:null, unsubOrders:null, unsubHistory:null };
+
+function genNo(prefix){
+  const d = new Date().toISOString().slice(2,10).replace(/-/g,'');
+  const rand = Math.random().toString(36).slice(2,6).toUpperCase();
+  return `${prefix}-${d}-${rand}`;
+}
+
+async function initFirebaseSync(){
+  if (typeof firebase === 'undefined'){
+    console.warn('[FB] SDK 未載入，改用本機模式'); setCloudStatus('offline'); return;
+  }
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    FB.db = firebase.firestore();
+    // 沿用入口網站(portal)的登入 session（同網域自動共用），不做匿名登入。
+    // 未登入＝整頁擋下，與 quote.html 相同模式。
+    firebase.auth().onAuthStateChanged(u=>{
+      if (!u){
+        document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#8a93a3;font-family:sans-serif;font-size:14px">請從入口網站登入後再使用估價系統</div>';
+        return;
+      }
+      FB.uid = u.uid; FB.ready = true;
+      setCloudStatus('online');
+      subscribeCloud();
+      loadCloudMaterials();
+    });
+  } catch (e){
+    console.error('[FB] 初始化失敗', e);
+    setCloudStatus('offline');
+    toast('☁ 雲端連線失敗，暫以本機模式運作（資料存於此瀏覽器）', 'warn');
+  }
+}
+/* 材料清單改讀 Firestore settings/quote_materials（與 quote.html「材料設定」共用同一份）。
+   欄位對應：{name, code, price, density} → {id:code, name, priceL:price, density, ...}；
+   shrink/layers/tags 為本頁估算引擎需要、Firestore 未存的欄位，套用通用預設值。
+   讀取失敗或清單為空時，保留內建預設材料（本頁仍可離線估價）。 */
+async function loadCloudMaterials(){
+  try {
+    const doc = await FB.db.collection('settings').doc('quote_materials').get();
+    const list = doc.exists ? (doc.data().list || []) : [];
+    if (!list.length) return;
+    const mapped = list.map(x => ({
+      id: x.code || x.name,
+      name: x.name || x.code,
+      priceL: +x.price || 3000,
+      density: +x.density || 1.10,
+      shrink: 0.35,
+      layers: [0.025, 0.05, 0.1],
+      tags: [],
+      note: x.code || '',
+    }));
+    MATERIALS.length = 0;
+    MATERIALS.push(...mapped);
+    if (!MATERIALS.find(m=>m.id===S.materialId)) S.materialId = MATERIALS[0].id;
+    renderStep(); updateAllUI();
+    console.log('[FB] 已載入雲端材料清單', MATERIALS.length, '筆');
+  } catch(e){
+    console.error('[FB] 材料清單載入失敗，沿用內建預設', e);
+  }
+}
+function setCloudStatus(s){
+  S.cloudStatus = s;
+  if (S.openMod==='cloud') openModule('cloud');
+}
+function subscribeCloud(){
+  if (FB.unsubOrders) FB.unsubOrders();
+  if (FB.unsubHistory) FB.unsubHistory();
+  FB.unsubOrders = FB.db.collection('print_orders').orderBy('createdAt','desc').limit(100)
+    .onSnapshot(snap=>{
+      S.orders = snap.docs.map(d=>Object.assign({_id:d.id}, d.data()));
+      updateAllUI();
+      if (S.openMod==='cloud') openModule('cloud');
+    }, e=>{ console.error('[FB] orders 監聽失敗', e); });
+  FB.unsubHistory = FB.db.collection('print_history').orderBy('createdAt','desc').limit(80)
+    .onSnapshot(snap=>{
+      S.history = snap.docs.map(d=>Object.assign({_id:d.id}, d.data()));
+      if (S.openMod==='cloud') openModule('cloud');
+    }, e=>{ console.error('[FB] history 監聽失敗', e); });
+}
+/* 寫入歷史紀錄（雲端優先，離線時退回本機陣列） */
+function cloudAddHistory(act, sum){
+  const t = new Date().toLocaleString('zh-TW',{hour12:false});
+  if (FB.ready){
+    FB.db.collection('print_history').add({ t, act, sum, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+      .catch(e=>console.error('[FB] history 寫入失敗', e));
+  } else {
+    S.history.unshift({ t, act, sum });
+    if (S.history.length > 120) S.history.pop();
+    persist();
+  }
+}
+/* 寫入工單（雲端優先，離線時退回本機陣列） */
+async function cloudAddOrder(order){
+  if (FB.ready){
+    try {
+      await FB.db.collection('print_orders').add(Object.assign({}, order, { createdAt: firebase.firestore.FieldValue.serverTimestamp() }));
+      return true;
+    } catch(e){ console.error('[FB] order 寫入失敗', e); toast('✕ 雲端儲存失敗，已改存本機','err'); }
+  }
+  S.orders.unshift(Object.assign({_id:'local_'+Date.now()}, order));
+  persist();
+  return false;
+}
+async function cloudSetOrderStatus(o, status){
+  if (FB.ready && o._id && !String(o._id).startsWith('local_')){
+    try { await FB.db.collection('print_orders').doc(o._id).update({ status, createdAt: o.createdAt||firebase.firestore.FieldValue.serverTimestamp() }); return; }
+    catch(e){ console.error('[FB] 狀態更新失敗', e); }
+  }
+  o.status = status; persist();
+}
+/* ============================== 1. 常數與資料 ============================== */
+const MACHINES = {
+  form4:  { name:'Form 4',  size:[200,125,210], powerW:65,  secPerLayer:{0.025:6.5,0.05:4.5,0.1:3.6} },
+  form4l: { name:'Form 4L', size:[350,196,350], powerW:120, secPerLayer:{0.025:8.0,0.05:5.5,0.1:4.2} }
+};
+const MATERIALS = [
+  { id:'grey',  name:'Grey Resin V5',       priceL:3200, density:1.10, shrink:0.30, layers:[0.025,0.05,0.1], tags:['外觀件','工程件'], note:'通用原型，細節佳' },
+  { id:'clear', name:'Clear Resin V5',      priceL:3400, density:1.10, shrink:0.30, layers:[0.025,0.05,0.1], tags:['外觀件','中空件'], note:'透明件、流道觀察' },
+  { id:'white', name:'White Resin V5',      priceL:3200, density:1.10, shrink:0.30, layers:[0.025,0.05,0.1], tags:['外觀件'],         note:'外觀展示、噴漆底' },
+  { id:'tough', name:'Tough 2000',          priceL:5500, density:1.15, shrink:0.45, layers:[0.05,0.1],       tags:['工程件'],         note:'類 ABS，抗衝擊' },
+  { id:'rigid', name:'Rigid 10K',           priceL:8900, density:1.65, shrink:0.20, layers:[0.05,0.1],       tags:['工程件','薄件'],  note:'高剛性、耐熱' },
+  { id:'flex',  name:'Flexible 80A',        priceL:6200, density:1.07, shrink:0.60, layers:[0.05,0.1],       tags:['外觀件'],         note:'軟性件、緩衝' },
+  { id:'draft', name:'Fast Model Resin',    priceL:2900, density:1.10, shrink:0.35, layers:[0.05,0.1,0.2],   tags:['外觀件','工程件'],note:'快速打樣' },
+];
+/* Formlabs Form 4 設計指南預設值（可於「可行性」檢查中調整） */
+const SPEC = {
+  wallSupported:   { v:0.2,  unit:'mm', label:'支撐壁厚',   desc:'≤0.2mm 可能因剝離力翹曲' },
+  wallUnsupported: { v:0.2,  unit:'mm', label:'無支撐壁厚', desc:'≤0.2mm 可能翹曲或脫落' },
+  overhangAngle:   { v:19,   unit:'°',  label:'懸垂角度',   desc:'與水平夾角 <19° 恐剝離斷裂' },
+  overhangLen:     { v:5,    unit:'mm', label:'懸垂長度',   desc:'無支撐水平懸垂 >5mm 變形' },
+  bridgeSpan:      { v:21,   unit:'mm', label:'支撐跨距',   desc:'水平橋接支撐間距上限' },
+  wireDia:         { v:1.5,  unit:'mm', label:'線材直徑',   desc:'垂直細柱建議 ≥1.5mm' },
+  embossed:        { v:0.1,  unit:'mm', label:'浮雕細節',   desc:'凸起 <0.1mm 恐不可見' },
+  engraved:        { v:0.15, unit:'mm', label:'雕刻細節',   desc:'凹陷 <0.15mm 恐融合' },
+  clearance:       { v:0.4,  unit:'mm', label:'零件間隙',   desc:'<0.4mm 恐黏合' },
+  holeDia:         { v:0.5,  unit:'mm', label:'孔徑',       desc:'<Ø0.5mm 恐列印中封閉' },
+  drainDia:        { v:0.75, unit:'mm', label:'排液孔',     desc:'封閉腔體需 ≥Ø0.75mm 排液孔' },
+};
+/* 支撐材參數 — 對齊 PreForm 3.51+（Supports V1／經典）；預設值同 PreForm */
+const SUP_DEFAULTS = {
+  tpSize: 0.60,                                   // 接觸點尺寸 mm
+  minima: { on:true },                            // 懸空點（橙）
+  over:   { on:true, density:1.00, angle:18.0 },  // 懸空（青）：密度＋與水平夾角門檻
+  stab:   { on:true, density:1.00 },              // 穩定化（粉）
+  rein:   { on:true, density:1.00 },              // 強化（綠）
+  pil: { structure:'classic', topTrussW:0.91, trussW:0.91, trussH:1.30,
+         tTopDia:1.30, tBotDia:1.40, trussDist:6.00, uDia:1.20, bundled:false },
+  tpS: { toothLenMin:1.5, internal:true, iBotDia:1.20, teethMax:3 },
+  raft:{ type:'full', thickness:2.70, heightAbove:5.00, miniR:4.0, mergeDist:6.0, label:true },
+};
+const cloneSup = () => JSON.parse(JSON.stringify(SUP_DEFAULTS));
+const LAYER_OPTS = [0.025, 0.05, 0.1];
+const MODEL_TYPES = ['外觀件','工程件','中空件','薄件'];
+const NTD = n => 'NT$ ' + Math.round(n).toLocaleString('zh-TW');
+const F = (n,d=2) => (typeof n==='number'&&isFinite(n)) ? n.toFixed(d) : '—';
+
+/* ============================== 2. 全域狀態 ============================== */
+const S = {
+  step: 0,
+  models: [],           // {id,name,size,raw:{verts,tris},display:Float32Array, stats, mesh}
+  activeId: null,
+  machine: 'form4',
+  materialId: 'grey',
+  layerH: 0.05,
+  modelType: '外觀件',
+  orient: { tiltX: -35, yaw: 15, tiltZ: 0 },     // 度 (skill 預設 35°+側轉15°)
+  sup: cloneSup(),      // PreForm 3.51+ 支撐材參數（見 SUP_DEFAULTS）
+  supTab: 'pil',        // 支撐材結構分頁：tp | pil | raft
+  forceSupports: false, // 於步驟1、2 由面板明確按「自動生成所有」時強制生成
+  supportsOn: true,
+  colorMode: 'normal',
+  clipOn: false, clipPct: 100,
+  engine: 'builtin',    // builtin | pfs
+  pfsUrl: 'http://localhost:44389',
+  faceDownMode: false,  // 以此面為底：待點擊
+  selected: false,      // 模型選取狀態（PreForm 式）
+  rangeBoxOn: true,     // 列印範圍框線
+  fontBig: false,       // 大字模式
+  orientGoal: 'time',   // 自動擺放目標：balance | time | support
+  undoStack: [],        // 擺放操作復原（Ctrl+Z，同 PreForm）
+  autoOrientAngles: '20, 25, 30, 35, 40, 45',    // 可自訂候選角
+  cost: { postCost:90 },   // 舊版計費模型：材料×單價＋支撐＋固定後處理費；單價由材料設定(Firestore)決定
+  results: {},          // 各分析結果快取（依 active model + orientation）
+  orders: [], history: [],
+  cloudStatus: 'connecting',   // connecting | online | offline
+};
+function activeModel(){ return S.models.find(m=>m.id===S.activeId) || null; }
+function mat(){ return MATERIALS.find(m=>m.id===S.materialId); }
+function mach(){ return MACHINES[S.machine]; }
+/* 舊鍵相容：既有程式讀 S.support.tp/density/raft/lift/internal → 映射至 S.sup */
+S.support = {};
+Object.defineProperties(S.support, {
+  tp:       { get: ()=>S.sup.tpSize },
+  density:  { get: ()=>S.sup.over.density },
+  raft:     { get: ()=>S.sup.raft.type },
+  lift:     { get: ()=>S.sup.raft.heightAbove },
+  internal: { get: ()=>S.sup.tpS.internal },
+});
+
+/* ============================== 3. DOM 輔助 ============================== */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const el = (tag, cls, html) => { const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; };
+function toast(msg, kind=''){ 
+  const t = el('div','toastItem '+kind, msg);
+  $('#toast').appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),320); }, 2600);
+}
+const frame = () => new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+async function busy(msg, fn){
+  $('#busyMsg').textContent = msg; $('#busy').classList.add('show'); await frame();
+  try { return await fn(); }
+  finally { $('#busy').classList.remove('show'); }
+}
+function logHist(act, sum){
+  cloudAddHistory(act, sum);   // 雲端優先；離線時內部會退回本機陣列
+}
+function persist(){
+  // 僅作離線備援：雲端連線時工單/歷史由 Firestore onSnapshot 驅動，不寫 localStorage
+  try { localStorage.setItem('aiprintstudio_v1', JSON.stringify({ orders:S.orders, history:S.history, cost:S.cost })); } catch(e){}
+}
+function restore(){
+  try {
+    const d = JSON.parse(localStorage.getItem('aiprintstudio_v1')||'null');
+    if (d){ Object.assign(S.cost, d.cost||{}); if (!FB.ready){ S.orders=d.orders||[]; S.history=d.history||[]; } }
+  } catch(e){}
+}
+
+/* ============================== 4. 3D 檢視器 ============================== */
+const V = {};   // viewer namespace
+function initViewer(){
+  const canvas = $('#c3d');
+  V.renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  V.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  V.renderer.localClippingEnabled = true;
+  V.scene = new THREE.Scene();
+  V.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 4000);
+  V.scene.add(new THREE.AmbientLight(0xffffff, .65));
+  const dl = new THREE.DirectionalLight(0xffffff, .7); dl.position.set(80,160,120); V.scene.add(dl);
+  const dl2 = new THREE.DirectionalLight(0xcfe8f2, .35); dl2.position.set(-120,60,-80); V.scene.add(dl2);
+
+  V.platGroup = new THREE.Group(); V.scene.add(V.platGroup);
+  buildPlatform();
+
+  V.clipPlane = new THREE.Plane(new THREE.Vector3(0,-1,0), 1e6);
+  V.matModel = new THREE.MeshStandardMaterial({ color:0x5bb8d4, metalness:.05, roughness:.55, vertexColors:true, clippingPlanes:[V.clipPlane], clipShadows:true });
+  V.matSup   = new THREE.MeshStandardMaterial({ color:0xe9ecf0, roughness:.55, metalness:.02, clippingPlanes:[V.clipPlane] });
+  V.matTp    = new THREE.MeshStandardMaterial({ color:0x2f6fd6, roughness:.35, clippingPlanes:[V.clipPlane] });
+  V.matTpType = {   // 接觸點依類型上色（同 PreForm：橙/青/粉/綠）
+    minima: new THREE.MeshStandardMaterial({ color:0xe8930c, roughness:.35, clippingPlanes:[V.clipPlane] }),
+    over:   new THREE.MeshStandardMaterial({ color:0x0d9488, roughness:.35, clippingPlanes:[V.clipPlane] }),
+    stab:   new THREE.MeshStandardMaterial({ color:0xd6409f, roughness:.35, clippingPlanes:[V.clipPlane] }),
+    rein:   new THREE.MeshStandardMaterial({ color:0x46a758, roughness:.35, clippingPlanes:[V.clipPlane] }),
+  };
+  V.matMark  = new THREE.MeshStandardMaterial({ color:0xc0392b, roughness:.4, emissive:0x400000 });
+  V.matDrain = new THREE.MeshStandardMaterial({ color:0xd97706, roughness:.4, emissive:0x402000 });
+
+  V.modelGroup = new THREE.Group();   // 旋轉+定位後的模型
+  V.supGroup = new THREE.Group();     // 支撐
+  V.markGroup = new THREE.Group();    // 孤島/風險/排液孔標記
+  V.scene.add(V.modelGroup, V.supGroup, V.markGroup);
+
+  // 軌道控制 + PreForm 式操縱器（環=繞軸旋轉、拖模型=移動、點空白=轉視角）
+  V.theta = 0.62; V.phi = 1.08; V.radius = 300; V.target = new THREE.Vector3(0,38,0);
+  let dragging=false, panning=false, px=0, py=0;
+  let dragModel=false, moved=false, grabPlane=null, grabMeshPos=null;
+  let ringAxis=null, ringStart=0, ringDelta=0;
+  let dragClampNotified=false;   // 硬性邊界提醒：同一次拖曳只跳一次
+  V.ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+  const setRay = e => {
+    const r = canvas.getBoundingClientRect();
+    ndc.x = ((e.clientX-r.left)/r.width)*2-1;
+    ndc.y = -((e.clientY-r.top)/r.height)*2+1;
+    V.ray.setFromCamera(ndc, V.camera);
+  };
+  const pickModel = e => {
+    const m = activeModel(); if (!m || !m.mesh) return null;
+    setRay(e);
+    const hits = V.ray.intersectObject(m.mesh, false);
+    return hits[0] || null;
+  };
+  const pickRing = e => {
+    if (!V.gizmoPicks || !V.gizmoPicks.length) return null;
+    setRay(e);
+    const hits = V.ray.intersectObjects(V.gizmoPicks, false);
+    return hits[0] ? hits[0].object.userData.axis : null;
+  };
+  const planeHit = e => {   // 指標射線與平台平面 y=0 的交點
+    setRay(e);
+    const o = V.ray.ray.origin, d = V.ray.ray.direction;
+    if (Math.abs(d.y) < 1e-6) return null;
+    const t = -o.y / d.y;
+    return t>0 ? new THREE.Vector3(o.x+d.x*t, 0, o.z+d.z*t) : null;
+  };
+  const ringAngleAt = (axis, e) => {   // 指標射線與環平面交點的極角
+    setRay(e);
+    const B = V.gizmoBasis[axis], P = V.gizmoCenter;
+    const o = V.ray.ray.origin, d = V.ray.ray.direction;
+    const dn = d.dot(B.axis);
+    if (Math.abs(dn) < 1e-5) return null;
+    const t = P.clone().sub(o).dot(B.axis) / dn;
+    if (t <= 0) return null;
+    const v = o.clone().addScaledVector(d, t).sub(P);
+    return Math.atan2(v.dot(B.w), v.dot(B.u));
+  };
+  const updateCam = () => {
+    V.camera.position.set(
+      V.target.x + V.radius*Math.sin(V.phi)*Math.cos(V.theta),
+      V.target.y + V.radius*Math.cos(V.phi),
+      V.target.z + V.radius*Math.sin(V.phi)*Math.sin(V.theta));
+    V.camera.lookAt(V.target);
+    syncCube();
+  };
+  V.updateCam = updateCam;
+  updateCam();
+  canvas.addEventListener('pointerdown', e=>{
+    px=e.clientX; py=e.clientY; moved=false;
+    canvas.setPointerCapture(e.pointerId);
+    if (e.button===2 || e.button===1){ panning=true; return; }
+    if (e.button!==0) return;
+    const axis = pickRing(e);                    // 旋轉環優先
+    if (axis){
+      const a0 = ringAngleAt(axis, e);
+      if (a0!==null){ ringAxis=axis; ringStart=a0; ringDelta=0; gizmoDragBegin(); return; }
+    }
+    const hit = pickModel(e);
+    if (hit && S.faceDownMode){ applyFaceDown(hit); return; }
+    if (hit){                                   // 點到模型 → 選取並準備拖移
+      selectModel();
+      dragModel=true;
+      dragClampNotified=false;                  // 新的一次拖曳 → 重置邊界提醒
+      grabPlane = planeHit(e) || new THREE.Vector3();
+      grabMeshPos = activeModel().mesh.position.clone();
+      canvas.style.cursor='grabbing';
+    } else {                                     // 點到空白 → 轉視角並取消選取
+      deselectModel();
+      dragging=true;
+    }
+  });
+  canvas.addEventListener('pointerup', ()=>{
+    if (ringAxis){ const ax=ringAxis, d=ringDelta; ringAxis=null; commitGizmo(ax, d); }
+    if (dragModel){ dragModel=false; canvas.style.cursor='';
+      if (moved) commitModelDrag(); }
+    dragging=false; panning=false;
+  });
+  canvas.addEventListener('pointermove', e=>{
+    if (!dragging && !panning && !dragModel && !ringAxis) return;
+    const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
+    if (Math.abs(dx)+Math.abs(dy) > 1) moved=true;
+    if (ringAxis){                               // 拖曳旋轉環：15° 吸附，Shift 自由角度
+      const a = ringAngleAt(ringAxis, e);
+      if (a!==null){
+        let d = a - ringStart;
+        while (d >  Math.PI) d -= 2*Math.PI;
+        while (d < -Math.PI) d += 2*Math.PI;
+        if (!e.shiftKey){ const st = 15*Math.PI/180; d = Math.round(d/st)*st; }
+        ringDelta = d;
+        applyGizmoLive(ringAxis, d, e);
+      }
+      return;
+    }
+    if (dragModel){
+      const p = planeHit(e); const m = activeModel();
+      if (p && m && m.mesh){
+        // 硬性邊界（舊版行為）：拖曳中即時夾限，模型頂到列印範圍邊界就停住、推不出去；
+        // worldBB 已含 m.pos 烘焙位置，mesh.position 是拖曳中的額外偏移
+        let ox = grabMeshPos.x + (p.x-grabPlane.x), oz = grabMeshPos.z + (p.z-grabPlane.z);
+        const ms = mach().size, bb = m.worldBB;
+        const clampAxis = (lo,hi,off,half)=> (hi-lo > half*2) ? off : Math.min(half-hi, Math.max(-half-lo, off));
+        const nx = clampAxis(bb.min[0], bb.max[0], ox, ms[0]/2);
+        const nz = clampAxis(bb.min[2], bb.max[2], oz, ms[1]/2);
+        if ((nx!==ox || nz!==oz) && !dragClampNotified){
+          dragClampNotified = true;   // 同一次拖曳只提醒一次，持續頂著邊界不洗版
+          toast('已達最大列印範圍邊界，動作已強制停止','warn');
+        }
+        m.mesh.position.set(nx, 0, nz);
+        if (V.selHelper) V.selHelper.position.copy(m.mesh.position);
+        liveRangeFeedback(m);
+      }
+      return;
+    }
+    if (dragging){ V.theta += dx*0.008; V.phi = Math.min(1.55, Math.max(0.12, V.phi - dy*0.006)); }
+    else { const s=V.radius*0.0016;
+      const right=new THREE.Vector3().subVectors(V.camera.position,V.target).cross(V.camera.up).normalize();
+      V.target.addScaledVector(right, dx*s); V.target.y += dy*s; }
+    updateCam();
+  });
+  canvas.addEventListener('contextmenu', e=>e.preventDefault());
+  canvas.addEventListener('wheel', e=>{ e.preventDefault(); V.radius=Math.min(1200,Math.max(60,V.radius+e.deltaY*0.4)); updateCam(); }, {passive:false});
+
+  const resize = () => { const w=innerWidth,h=innerHeight;
+    V.renderer.setSize(w,h,false); V.camera.aspect=w/h; V.camera.updateProjectionMatrix(); };
+  addEventListener('resize', resize); resize();
+  (function loop(){ requestAnimationFrame(loop); V.renderer.render(V.scene, V.camera); })();
+}
+function buildPlatform(){
+  while(V.platGroup.children.length){ const c=V.platGroup.children[0]; V.platGroup.remove(c); if(c.geometry)c.geometry.dispose(); }
+  const W = mach().size[0], dep = mach().size[1], H = mach().size[2];
+  // 白色平台板（PreForm 式）
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(W,1.2,dep), new THREE.MeshBasicMaterial({ color:0xf7f9fb }));
+  plate.position.y = -0.61; V.platGroup.add(plate);
+  // 細格網：小格 5mm、每 25mm 一條主線
+  V.platGroup.add(gridLines(W, dep, 5,  0xe3e7ec, 0.02));
+  V.platGroup.add(gridLines(W, dep, 25, 0xc7cdd6, 0.05));
+  // 平台外框
+  const o = [];
+  const hx=W/2, hz=dep/2;
+  [[-hx,-hz,hx,-hz],[hx,-hz,hx,hz],[hx,hz,-hx,hz],[-hx,hz,-hx,-hz]].forEach(([x1,z1,x2,z2])=>{
+    o.push(new THREE.Vector3(x1,0.07,z1), new THREE.Vector3(x2,0.07,z2));
+  });
+  V.platGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(o),
+    new THREE.LineBasicMaterial({ color:0xaab3bf })));
+  buildRangeBox(W, dep, H);
+}
+function gridLines(W, D, step, color, y){
+  const pts = [];
+  const hx=W/2, hz=D/2;
+  for (let x=-hx; x<=hx+0.01; x+=step){ pts.push(new THREE.Vector3(x,y,-hz), new THREE.Vector3(x,y,hz)); }
+  for (let z=-hz; z<=hz+0.01; z+=step){ pts.push(new THREE.Vector3(-hx,y,z), new THREE.Vector3(hx,y,z)); }
+  return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color, transparent:true, opacity:.9 }));
+}
+/* 列印範圍框：細灰實線（同 PreForm）+ 三軸尺寸標籤；超出時轉紅 */
+function buildRangeBox(W, D, H){
+  if (V.rangeGroup){ V.scene.remove(V.rangeGroup); V.rangeGroup.traverse(o=>{ if(o.geometry)o.geometry.dispose(); if(o.material&&o.material.map)o.material.map.dispose(); if(o.material)o.material.dispose(); }); }
+  V.rangeGroup = new THREE.Group();
+  const hx=W/2, hz=D/2;
+  const c = [[-hx,0,-hz],[hx,0,-hz],[hx,0,hz],[-hx,0,hz],[-hx,H,-hz],[hx,H,-hz],[hx,H,hz],[-hx,H,hz]];
+  const E = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+  const pts=[]; for (const [a,b] of E){ pts.push(new THREE.Vector3(...c[a]), new THREE.Vector3(...c[b])); }
+  V.rangeMat = new THREE.LineBasicMaterial({ color:0xb9c1cc, transparent:true, opacity:.95 });
+  V.rangeGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), V.rangeMat));
+  const mk = (txt, x,y,z)=>{ const s = makeTextSprite(txt, '#8a93a3'); s.position.set(x,y,z); V.rangeGroup.add(s); };
+  mk(`X ${W}mm`, 0, 5, hz+12);
+  mk(`Y ${D}mm`, hx+16, 5, 0);
+  mk(`Z ${H}mm`, -hx-14, H/2, -hz);
+  mk(`${mach().name} 列印範圍`, -hx+28, H+9, -hz);
+  V.rangeGroup.visible = S.rangeBoxOn;
+  V.scene.add(V.rangeGroup);
+}
+function makeTextSprite(txt, color='#8a93a3'){
+  const cv = document.createElement('canvas'); cv.width=360; cv.height=72;
+  const ctx = cv.getContext('2d');
+  if (ctx){
+    ctx.font = '700 34px "JetBrains Mono", monospace';
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(txt, 8, 38);
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+  sp.scale.set(46, 9.2, 1);
+  return sp;
+}
+/* 選取外框（PreForm 式高亮） */
+function selectModel(){
+  const m = activeModel(); if(!m || !m.mesh) return;
+  S.selected = true;
+  if (V.selHelper){ V.modelGroup.remove(V.selHelper); V.selHelper.geometry.dispose(); }
+  const bb = m.worldBB;
+  const box = new THREE.Box3(new THREE.Vector3(...bb.min), new THREE.Vector3(...bb.max));
+  V.selHelper = new THREE.Box3Helper(box, 0x0c7a99);
+  V.selHelper.position.copy(m.mesh.position);
+  V.modelGroup.add(V.selHelper);
+  buildGizmo(m);   // PreForm 式三軸旋轉環
+  if (S.openMod){ $('#modPanel').classList.remove('open'); $$('#rail .railBtn').forEach(b=>b.classList.remove('on')); S.openMod=null; }
+  renderPlacePanel();
+}
+function deselectModel(){
+  S.selected = false;
+  if (V.selHelper){ V.modelGroup.remove(V.selHelper); V.selHelper.geometry.dispose(); V.selHelper=null; }
+  removeGizmo();
+  $('#placePanel').classList.remove('open');
+}
+function setCam(v){
+  if (v==='front'){ V.theta=Math.PI/2; V.phi=Math.PI/2-0.02; }
+  else if (v==='right'){ V.theta=0; V.phi=Math.PI/2-0.02; }
+  else if (v==='side'){ V.theta=0; V.phi=Math.PI/2-0.02; }
+  else if (v==='top'){ V.phi=0.14; }
+  else { V.theta=0.62; V.phi=1.08; V.radius=300; V.target.set(0,38,0); }
+  V.updateCam();
+}
+function syncCube(){
+  const rx = -(Math.PI/2 - V.phi) * 180/Math.PI;
+  const ry = -(V.theta*180/Math.PI - 90) ;
+  $('#cubeInner').style.transform = `rotateX(${rx.toFixed(1)}deg) rotateY(${ry.toFixed(1)}deg)`;
+}
+/* ============================== 5. 檔案解析 ============================== */
+async function parseFile(file){
+  const name = file.name.toLowerCase();
+  const buf = await file.arrayBuffer();
+  if (name.endsWith('.stl')) return parseSTL(buf);
+  if (name.endsWith('.obj')) return parseOBJ(new TextDecoder().decode(buf));
+  if (name.endsWith('.3mf')) return await parse3MF(buf);
+  throw new Error('不支援的檔案格式（僅支援 STL / OBJ / 3MF）');
+}
+/* 回傳非索引三角形頂點陣列 Float32Array [x,y,z ×3 ×n]（Z-up 轉 Y-up 於 STL/3MF） */
+function parseSTL(buf){
+  const head = new Uint8Array(buf, 0, Math.min(512, buf.byteLength));
+  const headTxt = new TextDecoder().decode(head);
+  const isAscii = /^\s*solid/.test(headTxt) && headTxt.includes('facet');
+  if (isAscii){
+    const txt = new TextDecoder().decode(buf);
+    const re = /vertex\s+([-\d.eE+]+)\s+([-\d.eE+]+)\s+([-\d.eE+]+)/g;
+    const arr = []; let m;
+    while ((m = re.exec(txt))) arr.push(+m[1], +m[3], -(+m[2]));   // Z-up→Y-up
+    if (arr.length < 9 || arr.length % 9 !== 0) throw new Error('ASCII STL 格式錯誤');
+    return new Float32Array(arr);
+  }
+  const dv = new DataView(buf);
+  if (buf.byteLength < 84) throw new Error('STL 檔案毀損');
+  const n = dv.getUint32(80, true);
+  if (84 + n*50 > buf.byteLength) throw new Error('二進位 STL 長度不符');
+  const out = new Float32Array(n*9);
+  let o = 84, k = 0;
+  for (let i=0;i<n;i++){
+    o += 12; // skip normal
+    for (let v=0;v<3;v++){
+      const x=dv.getFloat32(o,true), y=dv.getFloat32(o+4,true), z=dv.getFloat32(o+8,true);
+      out[k++]=x; out[k++]=z; out[k++]=-y; o+=12;   // Z-up→Y-up
+    }
+    o += 2;
+  }
+  return out;
+}
+function parseOBJ(txt){
+  const vs=[], arr=[];
+  const lines = txt.split(/\r?\n/);
+  for (const ln of lines){
+    if (ln[0]==='v' && ln[1]===' '){
+      const p = ln.slice(2).trim().split(/\s+/);
+      vs.push(+p[0], +p[1], +p[2]);              // OBJ 慣例已為 Y-up
+    } else if (ln[0]==='f'){
+      const p = ln.slice(1).trim().split(/\s+/).map(t=>{
+        let i = parseInt(t.split('/')[0],10);
+        if (i<0) i = vs.length/3 + i + 1;
+        return (i-1)*3;
+      });
+      for (let i=1;i<p.length-1;i++){
+        for (const ix of [p[0],p[i],p[i+1]]) arr.push(vs[ix],vs[ix+1],vs[ix+2]);
+      }
+    }
+  }
+  if (!arr.length) throw new Error('OBJ 無有效面資料');
+  return new Float32Array(arr);
+}
+/* 3MF = ZIP，以瀏覽器原生 DecompressionStream 解壓（免外部函式庫） */
+async function parse3MF(buf){
+  const dv = new DataView(buf); const u8 = new Uint8Array(buf);
+  // 找 End of Central Directory (0x06054b50)
+  let eocd = -1;
+  for (let i=buf.byteLength-22; i>=Math.max(0,buf.byteLength-70000); i--){
+    if (dv.getUint32(i,true)===0x06054b50){ eocd=i; break; }
+  }
+  if (eocd<0) throw new Error('3MF(ZIP) 結構錯誤');
+  const cnt = dv.getUint16(eocd+10,true);
+  let off = dv.getUint32(eocd+16,true);
+  const entries = [];
+  for (let i=0;i<cnt;i++){
+    if (dv.getUint32(off,true)!==0x02014b50) break;
+    const method = dv.getUint16(off+10,true);
+    const csize = dv.getUint32(off+20,true);
+    const nlen = dv.getUint16(off+28,true), elen = dv.getUint16(off+30,true), clen = dv.getUint16(off+32,true);
+    const lho = dv.getUint32(off+42,true);
+    const name = new TextDecoder().decode(u8.subarray(off+46, off+46+nlen));
+    entries.push({ name, method, csize, lho });
+    off += 46 + nlen + elen + clen;
+  }
+  const ent = entries.find(e=>/3dmodel\.model$/i.test(e.name)) || entries.find(e=>/\.model$/i.test(e.name));
+  if (!ent) throw new Error('3MF 內找不到 3dmodel.model');
+  const nlen2 = dv.getUint16(ent.lho+26,true), elen2 = dv.getUint16(ent.lho+28,true);
+  const dataOff = ent.lho + 30 + nlen2 + elen2;
+  const comp = u8.subarray(dataOff, dataOff+ent.csize);
+  let xmlBytes;
+  if (ent.method===0) xmlBytes = comp;
+  else if (ent.method===8){
+    const ds = new DecompressionStream('deflate-raw');
+    xmlBytes = new Uint8Array(await new Response(new Blob([comp]).stream().pipeThrough(ds)).arrayBuffer());
+  } else throw new Error('3MF 使用不支援的壓縮法');
+  const xml = new DOMParser().parseFromString(new TextDecoder().decode(xmlBytes), 'application/xml');
+  const unit = (xml.querySelector('model')?.getAttribute('unit')||'millimeter').toLowerCase();
+  const scale = { micron:.001, millimeter:1, centimeter:10, inch:25.4, foot:304.8, meter:1000 }[unit] ?? 1;
+  const objects = {};
+  xml.querySelectorAll('object').forEach(ob=>{
+    const meshEl = ob.querySelector('mesh'); if(!meshEl) return;
+    const vs=[];
+    meshEl.querySelectorAll('vertices > vertex').forEach(v=>vs.push(+v.getAttribute('x')*scale, +v.getAttribute('y')*scale, +v.getAttribute('z')*scale));
+    const tris=[];
+    meshEl.querySelectorAll('triangles > triangle').forEach(t=>tris.push(+t.getAttribute('v1'), +t.getAttribute('v2'), +t.getAttribute('v3')));
+    objects[ob.getAttribute('id')] = { vs, tris };
+  });
+  const items = Array.from(xml.querySelectorAll('build > item'));
+  const arr = [];
+  const push = (o, m)=>{
+    for (let i=0;i<o.tris.length;i++){
+      const vi = o.tris[i]*3;
+      let x=o.vs[vi], y=o.vs[vi+1], z=o.vs[vi+2];
+      if (m){ const nx=m[0]*x+m[3]*y+m[6]*z+m[9], ny=m[1]*x+m[4]*y+m[7]*z+m[10], nz=m[2]*x+m[5]*y+m[8]*z+m[11]; x=nx;y=ny;z=nz; }
+      arr.push(x, z, -y);                      // 3MF Z-up→Y-up
+    }
+  };
+  if (items.length){
+    for (const it of items){
+      const o = objects[it.getAttribute('objectid')]; if(!o) continue;
+      const tr = it.getAttribute('transform');
+      push(o, tr ? tr.trim().split(/\s+/).map(Number) : null);
+    }
+  } else Object.values(objects).forEach(o=>push(o,null));
+  if (!arr.length) throw new Error('3MF 無網格資料');
+  return new Float32Array(arr);
+}
+
+/* ============================== 6. 網格核心 ============================== */
+/* 頂點焊接 → 索引網格；回傳 {verts:Float32Array, tris:Uint32Array} */
+function weldMesh(pos, eps=1e-4){
+  const map = new Map(); const verts=[]; const tris=new Uint32Array(pos.length/3);
+  const inv = 1/eps;
+  for (let i=0;i<pos.length;i+=3){
+    const key = Math.round(pos[i]*inv)+'_'+Math.round(pos[i+1]*inv)+'_'+Math.round(pos[i+2]*inv);
+    let id = map.get(key);
+    if (id===undefined){ id = verts.length/3; map.set(key,id); verts.push(pos[i],pos[i+1],pos[i+2]); }
+    tris[i/3] = id;
+  }
+  return { verts:new Float32Array(verts), tris };
+}
+/* 移除退化三角形，回傳新 tris 與移除數 */
+function removeDegenerate(verts, tris){
+  const keep=[]; let removed=0;
+  for (let f=0; f<tris.length; f+=3){
+    const a=tris[f],b=tris[f+1],c=tris[f+2];
+    if (a===b||b===c||a===c){ removed++; continue; }
+    const area = triArea(verts,a,b,c);
+    if (area < 1e-10){ removed++; continue; }
+    keep.push(a,b,c);
+  }
+  return { tris:new Uint32Array(keep), removed };
+}
+function triArea(v,a,b,c){
+  const ax=v[a*3],ay=v[a*3+1],az=v[a*3+2], bx=v[b*3],by=v[b*3+1],bz=v[b*3+2], cx=v[c*3],cy=v[c*3+1],cz=v[c*3+2];
+  const ux=bx-ax,uy=by-ay,uz=bz-az, wx=cx-ax,wy=cy-ay,wz=cz-az;
+  const x=uy*wz-uz*wy, y=uz*wx-ux*wz, z=ux*wy-uy*wx;
+  return Math.sqrt(x*x+y*y+z*z)/2;
+}
+/* 邊拓撲：水密/非流形/邊界統計 + 法線一致性修復(BFS翻面) */
+function edgeTopology(verts, tris){
+  const edge = new Map();  // key a<b → [count, dirSum]
+  const nf = tris.length/3;
+  for (let f=0; f<nf; f++){
+    const i=f*3, vs=[tris[i],tris[i+1],tris[i+2]];
+    for (let e=0;e<3;e++){
+      const a=vs[e], b=vs[(e+1)%3];
+      const key = a<b ? a+'_'+b : b+'_'+a;
+      const rec = edge.get(key) || [0,0];
+      rec[0]++; rec[1] += (a<b ? 1 : -1);
+      edge.set(key, rec);
+    }
+  }
+  let boundary=0, nonManifold=0, flipped=0;
+  edge.forEach(r=>{
+    if (r[0]===1) boundary++;
+    else if (r[0]>2) nonManifold++;
+    else if (r[0]===2 && r[1]!==0) flipped++;   // 同向兩次 = 相鄰面朝向不一致
+  });
+  return { edgeCount:edge.size, boundary, nonManifold, flipped,
+           watertight: boundary===0 && nonManifold===0 };
+}
+/* 面朝向統一：BFS 傳播，若鄰面共享邊同向則翻轉 */
+function unifyOrientation(verts, tris){
+  const nf = tris.length/3;
+  const halfMap = new Map();  // "a_b" 有向邊 → faceIdx
+  const key = (a,b)=>a+'_'+b;
+  for (let f=0; f<nf; f++){
+    const i=f*3;
+    halfMap.set(key(tris[i],tris[i+1])+'#'+f, f);
+  }
+  // 建鄰接：無向邊 → faces
+  const und = new Map();
+  for (let f=0; f<nf; f++){
+    const i=f*3, vs=[tris[i],tris[i+1],tris[i+2]];
+    for (let e=0;e<3;e++){
+      const a=vs[e], b=vs[(e+1)%3];
+      const k = a<b ? a+'_'+b : b+'_'+a;
+      if (!und.has(k)) und.set(k, []);
+      und.get(k).push(f);
+    }
+  }
+  const visited = new Uint8Array(nf);
+  let flips = 0;
+  const dirOf = (f,a,b)=>{ const i=f*3;
+    for (let e=0;e<3;e++){ if (tris[i+e]===a && tris[i+(e+1)%3]===b) return 1;
+                           if (tris[i+e]===b && tris[i+(e+1)%3]===a) return -1; }
+    return 0; };
+  const flip = f=>{ const i=f*3; const t=tris[i+1]; tris[i+1]=tris[i+2]; tris[i+2]=t; flips++; };
+  for (let seed=0; seed<nf; seed++){
+    if (visited[seed]) continue;
+    visited[seed]=1; const q=[seed];
+    while (q.length){
+      const f = q.pop(); const i=f*3, vs=[tris[i],tris[i+1],tris[i+2]];
+      for (let e=0;e<3;e++){
+        const a=vs[e], b=vs[(e+1)%3];
+        const k = a<b ? a+'_'+b : b+'_'+a;
+        for (const g of und.get(k)){
+          if (g===f || visited[g]) continue;
+          visited[g]=1;
+          if (dirOf(g,a,b) === 1) flip(g);   // 鄰面同向 → 翻
+          q.push(g);
+        }
+      }
+    }
+  }
+  return flips;
+}
+/* 有號體積 (mm³) 與表面積 (mm²) */
+function volumeArea(verts, tris){
+  let vol=0, area=0;
+  for (let f=0; f<tris.length; f+=3){
+    const a=tris[f]*3,b=tris[f+1]*3,c=tris[f+2]*3;
+    const ax=verts[a],ay=verts[a+1],az=verts[a+2], bx=verts[b],by=verts[b+1],bz=verts[b+2], cx=verts[c],cy=verts[c+1],cz=verts[c+2];
+    vol += (ax*(by*cz-bz*cy) + bx*(cy*az-cz*ay) + cx*(ay*bz-az*by)) / 6;
+    const ux=bx-ax,uy=by-ay,uz=bz-az, wx=cx-ax,wy=cy-ay,wz=cz-az;
+    const x=uy*wz-uz*wy, y=uz*wx-ux*wz, z=ux*wy-uy*wx;
+    area += Math.sqrt(x*x+y*y+z*z)/2;
+  }
+  return { vol:Math.abs(vol), area };
+}
+function bboxOf(arr){
+  const bb = { min:[1e30,1e30,1e30], max:[-1e30,-1e30,-1e30] };
+  for (let i=0;i<arr.length;i+=3){
+    for (let k=0;k<3;k++){ const v=arr[i+k];
+      if (v<bb.min[k]) bb.min[k]=v; if (v>bb.max[k]) bb.max[k]=v; }
+  }
+  bb.size = [bb.max[0]-bb.min[0], bb.max[1]-bb.min[1], bb.max[2]-bb.min[2]];
+  return bb;
+}
+/* 連通元件（殼）數量 */
+function shellCount(verts, tris){
+  const n = verts.length/3;
+  const parent = new Int32Array(n); for (let i=0;i<n;i++) parent[i]=i;
+  const find = x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+  const uni = (a,b)=>{ a=find(a); b=find(b); if(a!==b) parent[a]=b; };
+  for (let f=0; f<tris.length; f+=3){ uni(tris[f],tris[f+1]); uni(tris[f+1],tris[f+2]); }
+  const roots = new Set();
+  for (let f=0; f<tris.length; f++) roots.add(find(tris[f]));
+  return roots.size;
+}
+
+/* ============================== 7. 格網射線加速器 ============================== */
+/* 均勻格網 + 3D-DDA + Möller–Trumbore；支援最近命中/全部命中 */
+class GridRay {
+  constructor(verts, tris, res=56){
+    this.v = verts; this.t = tris;
+    const bb = bboxOf(verts);
+    const pad = Math.max(bb.size[0],bb.size[1],bb.size[2]) * .002 + .01;
+    this.min = [bb.min[0]-pad, bb.min[1]-pad, bb.min[2]-pad];
+    this.max = [bb.max[0]+pad, bb.max[1]+pad, bb.max[2]+pad];
+    const longest = Math.max(...[0,1,2].map(k=>this.max[k]-this.min[k]));
+    this.n = [0,1,2].map(k=>Math.max(2, Math.min(res, Math.ceil((this.max[k]-this.min[k])/longest*res))));
+    this.cell = [0,1,2].map(k=>(this.max[k]-this.min[k])/this.n[k]);
+    const [nx,ny,nz] = this.n;
+    this.cells = new Array(nx*ny*nz);
+    const idx = (x,y,z)=>x + y*nx + z*nx*ny;
+    for (let f=0; f<tris.length; f+=3){
+      let lo=[1e30,1e30,1e30], hi=[-1e30,-1e30,-1e30];
+      for (let c=0;c<3;c++){ const p=tris[f+c]*3;
+        for (let k=0;k<3;k++){ const val=verts[p+k];
+          if (val<lo[k]) lo[k]=val; if (val>hi[k]) hi[k]=val; } }
+      const c0=[0,1,2].map(k=>Math.max(0, Math.floor((lo[k]-this.min[k])/this.cell[k])));
+      const c1=[0,1,2].map(k=>Math.min(this.n[k]-1, Math.floor((hi[k]-this.min[k])/this.cell[k])));
+      for (let z=c0[2]; z<=c1[2]; z++) for (let y=c0[1]; y<=c1[1]; y++) for (let x=c0[0]; x<=c1[0]; x++){
+        const i = idx(x,y,z);
+        (this.cells[i] || (this.cells[i]=[])).push(f);
+      }
+    }
+    this._idx = idx;
+  }
+  /* ray-tri：回傳 t 或 -1 */
+  _hitTri(f, ox,oy,oz, dx,dy,dz){
+    const v=this.v, t=this.t;
+    const a=t[f]*3,b=t[f+1]*3,c=t[f+2]*3;
+    const ax=v[a],ay=v[a+1],az=v[a+2];
+    const e1x=v[b]-ax, e1y=v[b+1]-ay, e1z=v[b+2]-az;
+    const e2x=v[c]-ax, e2y=v[c+1]-ay, e2z=v[c+2]-az;
+    const px=dy*e2z-dz*e2y, py=dz*e2x-dx*e2z, pz=dx*e2y-dy*e2x;
+    const det = e1x*px+e1y*py+e1z*pz;
+    if (Math.abs(det) < 1e-12) return -1;
+    const inv = 1/det;
+    const tx=ox-ax, ty=oy-ay, tz=oz-az;
+    const u = (tx*px+ty*py+tz*pz)*inv;
+    if (u<-1e-7 || u>1+1e-7) return -1;
+    const qx=ty*e1z-tz*e1y, qy=tz*e1x-tx*e1z, qz=tx*e1y-ty*e1x;
+    const w = (dx*qx+dy*qy+dz*qz)*inv;
+    if (w<-1e-7 || u+w>1+1e-7) return -1;
+    const tt = (e2x*qx+e2y*qy+e2z*qz)*inv;
+    return tt>1e-6 ? tt : -1;
+  }
+  /* cast: all=false 最近命中 {t,face}；all=true 回傳排序後陣列 */
+  cast(o, d, all=false, maxT=1e9){
+    const [nx,ny,nz]=this.n;
+    // 進入格網
+    let t0=0;
+    for (let k=0;k<3;k++){
+      const dk=d[k];
+      if (Math.abs(dk)<1e-12){ if (o[k]<this.min[k]||o[k]>this.max[k]) return all?[]:null; }
+      else {
+        const t1=(this.min[k]-o[k])/dk, t2=(this.max[k]-o[k])/dk;
+        t0=Math.max(t0, Math.min(t1,t2));
+        maxT=Math.min(maxT, Math.max(t1,t2));
+      }
+    }
+    if (t0>maxT) return all?[]:null;
+    const sx=o[0]+d[0]*(t0+1e-6), sy=o[1]+d[1]*(t0+1e-6), sz=o[2]+d[2]*(t0+1e-6);
+    let cx=Math.min(nx-1,Math.max(0,Math.floor((sx-this.min[0])/this.cell[0])));
+    let cy=Math.min(ny-1,Math.max(0,Math.floor((sy-this.min[1])/this.cell[1])));
+    let cz=Math.min(nz-1,Math.max(0,Math.floor((sz-this.min[2])/this.cell[2])));
+    const stepX=d[0]>0?1:-1, stepY=d[1]>0?1:-1, stepZ=d[2]>0?1:-1;
+    const tD=[0,1,2].map(k=>Math.abs(d[k])>1e-12 ? Math.abs(this.cell[k]/d[k]) : 1e30);
+    const nb=(c,k,st)=>this.min[k]+(c+(st>0?1:0))*this.cell[k];
+    let tMaxX=Math.abs(d[0])>1e-12 ? (nb(cx,0,stepX)-o[0])/d[0] : 1e30;
+    let tMaxY=Math.abs(d[1])>1e-12 ? (nb(cy,1,stepY)-o[1])/d[1] : 1e30;
+    let tMaxZ=Math.abs(d[2])>1e-12 ? (nb(cz,2,stepZ)-o[2])/d[2] : 1e30;
+    const hits = all?[]:null;
+    let best=maxT, bestF=-1;
+    const tested = new Set();
+    while (true){
+      const cellTris = this.cells[this._idx(cx,cy,cz)];
+      if (cellTris){
+        for (const f of cellTris){
+          if (tested.has(f)) continue; tested.add(f);
+          const tt = this._hitTri(f, o[0],o[1],o[2], d[0],d[1],d[2]);
+          if (tt>0 && tt<=maxT){
+            if (all) hits.push({t:tt, face:f});
+            else if (tt<best){ best=tt; bestF=f; }
+          }
+        }
+      }
+      if (!all && bestF>=0 && best < Math.min(tMaxX,tMaxY,tMaxZ)) break;
+      if (tMaxX<tMaxY && tMaxX<tMaxZ){ cx+=stepX; if(cx<0||cx>=nx)break; tMaxX+=tD[0]; }
+      else if (tMaxY<tMaxZ){ cy+=stepY; if(cy<0||cy>=ny)break; tMaxY+=tD[1]; }
+      else { cz+=stepZ; if(cz<0||cz>=nz)break; tMaxZ+=tD[2]; }
+      if (Math.min(tMaxX,tMaxY,tMaxZ) > maxT) break;
+    }
+    if (all){ hits.sort((a,b)=>a.t-b.t); return hits; }
+    return bestF>=0 ? {t:best, face:bestF} : null;
+  }
+  faceNormal(f){
+    const v=this.v,t=this.t;
+    const a=t[f]*3,b=t[f+1]*3,c=t[f+2]*3;
+    const ux=v[b]-v[a],uy=v[b+1]-v[a+1],uz=v[b+2]-v[a+2];
+    const wx=v[c]-v[a],wy=v[c+1]-v[a+1],wz=v[c+2]-v[a+2];
+    let x=uy*wz-uz*wy, y=uz*wx-ux*wz, z=ux*wy-uy*wx;
+    const l=Math.hypot(x,y,z)||1;
+    return [x/l,y/l,z/l];
+  }
+}
+/* ============================== 8. 模型管線 ============================== */
+let _mid = 0;
+async function addModelFromPos(pos, name, sizeBytes){
+  const id = 'm' + (++_mid);
+  const model = { id, name, size: sizeBytes||0, display: pos, pos:{x:0, z:0} };
+  await busy('建立網格索引…', async ()=>{
+    const bb0 = bboxOf(pos);
+    const eps = Math.max(1e-4, Math.max(...bb0.size)*1e-6);
+    const welded = weldMesh(pos, eps);
+    const deg = removeDegenerate(welded.verts, welded.tris);
+    model.raw = { verts: welded.verts, tris: deg.tris };
+    model.repair = { welded: pos.length/3 - welded.verts.length/3, degenerate: deg.removed, flipsFixed: 0 };
+    await frame();
+    model.topo = edgeTopology(model.raw.verts, model.raw.tris);
+    const va = volumeArea(model.raw.verts, model.raw.tris);
+    model.volMM3 = va.vol; model.areaMM2 = va.area;
+    model.bbox = bboxOf(model.raw.verts);
+    model.shells = shellCount(model.raw.verts, model.raw.tris);
+    model.faces = model.raw.tris.length/3;
+  });
+  S.models.push(model);
+  S.activeId = id;
+  await rebuildScene(true);
+  logHist('載入模型', `${name} · ${model.faces.toLocaleString()} 面 · ${F(model.volMM3/1000,1)} mL`);
+  await runFileCheck(model);   // 匯入後自動檢查（結果顯示於步驟1下方）
+  const fc = model.fcheck;
+  toast(fc.verdict==='pass' ? `✓ ${name} 檢查通過，可進行估價`
+      : fc.verdict==='warn' ? `⚠ ${name}：${fc.counts.warn} 項警告，詳見檢查報告`
+      : `✕ ${name}：發現 ${fc.counts.fail} 項嚴重問題，建議修復`, fc.verdict==='pass'?'ok':fc.verdict==='warn'?'warn':'err');
+}
+
+/* 世界座標頂點（套用目前擺放角度並落在平台上） */
+function worldMatrix(){
+  const e = new THREE.Euler(
+    THREE.MathUtils.degToRad(S.orient.tiltX),
+    THREE.MathUtils.degToRad(S.orient.yaw),
+    THREE.MathUtils.degToRad(S.orient.tiltZ), 'XYZ');
+  return new THREE.Matrix4().makeRotationFromEuler(e);
+}
+function supportsActive(){ return S.supportsOn && (S.step >= 2 || S.forceSupports); }   // 步驟1、2 不生成（面板明確按生成除外）
+function supportLift(){ return S.sup.raft.heightAbove + (S.sup.raft.type!=='none' ? S.sup.raft.thickness : 0); }
+function computeWorld(m){
+  const rot = worldMatrix().elements;
+  const src = m.raw.verts, n = src.length;
+  const out = new Float32Array(n);
+  for (let i=0;i<n;i+=3){
+    const x=src[i],y=src[i+1],z=src[i+2];
+    out[i]   = rot[0]*x + rot[4]*y + rot[8]*z;
+    out[i+1] = rot[1]*x + rot[5]*y + rot[9]*z;
+    out[i+2] = rot[2]*x + rot[6]*y + rot[10]*z;
+  }
+  const bb = bboxOf(out);
+  const lift = supportsActive() ? supportLift() : 0.05;   // 無支撐時直接落於平台
+  const cx = (bb.min[0]+bb.max[0])/2, cz = (bb.min[2]+bb.max[2])/2;
+  const ox = (m.pos?m.pos.x:0), oz = (m.pos?m.pos.z:0);
+  for (let i=0;i<n;i+=3){ out[i]+= ox-cx; out[i+1]+= lift - bb.min[1]; out[i+2]+= oz-cz; }
+  m.world = out;
+  m.worldBB = bboxOf(out);
+  m.grid = null;   // 延遲重建
+  return out;
+}
+function gridOf(m){ if (!m.grid) m.grid = new GridRay(m.world, m.raw.tris, 64); return m.grid; }
+
+/* 重建 Three.js 場景中的模型 + 支撐 */
+async function rebuildScene(regenSupports){
+  const m = activeModel();
+  while (V.modelGroup.children.length) disposeChild(V.modelGroup);
+  while (V.markGroup.children.length) disposeChild(V.markGroup);
+  const sameModel = S.results._mid === (S.activeId||null);
+  S.results = sameModel
+    ? { _mid:S.activeId, thickness:S.results.thickness, curv:S.results.curv }   // 厚度/曲率與擺放無關 → 保留
+    : { _mid:S.activeId };
+  if (!m){ clearSupports(); updateAllUI(); return; }
+  computeWorld(m);
+  clampModelPos(m);   // 硬性邊界：所有提交路徑(拖曳/數值輸入/方向鍵)一律夾回列印範圍內
+  const geo = new THREE.BufferGeometry();
+  // 展開為非索引（利於每面著色）
+  const tris = m.raw.tris, w = m.world;
+  const flat = new Float32Array(tris.length*3);
+  for (let i=0;i<tris.length;i++){ const p=tris[i]*3; flat[i*3]=w[p]; flat[i*3+1]=w[p+1]; flat[i*3+2]=w[p+2]; }
+  geo.setAttribute('position', new THREE.BufferAttribute(flat,3));
+  const colors = new Float32Array(tris.length*3).fill(1);
+  geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+  geo.computeVertexNormals();
+  m.mesh = new THREE.Mesh(geo, V.matModel);
+  V.modelGroup.add(m.mesh);
+  V.target.set(0, m.worldBB.size[1]/2 + 10, 0);
+  V.updateCam();
+  applyColorMode();
+  deselectModel();                                       // 幾何重建後外框失效
+  if (regenSupports && supportsActive()) await generateSupports();
+  else if (!supportsActive()) clearSupports();
+  refreshRangeCheck(m);                                  // 機台/擺放變更 → 範圍檢查即時同步
+  updateRangeBoxColor();
+  updateAllUI();
+}
+function disposeChild(g){ const c=g.children[0]; g.remove(c); if(c.geometry)c.geometry.dispose(); }
+function clearSupports(){ while (V.supGroup.children.length) disposeChild(V.supGroup); S.supportStat=null; }
+
+/* ============================== 9. STL 分析 ============================== */
+async function runMeshRepair(){
+  const m = activeModel(); if(!m) return;
+  await busy('網格修復中（焊接 / 退化面 / 法線統一）…', async ()=>{
+    const flips = unifyOrientation(m.raw.verts, m.raw.tris);
+    m.repair.flipsFixed = flips;
+    await frame();
+    // 修復後若體積為負 → 全域翻轉
+    let va = volumeArea(m.raw.verts, m.raw.tris);
+    let signed = 0;
+    const v=m.raw.verts, t=m.raw.tris;
+    for (let f=0; f<t.length; f+=3){
+      const a=t[f]*3,b=t[f+1]*3,c=t[f+2]*3;
+      signed += (v[a]*(v[b+1]*v[c+2]-v[b+2]*v[c+1]) + v[b]*(v[c+1]*v[a+2]-v[c+2]*v[a+1]) + v[c]*(v[a+1]*v[b+2]-v[a+2]*v[b+1]))/6;
+    }
+    if (signed < 0){ for (let f=0; f<t.length; f+=3){ const tmp=t[f+1]; t[f+1]=t[f+2]; t[f+2]=tmp; } }
+    m.topo = edgeTopology(m.raw.verts, m.raw.tris);
+    va = volumeArea(m.raw.verts, m.raw.tris);
+    m.volMM3 = va.vol; m.areaMM2 = va.area;
+  });
+  S.results = {};   // 拓撲已變 → 全部快取失效
+  await rebuildScene(false);
+  logHist('網格修復', `翻正 ${m.repair.flipsFixed} 面 · 退化面移除 ${m.repair.degenerate} · 開放邊 ${m.topo.boundary}`);
+  toast(m.topo.watertight ? '✓ 修復完成，網格已水密' : `修復完成，仍有 ${m.topo.boundary} 條開放邊（孔洞需於 CAD 補面）`, m.topo.watertight?'ok':'warn');
+  openModule('stl');
+}
+
+/* 厚度分析：面心沿 -法線 射線取樣（模型座標，與擺放無關） */
+async function runThickness(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.thickness) return S.results.thickness;
+  return busy('厚度分析中（取樣 + 射線量測）…', async ()=>{
+    const grid = new GridRay(m.raw.verts, m.raw.tris, 64);
+    const t = m.raw.tris, v = m.raw.verts, nf = t.length/3;
+    const sampleN = Math.min(nf, 2600);
+    const stride = Math.max(1, Math.floor(nf/sampleN));
+    const faceTh = new Float32Array(nf).fill(-1);
+    let minTh=1e9, thinArea=0, samples=0, sum=0;
+    for (let f=0; f<nf; f+=stride){
+      const a=t[f*3]*3,b=t[f*3+1]*3,c=t[f*3+2]*3;
+      const cx=(v[a]+v[b]+v[c])/3, cy=(v[a+1]+v[b+1]+v[c+1])/3, cz=(v[a+2]+v[b+2]+v[c+2])/3;
+      const n = grid.faceNormal(f*3);
+      const o=[cx-n[0]*1e-3, cy-n[1]*1e-3, cz-n[2]*1e-3];
+      const hit = grid.cast(o, [-n[0],-n[1],-n[2]], false, 1e5);
+      if (hit){
+        const th = hit.t;
+        faceTh[f] = th; samples++; sum += th;
+        if (th < minTh) minTh = th;
+        if (th < SPEC.wallSupported.v*2) thinArea += triArea(v, t[f*3],t[f*3+1],t[f*3+2]) * stride;
+      }
+      if ((f/stride) % 500 === 0) await frame();
+    }
+    const res = { faceTh, stride, minTh: samples?minTh:0, avgTh: samples?sum/samples:0, thinArea, samples };
+    S.results.thickness = res;
+    logHist('厚度分析', `最薄 ${F(res.minTh)}mm · 平均 ${F(res.avgTh,1)}mm · 取樣 ${samples}`);
+    return res;
+  });
+}
+/* 曲率分析：邊二面角 → 頂點平均（離散近似） */
+async function runCurvature(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.curv) return S.results.curv;
+  return busy('曲率分析中（二面角統計）…', async ()=>{
+    const v=m.raw.verts, t=m.raw.tris, nf=t.length/3, nv=v.length/3;
+    const fN = new Float32Array(nf*3);
+    for (let f=0; f<nf; f++){
+      const a=t[f*3]*3,b=t[f*3+1]*3,c=t[f*3+2]*3;
+      const ux=v[b]-v[a],uy=v[b+1]-v[a+1],uz=v[b+2]-v[a+2];
+      const wx=v[c]-v[a],wy=v[c+1]-v[a+1],wz=v[c+2]-v[a+2];
+      let x=uy*wz-uz*wy, y=uz*wx-ux*wz, z=ux*wy-uy*wx;
+      const l=Math.hypot(x,y,z)||1;
+      fN[f*3]=x/l; fN[f*3+1]=y/l; fN[f*3+2]=z/l;
+    }
+    const edge = new Map();
+    for (let f=0; f<nf; f++){
+      for (let e=0;e<3;e++){
+        const a=t[f*3+e], b=t[f*3+(e+1)%3];
+        const k = a<b ? a+'_'+b : b+'_'+a;
+        const r = edge.get(k);
+        if (r===undefined) edge.set(k, f);
+        else if (typeof r==='number') edge.set(k, [r,f]);
+      }
+    }
+    const vCurv = new Float32Array(nv); const vCnt = new Uint16Array(nv);
+    let sharpEdges=0;
+    edge.forEach((r,k)=>{
+      if (!Array.isArray(r)) return;
+      const [f1,f2]=r;
+      const dot = fN[f1*3]*fN[f2*3]+fN[f1*3+1]*fN[f2*3+1]+fN[f1*3+2]*fN[f2*3+2];
+      const ang = Math.acos(Math.max(-1,Math.min(1,dot)));   // 0=平
+      if (ang > Math.PI/3) sharpEdges++;
+      const [a,b] = k.split('_').map(Number);
+      vCurv[a]+=ang; vCnt[a]++; vCurv[b]+=ang; vCnt[b]++;
+    });
+    let maxC=0;
+    for (let i=0;i<nv;i++){ if (vCnt[i]) vCurv[i]/=vCnt[i]; if(vCurv[i]>maxC)maxC=vCurv[i]; }
+    const res = { vCurv, maxC, sharpEdges, sharpPct: edge.size?sharpEdges/edge.size*100:0 };
+    S.results.curv = res;
+    logHist('曲率分析', `銳邊比例 ${F(res.sharpPct,1)}% · 最大平均二面角 ${F(maxC*57.3,0)}°`);
+    return res;
+  });
+}
+
+/* ============================== 10. 列印分析 ============================== */
+/* 懸垂分析（世界座標）：γ = 面與平台夾角 */
+function runOverhang(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.overhang) return S.results.overhang;
+  const t = m.raw.tris, w = m.world, nf = t.length/3;
+  const faceGamma = new Float32Array(nf).fill(999);
+  let supArea=0, dangerArea=0, flatArea=0, total=0, minGamma=999;
+  for (let f=0; f<nf; f++){
+    const a=t[f*3]*3,b=t[f*3+1]*3,c=t[f*3+2]*3;
+    const ux=w[b]-w[a],uy=w[b+1]-w[a+1],uz=w[b+2]-w[a+2];
+    const wx=w[c]-w[a],wy=w[c+1]-w[a+1],wz=w[c+2]-w[a+2];
+    let x=uy*wz-uz*wy, y=uz*wx-ux*wz, z=ux*wy-uy*wx;
+    const l2=Math.hypot(x,y,z), area=l2/2; total+=area;
+    const ny = l2>0 ? y/l2 : 0;
+    if (ny < -0.01){
+      const gamma = Math.acos(Math.min(1,Math.max(0,-ny))) * 57.2958;  // 0°=平行平台
+      faceGamma[f] = gamma;
+      const minY = Math.min(w[a+1],w[b+1],w[c+1]);
+      const nearPlat = minY < S.support.lift + 3.5;
+      if (gamma < 50) supArea += area;
+      if (gamma < SPEC.overhangAngle.v && !nearPlat){ dangerArea += area; if(gamma<minGamma)minGamma=gamma; }
+      if (gamma < 5) flatArea += area;
+    }
+  }
+  const res = { faceGamma, supArea, dangerArea, flatArea, total, minGamma: minGamma===999?null:minGamma };
+  S.results.overhang = res;
+  return res;
+}
+/* 柱狀取樣：XZ 格網垂直射線全命中 → 剖面/孤島/吸盤/翹曲共用 */
+async function runColumns(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.cols) return S.results.cols;
+  return busy('剖面掃描中（柱狀取樣）…', async ()=>{
+    const grid = gridOf(m);
+    const bb = m.worldBB;
+    const NX = 56, NZ = 56;
+    const dx = bb.size[0]/NX, dz = bb.size[2]/NZ;
+    const cols = new Array(NX*NZ).fill(null);
+    for (let ix=0; ix<NX; ix++){
+      for (let iz=0; iz<NZ; iz++){
+        const x = bb.min[0] + (ix+.5)*dx, z = bb.min[2] + (iz+.5)*dz;
+        const hits = grid.cast([x, bb.min[1]-2, z], [0,1,0], true, bb.size[1]+6);
+        if (hits.length>=2){
+          const iv=[];
+          for (let i=0;i+1<hits.length;i+=2) iv.push([bb.min[1]-2+hits[i].t, bb.min[1]-2+hits[i+1].t]);
+          cols[ix*NZ+iz]=iv;
+        }
+      }
+      if (ix%8===0) await frame();
+    }
+    // 每層剖面積
+    const layerA = Math.max(0.5, bb.size[1]/120);
+    const NL = Math.max(2, Math.ceil(bb.size[1]/layerA));
+    const areaProf = new Float32Array(NL);
+    const cellA = dx*dz;
+    for (let i=0;i<cols.length;i++){
+      const iv=cols[i]; if(!iv) continue;
+      for (const [y0,y1] of iv){
+        const l0=Math.max(0,Math.floor((y0-bb.min[1])/layerA)), l1=Math.min(NL-1,Math.floor((y1-bb.min[1])/layerA));
+        for (let l=l0;l<=l1;l++) areaProf[l]+=cellA;
+      }
+    }
+    // 截面突變
+    let maxJump=1, jumpAt=0;
+    for (let l=1;l<NL;l++){
+      if (areaProf[l-1]>cellA*3 && areaProf[l]>areaProf[l-1]){
+        const r = areaProf[l]/areaProf[l-1];
+        if (r>maxJump){ maxJump=r; jumpAt=bb.min[1]+l*layerA; }
+      }
+    }
+    const maxArea = Math.max(...areaProf);
+    const res = { cols, NX, NZ, dx, dz, layerA, NL, areaProf, maxArea, maxJump, jumpAt, cellA, bb };
+    S.results.cols = res;
+    return res;
+  });
+}
+/* 孤島分析：柱狀資料 — 區段底部若下方鄰域無實體 → 孤島起點（近似） */
+async function runIslands(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.islands) return S.results.islands;
+  const C = await runColumns();
+  const pts = [];
+  const solidBelow = (ix,iz,y)=>{
+    for (let ox=-1; ox<=1; ox++) for (let oz=-1; oz<=1; oz++){
+      const jx=ix+ox, jz=iz+oz;
+      if (jx<0||jz<0||jx>=C.NX||jz>=C.NZ) continue;
+      const iv=C.cols[jx*C.NZ+jz]; if(!iv) continue;
+      for (const [y0,y1] of iv) if (y0 < y-0.25 && y1 > y-Math.max(3, C.layerA*3)) return true;
+    }
+    return false;
+  };
+  for (let ix=0; ix<C.NX; ix++) for (let iz=0; iz<C.NZ; iz++){
+    const iv = C.cols[ix*C.NZ+iz]; if(!iv) continue;
+    for (const [y0] of iv){
+      if (y0 < S.support.lift + 3.6) continue;          // 支撐/底座承接
+      if (!solidBelow(ix,iz,y0)) pts.push([C.bb.min[0]+(ix+.5)*C.dx, y0, C.bb.min[2]+(iz+.5)*C.dz]);
+    }
+  }
+  // 聚合鄰近點
+  const clusters=[];
+  for (const p of pts){
+    let hitC=null;
+    for (const c of clusters) if (Math.hypot(c.x-p[0],c.y-p[1],c.z-p[2]) < Math.max(C.dx,C.dz)*2.2){ hitC=c; break; }
+    if (hitC){ hitC.n++; hitC.x=(hitC.x*(hitC.n-1)+p[0])/hitC.n; hitC.y=Math.min(hitC.y,p[1]); hitC.z=(hitC.z*(hitC.n-1)+p[2])/hitC.n; }
+    else clusters.push({x:p[0],y:p[1],z:p[2],n:1});
+  }
+  const res = { clusters, raw:pts.length };
+  S.results.islands = res;
+  // 註：原本這裡會自動在3D視圖畫紅球標記孤島位置(drawIslandMarkers)，
+  // 依使用者回饋「顯示錯誤處」類功能實際效果不佳，已移除；孤島「數據」仍保留供評分/報告使用
+  logHist('孤島分析', clusters.length ? `偵測 ${clusters.length} 處孤島起點（近似）` : '未偵測到孤島');
+  return res;
+}
+/* 吸盤效應（近似）：實體區段的「底面」大面積且位於平台上方 → 每層新增封閉腔提示 */
+async function runCupping(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.cupping) return S.results.cupping;
+  const C = await runColumns();
+  const O = runOverhang();
+  // 近似：大面積近水平向下的面（非底座接觸層）視為吸盤風險
+  const risk = O.flatArea > 150 || (O.flatArea > 60 && S.orient.tiltX===0 && S.orient.tiltZ===0);
+  const hollow = m.shells > 1 || (S.results.thickness && S.results.thickness.avgTh < Math.min(m.bbox.size[0],m.bbox.size[1],m.bbox.size[2])*0.18);
+  const res = { risk, hollow, flatArea: O.flatArea };
+  S.results.cupping = res;
+  return res;
+}
+/* 註：原本這裡有 markDrainHoles()（排液孔位置3D標記），
+   依使用者回饋「顯示錯誤處」類功能實際效果不佳，已移除；封閉腔風險的文字提醒仍保留 */
+/* 翹曲預測（啟發式評分） */
+async function runWarp(){
+  const m = activeModel(); if(!m) return null;
+  if (S.results.warp) return S.results.warp;
+  const C = await runColumns();
+  const O = runOverhang();
+  const TH = S.results.thickness || await runThickness();
+  const bb = m.worldBB;
+  let score = 0; const reasons=[];
+  const peel = C.maxArea / Math.max(1, mach().size[0]*mach().size[1]) * 100;
+  if (peel > 18){ score+=30; reasons.push(`最大剝離截面佔平台 ${F(peel,0)}%`); }
+  else if (peel > 8){ score+=15; reasons.push(`剝離截面中等（${F(peel,0)}%）`); }
+  if (O.flatArea > 100){ score+=25; reasons.push(`近水平向下大平面 ${F(O.flatArea,0)} mm²`); }
+  const aspect = bb.size[1] / Math.max(0.1, Math.min(bb.size[0], bb.size[2]));
+  if (aspect > 6){ score+=15; reasons.push(`高瘦比 ${F(aspect,1)}，剝離晃動風險`); }
+  if (TH.minTh < 0.6 && TH.thinArea > 40){ score+=20; reasons.push(`薄壁區 ${F(TH.thinArea,0)} mm²（最薄 ${F(TH.minTh)}mm）`); }
+  if (C.maxJump > 3){ score+=12; reasons.push(`截面突變 ×${F(C.maxJump,1)} @ Z=${F(C.jumpAt,0)}mm`); }
+  const level = score>=50 ? '高' : score>=25 ? '中' : '低';
+  const res = { score:Math.min(99,score), level, reasons, peel };
+  S.results.warp = res;
+  logHist('翹曲預測', `風險 ${level}（${res.score} 分）`);
+  return res;
+}
+/* 收縮補償：材料收縮率 → XY/Z 補償比例 */
+function shrinkComp(){
+  const sh = mat().shrink;   // %
+  const k = 1 / (1 - sh/100);
+  return { shrink: sh, scaleXY: k, scaleZ: 1 + (sh/100)*0.5 };  // Z 向約半（層積方向較不受面收縮影響，估算值）
+}
+function applyShrinkComp(){
+  const m = activeModel(); if(!m) return;
+  const c = shrinkComp();
+  const v = m.raw.verts;
+  for (let i=0;i<v.length;i+=3){ v[i]*=c.scaleXY; v[i+1]*=c.scaleZ; v[i+2]*=c.scaleXY; }
+  const va = volumeArea(m.raw.verts, m.raw.tris);
+  m.volMM3=va.vol; m.areaMM2=va.area; m.bbox=bboxOf(v); m.grid=null;
+  S.results = {};   // 幾何已縮放 → 全部快取失效
+  rebuildScene(true);
+  toast(`✓ 已套用收縮補償 XY ×${F(c.scaleXY,4)} / Z ×${F(c.scaleZ,4)}（${mat().name} ${c.shrink}%，參考值）`, 'ok');
+  logHist('收縮補償', `XY ×${F(c.scaleXY,4)} · Z ×${F(c.scaleZ,4)}`);
+}
+/* ============================== 11. 支撐生成（內建近似） ==============================
+   格網取樣 + 由下往上射線，僅接觸向下面（法線 ny<-0.15）；
+   非 PreForm 重現 — 精確結果請於雲端管理 → API 切換 PFS 模式。 */
+async function generateSupports(){
+  const m = activeModel(); if(!m){ clearSupports(); return; }
+  clearSupports();
+  const P = S.sup;
+  await busy('支撐材生成中（內建近似 · PreForm 參數）…', async ()=>{
+    const grid = gridOf(m);
+    const bb = m.worldBB;
+    const baseSpacing = Math.max(3.0, 9 / Math.max(0.1, P.over.density));
+    const raftTh = P.raft.type==='none' ? 0 : P.raft.thickness;
+    /* ---- 1) 收集附著點（由下向上射線，僅向下面） ---- */
+    const pts = [];
+    let minAttach = 1e30;
+    for (let gx = bb.min[0]-1; gx <= bb.max[0]+1; gx += baseSpacing){
+      for (let gz = bb.min[2]-1; gz <= bb.max[2]+1; gz += baseSpacing){
+        const hits = grid.cast([gx, 0.05, gz], [0,1,0], true, bb.max[1]+2);
+        for (let hi=0; hi<hits.length; hi++){
+          const n = grid.faceNormal(hits[hi].face);
+          const y = 0.05 + hits[hi].t;
+          if (n[1] < -0.15 && y > raftTh + 0.6){
+            const internal = hi>0;
+            if (internal && !P.tpS.internal) break;
+            const base = internal ? 0.05 + hits[hi-1].t + 0.25 : raftTh;
+            if (y - base < 1.2) break;
+            const gamma = Math.acos(Math.min(1, Math.max(0, -n[1]))) * 57.2958;   // 0°=平行平台
+            pts.push({ x:gx, z:gz, top:y, base, gamma, internal });
+            if (y < minAttach) minAttach = y;
+            break;
+          }
+        }
+      }
+      await 0;
+    }
+    /* ---- 2) 依 PreForm 四類分類：懸空點(橙)/懸空(青)/穩定化(粉)/強化(綠) ---- */
+    const minimaPts = [];
+    for (const p of pts){ if (p.top - minAttach < 2.0) { p.type='minima'; minimaPts.push(p); } }
+    const nearMinima = p => minimaPts.some(q => Math.hypot(q.x-p.x, q.z-p.z) < baseSpacing*1.9);
+    for (const p of pts){
+      if (p.type) continue;
+      if (90 - p.gamma < P.over.angle) p.type = 'over';        // 面與水平夾角 < 門檻 → 懸空
+      else if (p.gamma < 50 && nearMinima(p)) p.type = 'stab'; // 最低點周圍 → 穩定化
+      else if (p.gamma < 50) p.type = 'rein';                  // 其餘向下面 → 強化
+      else p.type = 'skip';
+    }
+    /* 型別開關 + 密度保留率（stab/rein 密度 <1 依比例抽疏；近似） */
+    const keepFrac = d => Math.min(1, Math.max(0, d));
+    const kept = [];
+    let ki=0;
+    for (const p of pts){
+      if (p.type==='skip') continue;
+      if (p.type==='minima' && !P.minima.on) continue;
+      if (p.type==='over'   && !P.over.on) continue;
+      if (p.type==='stab'){ if (!P.stab.on) continue; if (((ki*2654435761)>>>0)%1000/1000 >= keepFrac(P.stab.density)) { ki++; continue; } }
+      if (p.type==='rein'){ if (!P.rein.on) continue; if (((ki*2654435761)>>>0)%1000/1000 >= keepFrac(P.rein.density)) { ki++; continue; } }
+      ki++;
+      kept.push(p);
+    }
+    /* ---- 3) 幾何：接觸點齒(tooth)＋未細繫段＋細繫柱＋桁架斜撐 ---- */
+    const geoms = { strut:[], tip:[], tpBy:{minima:[],over:[],stab:[],rein:[]} };
+    let volSup = 0;
+    const addCyl = (r1,r2,h,x,y,z, arr)=>{
+      if (h <= 0.05) return;
+      const g = new THREE.CylinderGeometry(r1,r2,h,10);
+      g.translate(x,y,z); arr.push(g);
+      volSup += Math.PI*((r1+r2)/2)**2*h;
+    };
+    const shafts = [];
+    for (const p of kept){
+      const span = p.top - p.base;
+      const tooth = Math.min(Math.max(P.tpS.toothLenMin, span*0.18), 4.5);         // 齒（接觸尖端）
+      const uLen  = Math.min(P.pil.trussDist, Math.max(0, span - tooth - 0.4));    // 未細繫段（近模型）
+      const shaftTop = p.top - tooth - uLen;
+      // 細繫柱（上細下粗）
+      addCyl(P.pil.tTopDia/2, P.pil.tBotDia/2, Math.max(0.3, shaftTop - p.base), p.x, p.base + Math.max(0.3, shaftTop-p.base)/2, p.z, geoms.strut);
+      // 未細繫段
+      addCyl(P.pil.uDia/2, P.pil.uDia/2, uLen, p.x, shaftTop + uLen/2, p.z, geoms.strut);
+      // 齒：由接觸點尺寸收斂
+      addCyl(S.sup.tpSize/2, P.pil.uDia/2, tooth, p.x, p.top - tooth/2, p.z, geoms.tip);
+      // 接觸點球（依類型上色）
+      const g = new THREE.SphereGeometry(Math.max(0.25, S.sup.tpSize*0.9), 10, 10);
+      g.translate(p.x, p.top - S.sup.tpSize*0.2, p.z);
+      geoms.tpBy[p.type].push(g);
+      shafts.push({ x:p.x, z:p.z, top:shaftTop, base:p.base });
+    }
+    /* 桁架斜撐（寬度=桁架寬度；最上層用頂部桁架寬度；捆綁式加密） */
+    let braces = 0;
+    const braceCap = P.pil.bundled ? 800 : 400;
+    for (let i=0;i<shafts.length;i++){
+      for (let j=i+1;j<shafts.length;j++){
+        const a=shafts[i], b=shafts[j];
+        const d = Math.hypot(a.x-b.x, a.z-b.z);
+        if (d > baseSpacing*0.6 && d < baseSpacing*1.6 && braces < braceCap){
+          const yLo = Math.max(a.base, b.base);
+          const yTopA = Math.min(a.top, b.top);
+          const levels = [[yLo + (yTopA-yLo)*0.35, yLo + (yTopA-yLo)*0.75, P.pil.trussW/2],
+                          [yLo + (yTopA-yLo)*0.75, yLo + (yTopA-yLo)*0.35, P.pil.topTrussW/2]];
+          for (const [ya,yb,r] of levels){
+            const p1=new THREE.Vector3(a.x,ya,a.z), p2=new THREE.Vector3(b.x,yb,b.z);
+            const len=p1.distanceTo(p2);
+            const g=new THREE.CylinderGeometry(r,r,len,6);
+            const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), p2.clone().sub(p1).normalize());
+            const mtx=new THREE.Matrix4().makeRotationFromQuaternion(q);
+            mtx.setPosition(p1.clone().add(p2).multiplyScalar(.5));
+            g.applyMatrix4(mtx);
+            geoms.strut.push(g);
+            volSup += Math.PI*r*r*len;
+            braces++;
+          }
+        }
+      }
+    }
+    /* ---- 4) 底座（完整／迷你＋合併距離／無）＋ 底座標籤 ---- */
+    let volRaft = 0;
+    if (P.raft.type === 'full' && kept.length){
+      const sx = kept.map(s=>s.x), sz = kept.map(s=>s.z);
+      const cx=(Math.min(...sx)+Math.max(...sx))/2, cz=(Math.min(...sz)+Math.max(...sz))/2;
+      const rx=(Math.max(...sx)-Math.min(...sx))/2+5, rz=(Math.max(...sz)-Math.min(...sz))/2+5;
+      const R = Math.max(rx, rz), th = P.raft.thickness;
+      const g1=new THREE.CylinderGeometry(R, R+3.2, th*0.82, 56);
+      g1.scale(1,1,Math.max(.2, rz/R)); g1.translate(cx, th*0.41, cz); geoms.strut.push(g1);
+      const g2=new THREE.CylinderGeometry(R, R, th*0.18, 56);
+      g2.scale(1,1,Math.max(.2, rz/R)); g2.translate(cx, th*0.91, cz); geoms.strut.push(g2);
+      volRaft += Math.PI*rx*rz*th*0.92;
+      if (P.raft.label) addRaftLabel(m, cx, th, cz + rz*0.7, R);
+    } else if (P.raft.type === 'mini'){
+      // 依合併距離群聚落地柱，各群一個迷你底座
+      const clusters = [];
+      for (const s of kept){
+        if (s.base > raftTh + 0.01) continue;   // 內部支撐不落底座
+        let hit=null;
+        for (const c of clusters) if (Math.hypot(c.x-s.x, c.z-s.z) < P.raft.mergeDist){ hit=c; break; }
+        if (hit){ hit.n++; hit.x=(hit.x*(hit.n-1)+s.x)/hit.n; hit.z=(hit.z*(hit.n-1)+s.z)/hit.n; hit.r=Math.max(hit.r, Math.hypot(hit.x-s.x,hit.z-s.z)+2.5); }
+        else clusters.push({ x:s.x, z:s.z, n:1, r:P.raft.miniR });
+      }
+      for (const c of clusters){
+        const r = Math.max(P.raft.miniR, c.r), th = P.raft.thickness;
+        const g=new THREE.CylinderGeometry(r, r+1.2, th, 24); g.translate(c.x, th/2, c.z); geoms.strut.push(g);
+        volRaft += Math.PI*r*r*th;
+      }
+    }
+    /* ---- 5) 合併幾何 ---- */
+    const mergeSafe = arr => {
+      if (!arr.length) return null;
+      const parts = arr.map(g => g.index ? g.toNonIndexed() : g);
+      let total=0; parts.forEach(g=>total+=g.attributes.position.array.length);
+      const pos=new Float32Array(total); let o=0;
+      for (const g of parts){ pos.set(g.attributes.position.array, o); o+=g.attributes.position.array.length; g.dispose(); }
+      const out=new THREE.BufferGeometry();
+      out.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      out.computeVertexNormals();
+      return out;
+    };
+    const gStrut = mergeSafe(geoms.strut), gTip = mergeSafe(geoms.tip);
+    if (gStrut) V.supGroup.add(new THREE.Mesh(gStrut, V.matSup));
+    if (gTip) V.supGroup.add(new THREE.Mesh(gTip, V.matSup));
+    const byType = {};
+    for (const k of ['minima','over','stab','rein']){
+      byType[k] = geoms.tpBy[k].length;
+      const g = mergeSafe(geoms.tpBy[k]);
+      if (g) V.supGroup.add(new THREE.Mesh(g, V.matTpType[k]));
+    }
+    S.supportStat = { points: kept.length, byType, volSupMM3: volSup, volRaftMM3: volRaft,
+                      volMM3: volSup + volRaft, braces };
+  });
+  $('#legTp').textContent = F(S.sup.tpSize);
+  updateAllUI();
+}
+/* 底座標籤：模型名稱平貼於底座上（PreForm 底座標籤） */
+function addRaftLabel(m, cx, topY, cz, R){
+  const cv = document.createElement('canvas'); cv.width=256; cv.height=48;
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.font = '700 26px "JetBrains Mono", monospace';
+  ctx.fillStyle = '#8a93a3';
+  ctx.fillText((m.name||'').slice(0,18), 4, 34);
+  const tex = new THREE.CanvasTexture(cv);
+  const w = Math.min(R*1.1, 42);
+  const pl = new THREE.Mesh(new THREE.PlaneGeometry(w, w*0.19),
+    new THREE.MeshBasicMaterial({ map:tex, transparent:true, depthWrite:false }));
+  pl.rotation.x = -Math.PI/2;
+  pl.position.set(cx, topY + 0.15, cz);
+  V.supGroup.add(pl);
+}
+
+/* ============================== 12. AI 最佳化 ============================== */
+/* 自動擺放：候選角評分（面法線+高度，單次遍歷/候選）
+   目標權重 — 內建近似評分，非 PreForm 演算法重現：
+   time    = 加重高度（層數→時間）→ 結果趨近 PreForm 的低高度取向
+   balance = 品質/時間折衷（原始權重）
+   support = 最少支撐面，保護表面 */
+const ORIENT_GOALS = {
+  time:    { label:'⏱ 最短時間', flat:2.5, danger:1.6, sup:0.5,  h:0.45,  pref35:0,    flatPen:25 },
+  balance: { label:'⚖ 平衡',     flat:2.5, danger:1.6, sup:1.0,  h:0.06,  pref35:0.12, flatPen:40 },
+  support: { label:'🧱 最少支撐', flat:3.0, danger:2.2, sup:2.2,  h:0.015, pref35:0.1,  flatPen:45 },
+};
+async function autoOrient(){
+  const m = activeModel(); if(!m) return;
+  const G = ORIENT_GOALS[S.orientGoal] || ORIENT_GOALS.balance;
+  const tilts = S.autoOrientAngles.split(/[,，\s]+/).map(Number).filter(n=>isFinite(n)&&n>=0&&n<=85);
+  if (!tilts.length){ toast('候選角度清單無效', 'err'); return; }
+  const cands = [];
+  for (const t of tilts){ for (const yaw of [0,15]){ cands.push({tx:-t, yaw, tz:0}); cands.push({tx:0, yaw, tz:t}); } }
+  cands.push({tx:0,yaw:0,tz:0});   // 平放（作為對照，會被扣分）
+  const spl = mach().secPerLayer[S.layerH] ?? (mach().secPerLayer[0.05]*(0.05/S.layerH));
+  const results = await busy(`自動擺放評分中（${G.label} · ${cands.length} 個候選）…`, async ()=>{
+    const v=m.raw.verts, t=m.raw.tris, nf=t.length/3;
+    const out=[];
+    for (const c of cands){
+      const e = new THREE.Euler(THREE.MathUtils.degToRad(c.tx), THREE.MathUtils.degToRad(c.yaw), THREE.MathUtils.degToRad(c.tz), 'XYZ');
+      const R = new THREE.Matrix4().makeRotationFromEuler(e).elements;
+      let flat=0, sup=0, danger=0, total=0, minY=1e30, maxY=-1e30;
+      for (let f=0; f<nf; f++){
+        const a=t[f*3]*3,b=t[f*3+1]*3,cc=t[f*3+2]*3;
+        const ry = i => R[1]*v[i] + R[5]*v[i+1] + R[9]*v[i+2];
+        const y0=ry(a), y1=ry(b), y2=ry(cc);
+        if (y0<minY)minY=y0; if(y1<minY)minY=y1; if(y2<minY)minY=y2;
+        if (y0>maxY)maxY=y0; if(y1>maxY)maxY=y1; if(y2>maxY)maxY=y2;
+        const ux=v[b]-v[a],uy=v[b+1]-v[a+1],uz=v[b+2]-v[a+2];
+        const wx=v[cc]-v[a],wy=v[cc+1]-v[a+1],wz=v[cc+2]-v[a+2];
+        const nx=uy*wz-uz*wy, nyl=uz*wx-ux*wz, nz=ux*wy-uy*wx;
+        const len=Math.hypot(nx,nyl,nz); if(!len) continue;
+        const area=len/2; total+=area;
+        const ny=(R[1]*nx + R[5]*nyl + R[9]*nz)/len;
+        if (ny < -0.01){
+          const gamma = Math.acos(Math.min(1,Math.max(0,-ny)))*57.2958;
+          if (gamma<5) flat+=area;
+          if (gamma<50) sup+=area;
+          if (gamma<SPEC.overhangAngle.v) danger+=area;
+        }
+      }
+      const h = maxY-minY;
+      const tiltMag = Math.max(Math.abs(c.tx), Math.abs(c.tz));
+      const score = (G.flat*flat + G.danger*danger + G.sup*sup)/Math.max(1,total)*100
+                  + h*G.h
+                  + (tiltMag===0 ? G.flatPen : 0)
+                  + Math.abs(tiltMag-35)*G.pref35;
+      const estSec = Math.ceil((h + 7.7)/S.layerH)*spl + 300;   // 含支撐抬升的列印時間估算
+      out.push({ ...c, score, flat, sup, danger, h, estSec });
+      await 0;
+    }
+    out.sort((a,b)=>a.score-b.score);
+    return out;
+  });
+  const best = results[0];
+  pushUndo();
+  S.orient = { tiltX: best.tx, yaw: best.yaw, tiltZ: best.tz };
+  computeWorld(m); clampModelPos(m);   // 自動擺放後夾回列印範圍
+  await rebuildScene(true);
+  S.results.autoOrient = { goal:S.orientGoal, list:results.slice(0,3) };
+  const desc = o => `${Math.max(Math.abs(o.tx),Math.abs(o.tz))}°${o.tz? '(Z)':'(X)'} +Y${o.yaw}°`;
+  const th = Math.floor(best.estSec/3600), tm = Math.round((best.estSec%3600)/60);
+  toast(`✓ 自動擺放（${G.label}）：${desc(best)} · 高 ${F(best.h,0)}mm · ≈${th}h ${String(tm).padStart(2,'0')}m · 已置於範圍內`, 'ok');
+  logHist('自動擺放', `${G.label} · ${desc(best)} · 評分 ${F(best.score,1)} · 候選 ${results.length}`);
+  openModule('ai');
+}
+/* 材料推薦：模型類型 + 幾何特性規則 */
+async function recommendMaterial(){
+  const m = activeModel(); if(!m) return null;
+  const TH = S.results.thickness || await runThickness();
+  const list = MATERIALS.map(mt=>{
+    let s = 0; const why=[];
+    if (mt.tags.includes(S.modelType)){ s+=40; why.push(`適合${S.modelType}`); }
+    if (S.modelType==='薄件' && TH.minTh<1.0 && mt.id==='rigid'){ s+=25; why.push('高剛性抗薄壁翹曲'); }
+    if (S.modelType==='工程件' && mt.id==='tough'){ s+=20; why.push('抗衝擊功能件'); }
+    if (S.modelType==='中空件' && mt.id==='clear'){ s+=15; why.push('透明利於觀察排液'); }
+    if (S.modelType==='外觀件' && (mt.id==='grey'||mt.id==='white')){ s+=18; why.push('表面細節與噴塗底佳'); }
+    if (TH.minTh < 0.5 && mt.id==='flex'){ s-=25; why.push('軟料薄壁易變形'); }
+    s -= mt.priceL/1000;   // 價格微調
+    return { mt, s, why };
+  }).sort((a,b)=>b.s-a.s);
+  S.results.matRec = list.slice(0,3);
+  return S.results.matRec;
+}
+/* 層厚推薦：細節（曲率/薄壁）vs 時間 */
+async function recommendLayer(){
+  const m = activeModel(); if(!m) return null;
+  const TH = S.results.thickness || await runThickness();
+  const CV = S.results.curv || await runCurvature();
+  let rec, why;
+  if (TH.minTh < 0.5 || CV.sharpPct > 12){ rec=0.025; why='薄壁/高細節密度 → 25µm 保留特徵'; }
+  else if (CV.sharpPct > 4 || S.modelType==='外觀件'){ rec=0.05; why='中等細節 → 50µm 品質/時間均衡'; }
+  else { rec=0.1; why='幾何單純 → 100µm 快速列印'; }
+  if (!mat().layers.includes(rec)) rec = mat().layers[0];
+  S.results.layerRec = { rec, why };
+  return S.results.layerRec;
+}
+
+/* ============================== 13. 時間與成本引擎 ============================== */
+function calcTime(){
+  const m = activeModel(); if(!m) return null;
+  const printH = m.worldBB.max[1];                        // 含底座+抬升
+  const layers = Math.ceil(printH / S.layerH);
+  const spl = mach().secPerLayer[S.layerH] ?? (mach().secPerLayer[0.05]*(0.05/S.layerH));
+  const sec = layers*spl + 300;                           // +5min 起始
+  return { layers, sec, h:Math.floor(sec/3600), min:Math.round((sec%3600)/60) };
+}
+function calcCost(){
+  // 舊版計費模型（與 quote.html 相同）：本體材料×單價 + 支撐材料×單價 + 固定後處理費
+  // 單價 = 材料設定的 NT$/L（Firestore settings/quote_materials）；無電費/工時/利潤等營運項
+  const m = activeModel(); if(!m) return null;
+  const T = calcTime();
+  const modelML = m.volMM3/1000;
+  const raftML = (S.supportStat?.volRaftMM3 || 0)/1000;
+  // 支撐量：已生成支撐→內建近似的實際體積(含基底)；尚未生成→舊版固定 15% 比例粗估
+  const supML = S.supportStat ? ((S.supportStat.volSupMM3||0)/1000 + raftML) : modelML*0.15;
+  const ppc = mat().priceL/1000;                 // NT$/mL
+  const matCost  = Math.round(modelML*ppc);
+  const supCost  = Math.round(supML*ppc);
+  const postCost = S.cost.postCost ?? 90;
+  const total = matCost + supCost + postCost;
+  return { modelML, supML, raftML, resinML: modelML+supML, matCost, supCost, postCost, total, time:T };
+}
+function timeStr(T){ return T ? `${T.h}h ${String(T.min).padStart(2,'0')}m` : '—'; }
+/* ============================== 14. 著色模式 ============================== */
+async function setColorMode(mode){
+  S.colorMode = mode;
+  if (mode==='thickness') await runThickness();
+  if (mode==='curvature') await runCurvature();
+  if (mode==='overhang') runOverhang();
+  applyColorMode();
+  $$('#viewbar .abtn[data-mode]').forEach(b=>b.classList.toggle('on', b.dataset.mode===mode));
+}
+function applyColorMode(){
+  const m = activeModel(); if(!m || !m.mesh) return;
+  const colAttr = m.mesh.geometry.attributes.color;
+  const col = colAttr.array;
+  const tris = m.raw.tris, n = tris.length;
+  const mode = S.colorMode;
+  V.matModel.color.set(mode==='normal' ? 0x5bb8d4 : 0xffffff);
+  const base = mode==='normal' ? [1,1,1] : [0.36,0.72,0.83];   // 非一般模式以白材質×基色重現模型色
+  const set = (i,r,g,b)=>{ col[i*3]=r; col[i*3+1]=g; col[i*3+2]=b; };
+  if (mode==='normal'){
+    col.fill(1);
+  } else if (mode==='overhang'){
+    const O = S.results.overhang;
+    for (let i=0;i<n;i++){
+      const g = O ? O.faceGamma[(i/3)|0] : 999;
+      if (g < SPEC.overhangAngle.v) set(i, .78,.16,.13);
+      else if (g < 50){ const t=(g-SPEC.overhangAngle.v)/(50-SPEC.overhangAngle.v); set(i, .9, .35+.45*t, .15+.5*t); }
+      else set(i, base[0],base[1],base[2]);
+    }
+  } else if (mode==='thickness'){
+    const TH = S.results.thickness || (activeModel().cacheTh);
+    for (let i=0;i<n;i++){
+      const f = (i/3)|0;
+      let th = TH ? TH.faceTh[f] : -1;
+      if (th<0 && TH){ // 找同 stride 群最近取樣
+        const fs = f - (f % TH.stride);
+        th = TH.faceTh[fs];
+      }
+      if (th==null || th<0){ set(i, base[0],base[1],base[2]); continue; }
+      if (th < SPEC.wallSupported.v) set(i, .78,.13,.13);
+      else if (th < 0.6){ const t=(th-SPEC.wallSupported.v)/(0.6-SPEC.wallSupported.v); set(i,.9,.3+.4*t,.12); }
+      else if (th < 1.5){ const t=(th-0.6)/0.9; set(i, .9-.5*t, .72, .2+.6*t); }
+      else set(i, base[0],base[1],base[2]);
+    }
+  } else if (mode==='curvature'){
+    const CV = S.results.curv;
+    for (let i=0;i<n;i++){
+      const c = CV ? CV.vCurv[tris[i]] / Math.max(1e-6, CV.maxC) : 0;
+      if (c > .12){ const t=Math.min(1,(c-.12)/.55); set(i, .35+.55*t, .7-.5*t, .85-.7*t); }
+      else set(i, base[0],base[1],base[2]);
+    }
+  }
+  colAttr.needsUpdate = true;
+}
+
+/* ============================== 15. 可行性驗證（Form 4 設計規範） ============================== */
+async function runValidation(){
+  const m = activeModel(); if(!m) return null;
+  const TH = S.results.thickness || await runThickness();
+  const CV = S.results.curv || await runCurvature();
+  const O  = runOverhang();
+  const C  = await runColumns();
+  const IS = S.results.islands || await runIslands();
+  const CU = S.results.cupping || await runCupping();
+  const W  = S.results.warp || await runWarp();
+  const checks = [];
+  const add = (label, status, detail, kind)=>checks.push({label, status, detail, kind});
+  const ms = mach().size;
+
+  // 幾何可自動量測
+  const fits = modelFits(m);
+  add('列印範圍', fits?'pass':'fail',
+      `${F(m.worldBB.size[0],0)}×${F(m.worldBB.size[2],0)}×${F(m.worldBB.max[1],0)}mm / 平台 ${ms[0]}×${ms[1]}×${ms[2]}mm`, '量測');
+  add('支撐壁厚', TH.minTh < SPEC.wallSupported.v ? 'fail' : TH.minTh < SPEC.wallSupported.v*2 ? 'warn' : 'pass',
+      `最薄取樣 ${F(TH.minTh)}mm（規範 >${SPEC.wallSupported.v}mm）`, '量測');
+  add('無支撐壁厚', TH.minTh < 0.4 ? 'warn' : 'pass',
+      `薄壁區 ${F(TH.thinArea,0)}mm² · 無支撐處建議 >0.4mm`, '近似');
+  add('懸垂角度', O.dangerArea > 2 ? 'fail' : O.supArea > 0 && !S.supportsOn ? 'warn' : 'pass',
+      O.dangerArea>2 ? `${F(O.dangerArea,0)}mm² 面與水平 <${SPEC.overhangAngle.v}°（最小 ${F(O.minGamma,0)}°）`
+                     : `需支撐面 ${F(O.supArea,0)}mm²，危險懸垂 ${F(O.dangerArea,1)}mm²`, '量測');
+  add('懸垂長度', O.flatArea > 25 ? 'warn' : 'pass',
+      O.flatArea>25 ? `近水平大面約 ${F(Math.sqrt(O.flatArea),0)}mm 跨幅（規範無支撐 ≤${SPEC.overhangLen.v}mm）` : `近水平面 ${F(O.flatArea,0)}mm²`, '近似');
+  const spacing = Math.max(3.5, 9/S.support.density);
+  add('支撐跨距', !S.supportsOn ? 'warn' : spacing <= SPEC.bridgeSpan.v ? 'pass' : 'warn',
+      !S.supportsOn ? '尚未生成支撐' : `支撐間距 ${F(spacing,1)}mm（規範 ≤${SPEC.bridgeSpan.v}mm）`, '近似');
+  add('線材直徑', TH.minTh < SPEC.wireDia.v ? 'warn' : 'pass',
+      TH.minTh<SPEC.wireDia.v ? `偵測 <${SPEC.wireDia.v}mm 細部（${F(TH.minTh)}mm），若為獨立細柱請加粗或多點支撐` : `未偵測獨立細柱風險`, '近似');
+  add('零件間隙', m.shells>1 ? 'warn' : 'pass',
+      m.shells>1 ? `偵測 ${m.shells} 個殼體，請確認間隙 ≥${SPEC.clearance.v}mm` : '單一殼體，不適用', '近似');
+  add('孤島', IS.clusters.length===0 ? 'pass' : S.supportsOn ? 'warn' : 'fail',
+      IS.clusters.length ? `${IS.clusters.length} 處孤島起點${S.supportsOn?'（支撐近似涵蓋，請於 PreForm 確認）':'（無支撐必失敗）'}` : '未偵測孤島', '近似');
+  add('截面突變', C.maxJump > 3 ? 'warn' : 'pass',
+      C.maxJump>3 ? `層截面積突增 ×${F(C.maxJump,1)} @ 高度 ${F(C.jumpAt,0)}mm，剝離力尖峰` : `最大突變 ×${F(C.maxJump,1)}`, '近似');
+  add('吸盤效應', CU.risk ? 'warn' : 'pass',
+      CU.risk ? `近水平向下面 ${F(CU.flatArea,0)}mm²${CU.hollow?' 且疑似中空':''} → 需排液孔 Ø≥${SPEC.drainDia.v}mm ×2` : '未偵測封閉腔風險', '近似');
+  add('翹曲風險', W.level==='高' ? 'fail' : W.level==='中' ? 'warn' : 'pass',
+      `${W.level}（${W.score}分）${W.reasons.length? '：'+W.reasons[0] : ''}`, '近似');
+  add('底部抬升', m.worldBB.min[1] > 1 ? 'pass' : 'warn',
+      `模型底部 ${F(m.worldBB.min[1],1)}mm（支撐抬升 ${S.support.lift}mm）`, '量測');
+  add('網格水密', m.topo.watertight ? 'pass' : 'fail',
+      m.topo.watertight ? '水密網格' : `${m.topo.boundary} 開放邊 / ${m.topo.nonManifold} 非流形邊 — 請執行網格修復`, '量測');
+  // 需人工確認
+  add('浮雕細節', 'manual', `無法由網格自動量測 — 請確認凸起 ≥${SPEC.embossed.v}mm`, '人工');
+  add('雕刻細節', 'manual', `無法由網格自動量測 — 請確認凹陷 ≥${SPEC.engraved.v}mm`, '人工');
+  add('孔徑', 'manual', `請確認功能孔 ≥Ø${SPEC.holeDia.v}mm（列印中易封閉）`, '人工');
+
+  const res = {
+    checks,
+    fail: checks.filter(c=>c.status==='fail').length,
+    warn: checks.filter(c=>c.status==='warn').length,
+    manual: checks.filter(c=>c.status==='manual').length,
+    pass: checks.filter(c=>c.status==='pass').length,
+  };
+  res.rate = Math.max(5, Math.round(100 - res.fail*22 - res.warn*6 - (W.score*0.15)));
+  S.results.validation = res;
+  logHist('可行性驗證', `通過 ${res.pass} · 警告 ${res.warn} · 失敗 ${res.fail} · 成功率 ${res.rate}%`);
+  updateAllUI();
+  return res;
+}
+/* ============================== 16. 五步驟精靈 ============================== */
+const STEPS = ['上傳檔案','選擇機台','材料與參數','可行性檢查','報價'];
+async function gotoStep(i){
+  const prev = S.step;
+  S.step = Math.max(0, Math.min(4, i));
+  const m = activeModel();
+  if (m && (prev>=2) !== (S.step>=2)){          // 跨越支撐邊界（步驟3起才有支撐）
+    await rebuildScene(true);
+    if (S.step>=2) await updateDeferredChecks(m);
+  }
+  renderStep(); updateAllUI();
+}
+function renderStep(){
+  const i = S.step, m = activeModel();
+  $('#stepTitle').textContent = `步驟 ${i+1} · ${STEPS[i]}`;
+  $('#stepCount').textContent = `${i+1}/5`;
+  const B = $('#stepBody'); B.innerHTML = '';
+
+  /* ---- 步驟1 上傳 ---- */
+  if (i===0){
+    B.appendChild(el('div','lbl','模型清單（點選切換分析對象）'));
+    if (!S.models.length) B.appendChild(el('div','mnote','尚無模型 — 拖曳檔案至視窗任意處，或點下方上傳。'));
+    for (const md of S.models){
+      const fcIc = md.fcheck ? (md.fcheck.verdict==='pass'?'<span style="color:var(--ok)">✓</span>':md.fcheck.verdict==='warn'?'<span style="color:var(--warn)">⚠</span>':'<span style="color:var(--err)">✕</span>') : '…';
+      const r = el('div','fileRow'+(md.id===S.activeId?' on':''),
+        `<span>📦</span><div style="flex:1;min-width:0"><div class="fname">${md.name}</div>
+         <div class="fmeta">${md.faces.toLocaleString()} 面 · ${F(md.volMM3/1000,1)} mL · 檢查 ${fcIc}</div></div>
+         <span class="fx" data-del="${md.id}">✕</span>`);
+      r.addEventListener('click', async e=>{
+        if (e.target.dataset.del){
+          S.models = S.models.filter(x=>x.id!==e.target.dataset.del);
+          if (S.activeId===e.target.dataset.del) S.activeId = S.models[0]?.id || null;
+          await rebuildScene(true); renderStep(); return;
+        }
+        if (md.id!==S.activeId){ S.activeId=md.id; await rebuildScene(true); renderStep(); }
+      });
+      B.appendChild(r);
+    }
+    const dz = el('div','', `<div id="dropZone"><div class="ic">📂</div><div class="t1">點擊上傳或拖曳檔案至視窗</div><div class="t2">STL · OBJ · 3MF（單位 mm）</div></div>`);
+    dz.querySelector('#dropZone').addEventListener('click', ()=>$('#fileInput').click());
+    B.appendChild(dz);
+    const demo = el('button','ghostBtn','⬡ 載入內建示範模型（L 型支架）');
+    demo.style.marginTop='6px';
+    demo.addEventListener('click', loadDemoModel);
+    B.appendChild(demo);
+    if (m) renderFileCheck(B, m);   // ← 檢查結果呈現於下方
+    const next = el('button','bigBtn','下一步 → 選擇機台');
+    next.style.marginTop='10px'; next.disabled = !m;
+    if (m && m.fcheck && m.fcheck.verdict==='fail') next.textContent = '仍要繼續 → 選擇機台';
+    next.addEventListener('click', ()=>gotoStep(1));
+    B.appendChild(next);
+  }
+
+  /* ---- 步驟2 機台 ---- */
+  if (i===1){
+    B.appendChild(el('div','lbl','Formlabs 光固化機台'));
+    for (const key of Object.keys(MACHINES)){
+      const mc = MACHINES[key];
+      const r = el('div','machRow'+(S.machine===key?' on':''),
+        `<div class="dot"></div><div style="flex:1"><div class="mname">${mc.name}</div>
+         <div class="mdim">${mc.size[0]} × ${mc.size[1]} × ${mc.size[2]} mm · 平均 ${mc.powerW}W</div></div>`);
+      r.addEventListener('click', async ()=>{
+        S.machine = key; buildPlatform();
+        const mm = activeModel();
+        if (mm){ computeWorld(mm); clampModelPos(mm); }
+        await rebuildScene(true); renderStep();
+      });
+      B.appendChild(r);
+    }
+    if (m){
+      const ms = mach().size;
+      const fits = modelFits(m);
+      B.appendChild(el('div', fits?'okNote':'errNote',
+        (fits?'✓ 模型在列印範圍內 ':'✕ 超出列印範圍 ')+
+        `${F(m.worldBB.size[0],0)}×${F(m.worldBB.size[2],0)}×${F(m.worldBB.max[1],0)} / ${ms[0]}×${ms[1]}×${ms[2]} mm`));
+    }
+    const next = el('button','bigBtn','下一步 → 材料與參數');
+    next.style.marginTop='10px'; next.addEventListener('click', ()=>gotoStep(2));
+    B.appendChild(next);
+  }
+
+  /* ---- 步驟3 材料與參數 ---- */
+  if (i===2){
+    B.appendChild(el('div','lbl','樹脂材料'));
+    const sel = el('select','sel');
+    for (const mt of MATERIALS) sel.appendChild(el('option','',`${mt.name} · NT$${mt.priceL.toLocaleString()}/L`)).value=mt.id;
+    Array.from(sel.options).forEach((o,ix)=>o.value=MATERIALS[ix].id);
+    sel.value = S.materialId;
+    sel.addEventListener('change', ()=>{ S.materialId=sel.value; renderStep(); updateAllUI(); });
+    B.appendChild(sel);
+    B.appendChild(el('div','selMeta',`${mat().note} · 密度 ${mat().density} g/cm³ · 收縮 ${mat().shrink}%（參考）`));
+
+    B.appendChild(el('div','lbl','模型類型（影響 AI 推薦）'));
+    const tg = el('div','segGrid');
+    for (const t of MODEL_TYPES){
+      const b = el('button','seg'+(S.modelType===t?' on':''), t);
+      b.addEventListener('click', ()=>{ S.modelType=t; renderStep(); });
+      tg.appendChild(b);
+    }
+    B.appendChild(tg);
+
+    B.appendChild(el('div','lbl','層厚'));
+    const lr = el('div','segRow');
+    for (const L of LAYER_OPTS){
+      const ok = mat().layers.includes(L);
+      const b = el('button','seg mono'+(S.layerH===L?' onA':''), (L*1000)+'µm');
+      if(!ok){ b.disabled=true; b.style.opacity=.35; }
+      b.addEventListener('click', ()=>{ S.layerH=L; renderStep(); updateAllUI(); });
+      lr.appendChild(b);
+    }
+    B.appendChild(lr);
+
+    const aiBtn = el('button','ghostBtn','✨ AI 推薦材料與層厚');
+    aiBtn.style.marginTop='8px';
+    aiBtn.addEventListener('click', async ()=>{
+      const mr = await recommendMaterial(); const lr2 = await recommendLayer();
+      S.materialId = mr[0].mt.id;
+      if (mr[0].mt.layers.includes(lr2.rec)) S.layerH = lr2.rec;
+      renderStep(); updateAllUI();
+      toast(`✨ 推薦：${mr[0].mt.name} + ${lr2.rec*1000}µm — ${lr2.why}`, 'ok');
+    });
+    B.appendChild(aiBtn);
+
+    B.appendChild(el('div','lbl','支撐材（參數對齊 PreForm 3.51+）'));
+    const sb = el('div','mbox');
+    sb.appendChild(el('div','mrow',`<span>接觸點尺寸</span><b>${F(S.sup.tpSize)} mm</b>`));
+    sb.appendChild(el('div','mrow',`<span>懸空密度 / 角度</span><b>${F(S.sup.over.density)} · ${F(S.sup.over.angle,0)}°</b>`));
+    sb.appendChild(el('div','mrow',`<span>底座</span><b>${({full:'完整',mini:'迷你',none:'無'})[S.sup.raft.type]}</b>`));
+    if (S.supportStat) sb.appendChild(el('div','mrow',`<span>接觸點</span><b>${S.supportStat.points} 點 · ${F((S.supportStat.volSupMM3+S.supportStat.volRaftMM3)/1000,1)} mL</b>`));
+    B.appendChild(sb);
+    const quick = el('div','segRow');
+    for (const [lab, fn] of [['預設', ()=>{ S.sup = cloneSup(); }],
+                             ['低密度', ()=>{ S.sup.over.density = 0.6; }],
+                             ['小接觸點', ()=>{ S.sup.tpSize = 0.35; }]]){
+      const b = el('button','seg', lab);
+      b.addEventListener('click', async ()=>{ fn(); await rebuildScene(true); renderStep(); if($('#supMatPanel').classList.contains('open')) renderSupPanel(); });
+      quick.appendChild(b);
+    }
+    B.appendChild(quick);
+    const openSup = el('button','ghostBtn','🖊 開啟支撐材完整面板（四類接觸點 / 支柱 / 底座）');
+    openSup.style.marginTop='6px';
+    openSup.addEventListener('click', ()=>toggleSupPanel(true));
+    B.appendChild(openSup);
+
+    const next = el('button','bigBtn','下一步 → 可行性檢查');
+    next.style.marginTop='10px'; next.addEventListener('click', ()=>gotoStep(3));
+    B.appendChild(next);
+  }
+
+  /* ---- 步驟4 可行性 ---- */
+  if (i===3){
+    const opt = el('button','bigBtn','⚡ 一鍵最佳化 + 驗證');
+    opt.disabled = !m;
+    opt.addEventListener('click', async ()=>{
+      await autoOrient();            // 內含支撐重生成
+      await runValidation();
+      renderStep();
+    });
+    B.appendChild(opt);
+    const only = el('button','ghostBtn','僅執行驗證（不變更擺放）');
+    only.style.marginTop='6px'; only.disabled = !m;
+    only.addEventListener('click', async ()=>{ await runValidation(); renderStep(); });
+    B.appendChild(only);
+    B.appendChild(el('div','mnote','驗證依 Formlabs Form 4 設計指南；「近似」項由內建演算法估計，「人工」項無法由網格自動判定。'));
+
+    const R = S.results.validation;
+    if (R){
+      B.appendChild(el('div','lbl',`驗證結果 · 成功率 ${R.rate}%`));
+      const order = { fail:0, warn:1, manual:2 };
+      const bad = R.checks.filter(c=>c.status!=='pass').sort((a,b)=>order[a.status]-order[b.status]);
+      for (const c of bad){
+        const cls = c.status==='fail'?'err':c.status==='warn'?'warn':'';
+        const icon = c.status==='fail'?'✕':c.status==='warn'?'⚠':'👁';
+        B.appendChild(el('div','chk '+cls,
+          `<div class="t">${icon} ${c.label} <small>${c.kind}</small></div><div class="d">${c.detail}</div>`));
+      }
+      const pass = R.checks.filter(c=>c.status==='pass');
+      if (pass.length){
+        const bar = el('div','', `<div id="passBar"><span>✓ ${pass.length} 項檢查通過</span><span id="passArrow">▾</span></div><div id="passChips" style="display:none"></div>`);
+        const chips = bar.querySelector('#passChips');
+        for (const c of pass){ const ch = el('span','pchip','✓ '+c.label); ch.title = c.detail; chips.appendChild(ch); }
+        bar.querySelector('#passBar').addEventListener('click', ()=>{
+          const show = chips.style.display==='none';
+          chips.style.display = show?'flex':'none';
+          bar.querySelector('#passArrow').textContent = show?'▴':'▾';
+        });
+        bar.style.marginTop='6px';
+        B.appendChild(bar);
+      }
+    }
+    const next = el('button','bigBtn','下一步 → 報價');
+    next.style.marginTop='10px'; next.disabled=!m;
+    next.addEventListener('click', ()=>gotoStep(4));
+    B.appendChild(next);
+  }
+
+  /* ---- 步驟5 報價 ---- */
+  if (i===4){
+    const C = calcCost();
+    if (!C){ B.appendChild(el('div','mnote','請先載入模型。')); return; }
+    B.appendChild(el('div','lbl','費用明細'));
+    const box = el('div','mbox');
+    const row = (l,v)=>box.appendChild(el('div','costRow',`<span>${l}</span><b>${v}</b>`));
+    row(`本體材料 ${F(C.modelML,1)} mL`, NTD(C.matCost));
+    row(`支撐材料 ${F(C.supML,1)} mL${S.supportStat?'':'（未生成，以 15% 粗估）'}`, NTD(C.supCost));
+    row('後處理（清洗 / 固化）', NTD(C.postCost));
+    box.appendChild(el('div','costTotal',`<span>總計</span><b>${NTD(C.total)}</b>`));
+    B.appendChild(box);
+    B.appendChild(el('div','mnote',`列印時間估算 ${timeStr(C.time)}（${C.time.layers.toLocaleString()} 層 × ${S.layerH*1000}µm）· 單價依「材料設定」（NT$${mat().priceL.toLocaleString()}/L）。`));
+    const q = el('button','bigBtn','📋 產生報價單');
+    q.style.marginTop='8px'; q.addEventListener('click', openQuote);
+    B.appendChild(q);
+    const w = el('button','ghostBtn','☁ 直接存成工單');
+    w.style.marginTop='6px'; w.addEventListener('click', ()=>saveOrder(''));
+    B.appendChild(w);
+  }
+}
+function renderDock(){
+  const D = $('#dock'); D.innerHTML='';
+  const doneOf = i=>{
+    if (i===0) return S.models.length>0;
+    if (i===1) return S.models.length>0;
+    if (i===2) return S.models.length>0;
+    if (i===3) return !!S.results.validation;
+    return false;
+  };
+  STEPS.forEach((s,i)=>{
+    const b = el('button','dockBtn'+(S.step===i?' cur':doneOf(i)?' done':''), (doneOf(i)&&S.step!==i?'✓ ':'')+s);
+    b.addEventListener('click', ()=>gotoStep(i));
+    D.appendChild(b);
+  });
+}
+/* ============================== 17. 模組面板 ============================== */
+const MODS = { stl:'🧩 STL 分析', print:'🖨 列印分析', ai:'✨ AI 最佳化', cost:'💰 成本分析', cloud:'☁ 雲端管理' };
+function openModule(mod){
+  if (S.openMod===mod && $('#modPanel').classList.contains('open') && !arguments[1]){ /* refresh */ }
+  S.openMod = mod;
+  $$('#rail .railBtn').forEach(b=>b.classList.toggle('on', b.dataset.mod===mod));
+  $('#modPanel').classList.add('open');
+  $('#modTitle').textContent = MODS[mod];
+  const B = $('#modBody'); B.innerHTML='';
+  const m = activeModel();
+  const need = ()=>{ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); };
+  const btn = (label, fn, ghost=true)=>{ const b=el('button', ghost?'ghostBtn':'bigBtn', label); b.style.marginTop='6px'; b.addEventListener('click', fn); return b; };
+  const mrow = (l,v,cls='')=>el('div','mrow',`<span>${l}</span><b class="${cls}">${v}</b>`);
+
+  /* ---- STL 分析 ---- */
+  if (mod==='stl'){
+    if (!m) return need();
+    B.appendChild(el('div','lbl','網格資訊'));
+    const box = el('div','mbox');
+    box.appendChild(mrow('三角面', m.faces.toLocaleString()));
+    box.appendChild(mrow('頂點', (m.raw.verts.length/3).toLocaleString()));
+    box.appendChild(mrow('殼體數', m.shells, m.shells>1?'warnc':''));
+    box.appendChild(mrow('尺寸 mm', `${F(m.bbox.size[0],1)}×${F(m.bbox.size[1],1)}×${F(m.bbox.size[2],1)}`));
+    box.appendChild(mrow('體積', F(m.volMM3/1000,2)+' mL'));
+    box.appendChild(mrow('表面積', F(m.areaMM2/100,1)+' cm²'));
+    B.appendChild(box);
+    B.appendChild(el('div','lbl','Water Tight 水密檢查'));
+    const t = m.topo, wb = el('div','mbox');
+    wb.appendChild(mrow('水密狀態', t.watertight?'✓ 水密':'✕ 非水密', t.watertight?'okc':'errc'));
+    wb.appendChild(mrow('開放邊界邊', t.boundary, t.boundary?'errc':'okc'));
+    wb.appendChild(mrow('非流形邊', t.nonManifold, t.nonManifold?'warnc':'okc'));
+    wb.appendChild(mrow('朝向不一致邊', t.flipped, t.flipped?'warnc':'okc'));
+    B.appendChild(wb);
+    B.appendChild(el('div','lbl','Mesh Repair'));
+    B.appendChild(el('div','mnote',`載入時已焊接 ${m.repair.welded.toLocaleString()} 重複頂點、移除 ${m.repair.degenerate} 退化面${m.repair.holesFilled?`；前次修復補洞 ${m.repair.holesFilled}、去重複面 ${m.repair.dupRemoved||0}`:''}。自動修復＝重複面清除＋破洞補面(近似)＋法線統一；複雜孔洞請回 CAD。`));
+    B.appendChild(btn('🔧 一鍵自動修復（含補洞）', runAutoRepair, false));
+    B.appendChild(el('div','lbl','厚度分析'));
+    const TH = S.results.thickness;
+    if (TH){
+      const tb = el('div','mbox');
+      tb.appendChild(mrow('最薄取樣', F(TH.minTh)+' mm', TH.minTh<SPEC.wallSupported.v?'errc':TH.minTh<0.6?'warnc':'okc'));
+      tb.appendChild(mrow('平均厚度', F(TH.avgTh,1)+' mm'));
+      tb.appendChild(mrow('薄壁面積', F(TH.thinArea,0)+' mm²'));
+      B.appendChild(tb);
+    }
+    B.appendChild(btn(TH?'▤ 重新分析並顯示熱圖':'▤ 執行厚度分析（熱圖）', async ()=>{ delete S.results.thickness; await setColorMode('thickness'); openModule('stl'); }));
+    B.appendChild(el('div','lbl','曲率分析'));
+    const CV = S.results.curv;
+    if (CV){
+      const cb = el('div','mbox');
+      cb.appendChild(mrow('銳邊比例', F(CV.sharpPct,1)+' %', CV.sharpPct>12?'warnc':''));
+      cb.appendChild(mrow('最大平均二面角', F(CV.maxC*57.3,0)+'°'));
+      B.appendChild(cb);
+    }
+    B.appendChild(btn(CV?'◠ 顯示曲率熱圖':'◠ 執行曲率分析（熱圖）', async ()=>{ await setColorMode('curvature'); openModule('stl'); }));
+  }
+
+  /* ---- 列印分析 ---- */
+  if (mod==='print'){
+    if (!m) return need();
+    B.appendChild(el('div','lbl','懸空分析（目前擺放）'));
+    const O = runOverhang();
+    const ob = el('div','mbox');
+    ob.appendChild(mrow('需支撐面 (γ<50°)', F(O.supArea,0)+' mm²'));
+    ob.appendChild(mrow(`危險懸垂 (γ<${SPEC.overhangAngle.v}°)`, F(O.dangerArea,0)+' mm²', O.dangerArea>2?'errc':'okc'));
+    ob.appendChild(mrow('近水平向下面', F(O.flatArea,0)+' mm²', O.flatArea>100?'warnc':''));
+    B.appendChild(ob);
+    B.appendChild(btn('⚠ 檢視懸垂標色', ()=>setColorMode('overhang')));
+
+    B.appendChild(el('div','lbl','孤島分析（近似）'));
+    const IS = S.results.islands;
+    if (IS) B.appendChild(el('div','mbox').appendChild(mrow('孤島起點', IS.clusters.length+' 處', IS.clusters.length?'errc':'okc')).parentNode);
+
+    B.appendChild(el('div','lbl','支撐材（PreForm 參數 · 內建近似）'));
+    if (S.supportStat){
+      const st = S.supportStat, bt = st.byType||{};
+      const sb = el('div','mbox');
+      sb.appendChild(mrow('接觸點', st.points+' 點'));
+      sb.appendChild(el('div','mnote',
+        `<span style="color:#e8930c">● 懸空點 ${bt.minima||0}</span> · <span style="color:#0d9488">● 懸空 ${bt.over||0}</span> · <span style="color:#d6409f">● 穩定化 ${bt.stab||0}</span> · <span style="color:#46a758">● 強化 ${bt.rein||0}</span>`));
+      sb.appendChild(mrow('支撐材體積', F(st.volSupMM3/1000,1)+' mL'));
+      sb.appendChild(mrow('基底體積', F(st.volRaftMM3/1000,1)+' mL'));
+      sb.appendChild(mrow('桁架斜撐', st.braces));
+      B.appendChild(sb);
+    } else B.appendChild(el('div','mnote','支撐目前關閉或尚未生成。'));
+    B.appendChild(el('div','mnote','格網取樣＋射線近似，非 PreForm 結果；精確支撐請於 ☁ API 切換 PFS 模式。'));
+    B.appendChild(btn('🖊 開啟支撐材面板', ()=>toggleSupPanel(true)));
+
+    B.appendChild(el('div','lbl','翹曲預測（啟發式）'));
+    const W = S.results.warp;
+    if (W){
+      const wb = el('div','mbox');
+      wb.appendChild(mrow('風險等級', `${W.level}（${W.score}分）`, W.level==='高'?'errc':W.level==='中'?'warnc':'okc'));
+      for (const r of W.reasons) wb.appendChild(el('div','mnote','· '+r));
+      B.appendChild(wb);
+    }
+    B.appendChild(btn('〰 執行翹曲預測', async ()=>{ await runWarp(); openModule('print'); }));
+
+    B.appendChild(el('div','lbl','收縮補償'));
+    const sc = shrinkComp();
+    const scb = el('div','mbox');
+    scb.appendChild(mrow('材料收縮率', sc.shrink+' %（參考）'));
+    scb.appendChild(mrow('建議 XY 補償', '×'+F(sc.scaleXY,4)));
+    scb.appendChild(mrow('建議 Z 補償', '×'+F(sc.scaleZ,4)));
+    B.appendChild(scb);
+    B.appendChild(el('div','mnote','實際收縮依材料 TDS 與後固化條件而異；套用將直接縮放網格（不可復原）。'));
+    B.appendChild(btn('⇲ 套用收縮補償至模型', ()=>{ if(confirm('確定縮放模型網格？此操作不可復原。')) applyShrinkComp(); }));
+
+    B.appendChild(el('div','lbl','剖層預覽'));
+    B.appendChild(btn(S.clipOn?'▥ 關閉剖層':'▥ 開啟剖層滑桿', toggleClip));
+  }
+
+  /* ---- AI 最佳化 ---- */
+  if (mod==='ai'){
+    if (!m) return need();
+    B.appendChild(el('div','lbl','自動擺放 · 最佳化目標'));
+    const gr = el('div','segRow');
+    for (const [k,g] of Object.entries(ORIENT_GOALS)){
+      const parts = g.label.split(' ');
+      const b = el('button','goalSeg'+(S.orientGoal===k?' on':''),
+        `${g.label}<small>${k==='time'?'高度優先·近PreForm取向':k==='balance'?'品質/時間折衷':'保護表面'}</small>`);
+      b.addEventListener('click', ()=>{ S.orientGoal=k; openModule('ai'); });
+      gr.appendChild(b);
+    }
+    B.appendChild(gr);
+    B.appendChild(el('div','diffBox',
+      `<div class="t">⚠ 為何與 PreForm 結果不同？</div>
+       <div class="d">PreForm 自動擺放為<b>專有演算法</b>：以其切層引擎實算支撐體積、剝離力與時間後尋優（且官方註明不最佳化支撐位置）。本工具為<b>內建幾何近似評分</b>（懸垂面積＋高度＋平放懲罰），無法重現相同結果。選「⏱ 最短時間」會加重高度權重，結果趨近 PreForm 的低高度取向。</div>`));
+    B.appendChild(el('div','pfsRow','☁ 需要 <b>100% 相同</b>的結果？於雲端面板切換 <b>PFS 模式</b>（PreForm Server @ localhost:44389），直接由 PreForm 運算擺放與支撐。'));
+    B.appendChild(el('div','mnote','候選傾角（度，逗號分隔，X/Z 軸 × 側轉 0°/15° 自動組合；平放僅作對照）：'));
+    const inp = el('div','inRow',`<input type="text" style="width:100%" value="${S.autoOrientAngles}">`);
+    inp.querySelector('input').addEventListener('change', e=>{ S.autoOrientAngles=e.target.value; });
+    B.appendChild(inp);
+    B.appendChild(btn(`⚡ 執行自動擺放（${(ORIENT_GOALS[S.orientGoal]||{}).label||''}）`, autoOrient, false));
+    const AO = S.results.autoOrient;
+    if (AO && AO.list){
+      B.appendChild(el('div','lbl',`前 3 名候選（${(ORIENT_GOALS[AO.goal]||{}).label||''} · 依目標排序）`));
+      AO.list.forEach((o,ix)=>{
+        const th = Math.floor(o.estSec/3600), tm = Math.round((o.estSec%3600)/60);
+        const r = el('div','mbox',
+          `<div class="mrow"><span>#${ix+1} 傾 ${Math.max(Math.abs(o.tx),Math.abs(o.tz))}°${o.tz?'(Z)':'(X)'} + 側轉 ${o.yaw}°</span><b>≈${th}h ${String(tm).padStart(2,'0')}m</b></div>
+           <div class="mnote">高 ${F(o.h,0)}mm · 需支撐 ${F(o.sup,0)}mm² · 危險 ${F(o.danger,0)}mm² · 評分 ${F(o.score,1)}</div>`);
+        r.style.cursor='pointer';
+        r.addEventListener('click', async ()=>{
+          pushUndo();
+          S.orient={tiltX:o.tx,yaw:o.yaw,tiltZ:o.tz};
+          computeWorld(m); clampModelPos(m);
+          await rebuildScene(true);
+          toast('已套用候選 #'+(ix+1)+'（已置於範圍內）','ok');
+        });
+        B.appendChild(r);
+      });
+    }
+    B.appendChild(el('div','lbl','手動擺放（度）— 可捲動滾輪微調'));
+    const or = el('div','',
+      `<div class="inRow"><label>傾斜 X</label><input type="number" step="1" value="${S.orient.tiltX}" data-o="tiltX"><span class="un">°</span></div>
+       <div class="inRow"><label>側轉 Y</label><input type="number" step="1" value="${S.orient.yaw}" data-o="yaw"><span class="un">°</span></div>
+       <div class="inRow"><label>傾斜 Z</label><input type="number" step="1" value="${S.orient.tiltZ}" data-o="tiltZ"><span class="un">°</span></div>`);
+    or.querySelectorAll('input').forEach(x=>{
+      x.addEventListener('change', async ()=>{
+        pushUndo();
+        S.orient[x.dataset.o] = +x.value || 0;
+        const mm = activeModel();
+        computeWorld(mm); clampModelPos(mm);
+        await rebuildScene(true);
+      });
+      x.addEventListener('wheel', ev=>{ ev.preventDefault(); x.value=(+x.value||0)+(ev.deltaY<0?1:-1); x.dispatchEvent(new Event('change')); }, {passive:false});
+    });
+    B.appendChild(or);
+    B.appendChild(el('div','mnote','也可直接在 3D 視圖拖曳 X/Y/Z 旋轉環（15° 吸附，Shift 自由角度）；Ctrl+Z 復原。旋轉後支撐一律重新生成（內建近似；PreForm 中僅垂直軸旋轉保留支撐）。'));
+    B.appendChild(el('div','lbl','自動支撐'));
+    B.appendChild(btn('🖊 生成支撐（目前參數）', async ()=>{ S.supportsOn=true; if(S.step<2) S.forceSupports=true; const mm=activeModel(); if(mm) computeWorld(mm); await rebuildScene(true); openModule('ai'); }));
+
+    B.appendChild(el('div','lbl','最佳材料推薦'));
+    const MR = S.results.matRec;
+    if (MR) MR.forEach((r,ix)=>{
+      const b = el('div','mbox',
+        `<div class="mrow"><span>#${ix+1} ${r.mt.name}</span><b>NT$${r.mt.priceL.toLocaleString()}/L</b></div><div class="mnote">${r.why.join('、')||'通用'}</div>`);
+      b.style.cursor='pointer';
+      b.addEventListener('click', ()=>{ S.materialId=r.mt.id; updateAllUI(); if(S.step===2)renderStep(); toast('已切換材料：'+r.mt.name,'ok'); });
+      B.appendChild(b);
+    });
+    B.appendChild(btn('✨ 依模型類型與幾何推薦', async ()=>{ await recommendMaterial(); openModule('ai'); }));
+
+    B.appendChild(el('div','lbl','最佳層厚推薦'));
+    const LR = S.results.layerRec;
+    if (LR) B.appendChild(el('div','mbox',`<div class="mrow"><span>建議 ${LR.rec*1000}µm</span><b>${S.layerH===LR.rec?'已套用':''}</b></div><div class="mnote">${LR.why}</div>`));
+    B.appendChild(btn('✨ 推薦並套用層厚', async ()=>{
+      const r = await recommendLayer();
+      if (mat().layers.includes(r.rec)) S.layerH = r.rec;
+      updateAllUI(); if(S.step===2)renderStep(); openModule('ai');
+      toast(`層厚建議 ${r.rec*1000}µm — ${r.why}`,'ok');
+    }));
+  }
+
+  /* ---- 成本分析（舊版計費模型：材料×單價＋支撐＋後處理） ---- */
+  if (mod==='cost'){
+    B.appendChild(el('div','lbl','計費設定'));
+    B.appendChild(el('div','mnote',`材料單價：<b>NT$${mat().priceL.toLocaleString()}/L</b>（${mat().name}）— 由「材料設定」統一管理，與舊版估價頁共用同一份。`));
+    {
+      const r = el('div','inRow',`<label>後處理費</label><input type="number" step="10" value="${S.cost.postCost??90}"><span class="un">NT$</span>`);
+      r.querySelector('input').addEventListener('change', e=>{ S.cost.postCost=+e.target.value||0; persist(); updateAllUI(); if(S.step===4)renderStep(); openModule('cost'); });
+      B.appendChild(r);
+    }
+    const C = calcCost();
+    if (C){
+      B.appendChild(el('div','lbl','即時明細'));
+      const box = el('div','mbox');
+      box.appendChild(mrow(`本體材料（${F(C.modelML,1)} mL）`, NTD(C.matCost)));
+      box.appendChild(mrow(`支撐材料（${F(C.supML,1)} mL${S.supportStat?'':'，未生成以15%粗估'}）`, NTD(C.supCost)));
+      box.appendChild(mrow('後處理（清洗 / 固化）', NTD(C.postCost)));
+      box.appendChild(el('div','costTotal',`<span>總計</span><b>${NTD(C.total)}</b>`));
+      B.appendChild(box);
+      B.appendChild(el('div','mnote',`每層秒數估算：${mach().name} @ ${S.layerH*1000}µm ≈ ${mach().secPerLayer[S.layerH]??'—'}s/層（估算值，可依實測校正）。`));
+    } else B.appendChild(el('div','mnote','載入模型後即顯示明細。'));
+  }
+
+  /* ---- 雲端管理 ---- */
+  if (mod==='cloud'){
+    const cs = S.cloudStatus;
+    const csLabel = cs==='online' ? '☁ 已連線 Firestore（跨裝置即時同步）' : cs==='connecting' ? '☁ 連線中…' : '⚠ 離線模式（僅存本機瀏覽器）';
+    const csCls = cs==='online' ? 'okc' : cs==='connecting' ? '' : 'warnc';
+    B.appendChild(el('div','mbox',`<div class="mrow"><span>雲端狀態</span><b class="${csCls}">${csLabel}</b></div>`));
+    B.appendChild(el('div','lbl',`工單（${S.orders.length}）`));
+    if (!S.orders.length) B.appendChild(el('div','mnote','尚無工單 — 於報價單按「存成工單」建立。'));
+    for (const o of S.orders.slice(0,8)){
+      const r = el('div','ordRow',
+        `<div class="oh"><span>${o.no} · ${o.customer||'未填客戶'}</span><span class="st ${o.status==='done'?'done':'pend'}">${o.status==='done'?'已完成':'待處理'}</span></div>
+         <div class="om">${o.item} · ${o.machine} · ${o.material} · ${F(o.resinML,1)}mL · ${o.timeS} · ${NTD(o.total)} · ${o.t}</div>`);
+      r.style.cursor='pointer'; r.title='點擊切換狀態';
+      r.addEventListener('click', ()=>{ cloudSetOrderStatus(o, o.status==='done'?'pend':'done'); if(!FB.ready) openModule('cloud'); });
+      B.appendChild(r);
+    }
+    if (S.orders.length){
+      B.appendChild(btn('⇩ 匯出工單 JSON', ()=>{
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(S.orders,null,2)],{type:'application/json'}));
+        a.download = 'work-orders.json'; a.click();
+      }));
+    }
+    B.appendChild(el('div','lbl','AI 分析報告'));
+    if (S.results.report) {
+      const rb = el('div','', `<div id="reportBox">${S.results.report.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`);
+      B.appendChild(rb);
+      B.appendChild(btn('⧉ 複製報告', ()=>{ navigator.clipboard?.writeText(S.results.report).then(()=>toast('已複製','ok')).catch(()=>toast('複製失敗','err')); }));
+    }
+    B.appendChild(btn('📝 產生 AI 報告', async ()=>{ await genReport(); openModule('cloud'); }, false));
+
+    B.appendChild(el('div','lbl','歷史紀錄'));
+    if (!S.history.length) B.appendChild(el('div','mnote','尚無紀錄。'));
+    const hw = el('div',''); hw.style.maxHeight='150px'; hw.style.overflowY='auto';
+    for (const h of S.history.slice(0,30)) hw.appendChild(el('div','histRow',`<span class="ht">${h.t}</span> · <b style="font-weight:600">${h.act}</b> — ${h.sum}`));
+    B.appendChild(hw);
+
+    B.appendChild(el('div','lbl','API · 運算引擎'));
+    const eb = el('div','',
+      `<label class="tgl"><input type="radio" name="eng" value="builtin" ${S.engine==='builtin'?'checked':''}> 內建近似引擎（取樣＋射線，本頁即時）</label>
+       <label class="tgl"><input type="radio" name="eng" value="pfs" ${S.engine==='pfs'?'checked':''}> PreForm Server (PFS) — 精確支撐/擺放</label>
+       <div class="inRow" style="margin-top:4px"><label>PFS URL</label><input type="text" value="${S.pfsUrl}"></div>`);
+    eb.querySelectorAll('input[name=eng]').forEach(x=>x.addEventListener('change', ()=>{
+      S.engine = x.value;
+      toast(S.engine==='pfs' ? 'PFS 模式：需本機執行 PreForm Server；未連線時自動退回內建近似' : '已切換內建近似引擎','warn');
+    }));
+    eb.querySelector('input[type=text]').addEventListener('change', e=>{ S.pfsUrl=e.target.value; });
+    B.appendChild(eb);
+    B.appendChild(btn('⇄ 測試 PFS 連線', async ()=>{
+      try {
+        const ctl = new AbortController(); setTimeout(()=>ctl.abort(), 3000);
+        await fetch(S.pfsUrl, { mode:'no-cors', signal: ctl.signal });
+        toast('✓ PFS 端點有回應（'+S.pfsUrl+'）','ok');
+      } catch(e){ toast('✕ 無法連線 PFS（'+S.pfsUrl+'）— 請確認 PreForm Server 已啟動','err'); }
+    }));
+    B.appendChild(el('div','mnote','PFS 整合為預留介面：本工具目前所有幾何結果均由內建近似引擎產生；接上 PFS 後可改由 localhost:44389 取得與 PreForm 一致的支撐與擺放。'));
+  }
+}
+function toggleClip(){
+  S.clipOn = !S.clipOn;
+  $('#clipWrap').classList.toggle('show', S.clipOn);
+  $('#btnClip').classList.toggle('on', S.clipOn);
+  if (!S.clipOn) V.clipPlane.constant = 1e6;
+  else applyClip();
+}
+function applyClip(){
+  const m = activeModel(); if(!m) return;
+  const pct = S.clipPct;
+  const top = m.worldBB.max[1] + 1;
+  V.clipPlane.constant = pct>=100 ? 1e6 : (pct/100)*top;
+  const cutY = (pct/100)*top;
+  $('#clipVal').textContent = pct>=100 ? '100%' : `L${Math.max(0,Math.floor(cutY/S.layerH)).toLocaleString()}`;
+}
+/* ============================== 18. AI 報告（依 3D 列印估價 skill 格式） ============================== */
+async function genReport(){
+  const m = activeModel(); if(!m){ toast('請先載入模型','err'); return; }
+  const TH = S.results.thickness || await runThickness();
+  const O  = runOverhang();
+  const W  = S.results.warp || await runWarp();
+  const IS = S.results.islands || await runIslands();
+  const CU = S.results.cupping || await runCupping();
+  const C  = calcCost();
+  const tilt = Math.max(Math.abs(S.orient.tiltX), Math.abs(S.orient.tiltZ));
+  const axis = S.orient.tiltZ ? 'Z' : 'X';
+  const L = [];
+  L.push(`📋 AI 列印分析報告 — ${m.name}`);
+  L.push(`機台 ${mach().name} · ${mat().name} · 層厚 ${S.layerH*1000}µm · 模型類型 ${S.modelType}`);
+  L.push(`產生時間 ${new Date().toLocaleString('zh-TW',{hour12:false})}`);
+  L.push('────────────────────');
+  L.push(`1. 建議擺放角度`);
+  L.push(`   傾斜 ${tilt}°（${axis} 軸）` + (tilt>=30&&tilt<=45 ? ' — 位於建議區間 30–45°' : tilt===0 ? ' — ⚠ 平放不建議（剝離力大、吸盤風險）' : ''));
+  L.push(`   平放向下大面 ${F(O.flatArea,0)} mm² · 需支撐面 ${F(O.supArea,0)} mm²`);
+  L.push(`2. 旋轉建議`);
+  L.push(`   側轉 ${S.orient.yaw}° 分散層線與剝離力` + (S.orient.yaw===15?'（建議值）':''));
+  L.push(`   ${S.results.autoOrient ? '已執行自動擺放評分（前 3 候選見 AI 面板）' : '可於 ✨ AI 面板執行自動擺放評分'}`);
+  L.push(`3. 支撐策略（PreForm 參數 · 內建近似）`);
+  if (S.supportStat){
+    const bt = S.supportStat.byType||{};
+    L.push(`   接觸點 ${S.sup.tpSize}mm × ${S.supportStat.points} 點（懸空點 ${bt.minima||0}／懸空 ${bt.over||0}／穩定化 ${bt.stab||0}／強化 ${bt.rein||0}）`);
+    L.push(`   支撐材 ${F(S.supportStat.volSupMM3/1000,1)} mL · 基底(${({full:'完整',mini:'迷你',none:'無'})[S.sup.raft.type]}) ${F(S.supportStat.volRaftMM3/1000,1)} mL`);
+  }
+  else L.push(`   尚未生成支撐（支撐目前關閉）`);
+  L.push(`   支撐接觸建議避開外觀關鍵面；細節面朝上。`);
+  L.push(`4. 風險分析`);
+  L.push(`   · 翹曲風險 ${W.level}（${W.score} 分）${W.reasons.length?'：'+W.reasons.join('；'):''}`);
+  L.push(`   · 孤島 ${IS.clusters.length} 處`);
+  L.push(`   · ${CU.risk ? `吸盤風險：向下大面 ${F(CU.flatArea,0)}mm²${CU.hollow?'，疑似中空':''}` : '未偵測吸盤風險'}`);
+  L.push(`   · 最薄壁 ${F(TH.minTh)}mm（Form 4 規範 >${SPEC.wallSupported.v}mm）· 網格${m.topo.watertight?'水密':`非水密（${m.topo.boundary} 開放邊）`}`);
+  L.push(`5. 優化建議`);
+  if (CU.risk) L.push(`   · 開 ≥2 個排液孔 Ø≥${SPEC.drainDia.v}mm（可於可行性面板標記位置）`);
+  if (TH.minTh < 0.4) L.push(`   · 薄壁 <0.4mm 區域建議加厚或改用 Rigid 10K`);
+  if (W.level!=='低') L.push(`   · 增加傾角/調整側轉降低剝離截面，必要時提高支撐密度`);
+  L.push(`   · 收縮補償參考：XY ×${F(shrinkComp().scaleXY,4)} / Z ×${F(shrinkComp().scaleZ,4)}（${mat().shrink}%）`);
+  if (C) L.push(`   · 估價：${F(C.resinML,1)} mL · ${timeStr(C.time)} · ${NTD(C.total)}`);
+  L.push('────────────────────');
+  L.push(`※ 本報告由內建近似演算法（取樣＋射線）產生，非 PreForm 運算結果；`);
+  L.push(`   精確支撐/擺放請切換 PFS 模式（PreForm Server @ ${S.pfsUrl}）。`);
+  S.results.report = L.join('\n');
+  logHist('AI 報告', `${m.name} · 翹曲 ${W.level} · ${NTD(C?C.total:0)}`);
+  return S.results.report;
+}
+
+/* ============================== 19. 報價單與工單 ============================== */
+function openQuote(){
+  const m = activeModel(); const C = calcCost();
+  if (!m || !C){ toast('請先載入模型','err'); return; }
+  const no = genNo('Q');
+  const R = S.results.validation;
+  const sheet = $('#quoteSheet');
+  sheet.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><h2>報價單 QUOTATION</h2><div class="qsub">${no} · ${new Date().toLocaleDateString('zh-TW')} · AI Print Studio</div></div>
+      <div style="text-align:right;font-size:10px;color:var(--ink4)">客戶：<input class="qc" id="qCustomer" placeholder="請輸入客戶名稱"></div>
+    </div>
+    <table>
+      <tr><th>項目</th><th>規格</th><th class="r">金額</th></tr>
+      <tr><td>3D 列印 — ${m.name}</td><td>${mach().name} · ${mat().name} · ${S.layerH*1000}µm</td><td class="r"></td></tr>
+      <tr><td>本體材料</td><td>${F(C.modelML,1)} mL × NT$${mat().priceL.toLocaleString()}/L</td><td class="r">${NTD(C.matCost)}</td></tr>
+      <tr><td>支撐材料</td><td>${F(C.supML,1)} mL${S.supportStat?'':'（未生成，以 15% 粗估）'}</td><td class="r">${NTD(C.supCost)}</td></tr>
+      <tr><td>後處理</td><td>IPA 清洗 + UV 固化</td><td class="r">${NTD(C.postCost)}</td></tr>
+    </table>
+    <div class="qtotal"><span>總計（新台幣）</span><b>${NTD(C.total)}</b></div>
+    <div class="qnote">
+      列印時間估算 ${timeStr(C.time)}（${C.time.layers.toLocaleString()} 層）· 擺放 傾${Math.max(Math.abs(S.orient.tiltX),Math.abs(S.orient.tiltZ))}°+側轉${S.orient.yaw}°
+      ${R ? ` · 可行性成功率 ${R.rate}%（失敗 ${R.fail} / 警告 ${R.warn} / 人工確認 ${R.manual}）` : ' · 未執行可行性驗證'}<br>
+      本報價由內建近似演算法估算，材料與時間以實際切層為準；報價有效期 14 天。
+    </div>
+    <div class="qbtns">
+      <button onclick="window.print()">🖨 列印 / PDF</button>
+      <button class="pri" id="qSave">☁ 存成工單</button>
+      <button id="qClose">關閉</button>
+    </div>`;
+  $('#quoteModal').classList.add('show');
+  $('#qClose').addEventListener('click', ()=>$('#quoteModal').classList.remove('show'));
+  $('#qSave').addEventListener('click', ()=>{ saveOrder($('#qCustomer').value.trim()); $('#quoteModal').classList.remove('show'); });
+}
+function saveOrder(customer){
+  const m = activeModel(); const C = calcCost();
+  if (!m || !C){ toast('請先載入模型','err'); return; }
+  const no = genNo('WO');
+  const order = { no, customer, item:m.name, machine:mach().name, material:mat().name,
+    resinML:C.resinML, timeS:timeStr(C.time), total:C.total, status:'pend',
+    t:new Date().toLocaleString('zh-TW',{hour12:false}) };
+  cloudAddOrder(order);
+  logHist('建立工單', `${no} · ${m.name} · ${NTD(C.total)}`);
+  toast(`✓ 已建立工單 ${no}${FB.ready?'（已同步雲端）':'（本機暫存,雲端離線）'}`,'ok');
+  if (S.openMod==='cloud') openModule('cloud');
+}
+
+/* ============================== 20. 全域 UI 更新 ============================== */
+function updateAllUI(){
+  const m = activeModel(); const C = calcCost();
+  // 統計 pill
+  if (m && C){
+    const fits = modelFits(m);
+    const supTxt = !supportsActive() ? '<span style="color:var(--ink4)">支撐 —（步驟3 生成）</span>'
+                            : `支撐材 ${F(C.supML,1)} · 基底 ${F(C.raftML,1)} mL · ${S.supportStat?S.supportStat.points:0} 點`;
+    $('#statsPill').innerHTML =
+      `模型 ${F(C.modelML,1)} mL · ${supTxt} · ${timeStr(C.time)} · ` +
+      (fits ? `<span class="okc">✓ 在列印範圍內</span>` : `<span class="errc">✕ 超出列印範圍</span>`) +
+      (S.results.validation ? ` · 成功率 <span class="${S.results.validation.rate>=80?'okc':'errc'}">${S.results.validation.rate}%</span>` : '');
+  } else $('#statsPill').textContent = '尚未載入模型 · 請先上傳 STL / OBJ / 3MF';
+  // 價格卡
+  if (C){
+    $('#pcL1').textContent = `本體材料 ${F(C.modelML,1)} mL`;
+    $('#pcV1').textContent = NTD(C.matCost);
+    $('#pcL2').textContent = `支撐 ${F(C.supML,1)} mL ＋ 後處理`;
+    $('#pcV2').textContent = NTD(C.supCost + C.postCost);
+    $('#pcTotal').textContent = NTD(C.total);
+  } else { $('#pcL1').textContent='本體 — mL'; $('#pcV1').textContent='NT$ —'; $('#pcL2').textContent='支撐＋後處理'; $('#pcV2').textContent='NT$ —'; $('#pcTotal').textContent='NT$ —'; }
+  $('#legTp').textContent = F(S.support.tp);
+  renderDock();
+}
+
+/* ============================== 21. 內建示範模型 ============================== */
+function boxTris(arr, cx,cy,cz, hx,hy,hz){
+  const P=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]]
+    .map(p=>[cx+p[0]*hx, cy+p[1]*hy, cz+p[2]*hz]);
+  const Q=[[4,5,6,7],[1,0,3,2],[5,1,2,6],[0,4,7,3],[3,7,6,2],[0,1,5,4]];
+  for (const [a,b,c,d] of Q){
+    arr.push(...P[a],...P[b],...P[c], ...P[a],...P[c],...P[d]);
+  }
+}
+function cylTris(arr, cx,cy,cz, r,h, seg=20){
+  for (let s=0;s<seg;s++){
+    const a0=s/seg*Math.PI*2, a1=(s+1)/seg*Math.PI*2;
+    const x0=cx+r*Math.cos(a0), z0=cz+r*Math.sin(a0), x1=cx+r*Math.cos(a1), z1=cz+r*Math.sin(a1);
+    const y0=cy, y1=cy+h;
+    arr.push(x0,y0,z0, x1,y1,z1, x1,y0,z1,  x0,y0,z0, x0,y1,z0, x1,y1,z1);   // 側面(外向)
+    arr.push(cx,y1,cz, x1,y1,z1, x0,y1,z0);   // 頂 +Y
+    arr.push(cx,y0,cz, x0,y0,z0, x1,y0,z1);   // 底 -Y
+  }
+}
+async function loadDemoModel(){
+  const a=[];
+  boxTris(a, 0, 4, 0, 30, 4, 20);        // 底板 60×8×40
+  boxTris(a, -26, 34, 0, 4, 26, 20);     // 立板 8×52×40
+  boxTris(a, -2, 56, 0, 20, 4, 8);       // 頂部懸臂（懸垂示範）
+  cylTris(a, 14, 8, 0, 9, 12);           // 圓柱凸台
+  await addModelFromPos(new Float32Array(a), 'demo-bracket.stl', 0);
+  gotoStep(0);
+}
+
+/* ============================== 22. 事件繫結與啟動 ============================== */
+async function handleFiles(files){
+  for (const f of files){
+    try {
+      const pos = await busy(`解析 ${f.name} …`, ()=>parseFile(f));
+      await addModelFromPos(pos, f.name, f.size);
+    } catch(e){ toast(`✕ ${f.name}：${e.message}`,'err'); }
+  }
+  gotoStep(S.models.length ? Math.max(S.step,0) : 0);
+  renderStep();
+}
+function bindEvents(){
+  $('#fileInput').addEventListener('change', e=>{ handleFiles(Array.from(e.target.files)); e.target.value=''; });
+  let dragDepth=0;
+  addEventListener('dragenter', e=>{ e.preventDefault(); if(++dragDepth===1) $('#dragOverlay').classList.add('show'); });
+  addEventListener('dragleave', e=>{ e.preventDefault(); if(--dragDepth<=0){ dragDepth=0; $('#dragOverlay').classList.remove('show'); } });
+  addEventListener('dragover', e=>e.preventDefault());
+  addEventListener('drop', e=>{
+    e.preventDefault(); dragDepth=0; $('#dragOverlay').classList.remove('show');
+    const fs = Array.from(e.dataTransfer.files).filter(f=>/\.(stl|obj|3mf)$/i.test(f.name));
+    if (fs.length) handleFiles(fs); else toast('僅支援 STL / OBJ / 3MF','warn');
+  });
+  $$('.vtab').forEach(b=>b.addEventListener('click', ()=>{
+    $$('.vtab').forEach(x=>x.classList.remove('on')); b.classList.add('on'); setCam(b.dataset.view);
+  }));
+  $$('#viewbar .abtn[data-mode]').forEach(b=>b.addEventListener('click', ()=>setColorMode(b.dataset.mode)));
+  $('#btnSupports').addEventListener('click', ()=>toggleSupPanel());
+  $('#btnClip').addEventListener('click', toggleClip);
+  $('#btnRange').addEventListener('click', ()=>{
+    S.rangeBoxOn = !S.rangeBoxOn;
+    if (V.rangeGroup) V.rangeGroup.visible = S.rangeBoxOn;
+    $('#btnRange').classList.toggle('on', S.rangeBoxOn);
+  });
+  $('#btnFs').addEventListener('click', ()=>{
+    S.fontBig = !S.fontBig;
+    document.body.classList.toggle('big', S.fontBig);
+    $('#btnFs').classList.toggle('on', S.fontBig);
+    try { localStorage.setItem('aps_fontBig', S.fontBig?'1':'0'); } catch(e){}
+    toast(S.fontBig ? 'Ａ 大字模式' : 'A 小字模式','ok');
+  });
+  $('#clipRange').addEventListener('input', e=>{ S.clipPct=+e.target.value; applyClip(); });
+  $$('.cface, #cubeHome').forEach(b=>b.addEventListener('click', ()=>setCam(b.dataset.cam==='home'?'home':b.dataset.cam)));
+  $$('#rail .railBtn').forEach(b=>b.addEventListener('click', ()=>{
+    if (S.openMod===b.dataset.mod && $('#modPanel').classList.contains('open')){
+      $('#modPanel').classList.remove('open'); b.classList.remove('on'); S.openMod=null;
+    } else openModule(b.dataset.mod);
+  }));
+  $('#modClose').addEventListener('click', ()=>{ $('#modPanel').classList.remove('open'); $$('#rail .railBtn').forEach(b=>b.classList.remove('on')); S.openMod=null; });
+  // 左側步驟面板收合/展開（按鈕 + Tab 快速鍵）
+  const setStepPanel = show => {
+    $('#stepCard').style.display = show ? '' : 'none';
+    $('#stepShow').style.display = show ? 'none' : '';
+  };
+  $('#stepHide').addEventListener('click', ()=>setStepPanel(false));
+  $('#stepShow').addEventListener('click', ()=>setStepPanel(true));
+  addEventListener('keydown', e=>{
+    if (e.key==='Tab'){
+      const t = document.activeElement;
+      if (t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT')) return;   // 輸入中交給瀏覽器
+      e.preventDefault();
+      setStepPanel($('#stepCard').style.display==='none');
+    }
+  });
+  $('#pcBtn').addEventListener('click', openQuote);
+  $('#quoteModal').addEventListener('click', e=>{ if(e.target.id==='quoteModal') $('#quoteModal').classList.remove('show'); });
+  addEventListener('keydown', e=>{
+    if ((e.ctrlKey||e.metaKey) && (e.key==='z'||e.key==='Z')){
+      const t = document.activeElement;
+      if (t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA')) return;   // 輸入框內交給瀏覽器
+      e.preventDefault(); undoOp();
+    }
+  });
+}
+function boot(){
+  restore();
+  try { if (localStorage.getItem('aps_fontBig')==='1'){ S.fontBig=true; document.body.classList.add('big'); $('#btnFs').classList.add('on'); } } catch(e){}
+  initViewer();
+  bindEvents();
+  renderStep();
+  updateAllUI();
+  initFirebaseSync();   // 非阻塞：連線成功後 onSnapshot 會自動更新工單/歷史 UI
+  toast('AI Print Studio 已就緒 — 拖曳 STL/OBJ/3MF 或載入示範模型','ok');
+}
+boot();
+/* ============================== 23. 檔案檢查引擎（上傳後自動執行） ==============================
+   涵蓋 20 大類：模型完整性(水密/法線/非流形/重複面/自相交)、單位、列印範圍、
+   壁厚、尖角薄邊、貫穿孔(拓撲)、中空殼厚、最小特徵、懸空、孤島、封閉空腔+排液、
+   零件間距、方向、支撐、材料、公差、網格過疏/過密。
+   每項標示 量測/近似/人工 — 近似項非 PreForm 結果。 */
+
+/* 邊界迴圈：回傳 [[v0,v1,...], ...]（沿面的有向邊界邊行走） */
+function boundaryLoops(verts, tris){
+  const dir = new Map();   // 有向邊界邊 a→b
+  const und = new Map();
+  const key = (a,b)=> a<b ? a+'_'+b : b+'_'+a;
+  for (let f=0; f<tris.length; f+=3){
+    for (let e=0;e<3;e++){
+      const a=tris[f+e], b=tris[f+(e+1)%3];
+      und.set(key(a,b), (und.get(key(a,b))||0)+1);
+    }
+  }
+  for (let f=0; f<tris.length; f+=3){
+    for (let e=0;e<3;e++){
+      const a=tris[f+e], b=tris[f+(e+1)%3];
+      if (und.get(key(a,b))===1) dir.set(a, b);   // 每個邊界頂點出邊唯一（流形邊界假設）
+    }
+  }
+  const loops=[]; const used=new Set();
+  for (const start of dir.keys()){
+    if (used.has(start)) continue;
+    const loop=[start]; used.add(start);
+    let cur = dir.get(start); let guard=0;
+    while (cur!==undefined && cur!==start && guard++ < 100000){
+      loop.push(cur); used.add(cur); cur = dir.get(cur);
+    }
+    if (cur===start && loop.length>=3) loops.push(loop);
+  }
+  return loops;
+}
+/* 補洞：每個迴圈以形心扇形補面（簡單孔近似；複雜孔請回 CAD） */
+function fillHoles(m, maxLoopLen=200){
+  const loops = boundaryLoops(m.raw.verts, m.raw.tris);
+  if (!loops.length) return { filled:0, skipped:0 };
+  let vArr = Array.from(m.raw.verts), tArr = Array.from(m.raw.tris);
+  let filled=0, skipped=0;
+  for (const loop of loops){
+    if (loop.length > maxLoopLen){ skipped++; continue; }
+    let cx=0,cy=0,cz=0;
+    for (const v of loop){ cx+=vArr[v*3]; cy+=vArr[v*3+1]; cz+=vArr[v*3+2]; }
+    const n=loop.length; cx/=n; cy/=n; cz/=n;
+    const ci = vArr.length/3; vArr.push(cx,cy,cz);
+    for (let i=0;i<n;i++){
+      const a=loop[i], b=loop[(i+1)%n];
+      tArr.push(b, a, ci);   // 與既有邊界邊反向 → 朝向一致
+    }
+    filled++;
+  }
+  m.raw.verts = new Float32Array(vArr);
+  m.raw.tris  = new Uint32Array(tArr);
+  return { filled, skipped };
+}
+/* 重複面移除（相同三頂點集合） */
+function dedupeFaces(m){
+  const seen = new Set(); const keep=[];
+  const t = m.raw.tris;
+  let removed=0;
+  for (let f=0; f<t.length; f+=3){
+    const s=[t[f],t[f+1],t[f+2]].sort((a,b)=>a-b).join('_');
+    if (seen.has(s)){ removed++; continue; }
+    seen.add(s); keep.push(t[f],t[f+1],t[f+2]);
+  }
+  if (removed) m.raw.tris = new Uint32Array(keep);
+  return removed;
+}
+/* 自相交（近似取樣）：同格網 cell 內、不共用頂點的三角形對做線段-三角形測試 */
+function selfIntersections(m, capTests=200000){
+  const grid = new GridRay(m.raw.verts, m.raw.tris, 48);
+  const v = m.raw.verts, t = m.raw.tris;
+  const segTri = (p0x,p0y,p0z, p1x,p1y,p1z, f)=>{
+    const dx=p1x-p0x, dy=p1y-p0y, dz=p1z-p0z;
+    const tt = grid._hitTri(f, p0x,p0y,p0z, dx,dy,dz);
+    return tt>1e-4 && tt<1-1e-4;
+  };
+  const tested = new Set();
+  let tests=0, hits=0, sampleY=null, capped=false;
+  const nf = t.length/3;
+  outer:
+  for (const cell of grid.cells){
+    if (!cell || cell.length<2) continue;
+    for (let i=0;i<cell.length;i++){
+      for (let j=i+1;j<cell.length;j++){
+        const fa=cell[i], fb=cell[j];
+        const pk = (fa/3)*nf + (fb/3);
+        if (tested.has(pk)) continue; tested.add(pk);
+        // 共用頂點 → 跳過（相鄰面本來就相接）
+        const a0=t[fa],a1=t[fa+1],a2=t[fa+2], b0=t[fb],b1=t[fb+1],b2=t[fb+2];
+        if (a0===b0||a0===b1||a0===b2||a1===b0||a1===b1||a1===b2||a2===b0||a2===b1||a2===b2) continue;
+        if (++tests > capTests){ capped=true; break outer; }
+        let inter=false;
+        for (const [ea,eb] of [[a0,a1],[a1,a2],[a2,a0]]){
+          if (segTri(v[ea*3],v[ea*3+1],v[ea*3+2], v[eb*3],v[eb*3+1],v[eb*3+2], fb)){ inter=true; break; }
+        }
+        if (!inter) for (const [ea,eb] of [[b0,b1],[b1,b2],[b2,b0]]){
+          if (segTri(v[ea*3],v[ea*3+1],v[ea*3+2], v[eb*3],v[eb*3+1],v[eb*3+2], fa)){ inter=true; break; }
+        }
+        if (inter){ hits++; if (sampleY===null) sampleY=(v[a0*3+1]+v[a1*3+1]+v[a2*3+1])/3; }
+      }
+    }
+  }
+  return { pairs:hits, sampleY, capped, tests };
+}
+/* 殼體資訊：標籤 + 各殼 bbox（供零件間距近似） */
+function shellInfo(verts, tris){
+  const n = verts.length/3;
+  const parent = new Int32Array(n); for (let i=0;i<n;i++) parent[i]=i;
+  const find = x=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+  const uni = (a,b)=>{ a=find(a); b=find(b); if(a!==b) parent[a]=b; };
+  for (let f=0; f<tris.length; f+=3){ uni(tris[f],tris[f+1]); uni(tris[f+1],tris[f+2]); }
+  const boxes = new Map();
+  for (let f=0; f<tris.length; f++){
+    const vi = tris[f], r = find(vi);
+    let bb = boxes.get(r);
+    if (!bb){ bb={min:[1e30,1e30,1e30],max:[-1e30,-1e30,-1e30]}; boxes.set(r,bb); }
+    for (let k=0;k<3;k++){ const val=verts[vi*3+k];
+      if (val<bb.min[k]) bb.min[k]=val; if (val>bb.max[k]) bb.max[k]=val; }
+  }
+  const list = Array.from(boxes.values());
+  // 殼間最小 AABB 間隙（近似）
+  let minGap = null;
+  for (let i=0;i<list.length;i++) for (let j=i+1;j<list.length;j++){
+    let gap = -1e30;
+    for (let k=0;k<3;k++){
+      const g = Math.max(list[i].min[k]-list[j].max[k], list[j].min[k]-list[i].max[k]);
+      gap = Math.max(gap, g);
+    }
+    if (minGap===null || gap<minGap) minGap = gap;
+  }
+  return { count:list.length, minGap };
+}
+
+/* ---------- 主檢查流程 ---------- */
+async function runFileCheck(m){
+  if (!m) return null;
+  const items = [];
+  const add = (sec, label, status, kind, detail, fix)=>items.push({sec,label,status,kind,detail,fix});
+  const t0 = performance.now ? performance.now() : Date.now();
+
+  /* 快速幾何統計 */
+  const topoNow = m.topo;
+  const loops = topoNow.boundary ? boundaryLoops(m.raw.verts, m.raw.tris) : [];
+  let dupCount = 0;
+  { const seen=new Set(); const t=m.raw.tris;
+    for (let f=0; f<t.length; f+=3){
+      const s=[t[f],t[f+1],t[f+2]].sort((a,b)=>a-b).join('_');
+      if (seen.has(s)) dupCount++; else seen.add(s);
+    } }
+  const SI = await busy('自相交偵測中（取樣）…', async ()=>selfIntersections(m));
+  const TH = S.results.thickness || await runThickness();
+  const CV = S.results.curv || await runCurvature();
+  const O  = runOverhang();
+  const C  = await runColumns();
+  const IS = S.step>=2 ? (S.results.islands || await runIslands()) : null;   // 步驟1、2 不計算孤島
+  const CU = S.results.cupping || await runCupping();
+  const SH = shellInfo(m.raw.verts, m.raw.tris);
+
+  /* 一、模型完整性 */
+  add('一、模型完整性 ★★★★★','封閉實體 Watertight',
+    topoNow.boundary ? 'fail' : 'pass', '量測',
+    topoNow.boundary ? `<b>${topoNow.boundary} 條開放邊</b>，構成 <b>${loops.length} 個破洞</b> — 非封閉模型，切片將失敗` : '封閉實體，無破洞/缺面/開放邊',
+    topoNow.boundary ? 'repair' : null);
+  add('一、模型完整性 ★★★★★','法線方向 Normal',
+    topoNow.flipped ? 'warn' : 'pass', '量測',
+    topoNow.flipped ? `<b>${topoNow.flipped} 條邊</b>兩側面朝向不一致 — 可能造成缺料/模型消失` : '所有面朝向一致',
+    topoNow.flipped ? 'repair' : null);
+  add('一、模型完整性 ★★★★★','非流形 Non-Manifold',
+    topoNow.nonManifold>10 ? 'fail' : topoNow.nonManifold ? 'warn' : 'pass', '量測',
+    topoNow.nonManifold ? `<b>${topoNow.nonManifold} 條邊</b>由 3 個以上面共用（T 字接合等）` : '無非流形邊', null);
+  add('一、模型完整性 ★★★★★','重複面 Duplicate',
+    dupCount ? 'warn' : 'pass', '量測',
+    dupCount ? `<b>${dupCount} 組</b>完全重疊面 — 易致切片重複/支撐錯亂` : '無重複面',
+    dupCount ? 'repair' : null);
+  add('一、模型完整性 ★★★★★','自相交 Self-Intersection',
+    SI.pairs ? 'fail' : 'pass', '近似',
+    SI.pairs ? `偵測 <b>${SI.pairs} 對</b>三角形互相穿透${SI.sampleY!=null?`（首見於 Y≈${F(SI.sampleY,0)}mm）`:''}${SI.capped?' · 已達取樣上限':''} — 無法自動修復，請回 CAD 布林聯集`
+             : `未偵測穿透${SI.capped?'（取樣 '+SI.tests.toLocaleString()+' 對）':''}`, null);
+
+  /* 二、尺寸與範圍 */
+  const maxDim = Math.max(...m.bbox.size);
+  let unitStatus='pass', unitDetail=`包圍盒 ${F(m.bbox.size[0],1)}×${F(m.bbox.size[1],1)}×${F(m.bbox.size[2],1)} mm — 尺寸合理`, unitFix=null;
+  if (maxDim < 6){ unitStatus='warn'; unitDetail=`模型僅 <b>${F(m.bbox.size[0],1)}×${F(m.bbox.size[1],1)}×${F(m.bbox.size[2],1)} mm</b> — 異常小，疑似 inch 設計以 mm 匯出`; unitFix='scaleUp'; }
+  else if (maxDim > 600){ unitStatus='warn'; unitDetail=`模型達 <b>${F(maxDim,0)} mm</b> — 異常大，疑似單位放大 25.4 倍`; unitFix='scaleDown'; }
+  add('二、尺寸與範圍 ★★★★★','單位檢查 mm/inch', unitStatus, '近似', unitDetail, unitFix);
+  const ms = mach().size;
+  const fits = modelFits(m);
+  add('二、尺寸與範圍 ★★★★★','列印範圍', fits?'pass':'fail', '量測',
+    `${F(m.worldBB.size[0],0)}×${F(m.worldBB.size[2],0)}×${F(m.worldBB.max[1],0)}mm / ${mach().name} ${ms[0]}×${ms[1]}×${ms[2]}mm${fits?'':' — <b>超出範圍</b>，請縮小或換 Form 4L'}`, null);
+
+  /* 三、壁厚與細部特徵 */
+  add('三、壁厚與細部','最小壁厚', TH.minTh<0.3 ? 'fail' : TH.minTh<0.5 ? 'warn' : 'pass', '量測',
+    `最薄取樣 <b>${F(TH.minTh)}mm</b>（SLA 下限 0.3mm，建議 ≥0.5mm）· 薄壁區 ${F(TH.thinArea,0)}mm²`, TH.minTh<0.5?'heatmap':null);
+  const sharpThin = CV.sharpPct>12 && TH.minTh<0.3;
+  add('三、壁厚與細部','尖角與薄邊', sharpThin ? 'warn' : 'pass', '近似',
+    sharpThin ? `銳邊比例 <b>${F(CV.sharpPct,1)}%</b> 且含 <0.3mm 薄部 — 尖端可能捲曲/斷裂` : `銳邊比例 ${F(CV.sharpPct,1)}%，無薄尖收斂風險`, null);
+  let genusTxt, genusStat='manual';
+  if (topoNow.watertight && !topoNow.nonManifold){
+    const Vn=m.raw.verts.length/3, En=topoNow.edgeCount, Fn=m.raw.tris.length/3;
+    const g = Math.max(0, Math.round((2*SH.count - (Vn - En + Fn))/2));
+    genusTxt = g>0 ? `拓撲偵測 <b>${g} 個貫穿孔</b> — 孔徑請人工確認 ≥Ø0.5mm（SLA），過小列印中會封死` : '無貫穿孔（拓撲）';
+    genusStat = g>0 ? 'manual' : 'pass';
+  } else genusTxt = '網格非封閉/含非流形 — 無法做拓撲孔洞統計,請修復後重檢';
+  add('三、壁厚與細部','小孔可印性', genusStat, genusStat==='pass'?'量測':'人工', genusTxt, null);
+  add('三、壁厚與細部','中空殼厚', CU.hollow ? (TH.avgTh<1.0?'warn':'manual') : 'pass', '近似',
+    CU.hollow ? `疑似中空件，平均殼厚 <b>${F(TH.avgTh,1)}mm</b>${TH.avgTh<1.0?' ＜ 建議 1.0mm — 可能變形':' — 請確認 ≥1.0mm'}` : '非中空件（近似判定）', null);
+  add('三、壁厚與細部','最小特徵（文字/LOGO）', 'manual', '人工',
+    `無法由網格自動量測 — 凸字 ≥0.1mm、凹字 ≥0.15mm（Form 4）`, null);
+
+  /* 四、列印可行性 */
+  add('四、列印可行性 ★★★★★','懸空 Overhang', O.dangerArea>2 ? 'warn' : 'pass', '量測',
+    O.dangerArea>2 ? `<b>${F(O.dangerArea,0)}mm²</b> 面與水平 <19°（最小 ${F(O.minGamma,0)}°）— SLA 可印但必須支撐` : `目前擺放無 <19° 危險懸垂（需支撐面 ${F(O.supArea,0)}mm²）`, O.dangerArea>2?'overhang':null);
+  add('四、列印可行性 ★★★★★','孤島 Island',
+    IS===null ? 'defer' : IS.clusters.length ? 'warn' : 'pass', IS===null ? '步驟3' : '近似',
+    IS===null ? '步驟 1、2 不計算 — 進入步驟 3 生成支撐後自動執行並更新報告'
+      : IS.clusters.length ? `<b>${IS.clusters.length} 處</b>孤島起點 — 無支撐必掉落；生成支撐後可涵蓋,請以 PreForm 確認` : '未偵測孤島',
+    IS && IS.clusters.length ? 'islands' : null);
+  add('四、列印可行性 ★★★★★','封閉空腔 + 排液孔', CU.risk ? 'warn' : 'pass', '近似',
+    CU.risk ? `疑似封閉腔/吸盤結構（向下大面 <b>${F(CU.flatArea,0)}mm²</b>${CU.hollow?'，中空':''}）— 需 ≥2 個 Ø≥0.75mm 排液孔，否則樹脂排不出` : '未偵測封閉腔風險', CU.risk?'drain':null);
+
+  /* 五、配置 · 材料 · 網格 */
+  add('五、配置與網格','零件間距', SH.count>1 ? (SH.minGap!==null && SH.minGap<0.4 ? 'warn':'manual') : 'pass', '近似',
+    SH.count>1 ? `偵測 <b>${SH.count} 個殼體</b>，最小 AABB 間隙 ${SH.minGap===null?'—':(SH.minGap<0?'<b>重疊</b>':F(SH.minGap,2)+'mm')} — 間距 <0.4mm 易黏合` : '單一殼體，不適用', null);
+  const tilt = Math.max(Math.abs(S.orient.tiltX), Math.abs(S.orient.tiltZ));
+  add('五、配置與網格','方向檢查', (tilt>=20&&tilt<=50)?'pass':'warn', '近似',
+    tilt===0 ? '目前<b>平放</b> — 剝離力大、吸盤風險高，建議傾斜 30–45°' : `目前傾斜 ${tilt}° + 側轉 ${S.orient.yaw}°${(tilt>=20&&tilt<=50)?' — 位於合理區間':' — 建議 30–45°'}`, (tilt>=20&&tilt<=50)?null:'orient');
+  add('五、配置與網格','支撐合理性',
+    S.step<2 ? 'defer' : S.supportStat ? 'pass' : 'warn', S.step<2 ? '步驟3' : '近似',
+    S.step<2 ? '步驟 1、2 不計算 — 進入步驟 3 生成支撐後自動執行並更新報告'
+      : S.supportStat ? `${S.supportStat.points} 接觸點 · Ø${S.support.tp}mm · 密度 ${S.support.density} — 接觸面請人工確認未遮外觀面` : '尚未生成支撐',
+    S.step>=2 && !S.supportStat ? 'supports' : null);
+  add('五、配置與網格','材料限制', 'manual', '人工',
+    `目前 ${mat().name}（最小壁厚依材料異：Rigid/Tough/Flexible/Dental 各不同）— 換料後請重新驗證`, null);
+  add('五、配置與網格','公差 / 配合件', 'manual', '人工',
+    `插銷、孔、配合件請預留 0.1–0.3mm 間隙（SLA 建議 0.2mm 起）`, null);
+  add('五、配置與網格','網格解析度', m.faces<1000 ? 'warn' : 'pass', '近似',
+    m.faces<1000 ? `僅 <b>${m.faces.toLocaleString()} 面</b> — 曲面可能呈多邊形稜角，建議提高匯出解析度` : `${m.faces.toLocaleString()} 面 — 解析度足夠`, null);
+  add('五、配置與網格','網格密度', m.faces>1500000 ? 'warn' : 'pass', '近似',
+    m.faces>1500000 ? `<b>${(m.faces/1e6).toFixed(1)}M 面</b> — 過密，切片/分析將非常慢，建議減面` : `${m.faces.toLocaleString()} 面 — 密度適中`, null);
+
+  const counts = {
+    fail: items.filter(i=>i.status==='fail').length,
+    warn: items.filter(i=>i.status==='warn').length,
+    manual: items.filter(i=>i.status==='manual').length,
+    pass: items.filter(i=>i.status==='pass').length,
+  };
+  const fixable = items.filter(i=>i.fix==='repair').length;
+  m.fcheck = { items, counts, fixable,
+    verdict: counts.fail ? 'fail' : counts.warn ? 'warn' : 'pass',
+    ms: Math.round((performance.now?performance.now():Date.now()) - t0) };
+  logHist('檔案檢查', `${m.name} · ✕${counts.fail} ⚠${counts.warn} 👁${counts.manual} ✓${counts.pass}`);
+  updateAllUI();
+  return m.fcheck;
+}
+
+/* ---------- 一鍵自動修復（重複面→補洞→法線統一→重檢） ---------- */
+async function runAutoRepair(){
+  const m = activeModel(); if(!m) return;
+  await busy('自動修復中（重複面/破洞/法線）…', async ()=>{
+    const dup = dedupeFaces(m);
+    await frame();
+    const holes = fillHoles(m);
+    await frame();
+    const flips = unifyOrientation(m.raw.verts, m.raw.tris);
+    // 有號體積為負 → 全域翻轉
+    let signed=0; const v=m.raw.verts, t=m.raw.tris;
+    for (let f=0; f<t.length; f+=3){
+      const a=t[f]*3,b=t[f+1]*3,c=t[f+2]*3;
+      signed += (v[a]*(v[b+1]*v[c+2]-v[b+2]*v[c+1]) + v[b]*(v[c+1]*v[a+2]-v[c+2]*v[a+1]) + v[c]*(v[a+1]*v[b+2]-v[a+2]*v[b+1]))/6;
+    }
+    if (signed < 0){ for (let f=0; f<t.length; f+=3){ const tmp=t[f+1]; t[f+1]=t[f+2]; t[f+2]=tmp; } }
+    const deg = removeDegenerate(m.raw.verts, m.raw.tris);
+    m.raw.tris = deg.tris;
+    m.repair.flipsFixed = flips; m.repair.degenerate += deg.removed;
+    m.repair.holesFilled = holes.filled; m.repair.dupRemoved = dup;
+    m.topo = edgeTopology(m.raw.verts, m.raw.tris);
+    const va = volumeArea(m.raw.verts, m.raw.tris);
+    m.volMM3=va.vol; m.areaMM2=va.area; m.bbox=bboxOf(m.raw.verts);
+    m.shells = shellCount(m.raw.verts, m.raw.tris);
+    m.faces = m.raw.tris.length/3;
+  });
+  S.results = {}; m.fcheck = null;
+  await rebuildScene(true);
+  logHist('自動修復', `補洞 ${m.repair.holesFilled||0} · 重複面 ${m.repair.dupRemoved||0} · 翻正 ${m.repair.flipsFixed}`);
+  toast(m.topo.watertight ? '✓ 修復完成，網格已水密 — 重新檢查中' : `修復後仍有 ${m.topo.boundary} 開放邊（複雜孔請回 CAD）— 重新檢查中`, m.topo.watertight?'ok':'warn');
+  await runFileCheck(m);
+  renderStep();
+  if (S.openMod==='stl') openModule('stl');
+}
+/* 單位縮放（×25.4 / ÷25.4） */
+async function applyUnitScale(k){
+  const m = activeModel(); if(!m) return;
+  const v = m.raw.verts;
+  for (let i=0;i<v.length;i++) v[i]*=k;
+  const va = volumeArea(m.raw.verts, m.raw.tris);
+  m.volMM3=va.vol; m.areaMM2=va.area; m.bbox=bboxOf(v); m.grid=null;
+  S.results = {}; m.fcheck = null;
+  computeWorld(m); clampModelPos(m);
+  await rebuildScene(true);
+  toast(`✓ 已縮放 ×${k}（${k>1?'inch→mm':'mm←inch 修正'}）— 重新檢查中`,'ok');
+  logHist('單位縮放', `×${k}`);
+  await runFileCheck(m);
+  renderStep();
+}
+
+/* ---------- 步驟卡內的檢查結果渲染 ---------- */
+function fcFixLink(fix){
+  // 註：原本還有 islands(檢視標記)/drain(標記排液位置) 兩個「點選顯示錯誤位置」連結，
+  // 依使用者回饋該類功能實際效果不佳，已移除；保留的都是「修復動作」或全模型著色模式
+  const map = {
+    repair:   ['🔧 一鍵修補', ()=>runAutoRepair()],
+    scaleUp:  ['⇱ ×25.4 放大', ()=>{ if(confirm('確定將模型放大 25.4 倍（inch→mm）？')) applyUnitScale(25.4); }],
+    scaleDown:['⇲ ÷25.4 縮小', ()=>{ if(confirm('確定將模型縮小 25.4 倍？')) applyUnitScale(1/25.4); }],
+    heatmap:  ['▤ 厚度熱圖', ()=>setColorMode('thickness')],
+    overhang: ['⚠ 懸垂標色', ()=>setColorMode('overhang')],
+    orient:   ['⚡ 自動擺放', ()=>autoOrient()],
+    supports: ['🖊 生成支撐', async ()=>{ S.supportsOn=true; await rebuildScene(true); renderStep(); }],
+  };
+  return map[fix] || null;
+}
+function renderFileCheck(B, m){
+  const FC = m.fcheck;
+  B.appendChild(el('div','lbl','檔案檢查報告'));
+  if (!FC){
+    const w = el('div','mnote','檢查尚未完成或已失效。');
+    const b = el('button','ghostBtn','⟳ 重新執行檔案檢查');
+    b.style.marginTop='4px';
+    b.addEventListener('click', async ()=>{ await runFileCheck(m); renderStep(); });
+    B.appendChild(w); B.appendChild(b);
+    return;
+  }
+  const c = FC.counts;
+  // 總判定
+  const vMap = {
+    fail: ['fcv-err','✕', `發現 ${c.fail} 項嚴重問題`, `建議修復後再估價${FC.fixable?`（${FC.fixable} 項可一鍵修復）`:''}`],
+    warn: ['fcv-warn','⚠', `${c.warn} 項警告`, '可列印，但建議先確認警告項'],
+    pass: ['fcv-ok','✓', '檢查通過', '模型可直接進行估價'],
+  };
+  const [vc, vic, vt, vd] = vMap[FC.verdict];
+  B.appendChild(el('div','fcVerdict '+vc, `<div class="vic">${vic}</div><div><div class="vt">${vt}</div><div class="vd">${vd}</div></div>`));
+  // 統計
+  B.appendChild(el('div','fcCounts',
+    `<div class="fcCnt e"><b>${c.fail}</b><span>嚴重</span></div>
+     <div class="fcCnt w"><b>${c.warn}</b><span>警告</span></div>
+     <div class="fcCnt m"><b>${c.manual}</b><span>人工</span></div>
+     <div class="fcCnt p"><b>${c.pass}</b><span>通過</span></div>`));
+  // 例外優先清單（依區段分組；defer=延後項灰色顯示）
+  const order = { fail:0, warn:1, manual:2, defer:3 };
+  const bad = FC.items.filter(i=>i.status!=='pass');
+  const secs = [...new Set(bad.map(i=>i.sec))];
+  const wrap = el('div',''); wrap.className='fcheck';
+  for (const sec of secs){
+    const inSec = bad.filter(i=>i.sec===sec).sort((a,b)=>order[a.status]-order[b.status]);
+    wrap.appendChild(el('div','fcSec', sec + (inSec.some(i=>i.status==='fail')?` <span class="fcBadge e">${inSec.filter(i=>i.status==='fail').length} 嚴重</span>`:'')));
+    for (const it of inSec){
+      const cls = it.status==='fail'?'err':it.status==='warn'?'warn':it.status==='defer'?'defer':'manual';
+      const icon = it.status==='fail'?'✕':it.status==='warn'?'⚠':it.status==='defer'?'◌':'👁';
+      const chk = el('div','chk '+cls,
+        `<div class="t">${icon} ${it.label} <small>${it.kind}</small></div><div class="d">${it.detail}</div>`);
+      const fl = fcFixLink(it.fix);
+      if (fl){
+        const a = el('span','fcFix', fl[0]);
+        a.addEventListener('click', fl[1]);
+        chk.querySelector('.d').appendChild(document.createTextNode(' '));
+        chk.querySelector('.d').appendChild(a);
+      }
+      wrap.appendChild(chk);
+    }
+  }
+  B.appendChild(wrap);
+  // 通過項收合
+  const pass = FC.items.filter(i=>i.status==='pass');
+  if (pass.length){
+    const bar = el('div','', `<div class="fcPassBar"><span>✓ ${pass.length} 項檢查通過</span><span class="ar">▾</span></div><div class="fcChips" style="display:none"></div>`);
+    const chips = bar.querySelector('.fcChips');
+    for (const it of pass){ const ch = el('span','pchip','✓ '+it.label); ch.title = it.detail.replace(/<[^>]+>/g,''); chips.appendChild(ch); }
+    bar.querySelector('.fcPassBar').addEventListener('click', ()=>{
+      const show = chips.style.display==='none';
+      chips.style.display = show?'flex':'none';
+      bar.querySelector('.ar').textContent = show?'▴':'▾';
+    });
+    B.appendChild(bar);
+  }
+  // 動作
+  if (FC.verdict!=='pass' && FC.fixable){
+    const rb = el('button','bigBtn','🔧 一鍵修復並重新檢查');
+    rb.style.marginTop='8px';
+    rb.addEventListener('click', runAutoRepair);
+    B.appendChild(rb);
+  }
+  B.appendChild(el('div','mnote',`檢查耗時 ${FC.ms}ms · 「近似」項為內建演算法估計，非 PreForm 結果；「人工」項無法由網格自動判定。`));
+}
+/* ============================== 24. PreForm 式擺放與範圍框 ============================== */
+/* ---------- 三軸旋轉環 gizmo（依 PreForm 手冊：拖環＝繞該軸旋轉，弧上顯示角度） ---------- */
+function buildGizmo(m){
+  removeGizmo();
+  if (!m || !m.worldBB) return;
+  const bb = m.worldBB;
+  const P = new THREE.Vector3((bb.min[0]+bb.max[0])/2, (bb.min[1]+bb.max[1])/2, (bb.min[2]+bb.max[2])/2);
+  const R = Math.max(12, Math.max(bb.size[0], bb.size[1], bb.size[2])*0.42 + 3);   // 縮小旋轉環（原0.62倍模型最大邊，改0.42倍）
+  V.gizmo = new THREE.Group(); V.gizmoCenter = P; V.gizmoR = R;
+  V.gizmoPicks = []; V.gizmoBasis = {};
+  const AXES = {
+    x: { v:new THREE.Vector3(1,0,0), c:0xc0392b },
+    y: { v:new THREE.Vector3(0,1,0), c:0x1d6f43 },
+    z: { v:new THREE.Vector3(0,0,1), c:0x2f6fd6 },
+  };
+  for (const [k,a] of Object.entries(AXES)){
+    const seed = k==='y' ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+    const u = seed.sub(a.v.clone().multiplyScalar(seed.dot(a.v))).normalize();
+    const w = new THREE.Vector3().crossVectors(a.v, u);
+    V.gizmoBasis[k] = { axis:a.v.clone(), u, w };
+    // 可見細環
+    const pts = [];
+    for (let i=0;i<=96;i++){
+      const t = i/96*Math.PI*2;
+      pts.push(new THREE.Vector3().copy(P).addScaledVector(u, Math.cos(t)*R).addScaledVector(w, Math.sin(t)*R));
+    }
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color:a.c, transparent:true, opacity:.9, depthTest:false }));
+    line.renderOrder = 10;
+    V.gizmo.add(line);
+    // 隱形拾取粗環
+    const pick = new THREE.Mesh(
+      new THREE.TorusGeometry(R, Math.max(2.4, R*0.055), 8, 48),
+      new THREE.MeshBasicMaterial({ visible:false }));
+    pick.position.copy(P);
+    if (k==='x') pick.rotation.y = Math.PI/2;
+    else if (k==='y') pick.rotation.x = Math.PI/2;
+    pick.userData.axis = k;
+    V.gizmo.add(pick); V.gizmoPicks.push(pick);
+    // 軸把手小球
+    const knob = new THREE.Mesh(
+      new THREE.SphereGeometry(Math.max(1.5, R*0.035), 12, 12),
+      new THREE.MeshBasicMaterial({ color:a.c, depthTest:false }));
+    knob.renderOrder = 11;
+    knob.position.copy(P).addScaledVector(u, R);
+    V.gizmo.add(knob);
+  }
+  V.scene.add(V.gizmo);
+}
+function removeGizmo(){
+  if (!V.gizmo) return;
+  V.scene.remove(V.gizmo);
+  V.gizmo.traverse(o=>{ if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+  V.gizmo = null; V.gizmoPicks = [];
+}
+function gizmoDragBegin(){
+  V.supGroup.visible = false; V.markGroup.visible = false;   // 旋轉中支撐失效（PreForm：X/Y 旋轉會移除支撐）
+}
+/* 拖曳中即時預覽：繞世界軸 axis 旋轉 delta（以模型中心為樞紐） */
+function applyGizmoLive(axis, delta, e){
+  const m = activeModel(); if (!m || !m.mesh) return;
+  const P = V.gizmoCenter;
+  const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
+  m.mesh.quaternion.copy(q);
+  m.mesh.position.copy(P).sub(P.clone().applyQuaternion(q));
+  if (V.selHelper){ V.selHelper.quaternion.copy(q); V.selHelper.position.copy(m.mesh.position); }
+  const tip = $('#gizmoTip');
+  tip.style.display = 'block';
+  tip.style.left = (e.clientX+14)+'px'; tip.style.top = (e.clientY-12)+'px';
+  tip.innerHTML = `${axis.toUpperCase()} ${delta>=0?'+':''}${(delta*57.2958).toFixed(1)}° <small>${e.shiftKey?'自由角度':'15° 吸附（Shift 自由）'}</small>`;
+}
+/* 放開提交：合成至 S.orient，夾回範圍並重建 */
+async function commitGizmo(axis, delta){
+  const m = activeModel();
+  $('#gizmoTip').style.display = 'none';
+  V.supGroup.visible = true; V.markGroup.visible = true;
+  if (!m || !m.mesh) return;
+  if (Math.abs(delta) < 1e-4){   // 視為點擊：還原預覽
+    m.mesh.quaternion.identity(); m.mesh.position.set(0,0,0);
+    if (V.selHelper){ V.selHelper.quaternion.identity(); V.selHelper.position.set(0,0,0); }
+    return;
+  }
+  pushUndo();
+  const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
+  const eCur = new THREE.Euler(
+    THREE.MathUtils.degToRad(S.orient.tiltX),
+    THREE.MathUtils.degToRad(S.orient.yaw),
+    THREE.MathUtils.degToRad(S.orient.tiltZ), 'XYZ');
+  const qTot = q.multiply(new THREE.Quaternion().setFromEuler(eCur));
+  const eNew = new THREE.Euler().setFromQuaternion(qTot, 'XYZ');
+  const r1 = v => Math.round(THREE.MathUtils.radToDeg(v)*10)/10;
+  S.orient = { tiltX:r1(eNew.x), yaw:r1(eNew.y), tiltZ:r1(eNew.z) };
+  computeWorld(m); clampModelPos(m);
+  // 硬性邊界（舊版行為）：旋轉後若超出列印高度上限，整個動作強制還原
+  if (m.worldBB.max[1] > mach().size[2] + 0.01){
+    const prev = S.undoStack.pop();   // 取回 pushUndo 存的變更前快照
+    S.orient = prev.orient; m.pos = prev.pos;
+    computeWorld(m);
+    await rebuildScene(true); selectModel();
+    toast('✕ 旋轉後超出列印高度上限，動作已強制還原','err');
+    return;
+  }
+  await rebuildScene(true);
+  selectModel();
+  toast(`↻ 繞 ${axis.toUpperCase()} 軸旋轉 ${(delta*57.2958).toFixed(1)}°（Ctrl+Z 可復原）`,'ok');
+  logHist('旋轉', `${axis.toUpperCase()} ${(delta*57.2958).toFixed(1)}° → 傾X ${S.orient.tiltX}/側Y ${S.orient.yaw}/傾Z ${S.orient.tiltZ}`);
+}
+/* ---------- 自動夾回列印範圍 ---------- */
+function clampModelPos(m){
+  if (!m || !m.worldBB) return false;
+  const ms = mach().size;
+  let changed = false;
+  const fix = (idx, key, half)=>{
+    const lo = m.worldBB.min[idx], hi = m.worldBB.max[idx];
+    if (hi-lo > half*2 + 0.02){ if (m.pos[key]!==0){ m.pos[key]=0; changed=true; } return; }  // 放不下 → 置中
+    if (lo < -half){ m.pos[key] += (-half-lo); changed=true; }
+    else if (hi > half){ m.pos[key] -= (hi-half); changed=true; }
+  };
+  fix(0,'x', ms[0]/2);
+  fix(2,'z', ms[1]/2);
+  if (changed) computeWorld(m);
+  return changed;
+}
+/* ---------- 擺放操作復原（Ctrl+Z，同 PreForm） ---------- */
+function pushUndo(){
+  const m = activeModel(); if (!m) return;
+  S.undoStack.push({ orient:{...S.orient}, pos:{...m.pos} });
+  if (S.undoStack.length > 30) S.undoStack.shift();
+}
+async function undoOp(){
+  const m = activeModel();
+  if (!m || !S.undoStack.length){ toast('沒有可復原的擺放操作','warn'); return; }
+  const s = S.undoStack.pop();
+  S.orient = s.orient; m.pos = s.pos;
+  await rebuildScene(true);
+  if (S.selected) selectModel();
+  toast('↩ 已復原擺放（Ctrl+Z）','ok');
+}
+/* 擺放面板（點選模型時顯示） */
+function renderPlacePanel(){
+  const m = activeModel(); if(!m){ $('#placePanel').classList.remove('open'); return; }
+  const P = $('#ppBody');
+  P.innerHTML = '';
+  const head = el('h4','', `⌖ 擺放（PreForm 式）<span class="x">✕</span>`);
+  head.querySelector('.x').addEventListener('click', deselectModel);
+  P.appendChild(head);
+  P.appendChild(el('div','ppHint',
+    `<b>拖曳模型</b>＝移動 · <b>拖曳 <span style="color:#c0392b">X</span>/<span style="color:#1d6f43">Y</span>/<span style="color:#2f6fd6">Z</span> 環</b>＝繞該軸旋轉<br>15° 吸附（按住 Shift 自由角度）· <b>Ctrl+Z</b> 復原<br>拖曳空白＝轉視角 · 右鍵平移 · 滾輪縮放`));
+  const ms = mach().size;
+  const mkIn = (label, key, limit)=>{
+    const r = el('div','inRow',`<label>${label}</label><input type="number" step="1" value="${F(m.pos[key],1)}"><span class="un">mm</span>`);
+    const inp = r.querySelector('input');
+    const half = limit/2;
+    const mark = ()=>inp.classList.toggle('outR', Math.abs(m.pos[key]) + (key==='x'?m.worldBB.size[0]:m.worldBB.size[2])/2 > half + 0.01);
+    mark();
+    inp.addEventListener('change', async ()=>{ pushUndo(); m.pos[key] = +inp.value||0; await rebuildScene(true); renderPlacePanel(); });
+    inp.addEventListener('wheel', ev=>{ ev.preventDefault(); inp.value = (+inp.value||0) + (ev.deltaY<0?1:-1); inp.dispatchEvent(new Event('change')); }, {passive:false});
+    return r;
+  };
+  P.appendChild(mkIn('位置 X','x', ms[0]));
+  P.appendChild(mkIn('位置 Y（深）','z', ms[1]));
+  const pad = el('div','arrowPad',
+    `<span class="empty"></span><button data-d="0,-1">▲</button><span class="empty"></span>
+     <button data-d="-1,0">◀</button><button class="c" data-d="c">⌖ 置中</button><button data-d="1,0">▶</button>
+     <span class="empty"></span><button data-d="0,1">▼</button><span class="empty"></span>`);
+  pad.querySelectorAll('button').forEach(b=>b.addEventListener('click', async ()=>{
+    pushUndo();
+    if (b.dataset.d==='c'){ m.pos.x=0; m.pos.z=0; }
+    else { const [dx,dz]=b.dataset.d.split(',').map(Number); m.pos.x+=dx; m.pos.z+=dz; }
+    await rebuildScene(true); selectModel();
+  }));
+  P.appendChild(pad);
+  const fb = el('button','ppFace'+(S.faceDownMode?' on':''), S.faceDownMode ? '▼ 請點擊模型上的一個面…' : '▼ 以此面為底');
+  fb.addEventListener('click', ()=>{
+    S.faceDownMode = !S.faceDownMode;
+    if (S.faceDownMode) toast('請點擊模型上任一面 — 該面將轉向平台朝下','warn');
+    renderPlacePanel();
+  });
+  P.appendChild(fb);
+  P.appendChild(el('div','ppHint','旋轉角度可於 ✨AI 面板數值輸入；拖出範圍框時框線與數值轉紅。'));
+  $('#placePanel').classList.add('open');
+}
+/* 拖曳結束 → 提交位置並重算 */
+async function commitModelDrag(){
+  const m = activeModel(); if(!m || !m.mesh) return;
+  pushUndo();
+  m.pos.x += m.mesh.position.x;
+  m.pos.z += m.mesh.position.z;
+  m.mesh.position.set(0,0,0);
+  // 移動使孤島/排液等標記位置失效 → 清除
+  while (V.markGroup.children.length) disposeChild(V.markGroup);
+  $('#legExtra').style.display='none';
+  delete S.results.islands; delete S.results.cols; delete S.results.cupping;
+  await rebuildScene(true);
+  selectModel();
+  logHist('手動擺放', `X ${F(m.pos.x,1)} / Y ${F(m.pos.z,1)} mm`);
+}
+/* 以此面為底：hit.face.normal（世界向）→ 額外旋轉使其朝下 */
+async function applyFaceDown(hit){
+  const m = activeModel(); if(!m) return;
+  S.faceDownMode = false;
+  pushUndo();
+  const n = hit.face.normal.clone().normalize();
+  const q2 = new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0,-1,0));
+  const eCur = new THREE.Euler(
+    THREE.MathUtils.degToRad(S.orient.tiltX),
+    THREE.MathUtils.degToRad(S.orient.yaw),
+    THREE.MathUtils.degToRad(S.orient.tiltZ), 'XYZ');
+  const qTot = q2.multiply(new THREE.Quaternion().setFromEuler(eCur));
+  const eNew = new THREE.Euler().setFromQuaternion(qTot, 'XYZ');
+  S.orient = {
+    tiltX: Math.round(THREE.MathUtils.radToDeg(eNew.x)*10)/10,
+    yaw:   Math.round(THREE.MathUtils.radToDeg(eNew.y)*10)/10,
+    tiltZ: Math.round(THREE.MathUtils.radToDeg(eNew.z)*10)/10,
+  };
+  computeWorld(m); clampModelPos(m);
+  // 硬性邊界（舊版行為）：轉正後若超出列印高度上限，整個動作強制還原
+  if (m.worldBB.max[1] > mach().size[2] + 0.01){
+    const prev = S.undoStack.pop();
+    S.orient = prev.orient; m.pos = prev.pos;
+    computeWorld(m);
+    await rebuildScene(true); selectModel();
+    toast('✕ 以此面為底後超出列印高度上限，動作已強制還原','err');
+    return;
+  }
+  await rebuildScene(true);
+  selectModel();
+  toast('✓ 已將選取面轉向平台（以此面為底）','ok');
+  logHist('以此面為底', `→ 傾X ${S.orient.tiltX}° / 側Y ${S.orient.yaw}° / 傾Z ${S.orient.tiltZ}°`);
+}
+/* 範圍框顏色與拖曳即時回饋 */
+function modelFits(m, offX=0, offZ=0){
+  if (!m || !m.worldBB) return true;
+  const ms = mach().size;
+  const bb = m.worldBB;
+  return (bb.min[0]+offX >= -ms[0]/2-0.01) && (bb.max[0]+offX <= ms[0]/2+0.01) &&
+         (bb.min[2]+offZ >= -ms[1]/2-0.01) && (bb.max[2]+offZ <= ms[1]/2+0.01) &&
+         (bb.max[1] <= ms[2]+0.01);
+}
+function updateRangeBoxColor(){
+  if (!V.rangeMat) return;
+  const m = activeModel();
+  const ok = !m || modelFits(m, m.mesh?m.mesh.position.x:0, m.mesh?m.mesh.position.z:0);
+  V.rangeMat.color.set(ok ? 0x0c7a99 : 0xc0392b);
+}
+function liveRangeFeedback(m){ updateRangeBoxColor(); }
+
+/* 機台/擺放變更時同步更新檢查報告中的「列印範圍」項 */
+function refreshRangeCheck(m){
+  if (!m || !m.fcheck) return;
+  const it = m.fcheck.items.find(i=>i.label==='列印範圍');
+  if (!it) return;
+  const ms = mach().size;
+  const fits = modelFits(m);
+  it.status = fits ? 'pass' : 'fail';
+  it.detail = `${F(m.worldBB.size[0],0)}×${F(m.worldBB.size[2],0)}×${F(m.worldBB.max[1],0)}mm / ${mach().name} ${ms[0]}×${ms[1]}×${ms[2]}mm${fits?'（已依目前機台/擺放同步）':' — <b>超出範圍</b>，請縮小、移動或換 Form 4L'}`;
+  recountFcheck(m);
+  if (S.step<=1) renderStep();
+}
+function recountFcheck(m){
+  const FC = m.fcheck; if (!FC) return;
+  FC.counts = {
+    fail: FC.items.filter(i=>i.status==='fail').length,
+    warn: FC.items.filter(i=>i.status==='warn').length,
+    manual: FC.items.filter(i=>i.status==='manual').length,
+    pass: FC.items.filter(i=>i.status==='pass').length,
+  };
+  FC.fixable = FC.items.filter(i=>i.fix==='repair' && i.status!=='pass').length;
+  FC.verdict = FC.counts.fail ? 'fail' : FC.counts.warn ? 'warn' : 'pass';
+}
+/* 步驟3 進入後補算延後檢查（孤島／支撐合理性） */
+async function updateDeferredChecks(m){
+  if (!m || !m.fcheck) return;
+  const hasDefer = m.fcheck.items.some(i=>i.status==='defer');
+  if (!hasDefer) return;
+  const IS = S.results.islands || await runIslands();
+  const isl = m.fcheck.items.find(i=>i.label.includes('孤島'));
+  if (isl){
+    isl.status = IS.clusters.length ? 'warn' : 'pass';
+    isl.kind = '近似';
+    isl.detail = IS.clusters.length ? `<b>${IS.clusters.length} 處</b>孤島起點 — 已由支撐近似涵蓋,請以 PreForm 確認` : '未偵測孤島';
+    isl.fix = IS.clusters.length ? 'islands' : null;
+  }
+  const sup = m.fcheck.items.find(i=>i.label.includes('支撐合理性'));
+  if (sup){
+    sup.status = S.supportStat ? 'pass' : 'warn';
+    sup.kind = '近似';
+    sup.detail = S.supportStat ? `${S.supportStat.points} 接觸點 · Ø${S.support.tp}mm · 密度 ${S.support.density} — 接觸面請人工確認未遮外觀面` : '支撐尚未生成';
+    sup.fix = S.supportStat ? null : 'supports';
+  }
+  recountFcheck(m);
+  toast(`✓ 已補算步驟3檢查：孤島 ${IS.clusters.length} 處 · 支撐 ${S.supportStat?S.supportStat.points+' 點':'未生成'}`, IS.clusters.length?'warn':'ok');
+}
+/* ============================== 25. 支撐材面板（對齊 PreForm 3.51+） ============================== */
+function toggleSupPanel(open){
+  const p = $('#supMatPanel');
+  const want = (open===true) ? true : (open===false) ? false : !p.classList.contains('open');
+  p.classList.toggle('open', want);
+  $('#btnSupports').classList.toggle('on', want);
+  if (want) renderSupPanel();
+}
+/* 數值微調器：▲▼ + 滾輪 + ↺恢復預設 */
+function mkSpin(label, get, set, opt={}){
+  const { step=0.05, unit='mm', dec=2, def=null, min=0.05, max=999 } = opt;
+  const row = el('div','pRow');
+  row.appendChild(el('label','', label));
+  const rst = el('span','reset', '↺'); rst.title='恢復預設';
+  const box = el('div','spinB',
+    `<input value="${F(get(),dec)}">${unit?`<span class="un">${unit}</span>`:''}<div class="ar"><button>▲</button><button>▼</button></div>`);
+  const inp = box.querySelector('input');
+  const [up,dn] = box.querySelectorAll('.ar button');
+  const sync = ()=>{ inp.value = F(get(),dec); rst.classList.toggle('hid', def===null || Math.abs(get()-def) < 1e-9); };
+  const commit = async v => {
+    v = Math.min(max, Math.max(min, +v||0));
+    set(Math.round(v/step)*step*1 || v);
+    set(v);
+    sync();
+    if (supportsActive() && S.supportsOn) await rebuildScene(true);
+    if ($('#supMatPanel').classList.contains('open')) { /* 保持面板 */ }
+    updateAllUI();
+  };
+  inp.addEventListener('change', ()=>commit(inp.value));
+  up.addEventListener('click', ()=>commit(get()+step));
+  dn.addEventListener('click', ()=>commit(get()-step));
+  inp.addEventListener('wheel', ev=>{ ev.preventDefault(); commit(get() + (ev.deltaY<0?step:-step)); }, {passive:false});
+  rst.addEventListener('click', ()=>{ if(def!==null) commit(def); });
+  row.appendChild(rst); row.appendChild(box);
+  sync();
+  return row;
+}
+function renderSupPanel(){
+  const P = S.sup, D = SUP_DEFAULTS;
+  const B = $('#smBody'); B.innerHTML='';
+  /* 標題列：顯示/隱藏眼睛 + 關閉 */
+  const head = el('div','smHead',
+    `支撐材 <span style="flex:1"></span>
+     <span class="hbtn ${S.supportsOn?'':'eyeOff'}" id="smEye" title="顯示/隱藏支撐">${S.supportsOn?'👁':'🚫'}</span>
+     <span class="hbtn" id="smX">✕</span>`);
+  head.querySelector('#smEye').addEventListener('click', ()=>{
+    S.supportsOn = !S.supportsOn;
+    V.supGroup.visible = S.supportsOn;
+    renderSupPanel();
+  });
+  head.querySelector('#smX').addEventListener('click', ()=>toggleSupPanel(false));
+  B.appendChild(head);
+
+  /* ── 接觸點位置 ── */
+  B.appendChild(el('div','smSec','接觸點位置'));
+  const body1 = el('div','smBody');
+  const tabs1 = el('div','smTabs','<button class="on">自動放置</button><button disabled title="下一階段提供">手動放置</button>');
+  body1.appendChild(tabs1);
+  const pre = el('div','smPre','<button>預設</button><button>低密度</button><button>小接觸點</button>');
+  const [pd, pl, ps] = pre.querySelectorAll('button');
+  const reGen = async ()=>{ if (supportsActive()) await rebuildScene(true); renderSupPanel(); if (S.step===2) renderStep(); };
+  pd.addEventListener('click', async ()=>{ S.sup = cloneSup(); await reGen(); });
+  pl.addEventListener('click', async ()=>{ S.sup.over.density = 0.6; await reGen(); });
+  ps.addEventListener('click', async ()=>{ S.sup.tpSize = 0.35; await reGen(); });
+  body1.appendChild(pre);
+  body1.appendChild(mkSpin('接觸點尺寸', ()=>P.tpSize, v=>{P.tpSize=v;}, {step:0.05, def:D.tpSize, min:0.1, max:2.0}));
+  /* 四類（PreForm 色碼）：懸空點/懸空/穩定化/強化 */
+  const typeBox = (cls, key, title, subBuild)=>{
+    const box = el('div','typeBox '+cls);
+    const th = el('div','th', `<input type="checkbox" ${P[key].on?'checked':''}> ${title}`);
+    th.querySelector('input').addEventListener('change', async e=>{ P[key].on = e.target.checked; await reGen(); });
+    box.appendChild(th);
+    if (P[key].on && subBuild){ const sub = el('div','sub'); subBuild(sub); box.appendChild(sub); }
+    return box;
+  };
+  body1.appendChild(typeBox('tb-minima','minima','⌄ 懸空點（最低點）', null));
+  body1.appendChild(typeBox('tb-over','over','▿ 懸空', sub=>{
+    sub.appendChild(mkSpin('密度', ()=>P.over.density, v=>{P.over.density=v;}, {step:0.1, unit:'', def:D.over.density, min:0.1, max:2.5}));
+    sub.appendChild(mkSpin('角度（與水平夾角）', ()=>P.over.angle, v=>{P.over.angle=v;}, {step:1, unit:'°', dec:1, def:D.over.angle, min:1, max:60}));
+  }));
+  body1.appendChild(typeBox('tb-stab','stab','⌒ 穩定化（最低點周圍）', sub=>{
+    sub.appendChild(mkSpin('密度', ()=>P.stab.density, v=>{P.stab.density=v;}, {step:0.1, unit:'', def:D.stab.density, min:0, max:2.5}));
+  }));
+  body1.appendChild(typeBox('tb-rein','rein','⌐ 強化（沿本體）', sub=>{
+    sub.appendChild(mkSpin('密度', ()=>P.rein.density, v=>{P.rein.density=v;}, {step:0.1, unit:'', def:D.rein.density, min:0, max:2.5}));
+  }));
+  B.appendChild(body1);
+
+  /* ── 支撐材結構 ── */
+  B.appendChild(el('div','smSec','支撐材結構'));
+  const body2 = el('div','smBody');
+  const tabs2 = el('div','smTabs',
+    `<button data-t="tp"${S.supTab==='tp'?' class="on"':''}>接觸點</button>
+     <button data-t="pil"${S.supTab==='pil'?' class="on"':''}>支柱</button>
+     <button data-t="raft"${S.supTab==='raft'?' class="on"':''}>底座（網格層）</button>`);
+  tabs2.querySelectorAll('button').forEach(b=>b.addEventListener('click', ()=>{ S.supTab=b.dataset.t; renderSupPanel(); }));
+  body2.appendChild(tabs2);
+  if (S.supTab==='tp'){
+    body2.appendChild(mkSpin('齒長最小值', ()=>P.tpS.toothLenMin, v=>{P.tpS.toothLenMin=v;}, {step:0.1, def:D.tpS.toothLenMin, min:0.3, max:6}));
+    const it = el('label','smTgl',`<span>允許模型上的內部支撐</span><input type="checkbox" ${P.tpS.internal?'checked':''}>`);
+    it.querySelector('input').addEventListener('change', async e=>{ P.tpS.internal=e.target.checked; await reGen(); });
+    body2.appendChild(it);
+    if (P.tpS.internal){
+      body2.appendChild(mkSpin('內部支撐底部直徑', ()=>P.tpS.iBotDia, v=>{P.tpS.iBotDia=v;}, {step:0.05, def:D.tpS.iBotDia, min:0.3, max:4}));
+      body2.appendChild(mkSpin('齒數上限', ()=>P.tpS.teethMax, v=>{P.tpS.teethMax=Math.round(v);}, {step:1, unit:'', dec:0, def:D.tpS.teethMax, min:1, max:8}));
+    }
+  } else if (S.supTab==='pil'){
+    const sr = el('div','pRow');
+    sr.appendChild(el('label','','結構類型'));
+    const sel = el('select','smSel','<option value="classic">經典</option><option value="lattice" disabled>晶格（下一階段）</option>');
+    sel.value = P.pil.structure;
+    sel.addEventListener('change', ()=>{ P.pil.structure = sel.value; });
+    sr.appendChild(sel);
+    body2.appendChild(sr);
+    body2.appendChild(mkSpin('頂部桁架寬度', ()=>P.pil.topTrussW, v=>{P.pil.topTrussW=v;}, {step:0.01, def:D.pil.topTrussW, min:0.2, max:3}));
+    body2.appendChild(mkSpin('桁架寬度', ()=>P.pil.trussW, v=>{P.pil.trussW=v;}, {step:0.01, def:D.pil.trussW, min:0.2, max:3}));
+    body2.appendChild(mkSpin('桁架高度', ()=>P.pil.trussH, v=>{P.pil.trussH=v;}, {step:0.05, def:D.pil.trussH, min:0.3, max:5}));
+    body2.appendChild(mkSpin('細繫支撐柱上部直徑', ()=>P.pil.tTopDia, v=>{P.pil.tTopDia=v;}, {step:0.05, def:D.pil.tTopDia, min:0.4, max:5}));
+    body2.appendChild(mkSpin('細繫支撐柱下部直徑', ()=>P.pil.tBotDia, v=>{P.pil.tBotDia=v;}, {step:0.05, def:D.pil.tBotDia, min:0.4, max:6}));
+    body2.appendChild(mkSpin('細繫處與模型的距離', ()=>P.pil.trussDist, v=>{P.pil.trussDist=v;}, {step:0.5, def:D.pil.trussDist, min:1, max:20}));
+    body2.appendChild(mkSpin('未細繫支撐柱直徑', ()=>P.pil.uDia, v=>{P.pil.uDia=v;}, {step:0.05, def:D.pil.uDia, min:0.3, max:4}));
+    const bt = el('label','smTgl',`<span>捆綁式支撐材</span><input type="checkbox" ${P.pil.bundled?'checked':''}>`);
+    bt.querySelector('input').addEventListener('change', async e=>{ P.pil.bundled=e.target.checked; await reGen(); });
+    body2.appendChild(bt);
+  } else {
+    const rr = el('div','pRow');
+    rr.appendChild(el('label','','底座類型'));
+    const sel = el('select','smSel','<option value="full">完整</option><option value="mini">迷你</option><option value="none">無</option>');
+    sel.value = P.raft.type;
+    sel.addEventListener('change', async ()=>{ P.raft.type = sel.value; const m=activeModel(); if(m){computeWorld(m);} await reGen(); });
+    rr.appendChild(sel);
+    body2.appendChild(rr);
+    if (P.raft.type!=='none'){
+      body2.appendChild(mkSpin('底座厚度', ()=>P.raft.thickness, v=>{P.raft.thickness=v;}, {step:0.1, def:D.raft.thickness, min:0.5, max:6}));
+    }
+    body2.appendChild(mkSpin('底座上方高度', ()=>P.raft.heightAbove, v=>{P.raft.heightAbove=v;}, {step:0.5, def:D.raft.heightAbove, min:1, max:15}));
+    if (P.raft.type==='mini'){
+      body2.appendChild(mkSpin('迷你底座半徑', ()=>P.raft.miniR, v=>{P.raft.miniR=v;}, {step:0.5, def:D.raft.miniR, min:2, max:12}));
+      body2.appendChild(mkSpin('合併距離', ()=>P.raft.mergeDist, v=>{P.raft.mergeDist=v;}, {step:0.5, def:D.raft.mergeDist, min:2, max:20}));
+    }
+    if (P.raft.type==='full'){
+      const lt = el('label','smTgl',`<span>底座標籤（模型名稱）</span><input type="checkbox" ${P.raft.label?'checked':''}>`);
+      lt.querySelector('input').addEventListener('change', async e=>{ P.raft.label=e.target.checked; await reGen(); });
+      body2.appendChild(lt);
+    }
+  }
+  B.appendChild(body2);
+
+  /* ── 統計摘要（同 PreForm 總結分計）── */
+  if (S.supportStat){
+    const st = S.supportStat, bt = st.byType||{};
+    const body3 = el('div','smBody');
+    body3.appendChild(el('div','mnote',
+      `接觸點 <b>${st.points}</b>（<span style="color:#e8930c">懸空點 ${bt.minima||0}</span> · <span style="color:#0d9488">懸空 ${bt.over||0}</span> · <span style="color:#d6409f">穩定化 ${bt.stab||0}</span> · <span style="color:#46a758">強化 ${bt.rein||0}</span>）<br>支撐材 <b>${F(st.volSupMM3/1000,2)} mL</b> · 基底 <b>${F(st.volRaftMM3/1000,2)} mL</b> · 桁架 ${st.braces}`));
+    B.appendChild(body3);
+  }
+
+  /* ── 誠實標示 ── */
+  B.appendChild(el('div','smNote',
+    `<b>誠實標示：</b>參數名稱、預設值與行為語意對齊 <b>PreForm 3.51+（Supports V1／經典）</b>；幾何由內建近似引擎依參數生成並依類型上色，<b>非 PreForm 演算法重現</b> — 相同「密度」兩邊點數不會一致。100% 相同請於 ☁ 雲端面板切換 PFS 模式。晶格(V2)與手動放置為下一階段。`));
+
+  /* ── 動作 ── */
+  const foot = el('div','smFoot','<button class="gen">自動生成所有</button><button class="clr">全部清除</button>');
+  foot.querySelector('.gen').addEventListener('click', async ()=>{
+    S.supportsOn = true;
+    if (S.step < 2){ S.forceSupports = true; toast('已於步驟外強制生成支撐（進入步驟3前僅供預覽）','warn'); }
+    const m = activeModel(); if (m) computeWorld(m);
+    await rebuildScene(true);
+    renderSupPanel();
+  });
+  foot.querySelector('.clr').addEventListener('click', async ()=>{
+    S.supportsOn = false; S.forceSupports = false;
+    const m = activeModel(); if (m) computeWorld(m);
+    await rebuildScene(true);
+    renderSupPanel();
+  });
+  B.appendChild(foot);
+}
+
+</script>
+</body>
+</html>

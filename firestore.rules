@@ -124,6 +124,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 3D列印估價（quote-studio.html）：估價工單與操作歷史
+    match /print_orders/{id} {
+      allow read, create: if isLoggedIn();
+      allow update: if isLegacyEditorOrAdmin();
+      allow delete: if isAdmin();
+    }
+    match /print_history/{id} {
+      allow read, create: if isLoggedIn();
+      allow update, delete: if isAdmin();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
