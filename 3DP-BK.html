@@ -1221,15 +1221,15 @@ function renderGantt() {
             // 情境 B/C/D：逐時段渲染（每格 = 該時段單獨預約 + 全天預約）
             SLOTS.forEach(sl=>{
                 const combined = [...indiv[sl], ...allDayItems];
-                const pendRing = isPending(sl) ? ' ring-2 ring-blue-400 ring-inset' : '';
+                const pendRing = isPending(sl) ? ' ring-2 ring-yellow-300 ring-inset' : '';
                 if(combined.length){
                     const conflict = combined.length > 1;
                     const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : pendRing;
-                    const bg   = conflict ? 'bg-orange-100' : (isPending(sl) ? 'bg-blue-50' : todayBg);
+                    const bg   = conflict ? 'bg-orange-100' : (isPending(sl) ? 'bg-yellow-200/40' : todayBg);
                     const badge = conflict ? renderConflictBadge(combined.length) : '';
                     html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl(sl)}${pick(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
                 } else {
-                    html += `<td class="p-1 border border-gray-200 ${isPending(sl)?'bg-blue-50':todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
+                    html += `<td class="p-1 border border-gray-200 ${isPending(sl)?'bg-yellow-200/40':todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
                 }
             });
         });

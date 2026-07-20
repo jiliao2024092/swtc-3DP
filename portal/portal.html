@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Noto Sans TC',system-ui,sans-serif;background:#fff;height:100vh;overflow:auto}
+body{font-family:'Noto Sans TC',system-ui,sans-serif;background:var(--bg);height:100vh;overflow:auto}
 :root {
   --bg: #ffffff;
   --bg-soft: #fafbfc;
@@ -37,9 +37,34 @@ body{font-family:'Noto Sans TC',system-ui,sans-serif;background:#fff;height:100v
   --sidebar-w: 224px;
   --row-h: 56px;
   --day-w: 22px;
+  --shell-top-bg: rgba(255,255,255,0.94);
+  --dot-rgba: rgba(10,14,20,0.035);
+}
+:root[data-theme="dark"] {
+  --bg: #3C3C3C;
+  --bg-soft: #333333;
+  --bg-panel: #454545;
+  --line: #545454;
+  --line-soft: #4a4a4a;
+  --ink: #f0f0f0;
+  --ink-2: #d4d4d4;
+  --ink-3: #b0b0b0;
+  --ink-4: #888888;
+  --accent: #4fb8d9;
+  --accent-soft: #234450;
+  --ok: #4bcf8b;
+  --ok-soft: #1c3a2a;
+  --warn: #e0b64a;
+  --warn-soft: #3a331c;
+  --danger: #e0605a;
+  --danger-soft: #3a2422;
+  --shadow-card: 0 1px 0 rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-card-hover: 0 2px 0 rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.3);
+  --shell-top-bg: rgba(60,60,60,0.94);
+  --dot-rgba: rgba(255,255,255,0.035);
 }
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased}
-body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(circle,rgba(10,14,20,0.035) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;z-index:0;mask-image:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.15));-webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.15))}
+body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(circle,var(--dot-rgba) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;z-index:0;mask-image:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.15));-webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.15))}
 
 .shell{height:100vh;background:var(--bg);display:flex;position:relative;z-index:1;overflow:hidden}
 
@@ -67,7 +92,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 
 /* Main */
 .shell-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-.shell-top{display:flex;align-items:center;gap:18px;padding:0 28px;border-bottom:1px solid var(--line);background:rgba(255,255,255,0.94);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20;min-height:48px}
+.shell-top{display:flex;align-items:center;gap:18px;padding:0 28px;border-bottom:1px solid var(--line);background:var(--shell-top-bg);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20;min-height:48px}
 .shell-tabs{display:flex;gap:4px;align-items:center}
 .shell-tab{position:relative;border:1px solid transparent;background:transparent;font:inherit;font-size:13px;font-weight:500;color:var(--ink-3);padding:6px 12px;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:8px;transition:background 0.12s,color 0.12s}
 .shell-tab:hover{color:var(--ink);background:var(--bg-soft)}
@@ -316,7 +341,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 
 /* Modal */
 .m-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:5000}
-.m-box{background:#fff;border-radius:12px;width:640px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 16px 40px rgba(0,0,0,.2)}
+.m-box{background:var(--bg);border-radius:12px;width:640px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 16px 40px rgba(0,0,0,.2)}
 .m-hd{padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .m-hd h3{font-size:15px;font-weight:700}
 .m-close{background:none;border:none;font-size:22px;cursor:pointer;color:#8a93a3;padding:2px 6px;border-radius:4px}
@@ -325,18 +350,18 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .m-foot{padding:16px 24px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #e6e8ec;margin-top:16px}
 .m-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
 .m-field{margin-bottom:14px}
-.btn-cancel{height:34px;padding:0 16px;border:1px solid #e6e8ec;background:#fff;color:#3b4250;font-size:13px;font-weight:500;border-radius:6px;cursor:pointer;font-family:inherit}
+.btn-cancel{height:34px;padding:0 16px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);font-size:13px;font-weight:500;border-radius:6px;cursor:pointer;font-family:inherit}
 .btn-save{height:34px;padding:0 16px;border:none;background:#0a0e14;color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
 .btn-save:disabled{opacity:.5;cursor:not-allowed}
 .btn-add{height:32px;padding:0 14px;border:none;background:#0a0e14;color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
 /* 編輯/設定切換按鈕：外觀對齊 inventory 的「編輯模式」按鈕 */
-.btn-edit-mode{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 15px;border:1px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.btn-edit-mode{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 15px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
 .btn-edit-mode:hover{background:#eff6ff;border-color:#60a5fa;color:#1d4ed8}
 .btn-edit-mode.active{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
 
 /* Login */
 .login-page{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#0a0e14,#131c2e,#0c2340);display:flex;align-items:center;justify-content:center}
-.login-card{background:#fff;border-radius:16px;padding:40px 48px;width:420px;max-width:95vw;box-shadow:0 24px 48px rgba(0,0,0,.3)}
+.login-card{background:var(--bg);border-radius:16px;padding:40px 48px;width:420px;max-width:95vw;box-shadow:0 24px 48px rgba(0,0,0,.3)}
 .login-brand{text-align:center;margin-bottom:28px}
 .login-brand-mark{width:48px;height:48px;background:#0a0e14;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;position:relative}
 .login-brand-mark::before{content:'';position:absolute;top:11px;left:11px;width:10px;height:10px;background:#0c7a99;border-radius:2px}
@@ -359,7 +384,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .perm-chip:hover,.perm-chip.on{border-color:#0c7a99;background:#e6f1f6}
 .perm-chip input{accent-color:#0c7a99;width:14px;height:14px;cursor:pointer;flex-shrink:0}
 .preset-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-.preset-chip{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid #e6e8ec;background:#fff;color:#5a6270;font-family:inherit;transition:all .12s}
+.preset-chip{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--bg);color:var(--ink-3);font-family:inherit;transition:all .12s}
 .preset-chip.p-admin{border-color:#e6b800;color:#7a5000;background:#fffadc}
 .preset-chip.p-mgr{border-color:#0c7a99;color:#0c7a99;background:#e6f1f6}
 .preset-chip.p-eng{border-color:#1d6f43;color:#1d6f43;background:#e6f1ea}
@@ -401,6 +426,10 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 @media(max-width:720px){.dash-kpis{grid-template-columns:repeat(2,1fr)}.dash-grid{grid-template-columns:1fr}.iss-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.shell-top{padding:0 14px;gap:6px;flex-wrap:wrap}.shell-tab{padding:11px 10px;font-size:12px}.shell-aux{display:none}}
 </style>
+<script>
+// 頁面渲染前先套用黑暗模式，避免 React 掛載前先閃一下亮色畫面
+try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.dataset.theme = 'dark'; } catch(e){}
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -2152,6 +2181,13 @@ function Shell({ user, onLogout }) {
   const K = window.K;
   const [page, setPage] = useStateApp('workboard');
   const [showPwModal, setShowPwModal] = React.useState(false);
+  const [darkMode, setDarkMode] = React.useState(()=>{
+    try { return localStorage.getItem('swtc_darkMode') === '1'; } catch(e){ return false; }
+  });
+  React.useEffect(()=>{
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
+    try { localStorage.setItem('swtc_darkMode', darkMode ? '1' : '0'); } catch(e){}
+  }, [darkMode]);
 
   const isAdmin = window.hasPerm(user, 'admin');
   const canBoard = window.hasPerm(user, 'view_board');
@@ -2220,7 +2256,13 @@ function Shell({ user, onLogout }) {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <span style={{color:'var(--ink-2)',fontWeight:600}}>{user.displayName}</span>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
+            <span style={{color:'var(--ink-2)',fontWeight:600}}>{user.displayName}</span>
+            <button onClick={()=>setDarkMode(v=>!v)} title={darkMode?'切換為亮色模式':'切換為黑暗模式'}
+              style={{flexShrink:0,width:24,height:24,border:'1px solid var(--line)',borderRadius:5,background:'var(--bg)',color:'var(--ink-3)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>
+              {darkMode ? '☀' : '🌙'}
+            </button>
+          </div>
           <span className="sidebar-foot-date">{dateStr}</span>
           <span style={{fontSize:9,color:'#8a93a3',wordBreak:'break-all',fontFamily:'monospace'}}>
             perms: {JSON.stringify(user.permissions)}
