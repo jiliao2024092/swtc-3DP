@@ -82,8 +82,8 @@
       finally { setBusy(false); }
     };
 
-    const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid #e6e8ec', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'#fff' };
-    const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'#5a6270', marginBottom:5 };
+    const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)' };
+    const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
     return (
       <div className="m-overlay">
@@ -98,7 +98,7 @@
                 <div style={{display:'flex',gap:6}}>
                   <input style={{...INP,flex:1}} value={form.id||''} onChange={e=>set('id',e.target.value)} placeholder="202512100001"/>
                   <button type="button" onClick={()=>setShowLink(v=>!v)} title={form.link?'已設超連結，點擊編輯':'新增超連結'}
-                    style={{flexShrink:0,width:40,border:'1.5px solid',borderColor:(form.link||showLink)?'#0c7a99':'#e6e8ec',background:(form.link||showLink)?'#e6f1f6':'#fff',color:(form.link||showLink)?'#0c7a99':'#5a6270',borderRadius:6,cursor:'pointer',fontSize:15,lineHeight:1}}>🔗</button>
+                    style={{flexShrink:0,width:40,border:'1.5px solid',borderColor:(form.link||showLink)?'var(--accent)':'var(--line)',background:(form.link||showLink)?'var(--accent-soft)':'var(--bg)',color:(form.link||showLink)?'var(--accent)':'var(--ink-3)',borderRadius:6,cursor:'pointer',fontSize:15,lineHeight:1}}>🔗</button>
                 </div>
                 {showLink && <input style={{...INP,marginTop:6,fontSize:12}} value={form.link||''} onChange={e=>set('link',e.target.value)} placeholder="https://…（單號超連結，總表可點擊）"/>}
               </div>
@@ -125,7 +125,7 @@
               <div className="m-field"><label style={LBL}>實際完成日</label>
                 <input style={INP} type="date" value={form.actualEndDate||''} onChange={e=>set('actualEndDate',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>&nbsp;</label>
-                <div style={{fontSize:11,color:'#8a93a3',padding:'8px 0'}}>實際完成日晚於期望交期時，總表會標記逾期</div></div>
+                <div style={{fontSize:11,color:'var(--ink-4)',padding:'8px 0'}}>實際完成日晚於期望交期時，總表會標記逾期</div></div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>預估消耗量 (mL)</label>
@@ -133,11 +133,11 @@
               <div className="m-field"><label style={LBL}>實際消耗量 (mL)</label>
                 <input style={INP} type="number" min="0" step="1" value={form.actUsage??''} onChange={e=>set('actUsage',e.target.value===''?'':+e.target.value)} placeholder="超過預估將於總表標記"/>
                 {consumeInfo && (
-                  <div style={{fontSize:11,color:'#8a93a3',marginTop:4,display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4,display:'flex',alignItems:'center',gap:6}}>
                     📊 消耗紀錄合計 {consumeInfo.sum}mL（{consumeInfo.count}筆）
                     {(+form.actUsage||0)!==consumeInfo.sum && (
                       <button type="button" onClick={()=>set('actUsage',consumeInfo.sum)}
-                        style={{border:'1px solid #0c7a99',color:'#0c7a99',background:'#e6f1f6',borderRadius:4,padding:'1px 7px',fontSize:10.5,cursor:'pointer'}}>套用</button>
+                        style={{border:'1px solid var(--accent)',color:'var(--accent)',background:'var(--accent-soft)',borderRadius:4,padding:'1px 7px',fontSize:10.5,cursor:'pointer'}}>套用</button>
                     )}
                   </div>
                 )}</div>
@@ -192,11 +192,11 @@
         <div className="m-box" style={{width:400}}>
           <div className="m-hd"><h3>⚠️ 確認刪除</h3><button className="m-close" onClick={onCancel}>×</button></div>
           <div className="m-body" style={{padding:'0 24px 4px'}}>
-            <p style={{fontSize:14,color:'#3b4250',lineHeight:1.7}}>{message}</p>
+            <p style={{fontSize:14,color:'var(--ink-2)',lineHeight:1.7}}>{message}</p>
           </div>
           <div className="m-foot">
             <button className="btn-cancel" onClick={onCancel}>取消</button>
-            <button onClick={onConfirm} style={{height:34,padding:'0 16px',border:'none',background:'#c0392b',color:'#fff',fontSize:13,fontWeight:600,borderRadius:6,cursor:'pointer',fontFamily:'inherit'}}>刪除</button>
+            <button onClick={onConfirm} style={{height:34,padding:'0 16px',border:'none',background:'var(--danger)',color:'#fff',fontSize:13,fontWeight:600,borderRadius:6,cursor:'pointer',fontFamily:'inherit'}}>刪除</button>
           </div>
         </div>
       </div>
@@ -271,7 +271,7 @@
     };
 
     if (loading) return (
-      <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'#8a93a3',fontSize:14}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'var(--ink-4)',fontSize:14}}>
         ⏳ 從 Firebase 載入中...
       </div>
     );
@@ -460,11 +460,11 @@
 
     // 狀態顏色
     const STATUS_STYLE = {
-      done:      { bg:'#e6f1ea', color:'#1d6f43' },
-      progress:  { bg:'#e6f1f6', color:'#0c7a99' },
-      blocked:   { bg:'#fbf3dc', color:'#8b6b13' },
-      cancelled: { bg:'#f0f1f4', color:'#8a93a3' },
-      todo:      { bg:'#eef0f3', color:'#5a6270' },
+      done:      { bg:'var(--ok-soft)', color:'var(--ok)' },
+      progress:  { bg:'var(--accent-soft)', color:'var(--accent)' },
+      blocked:   { bg:'var(--warn-soft)', color:'var(--warn)' },
+      cancelled: { bg:'var(--bg-panel)', color:'var(--ink-4)' },
+      todo:      { bg:'var(--line-soft)', color:'var(--ink-3)' },
     };
 
     return (
@@ -502,11 +502,11 @@
           </select>
           <button
             onClick={()=>{setHideDone(v=>!v);setPage(1);}}
-            style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'#e6f1f6',color:hideDone?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
+            style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'var(--accent-soft)',color:hideDone?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
             {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
           </button>
           <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出全部工作看板資料為 Excel">⬇ 匯出Excel</button>
-          <span style={{fontSize:12,color:'#8a93a3',marginLeft:'auto'}}>共 {filtered.length} 筆</span>
+          <span style={{fontSize:12,color:'var(--ink-4)',marginLeft:'auto'}}>共 {filtered.length} 筆</span>
         </div>
 
         {/* 表格 */}
@@ -537,7 +537,7 @@
               {paged.map((o, idx) => {
                 const st = K.statusOf(o);
                 const sstyle = STATUS_STYLE[st] || STATUS_STYLE.todo;
-                const tone = K.ENG_TONE[o.engineer] || { fg:'#5a6270', bg:'#eef0f3' };
+                const tone = K.ENG_TONE[o.engineer] || { fg:'var(--ink-3)', bg:'var(--line-soft)' };
                 const days = K.daysUntil(o.dueDate);
                 // 實際完成日晚於期望交期 → 逾期天數（計算標記，不寫入 remark）
                 const lateDays = (o.actualEndDate && o.dueDate && !Number.isNaN(new Date(o.actualEndDate).getTime()) && !Number.isNaN(new Date(o.dueDate).getTime()))
@@ -554,7 +554,7 @@
                     <td className="col-seq">{rowNo}</td>
                     <td className="col-id" style={{fontFamily:'monospace',fontSize:11.5}}>
                       {(o.link && /^https?:\/\//i.test(o.link))
-                        ? <a href={o.link} target="_blank" rel="noopener noreferrer" style={{color:'#0c7a99',textDecoration:'underline'}}>{o.id||'—'}</a>
+                        ? <a href={o.link} target="_blank" rel="noopener noreferrer" style={{color:'var(--accent)',textDecoration:'underline'}}>{o.id||'—'}</a>
                         : (o.id||'')}
                     </td>
                     <td className="col-customer" style={{fontWeight:600}}>{o.customer}</td>
@@ -569,7 +569,7 @@
                     <td className="col-date">
                       <div>{o.dueDate}</div>
                       {days !== null && st!=='done' && st!=='cancelled' && (
-                        <div style={{fontSize:10.5, color: days<0?'#c0392b':days<=3?'#8b6b13':'#8a93a3'}}>
+                        <div style={{fontSize:10.5, color: days<0?'var(--danger)':days<=3?'var(--warn)':'var(--ink-4)'}}>
                           {days<0 ? `逾期 ${-days} 天` : days===0 ? '今日到期' : `剩 ${days} 天`}
                         </div>
                       )}
@@ -578,23 +578,23 @@
                     <td>
                       <span style={{
                         fontSize:11, fontWeight:700, whiteSpace:'nowrap',
-                        color: o.material==='需調撥'?'#8b6b13':'#1d6f43',
-                        background: o.material==='需調撥'?'#fbf3dc':'#e6f1ea',
+                        color: o.material==='需調撥'?'var(--warn)':'var(--ok)',
+                        background: o.material==='需調撥'?'var(--warn-soft)':'var(--ok-soft)',
                         padding:'2px 8px', borderRadius:10
                       }}>{o.material}</span>
                     </td>
-                    <td style={{fontSize:12,color:o.resin?'#3b4250':'#b0b6bf',whiteSpace:'nowrap'}}>{o.resin||'—'}</td>
+                    <td style={{fontSize:12,color:o.resin?'var(--ink-2)':'var(--ink-4)',whiteSpace:'nowrap'}}>{o.resin||'—'}</td>
                     <td>
                       {o.category
-                        ? <span style={{fontSize:11,fontWeight:700,whiteSpace:'nowrap',color:o.category==='評估'?'#0c7a99':'#6b3fa0',background:o.category==='評估'?'#e6f1f6':'#efe9f7',padding:'2px 8px',borderRadius:10}}>{o.category}</span>
-                        : <span style={{color:'#b0b6bf'}}>—</span>}
+                        ? <span style={{fontSize:11,fontWeight:700,whiteSpace:'nowrap',color:o.category==='評估'?'var(--accent)':'var(--purple)',background:o.category==='評估'?'var(--accent-soft)':'var(--purple-soft)',padding:'2px 8px',borderRadius:10}}>{o.category}</span>
+                        : <span style={{color:'var(--ink-4)'}}>—</span>}
                     </td>
                     <td>
                       <div style={{display:'flex',alignItems:'center',gap:6}}>
-                        <div style={{flex:1,height:5,background:'#eef0f3',borderRadius:3,overflow:'hidden',minWidth:50}}>
-                          <div style={{height:'100%',borderRadius:3,background:o.progress>=100?'#1d6f43':o.progress>=50?'#0c7a99':'#8b6b13',width:`${o.progress}%`,transition:'width .3s'}}/>
+                        <div style={{flex:1,height:5,background:'var(--line-soft)',borderRadius:3,overflow:'hidden',minWidth:50}}>
+                          <div style={{height:'100%',borderRadius:3,background:o.progress>=100?'var(--ok)':o.progress>=50?'var(--accent)':'var(--warn)',width:`${o.progress}%`,transition:'width .3s'}}/>
                         </div>
-                        <span style={{fontSize:11,fontWeight:700,color:'#5a6270',width:30,textAlign:'right'}}>{o.progress}%</span>
+                        <span style={{fontSize:11,fontWeight:700,color:'var(--ink-3)',width:30,textAlign:'right'}}>{o.progress}%</span>
                       </div>
                     </td>
                     <td>
@@ -602,23 +602,23 @@
                         {K.STATUS_TONE[st]?.label || st}
                       </span>
                       {o.actualEndDate && (
-                        <div style={{fontSize:10.5, color: lateDays>0?'#c0392b':'#1d6f43', marginTop:3}}>
+                        <div style={{fontSize:10.5, color: lateDays>0?'var(--danger)':'var(--ok)', marginTop:3}}>
                           實際 {o.actualEndDate}
                         </div>
                       )}
                     </td>
                     <td style={{fontSize:12,maxWidth:180}}>
                       {lateDays>0 && (
-                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'#c0392b',background:'#fdecea',padding:'1px 7px',borderRadius:9,marginRight:4,marginBottom:3,whiteSpace:'nowrap'}}>
+                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'var(--danger)',background:'var(--danger-soft)',padding:'1px 7px',borderRadius:9,marginRight:4,marginBottom:3,whiteSpace:'nowrap'}}>
                           ⚠ 逾期完工 {lateDays} 天
                         </span>
                       )}
                       {overUse>0 && (
-                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'#8b6b13',background:'#fbf3dc',padding:'1px 7px',borderRadius:9,marginBottom:3,whiteSpace:'nowrap'}}>
+                        <span style={{display:'inline-block',fontSize:10.5,fontWeight:700,color:'var(--warn)',background:'var(--warn-soft)',padding:'1px 7px',borderRadius:9,marginBottom:3,whiteSpace:'nowrap'}}>
                           ⚠ 超耗 {overUse} mL
                         </span>
                       )}
-                      <div style={{color:'#8a93a3',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.remark||((lateDays>0||overUse>0)?'':'—')}</div>
+                      <div style={{color:'var(--ink-4)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.remark||((lateDays>0||overUse>0)?'':'—')}</div>
                     </td>
 
                     {/* 編輯模式：顯示編輯/刪除按鈕 */}
@@ -643,7 +643,7 @@
 
         {/* 分頁 */}
         {totalPages > 1 && (
-          <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap:10,padding:'10px 24px',borderTop:'1px solid var(--line-soft)',flexShrink:0,fontSize:12,color:'#8a93a3'}}>
+          <div style={{display:'flex',justifyContent:'center',alignItems:'center',gap:10,padding:'10px 24px',borderTop:'1px solid var(--line-soft)',flexShrink:0,fontSize:12,color:'var(--ink-4)'}}>
             <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} disabled={page<=1} onClick={()=>setPage(p=>p-1)}>← 上頁</button>
             <span>第 {page} / {totalPages} 頁</span>
             <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} disabled={page>=totalPages} onClick={()=>setPage(p=>p+1)}>下頁 →</button>

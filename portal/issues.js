@@ -5,8 +5,8 @@
   const { useState, useEffect, useMemo } = React;
   const K = window.K;
 
-  const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid #e6e8ec', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
-  const LBL   = { display:'block', fontSize:11.5, fontWeight:600, color:'#5a6270', marginBottom:5 };
+  const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
+  const LBL   = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
   // ── 異常 Modal ──
   function AnomalyModal({ item, onClose, onSave }) {
@@ -53,15 +53,15 @@
             </div>
             <div className="m-field">
               <label style={LBL}>後續進度</label>
-              <div style={{background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:6,padding:10,marginBottom:8,minHeight:44}}>
+              <div style={{background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:6,padding:10,marginBottom:8,minHeight:44}}>
                 {form.progresses.map((p,i)=>(
                   <div key={i} style={{display:'flex',gap:8,marginBottom:4,fontSize:12,alignItems:'flex-start'}}>
-                    <span style={{color:'#8a93a3',whiteSpace:'nowrap',minWidth:80}}>{p.date}</span>
+                    <span style={{color:'var(--ink-4)',whiteSpace:'nowrap',minWidth:80}}>{p.date}</span>
                     <span style={{flex:1}}>{p.status}</span>
-                    <button onClick={()=>set('progresses',form.progresses.filter((_,j)=>j!==i))} style={{background:'none',border:'none',color:'#c0392b',cursor:'pointer',fontSize:14,lineHeight:1}}>×</button>
+                    <button onClick={()=>set('progresses',form.progresses.filter((_,j)=>j!==i))} style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:14,lineHeight:1}}>×</button>
                   </div>
                 ))}
-                {!form.progresses.length&&<div style={{fontSize:12,color:'#8a93a3'}}>尚無進度</div>}
+                {!form.progresses.length&&<div style={{fontSize:12,color:'var(--ink-4)'}}>尚無進度</div>}
               </div>
               <div style={{display:'flex',gap:6}}>
                 <input style={{...S_INP,width:150,flex:'none'}} type="date" value={noteDate} onChange={e=>setNoteDate(e.target.value)}/>
@@ -125,10 +125,10 @@
               <div className="m-field"><label style={LBL}>使用結束日</label><input style={S_INP} type="date" value={form.useEnd||''} onChange={e=>set('useEnd',e.target.value)}/></div>
             </div>
             <div className="m-field"><label style={LBL}>使用天數</label>
-              <div style={{...S_INP,background:'#fafbfc',color:useDays!=null?'#0a0e14':'#8a93a3'}}>
+              <div style={{...S_INP,background:'var(--bg-soft)',color:useDays!=null?'var(--ink)':'var(--ink-4)'}}>
                 {useDays!=null ? `${useDays} 天（${form.useStart} ~ ${form.useEnd}，含頭尾）` : '選擇起訖日期後自動計算'}
               </div>
-              {useDays!=null && useDays<0 && <div style={{fontSize:11,color:'#c0392b',marginTop:4}}>結束日早於開始日，請檢查</div>}
+              {useDays!=null && useDays<0 && <div style={{fontSize:11,color:'var(--danger)',marginTop:4}}>結束日早於開始日，請檢查</div>}
             </div>
             <div className="m-field"><label style={LBL}>備註</label><textarea style={{...S_INP,resize:'vertical'}} value={form.remark||''} onChange={e=>set('remark',e.target.value)} rows={2}/></div>
           </div>
@@ -252,14 +252,14 @@
         <div className="m-box" style={{width:640}}>
           <div className="m-hd"><h3>📋 出借登記 — {sample.name}</h3><button className="m-close" onClick={onClose}>×</button></div>
           <div className="m-body">
-            <div style={{fontSize:12,color:'#5a6270',marginBottom:12,background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:6,padding:'8px 11px'}}>
+            <div style={{fontSize:12,color:'var(--ink-3)',marginBottom:12,background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:6,padding:'8px 11px'}}>
               材質：{sample.material||'—'} · 位置：{sample.location||'—'} · 目前狀態：
-              <b style={{color:isSampleOut(loans)?'#c0392b':'#1d6f43'}}>{isSampleOut(loans)?'借出中':'可借出'}</b>
+              <b style={{color:isSampleOut(loans)?'var(--danger)':'var(--ok)'}}>{isSampleOut(loans)?'借出中':'可借出'}</b>
             </div>
 
             {/* 新增出借 */}
-            <div style={{border:'1px solid #e6e8ec',borderRadius:6,padding:12,marginBottom:14}}>
-              <div style={{fontSize:12,fontWeight:600,color:'#5a6270',marginBottom:8}}>新增出借紀錄</div>
+            <div style={{border:'1px solid var(--line)',borderRadius:6,padding:12,marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:600,color:'var(--ink-3)',marginBottom:8}}>新增出借紀錄</div>
               <div className="m-row">
                 <div className="m-field"><label style={LBL}>借出人／客戶名稱 *</label>
                   <select style={S_INP} value={borrowerSel} onChange={e=>setBorrowerSel(e.target.value)}>
@@ -284,8 +284,8 @@
             </div>
 
             {/* 出借歷史 */}
-            <div style={{fontSize:12,fontWeight:600,color:'#5a6270',marginBottom:6}}>出借紀錄（{sorted.length}）</div>
-            <div style={{maxHeight:200,overflow:'auto',border:'1px solid #e6e8ec',borderRadius:6}}>
+            <div style={{fontSize:12,fontWeight:600,color:'var(--ink-3)',marginBottom:6}}>出借紀錄（{sorted.length}）</div>
+            <div style={{maxHeight:200,overflow:'auto',border:'1px solid var(--line)',borderRadius:6}}>
               <table className="kt" style={{fontSize:12}}><thead><tr>
                 <th>借出人／客戶</th><th>借出日期</th><th>時段</th><th>歸還日期</th><th>備註</th><th style={{width:80}}></th>
               </tr></thead><tbody>
@@ -295,8 +295,8 @@
                   <td className="col-date">{SLOT_LABELS[l.slot]||'—'}</td>
                   <td className="col-date">{l.returnDate
                     ? l.returnDate
-                    : <span style={{color:'#c0392b',fontWeight:600}}>借出中</span>}</td>
-                  <td style={{color:'#5a6270'}}>{l.remark||'—'}</td>
+                    : <span style={{color:'var(--danger)',fontWeight:600}}>借出中</span>}</td>
+                  <td style={{color:'var(--ink-3)'}}>{l.remark||'—'}</td>
                   <td style={{whiteSpace:'nowrap',textAlign:'right'}}>
                     {!l.returnDate && <button className="btn-cancel" style={{padding:'2px 8px',fontSize:11}} onClick={()=>onReturnLoan(l)}>歸還</button>}
                     {canManage && <button className="kt-actbtn danger" title="刪除" style={{marginLeft:4}} onClick={()=>onDelLoan(l)}>✕</button>}
@@ -334,8 +334,8 @@
           <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} onClick={()=>setWeekStart(d=>new Date(d.getTime()-7*DAY))}>‹ 上週</button>
           <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} onClick={()=>setWeekStart(mondayOf(new Date()))}>本週</button>
           <button className="btn-cancel" style={{padding:'3px 12px',fontSize:12}} onClick={()=>setWeekStart(d=>new Date(d.getTime()+7*DAY))}>下週 ›</button>
-          <span style={{fontSize:12,color:'#8a93a3',marginLeft:6}}>{K.fmtYmd(days[0])} ~ {K.fmtYmd(days[6])}</span>
-          <span style={{fontSize:11,color:'#8a93a3',marginLeft:'auto'}}>雙擊格子快速登記出借；點擊已有紀錄可管理／歸還</span>
+          <span style={{fontSize:12,color:'var(--ink-4)',marginLeft:6}}>{K.fmtYmd(days[0])} ~ {K.fmtYmd(days[6])}</span>
+          <span style={{fontSize:11,color:'var(--ink-4)',marginLeft:'auto'}}>雙擊格子快速登記出借；點擊已有紀錄可管理／歸還</span>
         </div>
         <div className="table-wrap" style={{overflow:'auto'}}>
           <table className="kt" style={{borderCollapse:'collapse',minWidth:960}}>
@@ -344,7 +344,7 @@
                 <th style={STICKY_TH}>樣品</th>
                 {days.map((d,i)=>{
                   const isToday = K.fmtYmd(d)===todayKey;
-                  return <th key={i} colSpan={3} style={{textAlign:'center',background:isToday?'#e6f1f6':undefined}}>
+                  return <th key={i} colSpan={3} style={{textAlign:'center',background:isToday?'var(--accent-soft)':undefined}}>
                     {d.getMonth()+1}/{d.getDate()}（{weekdayNames[i]}）
                   </th>;
                 })}
@@ -352,7 +352,7 @@
               <tr>
                 <th style={STICKY_TH}></th>
                 {days.flatMap((d,i)=>SLOT_ORDER.map(s=>(
-                  <th key={`${i}-${s}`} style={{fontSize:10,fontWeight:400,color:'#8a93a3',textAlign:'center',minWidth:58}}>{SLOT_LABELS[s]}</th>
+                  <th key={`${i}-${s}`} style={{fontSize:10,fontWeight:400,color:'var(--ink-4)',textAlign:'center',minWidth:58}}>{SLOT_LABELS[s]}</th>
                 )))}
               </tr>
             </thead>
@@ -361,7 +361,7 @@
                 <tr key={sample._id}>
                   <td style={STICKY_TD}>
                     {sample.name}
-                    <div style={{fontSize:10,color:'#8a93a3',fontWeight:400}}>{sample.material||'—'}</div>
+                    <div style={{fontSize:10,color:'var(--ink-4)',fontWeight:400}}>{sample.material||'—'}</div>
                   </td>
                   {days.flatMap((d)=>{
                     const dateKey = K.fmtYmd(d);
@@ -372,7 +372,7 @@
                         <td key={`${dateKey}-${slot}`}
                           onDoubleClick={()=>onQuickAdd(sample, dateKey, slot)}
                           title="雙擊新增出借登記"
-                          style={{cursor:'pointer',minWidth:58,height:38,verticalAlign:'top',padding:2,background:isToday?'#f7fbfd':undefined}}>
+                          style={{cursor:'pointer',minWidth:58,height:38,verticalAlign:'top',padding:2,background:isToday?'var(--bg-soft)':undefined}}>
                           {cellLoans.map(l=>{
                             const out=!l.returnDate;
                             const bName = borrowerDisplay(l.borrower,borrowers)||'—';
@@ -381,7 +381,7 @@
                                 onClick={e=>{e.stopPropagation(); onOpenSample(sample);}}
                                 title={`${bName} · ${l.loanDate}${out?'（借出中）':`（已歸還 ${l.returnDate}）`}`}
                                 style={{fontSize:10,padding:'1px 4px',borderRadius:4,marginBottom:2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
-                                  background:out?'#fdecea':'#e6f1ea', color:out?'#c0392b':'#1d6f43', fontWeight:600}}>
+                                  background:out?'var(--danger-soft)':'var(--ok-soft)', color:out?'var(--danger)':'var(--ok)', fontWeight:600}}>
                                 {bName.split(' ')[0]}
                               </div>
                             );
@@ -424,15 +424,15 @@
                 {ls.length ? <div style={{display:'flex',flexDirection:'column',gap:4}}>
                   {ls.map(l=>(
                     <div key={l._id} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,lineHeight:1.5}}>
-                      <span style={{fontWeight:600,color:'#3b4250',minWidth:120}}>{borrowerDisplay(l.borrower,borrowers)||'—'}</span>
-                      <span style={{fontFamily:'monospace',color:'#5a6270',whiteSpace:'nowrap'}}>
-                        {l.loanDate||'—'} → {l.returnDate ? l.returnDate : <span style={{color:'#c0392b',fontWeight:600}}>借出中</span>}
+                      <span style={{fontWeight:600,color:'var(--ink-2)',minWidth:120}}>{borrowerDisplay(l.borrower,borrowers)||'—'}</span>
+                      <span style={{fontFamily:'monospace',color:'var(--ink-3)',whiteSpace:'nowrap'}}>
+                        {l.loanDate||'—'} → {l.returnDate ? l.returnDate : <span style={{color:'var(--danger)',fontWeight:600}}>借出中</span>}
                       </span>
-                      {l.remark&&<span style={{color:'#8a93a3'}}>· {l.remark}</span>}
+                      {l.remark&&<span style={{color:'var(--ink-4)'}}>· {l.remark}</span>}
                       {canManage&&<button className="kt-actbtn danger" title="刪除此紀錄" style={{marginLeft:'auto'}} onClick={()=>onDelLoan(l)}>✕</button>}
                     </div>
                   ))}
-                </div> : <span style={{color:'#b0b6bf'}}>— 尚無借出紀錄</span>}
+                </div> : <span style={{color:'var(--ink-4)'}}>— 尚無借出紀錄</span>}
               </td>
             </tr>);
           })}
@@ -445,7 +445,7 @@
   // ── 樣品借出統計（以出借紀錄 sample_loans 為資訊來源；自由選維度與圖表）──
   function LoanStatsPanel({ loans, samples, borrowers }) {
     const { useState } = React;
-    const COLORS = ['#0c7a99','#6b3fa0','#1d6f43','#a05a00','#c0392b','#2471a3','#c79b2a','#8b6b13'];
+    const COLORS = ['var(--accent)','var(--purple)','var(--ok)','var(--warn)','var(--danger)','var(--accent)','var(--warn)','var(--warn)'];
 
     const sampleName = l => l.itemName || (samples.find(s=>s._id===l.itemId)||{}).name || '（未知樣品）';
     const materialOf = l => l.material || (samples.find(s=>s._id===l.itemId)||{}).material || '（未填材質）';
@@ -484,12 +484,12 @@
         const s0=acc*2*Math.PI-Math.PI/2; acc+=pct; const s1=acc*2*Math.PI-Math.PI/2;
         const large=pct>0.5?1:0;
         const x1=cx+R*Math.cos(s0),y1=cy+R*Math.sin(s0),x2=cx+R*Math.cos(s1),y2=cy+R*Math.sin(s1);
-        return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="#fff" strokeWidth="2"/>;
+        return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="var(--bg)" strokeWidth="2"/>;
       });
       return (
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,width:'100%'}}>
           <div style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
-            <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="#fff"/></svg>
+            <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="var(--bg)"/></svg>
             <div style={{position:'absolute',textAlign:'center',pointerEvents:'none'}}>
               <div style={{fontSize:26,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',lineHeight:1}}>{total}</div>
               <div style={{fontSize:10,color:'var(--ink-4)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'借出'}</div>
@@ -552,7 +552,7 @@
       const xx=i=> n<=1 ? W/2 : padL + i*(W-padL-padR)/(n-1);
       const yy=v=> padT + (1 - v/max)*(H-padT-padB);
       const pts=items.map((it,i)=>`${xx(i).toFixed(1)},${yy(it.value).toFixed(1)}`).join(' ');
-      const col=color||'#0c7a99';
+      const col=color||'var(--accent)';
       return (
         <div style={{width:'100%',display:'flex',justifyContent:'center'}}>
           <svg width="100%" height={H+8} viewBox={`0 0 ${W} ${H+8}`} preserveAspectRatio="xMidYMid meet">
@@ -612,9 +612,9 @@
 
   // ── 分析頁（預設 + 自由分析）──
   function IssuesStats({ anomalies, ipa, tools }) {
-    const STATUS_COLORS_A = { '處理中':'#c79b2a', '已完成':'#1d6f43', '暫停':'#c0392b' };
-    const ENG_COLORS = ['#0c7a99','#6b3fa0','#1d6f43','#a05a00','#c0392b'];
-    const MACH_COLORS = ['#0c7a99','#1d6f43','#c79b2a','#6b3fa0'];
+    const STATUS_COLORS_A = { '處理中':'var(--warn)', '已完成':'var(--ok)', '暫停':'var(--danger)' };
+    const ENG_COLORS = ['var(--accent)','var(--purple)','var(--ok)','var(--warn)','var(--danger)'];
+    const MACH_COLORS = ['var(--accent)','var(--ok)','var(--warn)','var(--purple)'];
 
     const totalSpend  = tools.reduce((s,r)=>s+(Number(r.price||0)*Number(r.quantity||1)),0);
     const totalIPA    = ipa.reduce((s,r)=>s+Number(r.quantity||0),0);
@@ -637,12 +637,12 @@
         const s0=acc*2*Math.PI-Math.PI/2; acc+=pct; const s1=acc*2*Math.PI-Math.PI/2;
         const large=pct>0.5?1:0;
         const x1=cx+R*Math.cos(s0),y1=cy+R*Math.sin(s0),x2=cx+R*Math.cos(s1),y2=cy+R*Math.sin(s1);
-        return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="#fff" strokeWidth="2"/>;
+        return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="var(--bg)" strokeWidth="2"/>;
       });
       return (
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,width:'100%'}}>
           <div style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
-            <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="#fff"/></svg>
+            <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="var(--bg)"/></svg>
             <div style={{position:'absolute',textAlign:'center',pointerEvents:'none'}}>
               <div style={{fontSize:26,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',lineHeight:1}}>{total}</div>
               <div style={{fontSize:10,color:'var(--ink-4)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'總計'}</div>
@@ -724,12 +724,12 @@
       const engineers = window._settings_engineers||K.ENG_ORDER;
       switch(dim) {
         case 'status':
-          return Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'#8a93a3' }));
+          return Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'var(--ink-4)' }));
         case 'engineer':
           return engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
         case 'customer': {
           const sorted=Object.entries(byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,8);
-          return sorted.map(([k,v],i)=>({ label:k, value:v, color:'#0c7a99' }));
+          return sorted.map(([k,v],i)=>({ label:k, value:v, color:'var(--accent)' }));
         }
         case 'month': {
           const sorted=Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-8);
@@ -779,7 +779,7 @@
 
     // ── 預設圖表資料 ──
     const engineers = window._settings_engineers||K.ENG_ORDER;
-    const statusSlices = Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'#8a93a3' }));
+    const statusSlices = Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'var(--ink-4)' }));
     const engItems     = engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
     const monthItems   = Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v],i)=>({ label:k.slice(5), value:v, color:MACH_COLORS[i%MACH_COLORS.length] }));
 
@@ -793,7 +793,7 @@
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,padding:'18px 0 24px'}}>
           {[
             { label:'異常總數',  value:anomalies.length, color:'var(--ink)' },
-            { label:'處理中',    value:openAnomaly,       color:'#c79b2a'    },
+            { label:'處理中',    value:openAnomaly,       color:'var(--warn)'    },
             { label:'IPA 合計',  value:`${totalIPA} 桶`,  color:'var(--ink)' },
             { label:'設備支出',  value:`NT$ ${totalSpend.toLocaleString()}`, color:'var(--ink)' },
             { label:'設備項目',  value:tools.length,      color:'var(--ink)' },
@@ -1137,7 +1137,7 @@
     });
 
     if (loading) return (
-      <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'#8a93a3',fontSize:14}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'var(--ink-4)',fontSize:14}}>
         ⏳ 從 Firebase 載入中...
       </div>
     );
@@ -1161,7 +1161,7 @@
               <button key={t.key} role="tab" aria-selected={sub===t.key} className="shell-tab" onClick={()=>setSub(t.key)}>
                 {t.label}
                 {t.count!==null&&(
-                  <span style={{fontSize:10,fontFamily:'var(--font-mono)',padding:'1px 6px',borderRadius:999,background:sub===t.key?'var(--accent-soft)':'#eef0f3',color:sub===t.key?'var(--accent)':'var(--ink-4)',fontWeight:600,marginLeft:4}}>
+                  <span style={{fontSize:10,fontFamily:'var(--font-mono)',padding:'1px 6px',borderRadius:999,background:sub===t.key?'var(--accent-soft)':'var(--line-soft)',color:sub===t.key?'var(--accent)':'var(--ink-4)',fontWeight:600,marginLeft:4}}>
                     {t.count}
                   </span>
                 )}
@@ -1187,7 +1187,7 @@
               <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}><option value="">所有工程師</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
               <button
                 onClick={()=>setHideDoneA(v=>!v)}
-                style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'#e6f1f6',color:hideDoneA?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
+                style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'var(--accent-soft)',color:hideDoneA?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
                 {hideDoneA ? '顯示已完成' : '👁 顯示已完成'}
               </button>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出客戶異常為 Excel">⬇ 匯出Excel</button>
@@ -1207,7 +1207,7 @@
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
                 {sortArr(filtA,anomalySort).map((it,idx)=>{
-                  const tone=K.ENG_TONE[it.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
+                  const tone=K.ENG_TONE[it.engineer]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
                   // 進度狀況：日期最新的在最上面（主列顯示最新，展開看較舊的）
                   const sortedProg=[...(it.progresses||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
                   const first=sortedProg[0]||{date:'—',status:'—'};
@@ -1258,7 +1258,7 @@
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <input value={search2} onChange={e=>setSearch2(e.target.value)} placeholder="搜尋品名"/>
               </div>
-              <span className="toolbar-sub">合計 <b style={{color:'#0a0e14'}}>{filtI.reduce((s,r)=>s+Number(r.quantity||0),0)}</b> 桶</span>
+              <span className="toolbar-sub">合計 <b style={{color:'var(--ink)'}}>{filtI.reduce((s,r)=>s+Number(r.quantity||0),0)}</b> 桶</span>
               <select className="t-sel" value={personF} onChange={e=>setPersonF(e.target.value)}><option value="">所有人員</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportIPA} title="匯出 IPA 採購為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
@@ -1276,14 +1276,14 @@
                 {editMode&&<th className="col-actions">操作</th>}
               </tr></thead><tbody>
                 {sortArr(filtI,ipaSort).map((it,idx)=>{
-                  const tone=K.ENG_TONE[it.person]||{fg:'#5a6270',bg:'#eef0f3'};
+                  const tone=K.ENG_TONE[it.person]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
                   return (<tr key={it._id}>
                     <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate}</td><td className="col-date" style={{whiteSpace:'nowrap'}}>{ipaRangeText(it)}</td>
-                    <td style={{whiteSpace:'nowrap'}}>{(()=>{ const d=ipaUseDays(it.useStart,it.useEnd); return d!=null ? <span className="kt-num-badge">{d} 天</span> : <span style={{color:'#b0b6bf'}}>—</span>; })()}</td>
+                    <td style={{whiteSpace:'nowrap'}}>{(()=>{ const d=ipaUseDays(it.useStart,it.useEnd); return d!=null ? <span className="kt-num-badge">{d} 天</span> : <span style={{color:'var(--ink-4)'}}>—</span>; })()}</td>
                     <td>{it.product}</td>
                     <td><span className="kt-num-badge">{it.quantity} 桶</span></td>
                     <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person}</td>
-                    <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
+                    <td style={{color:'var(--ink-3)'}}>{it.remark||'—'}</td>
                     {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
                       {canE&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('i');}}>✎</button>}
                       {canD&&<button className="kt-actbtn danger" onClick={()=>delI(it)}>✕</button>}
@@ -1302,7 +1302,7 @@
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <input value={search3} onChange={e=>setSearch3(e.target.value)} placeholder="搜尋品名 / 用途"/>
               </div>
-              <span className="toolbar-sub">合計 <b style={{color:'#0a0e14'}}>NT$ {filtT.reduce((s,r)=>s+(Number(r.price||0)*Number(r.quantity||1)),0).toLocaleString()}</b></span>
+              <span className="toolbar-sub">合計 <b style={{color:'var(--ink)'}}>NT$ {filtT.reduce((s,r)=>s+(Number(r.price||0)*Number(r.quantity||1)),0).toLocaleString()}</b></span>
               <select className="t-sel" value={methodF} onChange={e=>setMethodF(e.target.value)}><option value="">所有方式</option><option>Easy Flow</option><option>零用金</option></select>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportTools} title="匯出設備清單為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
@@ -1322,7 +1322,7 @@
                 {sortArr(filtT,toolSort).map((it,idx)=>(<tr key={it._id}>
                   <td className="col-seq">{idx+1}</td><td className="col-date">{it.purchaseDate||'—'}</td><td>{it.product}</td>
                   <td><span className="kt-num-badge">{it.quantity}</span></td><td>{it.method}</td><td className="col-id">{it.number||'—'}</td>
-                  <td style={{color:'#5a6270'}}>{it.remark||'—'}</td>
+                  <td style={{color:'var(--ink-3)'}}>{it.remark||'—'}</td>
                   <td className="kt-money">NT$ {(Number(it.price||0)*Number(it.quantity||1)).toLocaleString()}</td>
                   {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
                     {canE&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('e');}}>✎</button>}
@@ -1342,7 +1342,7 @@
                 <input value={search4} onChange={e=>setSearch4(e.target.value)} placeholder="搜尋名稱 / 材質 / 位置"/>
               </div>
               <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
-              <span className="toolbar-sub">共 <b style={{color:'#0a0e14'}}>{filtS.length}</b> 件，借出中 <b style={{color:'#c0392b'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
+              <span className="toolbar-sub">共 <b style={{color:'var(--ink)'}}>{filtS.length}</b> 件，借出中 <b style={{color:'var(--danger)'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
               <button className={'btn-edit-mode'+(sampleView==='gantt'?' active':'')} onClick={()=>setSampleView(v=>v==='gantt'?'list':'gantt')} title="切換甘特圖行事曆（雙擊格子快速登記出借）">
                 🗓 {sampleView==='gantt'?'回清冊':'甘特圖'}

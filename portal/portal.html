@@ -12,22 +12,24 @@
 body{font-family:'Noto Sans TC',system-ui,sans-serif;background:var(--bg);height:100vh;overflow:auto}
 :root {
   --bg: #ffffff;
-  --bg-soft: #fafbfc;
+  --bg-soft: var(--bg-soft);
   --bg-panel: #f5f7f9;
-  --line: #e6e8ec;
-  --line-soft: #eef0f3;
-  --ink: #0a0e14;
-  --ink-2: #3b4250;
-  --ink-3: #5a6270;
-  --ink-4: #8a93a3;
-  --accent: #0c7a99;
-  --accent-soft: #e6f1f6;
-  --ok: #1d6f43;
-  --ok-soft: #e6f1ea;
-  --warn: #c79b2a;
-  --warn-soft: #fbf3dc;
-  --danger: #c0392b;
-  --danger-soft: #fbe7e3;
+  --line: var(--line);
+  --line-soft: var(--line-soft);
+  --ink: var(--ink);
+  --ink-2: var(--ink-2);
+  --ink-3: var(--ink-3);
+  --ink-4: var(--ink-4);
+  --accent: var(--accent);
+  --accent-soft: var(--accent-soft);
+  --ok: var(--ok);
+  --ok-soft: var(--ok-soft);
+  --warn: var(--warn);
+  --warn-soft: var(--warn-soft);
+  --danger: var(--danger);
+  --danger-soft: var(--danger-soft);
+  --purple: var(--purple);
+  --purple-soft: var(--purple-soft);
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-card: 0 1px 0 rgba(10,14,20,0.04), 0 1px 2px rgba(10,14,20,0.04);
@@ -58,6 +60,8 @@ body{font-family:'Noto Sans TC',system-ui,sans-serif;background:var(--bg);height
   --warn-soft: #3a331c;
   --danger: #e0605a;
   --danger-soft: #3a2422;
+  --purple: #a68af0;
+  --purple-soft: #2e2540;
   --shadow-card: 0 1px 0 rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.2);
   --shadow-card-hover: 0 2px 0 rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.3);
   --shell-top-bg: rgba(60,60,60,0.94);
@@ -118,8 +122,8 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .t-pill-btn.active{background:var(--bg);border-color:var(--ink-2);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--ink-2)}
 .table-wrap{flex:1;overflow:auto;padding:0 28px 24px}
 .kt{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.kt thead{background:#fafbfc}
-.kt th{text-align:left;font-weight:600;font-size:10.5px;font-family:var(--font-mono);color:var(--ink-3);letter-spacing:0.06em;text-transform:uppercase;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:#fafbfc;z-index:1;user-select:none}
+.kt thead{background:var(--bg-soft)}
+.kt th{text-align:left;font-weight:600;font-size:10.5px;font-family:var(--font-mono);color:var(--ink-3);letter-spacing:0.06em;text-transform:uppercase;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--bg-soft);z-index:1;user-select:none}
 .kt th.sortable{cursor:pointer}
 .kt th.sortable:hover{color:var(--ink)}
 .kt th .sort-indicator{display:inline-block;margin-left:4px;color:var(--ink-4);font-size:9px}
@@ -136,13 +140,13 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .kt .col-actions{width:90px;text-align:right}
 .kt .col-customer{font-weight:500;color:var(--ink)}
 .kt-pill{display:inline-flex;align-items:center;height:18px;padding:0 8px;font-size:10.5px;border-radius:999px;font-family:var(--font-mono);font-weight:600;white-space:nowrap}
-.kt-pill-todo{background:#eef0f3;color:#5a6270}
-.kt-pill-blocked{background:#fbf3dc;color:#8b6b13}
-.kt-pill-progress{background:#e6f1f6;color:#0c7a99}
-.kt-pill-done{background:#e6f1ea;color:#1d6f43}
-.kt-pill-cancelled{background:#f0f1f4;color:#8a93a3}
-.kt-mat-ok{color:#1d6f43;font-weight:500}
-.kt-mat-need{color:#8b6b13;font-weight:500}
+.kt-pill-todo{background:var(--line-soft);color:var(--ink-3)}
+.kt-pill-blocked{background:var(--warn-soft);color:var(--warn)}
+.kt-pill-progress{background:var(--accent-soft);color:var(--accent)}
+.kt-pill-done{background:var(--ok-soft);color:var(--ok)}
+.kt-pill-cancelled{background:var(--bg-panel);color:var(--ink-4)}
+.kt-mat-ok{color:var(--ok);font-weight:500}
+.kt-mat-need{color:var(--warn);font-weight:500}
 .kt-eng{display:inline-flex;align-items:center;gap:6px}
 .kt-eng-dot{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;font-family:var(--font-mono)}
 .kt-prog{display:flex;align-items:center;gap:8px}
@@ -150,19 +154,19 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .kt-prog-fill{height:100%;background:var(--accent)}
 .kt-prog-num{font-family:var(--font-mono);font-size:11px;color:var(--ink-2);font-feature-settings:'tnum';min-width:32px;text-align:right}
 .kt-due{display:inline-block;font-family:var(--font-mono);font-size:11.5px;font-feature-settings:'tnum';white-space:nowrap}
-.kt-due-red{color:#c0392b;font-weight:600}
-.kt-due-amber{color:#c79b2a;font-weight:600}
+.kt-due-red{color:var(--danger);font-weight:600}
+.kt-due-amber{color:var(--warn);font-weight:600}
 .kt-act{display:inline-flex;gap:4px}
 .kt-actbtn{width:24px;height:24px;border:1px solid var(--line);background:var(--bg);border-radius:5px;cursor:pointer;color:var(--ink-3);display:inline-flex;align-items:center;justify-content:center;transition:all 0.12s;font-size:11px}
 .kt-actbtn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
-.kt-actbtn.danger:hover{border-color:#c0392b;color:#c0392b;background:#fbe7e3}
+.kt-actbtn.danger:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
 .kt-empty{padding:60px 0;text-align:center;color:var(--ink-4);font-family:var(--font-mono);font-size:12px}
 .kt-pagination{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-top:1px solid var(--line);background:var(--bg);font-size:12px;color:var(--ink-3);font-family:var(--font-mono);flex-wrap:wrap;gap:12px}
 .kt-pagination-info{display:flex;align-items:center;gap:8px}
 .kt-pagination-pages{display:flex;gap:3px;align-items:center}
 .kt-page{min-width:28px;height:28px;padding:0 8px;border:1px solid var(--line);background:var(--bg);border-radius:5px;font:inherit;font-size:11.5px;cursor:pointer;color:var(--ink-3);font-family:var(--font-mono);font-feature-settings:'tnum'}
 .kt-page:hover{border-color:var(--accent);color:var(--accent)}
-.kt-page[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.kt-page[aria-current="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
 .kt-page:disabled{opacity:0.4;cursor:not-allowed}
 .kt-num-badge{display:inline-flex;align-items:center;padding:1px 8px;border-radius:4px;background:var(--accent-soft);color:var(--accent);font-family:var(--font-mono);font-size:11px;font-weight:600;font-feature-settings:'tnum'}
 .kt-money{font-family:var(--font-mono);font-feature-settings:'tnum';color:var(--ink);font-weight:600;text-align:right;white-space:nowrap}
@@ -177,9 +181,9 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .case-caret{display:inline-block;width:12px;color:var(--ink-4);font-size:9px;margin-right:3px;transition:color .15s}
 .case-clickable:hover .case-caret{color:var(--ink-2)}
 .case-more{display:inline-block;margin-left:6px;font-size:10px;font-family:var(--font-mono);color:#fff;background:var(--ink-4);border-radius:999px;padding:0 6px;line-height:16px;vertical-align:middle}
-.kt-pill-完成{background:#e6f1ea;color:#1d6f43}
-.kt-pill-處理{background:#fbf3dc;color:#8b6b13}
-.kt-pill-暫停{background:#fbe7e3;color:#8a1d12}
+.kt-pill-完成{background:var(--ok-soft);color:var(--ok)}
+.kt-pill-處理{background:var(--warn-soft);color:var(--warn)}
+.kt-pill-暫停{background:var(--danger-soft);color:#8a1d12}
 
 /* Search/Filter */
 .t-search{display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink-4);min-width:220px}
@@ -191,7 +195,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .t-sel:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .t-btn{height:32px;padding:0 14px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);font:inherit;font-size:13px;font-weight:500;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .t-btn:hover{border-color:#cdd1d8;color:var(--ink)}
-.t-btn-primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.t-btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 .t-btn-primary:hover{background:#25303f;color:#fff}
 
 /* Kanban */
@@ -236,7 +240,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .avatar{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:var(--font-mono);letter-spacing:0.02em;border:1px solid transparent;flex-shrink:0}
 .chip{display:inline-flex;align-items:center;height:18px;padding:0 7px;font-size:10.5px;font-family:var(--font-mono);border-radius:4px;letter-spacing:0.01em;white-space:nowrap}
 .chip-muted{color:var(--ink-3);background:var(--bg-panel);border:1px solid var(--line)}
-.chip-amber{color:#8b6b13;background:var(--warn-soft);border:1px solid #f0e4b8}
+.chip-amber{color:var(--warn);background:var(--warn-soft);border:1px solid #f0e4b8}
 .chip-red{color:#8a1d12;background:var(--danger-soft);border:1px solid #f3c8c0}
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
 .dot-amber{background:var(--warn)}
@@ -258,7 +262,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .field-value.mono{font-family:var(--font-mono)}
 .pill{display:inline-flex;align-items:center;font-size:11.5px;padding:2px 9px;border-radius:999px;font-weight:600;font-family:var(--font-mono)}
 .pill-ok{background:var(--ok-soft);color:var(--ok)}
-.pill-amber{background:var(--warn-soft);color:#8b6b13}
+.pill-amber{background:var(--warn-soft);color:var(--warn)}
 .remark-box{display:block;padding:10px 12px;background:var(--bg-panel);border:1px solid var(--line);border-radius:6px;font-size:13px;color:var(--ink-2);min-height:44px}
 .drawer-foot{display:flex;justify-content:space-between;margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);font-size:11px;color:var(--ink-4);font-family:var(--font-mono)}
 
@@ -291,7 +295,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .bar.done{background:var(--ok);border:1px solid var(--ok);color:#fff}
 .bar.blocked{background:var(--warn-soft);border:1px solid #f0e4b8;color:#6b4f0e}
 .bar.todo{background:var(--bg);border:1px dashed #cbd0d8;color:var(--ink-3)}
-.bar.cancelled{background:repeating-linear-gradient(45deg,var(--bg-soft) 0 4px,#f0f1f4 4px 8px);border:1px solid var(--line);color:var(--ink-4)}
+.bar.cancelled{background:repeating-linear-gradient(45deg,var(--bg-soft) 0 4px,var(--bg-panel) 4px 8px);border:1px solid var(--line);color:var(--ink-4)}
 .bar-fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);opacity:0.85;z-index:0}
 .bar.done .bar-fill{background:rgba(255,255,255,0.18)}
 .bar.progress .bar-fill{background:var(--accent);opacity:0.78}
@@ -333,7 +337,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .issues-subtabs{display:inline-flex;border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px;background:var(--bg)}
 .issues-subtab{border:0;background:transparent;font:inherit;font-size:12.5px;padding:0 12px;height:26px;border-radius:4px;cursor:pointer;color:var(--ink-3);font-weight:500;display:inline-flex;align-items:center;gap:6px}
 .issues-subtab:hover{color:var(--ink)}
-.issues-subtab[aria-selected="true"]{background:var(--ink);color:#fff}
+.issues-subtab[aria-selected="true"]{background:var(--accent);color:#fff}
 .issues-subtab-count{font-family:var(--font-mono);font-size:10px;padding:0 5px;height:14px;display:inline-flex;align-items:center;border-radius:999px;background:rgba(0,0,0,0.06);font-feature-settings:'tnum'}
 .issues-subtab[aria-selected="true"] .issues-subtab-count{background:rgba(255,255,255,0.18)}
 .iss-analytic{flex:1;overflow:auto;padding:20px 28px 32px;background:var(--bg)}
@@ -344,75 +348,75 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .m-box{background:var(--bg);border-radius:12px;width:640px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 16px 40px rgba(0,0,0,.2)}
 .m-hd{padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
 .m-hd h3{font-size:15px;font-weight:700}
-.m-close{background:none;border:none;font-size:22px;cursor:pointer;color:#8a93a3;padding:2px 6px;border-radius:4px}
-.m-close:hover{background:#eef0f3}
+.m-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink-4);padding:2px 6px;border-radius:4px}
+.m-close:hover{background:var(--line-soft)}
 .m-body{padding:0 24px}
-.m-foot{padding:16px 24px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #e6e8ec;margin-top:16px}
+.m-foot{padding:16px 24px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);margin-top:16px}
 .m-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
 .m-field{margin-bottom:14px}
 .btn-cancel{height:34px;padding:0 16px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);font-size:13px;font-weight:500;border-radius:6px;cursor:pointer;font-family:inherit}
-.btn-save{height:34px;padding:0 16px;border:none;background:#0a0e14;color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
+.btn-save{height:34px;padding:0 16px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
 .btn-save:disabled{opacity:.5;cursor:not-allowed}
-.btn-add{height:32px;padding:0 14px;border:none;background:#0a0e14;color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
+.btn-add{height:32px;padding:0 14px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit}
 /* 編輯/設定切換按鈕：外觀對齊 inventory 的「編輯模式」按鈕 */
 .btn-edit-mode{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 15px;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
 .btn-edit-mode:hover{background:#eff6ff;border-color:#60a5fa;color:#1d4ed8}
 .btn-edit-mode.active{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
 
 /* Login */
-.login-page{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#0a0e14,#131c2e,#0c2340);display:flex;align-items:center;justify-content:center}
+.login-page{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,var(--ink),#131c2e,#0c2340);display:flex;align-items:center;justify-content:center}
 .login-card{background:var(--bg);border-radius:16px;padding:40px 48px;width:420px;max-width:95vw;box-shadow:0 24px 48px rgba(0,0,0,.3)}
 .login-brand{text-align:center;margin-bottom:28px}
 .login-brand-mark{width:48px;height:48px;background:#0a0e14;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;position:relative}
-.login-brand-mark::before{content:'';position:absolute;top:11px;left:11px;width:10px;height:10px;background:#0c7a99;border-radius:2px}
-.login-brand-mark::after{content:'';position:absolute;bottom:11px;right:11px;width:16px;height:3px;background:#0c7a99;border-radius:1px}
-.login-brand h1{font-size:18px;font-weight:700;color:#0a0e14}
-.login-brand p{font-size:11px;color:#8a93a3;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;margin-top:4px}
-.login-err{background:#fff5f5;border:1px solid #ffc9c9;color:#c0392b;border-radius:6px;padding:9px 12px;font-size:12.5px;margin-bottom:14px;display:none}
+.login-brand-mark::before{content:'';position:absolute;top:11px;left:11px;width:10px;height:10px;background:var(--accent);border-radius:2px}
+.login-brand-mark::after{content:'';position:absolute;bottom:11px;right:11px;width:16px;height:3px;background:var(--accent);border-radius:1px}
+.login-brand h1{font-size:18px;font-weight:700;color:var(--ink)}
+.login-brand p{font-size:11px;color:var(--ink-4);font-family:'JetBrains Mono',monospace;letter-spacing:.08em;margin-top:4px}
+.login-err{background:#fff5f5;border:1px solid #ffc9c9;color:var(--danger);border-radius:6px;padding:9px 12px;font-size:12.5px;margin-bottom:14px;display:none}
 .login-err.show{display:block}
 .login-fg{margin-bottom:16px}
-.login-fg label{display:block;font-size:12px;font-weight:600;color:#5a6270;margin-bottom:5px}
-.login-fg input{width:100%;padding:9px 13px;border:1.5px solid #e6e8ec;border-radius:7px;font-size:13.5px;font-family:inherit;outline:none;transition:border-color .15s}
-.login-fg input:focus{border-color:#0c7a99;box-shadow:0 0 0 3px #e6f1f6}
-.login-submit{width:100%;padding:11px;border:0;border-radius:7px;background:#0a0e14;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
+.login-fg label{display:block;font-size:12px;font-weight:600;color:var(--ink-3);margin-bottom:5px}
+.login-fg input{width:100%;padding:9px 13px;border:1.5px solid var(--line);border-radius:7px;font-size:13.5px;font-family:inherit;outline:none;transition:border-color .15s}
+.login-fg input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.login-submit{width:100%;padding:11px;border:0;border-radius:7px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
 .login-submit:hover{background:#1a2334}
 .login-submit:disabled{opacity:.5;cursor:not-allowed}
 
 /* Admin */
 .perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
-.perm-chip{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1.5px solid #e6e8ec;border-radius:6px;cursor:pointer;font-size:12px;transition:all .12s;user-select:none}
-.perm-chip:hover,.perm-chip.on{border-color:#0c7a99;background:#e6f1f6}
-.perm-chip input{accent-color:#0c7a99;width:14px;height:14px;cursor:pointer;flex-shrink:0}
+.perm-chip{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1.5px solid var(--line);border-radius:6px;cursor:pointer;font-size:12px;transition:all .12s;user-select:none}
+.perm-chip:hover,.perm-chip.on{border-color:var(--accent);background:var(--accent-soft)}
+.perm-chip input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0}
 .preset-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .preset-chip{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1.5px solid var(--line);background:var(--bg);color:var(--ink-3);font-family:inherit;transition:all .12s}
-.preset-chip.p-admin{border-color:#e6b800;color:#7a5000;background:#fffadc}
-.preset-chip.p-mgr{border-color:#0c7a99;color:#0c7a99;background:#e6f1f6}
-.preset-chip.p-eng{border-color:#1d6f43;color:#1d6f43;background:#e6f1ea}
-.preset-chip.p-view{border-color:#8a93a3;color:#5a6270;background:#f5f6f8}
+.preset-chip.p-admin{border-color:#e6b800;color:var(--warn);background:var(--warn-soft)}
+.preset-chip.p-mgr{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.preset-chip.p-eng{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
+.preset-chip.p-view{border-color:var(--ink-4);color:var(--ink-3);background:#f5f6f8}
 .u-tbl{width:100%;border-collapse:collapse}
-.u-tbl th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#8a93a3;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #e6e8ec;background:#fafbfc;white-space:nowrap}
-.u-tbl td{padding:11px 14px;border-bottom:1px solid #eef0f3;font-size:13px;vertical-align:middle}
-.u-tbl tr:hover td{background:#fafbfc}
-.u-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:#0a0e14;color:#fff;flex-shrink:0}
+.u-tbl th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-4);text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid var(--line);background:var(--bg-soft);white-space:nowrap}
+.u-tbl td{padding:11px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle}
+.u-tbl tr:hover td{background:var(--bg-soft)}
+.u-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:var(--accent);color:#fff;flex-shrink:0}
 .role-chip{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700}
-.role-chip.admin{background:#fffadc;color:#7a5000}
-.role-chip.manager{background:#e6f1f6;color:#0c7a99}
-.role-chip.operator{background:#e6f1ea;color:#1d6f43}
-.role-chip.viewer{background:#f5f6f8;color:#5a6270}
+.role-chip.admin{background:var(--warn-soft);color:var(--warn)}
+.role-chip.manager{background:var(--accent-soft);color:var(--accent)}
+.role-chip.operator{background:var(--ok-soft);color:var(--ok)}
+.role-chip.viewer{background:#f5f6f8;color:var(--ink-3)}
 .st-dot{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
-.st-dot.on{color:#1d6f43}.st-dot.off{color:#8a93a3}
+.st-dot.on{color:var(--ok)}.st-dot.off{color:var(--ink-4)}
 .seg{display:flex;gap:2px}
-.seg-btn{border:1px solid #e6e8ec;background:#fff;color:#5a6270;font-size:12px;font-weight:500;padding:5px 12px;border-radius:5px;cursor:pointer;font-family:inherit;transition:all .12s}
-.seg-btn.active{background:#0a0e14;color:#fff;border-color:#0a0e14}
+.seg-btn{border:1px solid var(--line);background:#fff;color:var(--ink-3);font-size:12px;font-weight:500;padding:5px 12px;border-radius:5px;cursor:pointer;font-family:inherit;transition:all .12s}
+.seg-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .adm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.adm-stat{background:#fafbfc;border:1px solid #e6e8ec;border-radius:8px;padding:18px 20px}
-.adm-stat-val{font-size:28px;font-weight:800;color:#0a0e14}
-.adm-stat-lbl{font-size:12px;color:#8a93a3;margin-top:2px}
+.adm-stat{background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:18px 20px}
+.adm-stat-val{font-size:28px;font-weight:800;color:var(--ink)}
+.adm-stat-lbl{font-size:12px;color:var(--ink-4);margin-top:2px}
 
 /* Toast */
 .toast-wrap{position:fixed;bottom:24px;right:24px;z-index:9000;display:flex;flex-direction:column;gap:8px}
 .toast-item{padding:11px 16px;border-radius:8px;font-size:13px;font-weight:500;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:tIn .2s ease;display:flex;align-items:center;gap:8px}
-.toast-item.ok{background:#1d6f43}.toast-item.err{background:#c0392b}.toast-item.inf{background:#0c7a99}
+.toast-item.ok{background:var(--ok)}.toast-item.err{background:var(--danger)}.toast-item.inf{background:var(--accent)}
 @keyframes tIn{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
 
 /* Scrollbar */
@@ -481,10 +485,10 @@ window.showToast = window.showToast || function (msg, type) {
   K.ENG_FULLLABEL = { Jimmy:'廖璟程 (Jimmy)', Jaylen:'何哲綸 (Jaylen)', Bill:'陳柏元 (Bill)', Barry:'Barry' };
   K.ENG_INIT = { Jimmy:'JC', Jaylen:'JL', Bill:'BL', Barry:'BR' };
   K.ENG_TONE = {
-    Jimmy:  { fg:'#0c7a99', bg:'#e6f1f6' },
-    Jaylen: { fg:'#6b3fa0', bg:'#efe9f7' },
-    Bill:   { fg:'#1d6f43', bg:'#e6f1ea' },
-    Barry:  { fg:'#a05a00', bg:'#f7eed8' },
+    Jimmy:  { fg:'var(--accent)', bg:'var(--accent-soft)' },
+    Jaylen: { fg:'var(--purple)', bg:'var(--purple-soft)' },
+    Bill:   { fg:'var(--ok)', bg:'var(--ok-soft)' },
+    Barry:  { fg:'var(--warn)', bg:'#f7eed8' },
   };
   K.MACHINES = ['Form4', 'Form4L', 'Fuse1+', 'Mark2'];
   K.MATERIALS = ['足夠', '需調撥'];
@@ -494,11 +498,11 @@ window.showToast = window.showToast || function (msg, type) {
   K.CATEGORIES = ['代工', '評估'];
   K.PROGRESS_VALUES = [0, 25, 50, 75, 100];
   K.STATUS_TONE = {
-    todo:      { fg:'#5a6270', bg:'#eef0f3', label:'待開始' },
-    blocked:   { fg:'#8b6b13', bg:'#fbf3dc', label:'等待材料' },
-    progress:  { fg:'#0c7a99', bg:'#e6f1f6', label:'進行中' },
-    done:      { fg:'#1d6f43', bg:'#e6f1ea', label:'已完成' },
-    cancelled: { fg:'#8a93a3', bg:'#f0f1f4', label:'已取消' },
+    todo:      { fg:'var(--ink-3)', bg:'var(--line-soft)', label:'待開始' },
+    blocked:   { fg:'var(--warn)', bg:'var(--warn-soft)', label:'等待材料' },
+    progress:  { fg:'var(--accent)', bg:'var(--accent-soft)', label:'進行中' },
+    done:      { fg:'var(--ok)', bg:'var(--ok-soft)', label:'已完成' },
+    cancelled: { fg:'var(--ink-4)', bg:'var(--bg-panel)', label:'已取消' },
   };
   K.daysUntil = function(dateStr) {
     if (!dateStr) return null;
@@ -542,7 +546,7 @@ window.showToast = window.showToast || function (msg, type) {
       eng.forEach(e => {
         K.ENG_LABEL[e.key]     = e.label;
         K.ENG_FULLLABEL[e.key] = e.label + ' (' + e.key + ')';
-        if (!K.ENG_TONE[e.key]) K.ENG_TONE[e.key] = { fg:'#5a6270', bg:'#eef0f3' };
+        if (!K.ENG_TONE[e.key]) K.ENG_TONE[e.key] = { fg:'var(--ink-3)', bg:'var(--line-soft)' };
         if (!K.ENG_INIT[e.key]) K.ENG_INIT[e.key] = e.key.slice(0,2).toUpperCase();
       });
     }
@@ -606,7 +610,7 @@ function TableView({ data, setData }) {
   function DueCell({ item }) {
     const st = K.statusOf(item);
     const done = st==='done'||st==='cancelled';
-    if (!item.dueDate) return <span className="kt-due" style={{color:'#8a93a3'}}>未訂期</span>;
+    if (!item.dueDate) return <span className="kt-due" style={{color:'var(--ink-4)'}}>未訂期</span>;
     const d = K.daysUntil(item.dueDate);
     let cls = 'kt-due', suffix = '';
     if (!done && d!==null) {
@@ -671,7 +675,7 @@ function TableView({ data, setData }) {
           <tbody>
             {pageData.map(it => {
               const st = K.statusOf(it);
-              const tone = K.ENG_TONE[it.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
+              const tone = K.ENG_TONE[it.engineer]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
               return (
                 <tr key={it._id||it.seq}>
                   <td className="col-seq">{it.seq}</td>
@@ -684,13 +688,13 @@ function TableView({ data, setData }) {
                   <td><span className={it.material==='足夠'?'kt-mat-ok':'kt-mat-need'}>{it.material}</span></td>
                   <td className="col-prog">
                     <div className="kt-prog">
-                      <div className="kt-prog-bar"><div className="kt-prog-fill" style={{width:`${it.progress}%`,background:st==='done'?'#1d6f43':st==='cancelled'?'#cbd0d8':'#0c7a99'}}/></div>
+                      <div className="kt-prog-bar"><div className="kt-prog-fill" style={{width:`${it.progress}%`,background:st==='done'?'var(--ok)':st==='cancelled'?'#cbd0d8':'var(--accent)'}}/></div>
                       <span className="kt-prog-num">{it.progress}%</span>
                     </div>
                   </td>
                   <td className="col-machine">{it.machine||'—'}</td>
                   <td><span className={`kt-pill kt-pill-${st}`}>{K.STATUS_TONE[st].label}</span></td>
-                  <td style={{color:'#5a6270',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.remark||'—'}</td>
+                  <td style={{color:'var(--ink-3)',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{it.remark||'—'}</td>
                 </tr>
               );
             })}
@@ -736,24 +740,24 @@ function KanbanView({ data, setData }) {
   const [dragItem, setDragItem] = useStateK(null);
 
   const STATUS_COLUMNS = [
-    { key:'todo',     title:'待開始',  hint:'0%, 尚未排程',    tone:'#5a6270' },
-    { key:'blocked',  title:'等待材料', hint:'需調撥 / 待客戶', tone:'#c79b2a' },
-    { key:'progress', title:'進行中',  hint:'已排程, 列印中',  tone:'#0c7a99' },
-    { key:'done',     title:'已完成',  hint:'100% / 出貨',     tone:'#1d6f43' },
+    { key:'todo',     title:'待開始',  hint:'0%, 尚未排程',    tone:'var(--ink-3)' },
+    { key:'blocked',  title:'等待材料', hint:'需調撥 / 待客戶', tone:'var(--warn)' },
+    { key:'progress', title:'進行中',  hint:'已排程, 列印中',  tone:'var(--accent)' },
+    { key:'done',     title:'已完成',  hint:'100% / 出貨',     tone:'var(--ok)' },
     { key:'cancelled',title:'已取消',  hint:'備註含「取消」',  tone:'#9aa3b2' },
   ];
   const PROGRESS_COLUMNS = [
     { key:'0',   title:'0%',   hint:'尚未開始', tone:'#9aa3b2' },
-    { key:'25',  title:'25%',  hint:'備料/起印', tone:'#c79b2a' },
-    { key:'50',  title:'50%',  hint:'列印中',    tone:'#c79b2a' },
-    { key:'75',  title:'75%',  hint:'後處理',    tone:'#0c7a99' },
-    { key:'100', title:'100%', hint:'完成',       tone:'#1d6f43' },
+    { key:'25',  title:'25%',  hint:'備料/起印', tone:'var(--warn)' },
+    { key:'50',  title:'50%',  hint:'列印中',    tone:'var(--warn)' },
+    { key:'75',  title:'75%',  hint:'後處理',    tone:'var(--accent)' },
+    { key:'100', title:'100%', hint:'完成',       tone:'var(--ok)' },
   ];
   const ENGINEER_COLUMNS = K.ENG_ORDER.map(k => ({ key:k, title:K.ENG_LABEL[k], hint:k, tone:K.ENG_TONE[k].fg }));
-  const MACHINE_COLUMNS  = K.MACHINES.map(k => ({ key:k, title:k, hint:'機台', tone:'#0c7a99' }));
+  const MACHINE_COLUMNS  = K.MACHINES.map(k => ({ key:k, title:k, hint:'機台', tone:'var(--accent)' }));
   const RESIN_LIST       = (window._inventory_materials && window._inventory_materials.length) ? window._inventory_materials : K.RESINS;
-  const RESIN_COLUMNS    = [...RESIN_LIST.map(k => ({ key:k, title:k, hint:'樹脂', tone:'#6b3fa0' })), { key:'未分類', title:'未分類', hint:'未指定樹脂', tone:'#9aa3b2' }];
-  const CATEGORY_COLUMNS = [...K.CATEGORIES.map(k => ({ key:k, title:k, hint:'類型', tone:'#0c7a99' })), { key:'未分類', title:'未分類', hint:'未指定類型', tone:'#9aa3b2' }];
+  const RESIN_COLUMNS    = [...RESIN_LIST.map(k => ({ key:k, title:k, hint:'樹脂', tone:'var(--purple)' })), { key:'未分類', title:'未分類', hint:'未指定樹脂', tone:'#9aa3b2' }];
+  const CATEGORY_COLUMNS = [...K.CATEGORIES.map(k => ({ key:k, title:k, hint:'類型', tone:'var(--accent)' })), { key:'未分類', title:'未分類', hint:'未指定類型', tone:'#9aa3b2' }];
 
   const cols = groupBy==='status' ? STATUS_COLUMNS : groupBy==='progress' ? PROGRESS_COLUMNS : groupBy==='engineer' ? ENGINEER_COLUMNS : groupBy==='machine' ? MACHINE_COLUMNS : groupBy==='resin' ? RESIN_COLUMNS : CATEGORY_COLUMNS;
 
@@ -808,7 +812,7 @@ function KanbanView({ data, setData }) {
   }
 
   function Avatar({ engineer }) {
-    const tone = K.ENG_TONE[engineer]||{fg:'#5a6270',bg:'#eef0f3'};
+    const tone = K.ENG_TONE[engineer]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
     return <span className="avatar" style={{color:tone.fg,background:tone.bg}} title={K.ENG_FULLLABEL[engineer]||K.ENG_LABEL[engineer]||engineer}>{K.ENG_INIT[engineer]||engineer.slice(0,2)}</span>;
   }
 
@@ -845,7 +849,7 @@ function KanbanView({ data, setData }) {
           </div>
         )}
         <div className="card-progress">
-          <div className="progress-track"><div className="progress-fill" style={{width:`${item.progress}%`,background:done?'#1d6f43':cancelled?'#cbd0d8':'#0c7a99'}}/></div>
+          <div className="progress-track"><div className="progress-fill" style={{width:`${item.progress}%`,background:done?'var(--ok)':cancelled?'#cbd0d8':'var(--accent)'}}/></div>
           <span className="progress-num">{item.progress}%</span>
         </div>
         <div className="card-foot">
@@ -881,7 +885,7 @@ function KanbanView({ data, setData }) {
 
   function Drawer() {
     if (!open) return null;
-    const tone = K.ENG_TONE[open.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
+    const tone = K.ENG_TONE[open.engineer]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
     return (
       <div className="drawer-wrap" onClick={()=>setOpen(null)}>
         <aside className="drawer" onClick={e=>e.stopPropagation()}>
@@ -986,7 +990,7 @@ function KanbanView({ data, setData }) {
         </select>
         <button
           onClick={()=>setHideDone(v=>!v)}
-          style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'#e6f1f6',color:hideDone?'var(--ink-3)':'#0c7a99',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
+          style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'var(--accent-soft)',color:hideDone?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
           {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
         </button>
         <div className="seg">
@@ -1104,7 +1108,7 @@ function GanttView({ data }) {
         <div className="gantt-left">
           <div className="lane-head-sticky">工作 / 客戶</div>
           {filtered.map((d,i)=>{
-            const tone=K.ENG_TONE[d.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
+            const tone=K.ENG_TONE[d.engineer]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
             const st = K.statusOf(d);
             const statusLabel = {done:'已完成',progress:'進行中',blocked:'等待材料',todo:'待處理',cancelled:'已取消'}[st]||st;
             return (
@@ -1160,12 +1164,12 @@ function GanttView({ data }) {
                 <div className="today-line" style={{left:todayOffset*DAY_W+DAY_W/2}}/>
                 {/* 逾期完工紅色標記：實際完成日的紅色垂直線 + ▲ */}
                 {lateDone&&actual!==null&&(
-                  <div title={`實際完成 ${item.actualEndDate}（逾期）`} style={{position:'absolute',left:actual*DAY_W+DAY_W/2-1,top:4,bottom:4,width:2,background:'#c0392b',zIndex:3,pointerEvents:'none'}}>
-                    <span style={{position:'absolute',bottom:-3,left:-4,fontSize:9,color:'#c0392b',lineHeight:1}}>▲</span>
+                  <div title={`實際完成 ${item.actualEndDate}（逾期）`} style={{position:'absolute',left:actual*DAY_W+DAY_W/2-1,top:4,bottom:4,width:2,background:'var(--danger)',zIndex:3,pointerEvents:'none'}}>
+                    <span style={{position:'absolute',bottom:-3,left:-4,fontSize:9,color:'var(--danger)',lineHeight:1}}>▲</span>
                   </div>
                 )}
                 {hasBar&&(
-                  <div className={`bar ${st}`} style={{left:s*DAY_W,width:Math.max(1,(e-s+1))*DAY_W-2,top:'50%',transform:'translateY(-50%)',...(lateDone?{outline:'2px solid #c0392b',outlineOffset:1,boxShadow:'0 0 0 3px rgba(192,57,43,0.12)'}:{})}}
+                  <div className={`bar ${st}`} style={{left:s*DAY_W,width:Math.max(1,(e-s+1))*DAY_W-2,top:'50%',transform:'translateY(-50%)',...(lateDone?{outline:'2px solid var(--danger)',outlineOffset:1,boxShadow:'0 0 0 3px rgba(192,57,43,0.12)'}:{})}}
                     onMouseEnter={e2=>{setTooltip({item,x:e2.clientX+14,y:e2.clientY-20})}}
                     onMouseMove={e2=>{setTooltip(v=>v?{...v,x:e2.clientX+14,y:e2.clientY-20}:v)}}
                     onMouseLeave={()=>setTooltip(null)}
@@ -1192,14 +1196,14 @@ function GanttView({ data }) {
         const K2=window.K;
         const st=K2.statusOf(d);
         const statusLabel={done:'已完成',progress:'進行中',blocked:'等待材料',todo:'待處理',cancelled:'已取消'}[st]||st;
-        const statusColor={done:'#1d6f43',progress:'#0c7a99',blocked:'#8b6b13',todo:'#5a6270',cancelled:'#8a93a3'}[st]||'#5a6270';
+        const statusColor={done:'var(--ok)',progress:'var(--accent)',blocked:'var(--warn)',todo:'var(--ink-3)',cancelled:'var(--ink-4)'}[st]||'var(--ink-3)';
         const engLabel=K2.ENG_FULLLABEL[d.engineer]||K2.ENG_LABEL[d.engineer]||d.engineer;
-        const tone=K2.ENG_TONE[d.engineer]||{fg:'#5a6270',bg:'#eef0f3'};
+        const tone=K2.ENG_TONE[d.engineer]||{fg:'var(--ink-3)',bg:'var(--line-soft)'};
         const today2=K2.TODAY;
         const dueMs=d.dueDate?new Date(d.dueDate)-today2:null;
         const dueDay=dueMs!==null?Math.round(dueMs/K2.DAY):null;
         const dueText=dueDay===null?'—':dueDay<0?`逾期 ${-dueDay} 天`:dueDay===0?'今天到期':`還有 ${dueDay} 天`;
-        const dueCol=dueDay!==null&&dueDay<0?'#c0392b':dueDay!==null&&dueDay<7?'#c79b2a':'var(--ink-2)';
+        const dueCol=dueDay!==null&&dueDay<0?'var(--danger)':dueDay!==null&&dueDay<7?'var(--warn)':'var(--ink-2)';
         // clamp position so tooltip stays in viewport
         const tipH=200; const tipW=230;
         const yPos=Math.min(tooltip.y, window.innerHeight-tipH-12);
@@ -1237,7 +1241,7 @@ function GanttView({ data }) {
                 const lateTip = d.dueDate && !Number.isNaN(new Date(d.actualEndDate).getTime()) && !Number.isNaN(new Date(d.dueDate).getTime()) && (new Date(d.actualEndDate)>new Date(d.dueDate));
                 return <div style={{display:'flex',justifyContent:'space-between'}}>
                   <span style={{color:'var(--ink-4)'}}>實際完成</span>
-                  <span style={{color:lateTip?'#c0392b':'var(--ink-2)',fontFamily:'var(--font-mono)',fontSize:11,fontWeight:lateTip?700:400}}>{d.actualEndDate}{lateTip?' ⚠ 逾期':''}</span>
+                  <span style={{color:lateTip?'var(--danger)':'var(--ink-2)',fontFamily:'var(--font-mono)',fontSize:11,fontWeight:lateTip?700:400}}>{d.actualEndDate}{lateTip?' ⚠ 逾期':''}</span>
                 </div>;
               })()}
               <div style={{display:'flex',justifyContent:'space-between'}}>
@@ -1268,9 +1272,9 @@ function DashboardView({ data }) {
   const K = window.K;
   const { useMemo, useState } = React;
 
-  const STATUS_COLORS = { todo:'#cbd0d8', blocked:'#c79b2a', progress:'#0c7a99', done:'#1d6f43', cancelled:'#b0b5bf' };
-  const ENG_COLORS = ['#0c7a99','#6b3fa0','#1d6f43','#a05a00','#c0392b','#2471a3'];
-  const MACH_COLORS = ['#0c7a99','#1d6f43','#c79b2a','#6b3fa0'];
+  const STATUS_COLORS = { todo:'#cbd0d8', blocked:'var(--warn)', progress:'var(--accent)', done:'var(--ok)', cancelled:'#b0b5bf' };
+  const ENG_COLORS = ['var(--accent)','var(--purple)','var(--ok)','var(--warn)','var(--danger)','var(--accent)'];
+  const MACH_COLORS = ['var(--accent)','var(--ok)','var(--warn)','var(--purple)'];
 
   // ── KPI 統計 ──
   const stats = useMemo(() => {
@@ -1423,11 +1427,11 @@ function DashboardView({ data }) {
       case 'engineer': return stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:stats.byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
       case 'progress': return K.PROGRESS_VALUES.map((p,i)=>({ label:`${p}%`, value:stats.byProg[p]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
       case 'machine':  return stats.machines.map((m,i)=>({ label:m, value:stats.byMach[m]||0, color:MACH_COLORS[i%MACH_COLORS.length] }));
-      case 'resin': { const RCOL=['#0c7a99','#6b3fa0','#1d6f43','#a05a00','#c0392b','#2471a3','#c79b2a','#8b6b13']; return Object.entries(stats.byResin).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>({ label:k, value:v, color:k==='未指定'?'#b0b5bf':RCOL[i%RCOL.length] })); }
-      case 'category': { const CAT_COLORS={'代工':'#6b3fa0','評估':'#0c7a99','未指定':'#b0b5bf'}; return Object.entries(stats.byCat).map(([k,v])=>({ label:k, value:v, color:CAT_COLORS[k]||'#8a93a3' })); }
+      case 'resin': { const RCOL=['var(--accent)','var(--purple)','var(--ok)','var(--warn)','var(--danger)','var(--accent)','var(--warn)','var(--warn)']; return Object.entries(stats.byResin).sort((a,b)=>b[1]-a[1]).map(([k,v],i)=>({ label:k, value:v, color:k==='未指定'?'#b0b5bf':RCOL[i%RCOL.length] })); }
+      case 'category': { const CAT_COLORS={'代工':'var(--purple)','評估':'var(--accent)','未指定':'#b0b5bf'}; return Object.entries(stats.byCat).map(([k,v])=>({ label:k, value:v, color:CAT_COLORS[k]||'var(--ink-4)' })); }
       case 'customer': {
         const sorted=Object.entries(stats.byCustomer).sort((a,b)=>b[1]-a[1]).slice(0,8);
-        return sorted.map(([k,v],i)=>({ label:k, value:v, color:'#0c7a99' }));
+        return sorted.map(([k,v],i)=>({ label:k, value:v, color:'var(--accent)' }));
       }
       default: return [];
     }
@@ -1483,9 +1487,9 @@ function DashboardView({ data }) {
         {[
           { label:'總訂單',    value:stats.total,  sub:'全部資料筆數',          color:'var(--ink)' },
           { label:'進行中',    value:stats.wip,    sub:'已開工未完成',          color:'var(--ink)' },
-          { label:'等待材料',  value:stats.blocked,sub:'需調撥 / 待備料',       color:'#c79b2a'    },
-          { label:'7 天內到期',value:stats.due7,   sub:'未完成且交期 ≤ 7 天',  color:'#c0392b'    },
-          { label:'已完成',    value:stats.done,   sub:'100% / 完成',          color:'#1d6f43'    },
+          { label:'等待材料',  value:stats.blocked,sub:'需調撥 / 待備料',       color:'var(--warn)'    },
+          { label:'7 天內到期',value:stats.due7,   sub:'未完成且交期 ≤ 7 天',  color:'var(--danger)'    },
+          { label:'已完成',    value:stats.done,   sub:'100% / 完成',          color:'var(--ok)'    },
         ].map((k,i)=>(
           <div key={k.label} style={{padding:'18px 24px 20px',borderRight:i<4?'1px solid var(--line-soft)':'none'}}>
             <div style={{fontSize:11,letterSpacing:'0.06em',textTransform:'uppercase',color:'var(--ink-4)',fontWeight:600,fontFamily:'var(--font-mono)'}}>{k.label}</div>
@@ -1543,8 +1547,8 @@ function DashboardView({ data }) {
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:16,marginBottom:32}}>
         {[
-          { title:'逾期完工', badge:'實際完成日晚於期望交期', count:stats.lateCount, color:'#c0392b', by:stats.byEngLate },
-          { title:'消耗超標', badge:'實際消耗量大於預估消耗量', count:stats.overCount, color:'#8b6b13', by:stats.byEngOver },
+          { title:'逾期完工', badge:'實際完成日晚於期望交期', count:stats.lateCount, color:'var(--danger)', by:stats.byEngLate },
+          { title:'消耗超標', badge:'實際消耗量大於預估消耗量', count:stats.overCount, color:'var(--warn)', by:stats.byEngOver },
         ].map(a=>{
           const items = stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:a.by[k]||0, color:a.color }));
           return (
@@ -1585,8 +1589,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260708h"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260708f"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260708i"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260708g"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -1636,8 +1640,8 @@ function LoginPage({ onLogin }) {
 function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
   const PERMS   = window.PERMS_MAP   || {};
   const PRESETS = window.ROLE_PRESETS || {};
-  const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid #e6e8ec', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
-  const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'#5a6270', marginBottom:5 };
+  const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
+  const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
   const empty = { displayName:'', email:'', password:'', permissions:['view_board','view_issues','view_booking','view_inventory','view_quote'], active:true };
   const [form, setForm] = React.useState(item ? {...item, password:''} : empty);
@@ -1750,7 +1754,7 @@ function AdminPanel({ user }) {
   const DEF_ROLE_PRESETS = window.DEFAULT_ROLE_PRESETS || {};
   const [rolePresets, setRolePresets] = useSt(JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)));
 
-  const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid #e6e8ec',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none'};
+  const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none'};
   const DEF_ENG  = K.ENG_ORDER.map(k=>({key:k,label:K.ENG_LABEL[k]||k}));
   const DEF_MACH = K.MACHINES.map(m=>({name:m}));
   const DEF_BORR = [{key:'Wang',label:'王小明'},{key:'Lee',label:'李美華'},{key:'Chang',label:'張大偉'},{key:'Chen',label:'陳怡君'},{key:'Lin',label:'林志豪'}];
@@ -1872,7 +1876,7 @@ function AdminPanel({ user }) {
 
   const ListEditor = ({label, list, setList, keyField=false}) => (
     <div style={{marginBottom:24}}>
-      <div style={{fontSize:13,fontWeight:700,color:'#0a0e14',marginBottom:10}}>{label}</div>
+      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>{label}</div>
       {list.map((item,i)=>(
         <div key={i} style={{display:'flex',gap:8,marginBottom:7,alignItems:'center'}}>
           {keyField && <input style={{...INP,width:110}} placeholder="Key (英文)" value={item.key||''} onChange={ev=>{const l=[...list];l[i]={...l[i],key:ev.target.value};setList(l);}}/>}
@@ -1886,10 +1890,10 @@ function AdminPanel({ user }) {
 
   const SalesEditor = () => (
     <div style={{marginBottom:24}}>
-      <div style={{fontSize:13,fontWeight:700,color:'#0a0e14',marginBottom:10}}>業務清單<span style={{fontWeight:400,color:'#8a93a3',fontSize:11,marginLeft:6}}>(獨立設定，不與工作看板同步)</span></div>
+      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>業務清單<span style={{fontWeight:400,color:'var(--ink-4)',fontSize:11,marginLeft:6}}>(獨立設定，不與工作看板同步)</span></div>
       <div style={{display:'grid',gridTemplateColumns:'110px 1fr 28px',gap:'0 8px',marginBottom:4}}>
-        <div style={{fontSize:11,fontWeight:600,color:'#8a93a3',padding:'0 2px'}}>英文 / Key</div>
-        <div style={{fontSize:11,fontWeight:600,color:'#8a93a3',padding:'0 2px'}}>中文名稱</div>
+        <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>英文 / Key</div>
+        <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>中文名稱</div>
         <div/>
       </div>
       {bkSales.map((s,i)=>(
@@ -1905,10 +1909,10 @@ function AdminPanel({ user }) {
 
   const BorrowerEditor = () => (
     <div style={{marginBottom:24}}>
-      <div style={{fontSize:13,fontWeight:700,color:'#0a0e14',marginBottom:10}}>借用人清單</div>
+      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>借用人清單</div>
       <div style={{display:'grid',gridTemplateColumns:'110px 1fr 28px',gap:'0 8px',marginBottom:4}}>
-        <div style={{fontSize:11,fontWeight:600,color:'#8a93a3',padding:'0 2px'}}>英文名 / Key</div>
-        <div style={{fontSize:11,fontWeight:600,color:'#8a93a3',padding:'0 2px'}}>中文名稱</div>
+        <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>英文名 / Key</div>
+        <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>中文名稱</div>
         <div/>
       </div>
       {borrowers.map((b,i)=>(
@@ -1922,7 +1926,7 @@ function AdminPanel({ user }) {
     </div>
   );
 
-  if(loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'#8a93a3',fontSize:14}}>⏳ 載入中...</div>;
+  if(loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:300,color:'var(--ink-4)',fontSize:14}}>⏳ 載入中...</div>;
 
   const SETTING_TABS = [
     {key:'workboard', label:'工作看板'},
@@ -1977,7 +1981,7 @@ function AdminPanel({ user }) {
                 {sortedUsers.map(u=>(
                   <tr key={u._id}>
                     <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{(u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
-                    <td style={{color:'#5a6270',fontSize:12}}>{u.email}</td>
+                    <td style={{color:'var(--ink-3)',fontSize:12}}>{u.email}</td>
                     <td><span className={`role-chip ${roleTierOf(u)}`}>{ROLE_TIER_LABEL[roleTierOf(u)]}</span></td>
                     <td><span className={`st-dot${u.active?' on':' off'}`}>{u.active?'● 啟用':'● 停用'}</span></td>
                     <td><span className="kt-act">
@@ -2008,7 +2012,7 @@ function AdminPanel({ user }) {
             {/* 分頁切換 */}
             <div style={{display:'flex',gap:4,marginBottom:24,background:'#f5f6f8',padding:4,borderRadius:8,width:'fit-content'}}>
               {SETTING_TABS.map(t=>(
-                <button key={t.key} onClick={()=>setSettingTab(t.key)} style={{padding:'6px 18px',borderRadius:6,border:'none',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .15s',background:settingTab===t.key?'#fff':'transparent',color:settingTab===t.key?'#0a0e14':'#5a6270',boxShadow:settingTab===t.key?'0 1px 3px rgba(0,0,0,.1)':'none',fontFamily:'inherit'}}>
+                <button key={t.key} onClick={()=>setSettingTab(t.key)} style={{padding:'6px 18px',borderRadius:6,border:'none',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .15s',background:settingTab===t.key?'#fff':'transparent',color:settingTab===t.key?'var(--ink)':'var(--ink-3)',boxShadow:settingTab===t.key?'0 1px 3px rgba(0,0,0,.1)':'none',fontFamily:'inherit'}}>
                   {t.label}
                 </button>
               ))}
@@ -2026,21 +2030,21 @@ function AdminPanel({ user }) {
             {settingTab==='issues'&&(
               <div>
                 {/* 同步開關 */}
-                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:sync?'#e6f1ea':'#f5f6f8',border:'1.5px solid',borderColor:sync?'#9acfb4':'#e6e8ec',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleSync(!sync)}>
-                  <div style={{width:36,height:20,background:sync?'#1d6f43':'#cbd0d8',borderRadius:10,position:'relative',transition:'background .2s',flexShrink:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:sync?'var(--ok-soft)':'#f5f6f8',border:'1.5px solid',borderColor:sync?'#9acfb4':'var(--line)',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleSync(!sync)}>
+                  <div style={{width:36,height:20,background:sync?'var(--ok)':'#cbd0d8',borderRadius:10,position:'relative',transition:'background .2s',flexShrink:0}}>
                     <div style={{position:'absolute',top:2,left:sync?18:2,width:16,height:16,background:'#fff',borderRadius:'50%',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
                   </div>
                   <div>
-                    <div style={{fontSize:13,fontWeight:700,color:sync?'#1d6f43':'#3b4250'}}>
+                    <div style={{fontSize:13,fontWeight:700,color:sync?'var(--ok)':'var(--ink-2)'}}>
                       {sync?'✅ 與工作看板同步':'使用個別設定'}
                     </div>
-                    <div style={{fontSize:11,color:'#8a93a3',marginTop:2}}>
+                    <div style={{fontSize:11,color:'var(--ink-4)',marginTop:2}}>
                       {sync?'工程師與機台清單與工作看板相同，修改請至「工作看板」頁籤':'異常與資源使用獨立的工程師與機台清單'}
                     </div>
                   </div>
                 </div>
                 {sync
-                  ? <div style={{padding:'16px',background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:8,color:'#8a93a3',fontSize:13,textAlign:'center'}}>目前同步工作看板設定，如需個別設定請關閉同步</div>
+                  ? <div style={{padding:'16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center'}}>目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
                       {ListEditor({label:"工程師清單（獨立）", list:isEng,  setList:setIsEng,  keyField:true})}
                       {ListEditor({label:"機台清單（獨立）",   list:isMach, setList:setIsMach, keyField:false})}
@@ -2053,7 +2057,7 @@ function AdminPanel({ user }) {
             {settingTab==='samples'&&(
               <div>
                 {BorrowerEditor()}
-                <div style={{padding:'12px 14px',background:'#e6f1f6',border:'1px solid #b5d4f4',borderRadius:8,fontSize:12,color:'#0c7a99'}}>
+                <div style={{padding:'12px 14px',background:'var(--accent-soft)',border:'1px solid #b5d4f4',borderRadius:8,fontSize:12,color:'var(--accent)'}}>
                   💡 借用人清單會在儲存後即時更新至樣品管理頁面
                 </div>
               </div>
@@ -2063,21 +2067,21 @@ function AdminPanel({ user }) {
             {settingTab==='booking'&&(
               <div>
                 {/* 工程師/機台同步開關 */}
-                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:bkSync?'#e6f1ea':'#f5f6f8',border:'1.5px solid',borderColor:bkSync?'#9acfb4':'#e6e8ec',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleBkSync(!bkSync)}>
-                  <div style={{width:36,height:20,background:bkSync?'#1d6f43':'#cbd0d8',borderRadius:10,position:'relative',transition:'background .2s',flexShrink:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:bkSync?'var(--ok-soft)':'#f5f6f8',border:'1.5px solid',borderColor:bkSync?'#9acfb4':'var(--line)',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleBkSync(!bkSync)}>
+                  <div style={{width:36,height:20,background:bkSync?'var(--ok)':'#cbd0d8',borderRadius:10,position:'relative',transition:'background .2s',flexShrink:0}}>
                     <div style={{position:'absolute',top:2,left:bkSync?18:2,width:16,height:16,background:'#fff',borderRadius:'50%',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
                   </div>
                   <div>
-                    <div style={{fontSize:13,fontWeight:700,color:bkSync?'#1d6f43':'#3b4250'}}>
+                    <div style={{fontSize:13,fontWeight:700,color:bkSync?'var(--ok)':'var(--ink-2)'}}>
                       {bkSync?'✅ 工程師與機台已與工作看板同步':'工程師與機台使用個別設定'}
                     </div>
-                    <div style={{fontSize:11,color:'#8a93a3',marginTop:2}}>
+                    <div style={{fontSize:11,color:'var(--ink-4)',marginTop:2}}>
                       {bkSync?'工程師與機台清單與工作看板相同，修改請至「工作看板」頁籤':'3D列印機預約使用獨立的工程師與機台清單'}
                     </div>
                   </div>
                 </div>
                 {bkSync
-                  ? <div style={{padding:'16px',background:'#fafbfc',border:'1px solid #e6e8ec',borderRadius:8,color:'#8a93a3',fontSize:13,textAlign:'center',marginBottom:20}}>工程師與機台目前同步工作看板設定，如需個別設定請關閉同步</div>
+                  ? <div style={{padding:'16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center',marginBottom:20}}>工程師與機台目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
                       {ListEditor({label:"工程師清單（獨立）", list:bkEng,  setList:setBkEng,  keyField:true})}
                       {ListEditor({label:"機台清單（獨立）",   list:bkMach, setList:setBkMach, keyField:false})}
@@ -2091,12 +2095,12 @@ function AdminPanel({ user }) {
             {/* 角色分頁權限設定 */}
             {settingTab==='roles'&&(
               <div>
-                <div style={{fontSize:13,fontWeight:700,color:'#0a0e14',marginBottom:6}}>角色分頁權限設定</div>
-                <div style={{fontSize:12,color:'#8a93a3',marginBottom:16,lineHeight:1.7}}>
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:6}}>角色分頁權限設定</div>
+                <div style={{fontSize:12,color:'var(--ink-4)',marginBottom:16,lineHeight:1.7}}>
                   設定各角色「快速套用」時的預設權限（含分頁可見範圍）。管理員固定擁有所有權限，不可調整。<br/>
                   個別使用者仍可在「使用者」分頁單獨微調權限（覆蓋角色預設）。
                 </div>
-                <div style={{overflowX:'auto',border:'1px solid #e6e8ec',borderRadius:8}}>
+                <div style={{overflowX:'auto',border:'1px solid var(--line)',borderRadius:8}}>
                   <table className="u-tbl" style={{minWidth:520}}>
                     <thead><tr>
                       <th style={{textAlign:'left'}}>權限 / 角色</th>
@@ -2116,7 +2120,7 @@ function AdminPanel({ user }) {
                     </tbody>
                   </table>
                 </div>
-                <div style={{marginTop:14,padding:'12px 14px',background:'#fbf3dc',border:'1px solid #e8d9a8',borderRadius:8,fontSize:12,color:'#8b6b13',lineHeight:1.7}}>
+                <div style={{marginTop:14,padding:'12px 14px',background:'var(--warn-soft)',border:'1px solid #e8d9a8',borderRadius:8,fontSize:12,color:'var(--warn)',lineHeight:1.7}}>
                   ⚠ 儲存後：套用該角色的使用者需重新載入頁面才會生效；已個別調整權限的使用者不受影響。
                   <button className="btn-cancel" style={{marginLeft:12,fontSize:11,padding:'2px 10px'}}
                     onClick={()=>setRolePresets(JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)))}>還原原廠預設</button>
@@ -2264,7 +2268,7 @@ function Shell({ user, onLogout }) {
             </button>
           </div>
           <span className="sidebar-foot-date">{dateStr}</span>
-          <span style={{fontSize:9,color:'#8a93a3',wordBreak:'break-all',fontFamily:'monospace'}}>
+          <span style={{fontSize:9,color:'var(--ink-4)',wordBreak:'break-all',fontFamily:'monospace'}}>
             perms: {JSON.stringify(user.permissions)}
           </span>
           <div style={{display:'flex',gap:6,marginTop:6}}>
@@ -2327,7 +2331,7 @@ function App() {
   }, []);
 
   if (checking) return (
-    <div style={{position:'fixed',inset:0,background:'linear-gradient(135deg,#0a0e14,#131c2e)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:14,fontFamily:'JetBrains Mono,monospace'}}>
+    <div style={{position:'fixed',inset:0,background:'linear-gradient(135deg,var(--ink),#131c2e)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:14,fontFamily:'JetBrains Mono,monospace'}}>
       載入中...
     </div>
   );
