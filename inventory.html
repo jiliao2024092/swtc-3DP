@@ -35,193 +35,103 @@
         .toast { position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:slideIn 0.3s ease; }
         @keyframes slideIn { from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1} }
         .modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:center;justify-content:center; }
-        .progress-bar { height:8px;border-radius:4px;background:#e5e7eb;overflow:hidden; }
+        .progress-bar { height:8px;border-radius:4px;background:var(--line);overflow:hidden; }
         .progress-fill { height:100%;border-radius:4px;transition:width 0.4s ease; }
-        .tab-btn { padding:8px 20px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.15s;color:#6b7280;background:transparent;border:none; }
-        .tab-btn.active { background:white;color:#1d4ed8;box-shadow:0 1px 4px rgba(0,0,0,0.1); }
+        .tab-btn { padding:8px 20px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all 0.15s;color:var(--ink-3);background:transparent;border:none; }
+        .tab-btn.active { background:var(--bg);color:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,0.1); }
         input[type=number]::-webkit-inner-spin-button { opacity:1; }
         .role-badge { display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px; }
         details[open] .detail-chevron { transform: rotate(90deg); }
         details summary::-webkit-details-marker { display: none; }
         details summary::marker { content: ''; }
+        #embedded-auth-note { background:var(--bg-soft);color:var(--ink-4); }
 
-        /* ══ 黑暗模式（由 portal 切換鈕同步 data-theme 到此 iframe 文件）══ */
-        :root[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
-        :root[data-theme="dark"] select,
-        :root[data-theme="dark"] textarea { background-color:#2a2a2a !important; color:#e8e8e8 !important; border-color:#545454 !important; }
-        :root[data-theme="dark"] input::placeholder,
-        :root[data-theme="dark"] textarea::placeholder { color:#767676 !important; }
-        :root[data-theme="dark"] body,
-        :root[data-theme="dark"] .bg-gray-50 { background-color:#2e2e2e !important; }
-        :root[data-theme="dark"] .bg-white { background-color:#3c3c3c !important; }
-        :root[data-theme="dark"] .bg-gray-100 { background-color:#454545 !important; }
-        :root[data-theme="dark"] .bg-gray-200 { background-color:#4a4a4a !important; }
-        :root[data-theme="dark"] .bg-gray-300 { background-color:#545454 !important; }
-        :root[data-theme="dark"] .bg-gray-400 { background-color:#6b6b6b !important; }
-        :root[data-theme="dark"] .text-gray-800 { color:#f0f0f0 !important; }
-        :root[data-theme="dark"] .text-gray-700 { color:#d4d4d4 !important; }
-        :root[data-theme="dark"] .text-gray-600 { color:#b0b0b0 !important; }
-        :root[data-theme="dark"] .text-gray-500 { color:#9a9aa3 !important; }
-        :root[data-theme="dark"] .text-gray-400 { color:#888888 !important; }
-        :root[data-theme="dark"] .text-gray-300 { color:#767676 !important; }
-        :root[data-theme="dark"] .border-gray-100 { border-color:#4a4a4a !important; }
-        :root[data-theme="dark"] .border-gray-200 { border-color:#545454 !important; }
-        :root[data-theme="dark"] .border-gray-300 { border-color:#5c5c5c !important; }
-        :root[data-theme="dark"] .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color:#4a4a4a !important; }
-        :root[data-theme="dark"] .hover\:bg-gray-50:hover,
-        :root[data-theme="dark"] .hover\:bg-gray-100:hover,
-        :root[data-theme="dark"] .hover\:bg-gray-200:hover { background-color:#4a4a4a !important; }
-        :root[data-theme="dark"] .hover\:text-gray-600:hover,
-        :root[data-theme="dark"] .hover\:text-gray-700:hover { color:#f0f0f0 !important; }
-        :root[data-theme="dark"] .disabled\:bg-gray-50:disabled { background-color:#333333 !important; }
-        :root[data-theme="dark"] .disabled\:text-gray-400:disabled { color:#6b6b6b !important; }
-
-        :root[data-theme="dark"] .bg-blue-50 { background-color:#1c2e3d !important; }
-        :root[data-theme="dark"] .bg-blue-100 { background-color:#234450 !important; }
-        :root[data-theme="dark"] .bg-sky-100 { background-color:#1e3a4a !important; }
-        :root[data-theme="dark"] .text-blue-500,
-        :root[data-theme="dark"] .text-blue-600,
-        :root[data-theme="dark"] .text-blue-700,
-        :root[data-theme="dark"] .text-blue-800 { color:#4fb8d9 !important; }
-        :root[data-theme="dark"] .text-sky-700 { color:#5fc7e8 !important; }
-        :root[data-theme="dark"] .border-blue-200,
-        :root[data-theme="dark"] .border-blue-300,
-        :root[data-theme="dark"] .border-blue-400,
-        :root[data-theme="dark"] .border-blue-500,
-        :root[data-theme="dark"] .border-blue-600 { border-color:#2d5866 !important; }
-        :root[data-theme="dark"] .hover\:bg-blue-50:hover { background-color:#234450 !important; }
-        :root[data-theme="dark"] .hover\:text-blue-600:hover,
-        :root[data-theme="dark"] .hover\:text-blue-700:hover { color:#4fb8d9 !important; }
-        :root[data-theme="dark"] .hover\:border-blue-300:hover,
-        :root[data-theme="dark"] .hover\:border-blue-400:hover { border-color:#2d5866 !important; }
-
-        :root[data-theme="dark"] .bg-indigo-50,
-        :root[data-theme="dark"] .bg-indigo-100 { background-color:#26314f !important; }
-        :root[data-theme="dark"] .bg-violet-100 { background-color:#2b2550 !important; }
-        :root[data-theme="dark"] .bg-purple-100 { background-color:#2e2540 !important; }
-        :root[data-theme="dark"] .text-indigo-600,
-        :root[data-theme="dark"] .text-indigo-700,
-        :root[data-theme="dark"] .text-indigo-800 { color:#8fa8f0 !important; }
-        :root[data-theme="dark"] .text-violet-700 { color:#b39ef0 !important; }
-        :root[data-theme="dark"] .text-purple-800 { color:#a68af0 !important; }
-        :root[data-theme="dark"] .border-indigo-200 { border-color:#39456b !important; }
-
-        :root[data-theme="dark"] .bg-teal-50,
-        :root[data-theme="dark"] .bg-teal-100 { background-color:#1a3a3d !important; }
-        :root[data-theme="dark"] .text-teal-600,
-        :root[data-theme="dark"] .text-teal-700 { color:#4fd8d9 !important; }
-        :root[data-theme="dark"] .border-teal-600 { border-color:#2d6a6d !important; }
-        :root[data-theme="dark"] .hover\:bg-teal-50:hover { background-color:#1a3a3d !important; }
-        :root[data-theme="dark"] .hover\:text-teal-600:hover,
-        :root[data-theme="dark"] .hover\:text-teal-700:hover { color:#4fd8d9 !important; }
-
-        :root[data-theme="dark"] .bg-green-50,
-        :root[data-theme="dark"] .bg-green-100,
-        :root[data-theme="dark"] .bg-green-200 { background-color:#1c3a2a !important; }
-        :root[data-theme="dark"] .text-green-600,
-        :root[data-theme="dark"] .text-green-700,
-        :root[data-theme="dark"] .text-green-800 { color:#4bcf8b !important; }
-        :root[data-theme="dark"] .border-green-200,
-        :root[data-theme="dark"] .border-green-300,
-        :root[data-theme="dark"] .border-green-400 { border-color:#2e5a41 !important; }
-        :root[data-theme="dark"] .hover\:bg-green-50:hover,
-        :root[data-theme="dark"] .hover\:bg-green-200:hover { background-color:#1c3a2a !important; }
-        :root[data-theme="dark"] .hover\:text-green-700:hover { color:#4bcf8b !important; }
-        :root[data-theme="dark"] .hover\:border-green-400:hover { border-color:#2e5a41 !important; }
-
-        :root[data-theme="dark"] .bg-red-50,
-        :root[data-theme="dark"] .bg-red-100 { background-color:#3a2422 !important; }
-        :root[data-theme="dark"] .text-red-400,
-        :root[data-theme="dark"] .text-red-500,
-        :root[data-theme="dark"] .text-red-600,
-        :root[data-theme="dark"] .text-red-700,
-        :root[data-theme="dark"] .text-red-800,
-        :root[data-theme="dark"] .text-red-900 { color:#e0605a !important; }
-        :root[data-theme="dark"] .border-red-200,
-        :root[data-theme="dark"] .border-red-300,
-        :root[data-theme="dark"] .border-red-400 { border-color:#5a3330 !important; }
-        :root[data-theme="dark"] .hover\:bg-red-50:hover,
-        :root[data-theme="dark"] .hover\:bg-red-100:hover { background-color:#3a2422 !important; }
-        :root[data-theme="dark"] .hover\:text-red-600:hover { color:#e0605a !important; }
-        :root[data-theme="dark"] .from-red-50 { --tw-gradient-from:#3a2422 !important; }
-
-        :root[data-theme="dark"] .bg-amber-50,
-        :root[data-theme="dark"] .bg-amber-100,
-        :root[data-theme="dark"] .bg-yellow-100 { background-color:#3a331c !important; }
-        :root[data-theme="dark"] .text-amber-600,
-        :root[data-theme="dark"] .text-amber-700,
-        :root[data-theme="dark"] .text-yellow-600,
-        :root[data-theme="dark"] .text-yellow-700,
-        :root[data-theme="dark"] .text-yellow-800,
-        :root[data-theme="dark"] .text-yellow-900 { color:#e0b64a !important; }
-        :root[data-theme="dark"] .border-amber-200,
-        :root[data-theme="dark"] .border-amber-300,
-        :root[data-theme="dark"] .border-amber-400,
-        :root[data-theme="dark"] .border-yellow-200 { border-color:#5a4a26 !important; }
-        :root[data-theme="dark"] .hover\:bg-amber-100:hover { background-color:#3a331c !important; }
-        :root[data-theme="dark"] .hover\:text-amber-600:hover { color:#e0b64a !important; }
-        :root[data-theme="dark"] .hover\:border-amber-400:hover { border-color:#5a4a26 !important; }
-
-        :root[data-theme="dark"] .bg-orange-50,
-        :root[data-theme="dark"] .bg-orange-100,
-        :root[data-theme="dark"] .bg-orange-200 { background-color:#3d2a1a !important; }
-        :root[data-theme="dark"] .text-orange-700,
-        :root[data-theme="dark"] .text-orange-800 { color:#e8935a !important; }
-        :root[data-theme="dark"] .border-orange-200,
-        :root[data-theme="dark"] .border-orange-300 { border-color:#5c3f26 !important; }
-        :root[data-theme="dark"] .hover\:bg-orange-100:hover { background-color:#3d2a1a !important; }
-        :root[data-theme="dark"] .to-orange-50 { --tw-gradient-to:#3d2a1a !important; }
-
-        :root[data-theme="dark"] .progress-bar { background:#4a4a4a !important; }
-        :root[data-theme="dark"] .tab-btn { color:#b0b0b0 !important; }
-        :root[data-theme="dark"] .tab-btn.active { background:#3c3c3c !important;color:#4fb8d9 !important;box-shadow:0 1px 4px rgba(0,0,0,0.3) !important; }
+        /* ══ 顏色變數（CSS custom properties，data-theme 由 portal 黑暗模式切換鈕同步寫入）══ */
+        :root {
+          --bg:#ffffff; --bg-soft:#f9fafb; --bg-panel:#f3f4f6;
+          --line-soft:#f3f4f6; --line:#e5e7eb; --line-strong:#d1d5db;
+          --ink:#1f2937; --ink-2:#374151; --ink-3:#4b5563; --ink-4:#6b7280; --ink-5:#9ca3af; --ink-6:#d1d5db;
+          --accent:#2563eb; --accent-soft:#dbeafe; --accent-border:#93c5fd;
+          --accent2:#0d9488; --accent2-soft:#ccfbf1;
+          --indigo:#4f46e5; --indigo-soft:#e0e7ff; --indigo-border:#c7d2fe;
+          --violet:#6d28d9; --violet-soft:#ede9fe;
+          --purple:#6b21a8; --purple-soft:#f3e8ff;
+          --sky:#0369a1; --sky-soft:#e0f2fe;
+          --ok:#15803d; --ok-soft:#dcfce7; --ok-border:#86efac;
+          --danger:#b91c1c; --danger-soft:#fee2e2; --danger-border:#fca5a5;
+          --warn:#b45309; --warn-soft:#fef3c7; --warn-border:#fcd34d;
+          --orange:#c2410c; --orange-soft:#ffedd5; --orange-border:#fdba74;
+          --input-bg:#ffffff; --input-ink:#111827;
+        }
+        :root[data-theme="dark"] {
+          --bg:#3c3c3c; --bg-soft:#2e2e2e; --bg-panel:#454545;
+          --line-soft:#4a4a4a; --line:#545454; --line-strong:#5c5c5c;
+          --ink:#f0f0f0; --ink-2:#d4d4d4; --ink-3:#b0b0b0; --ink-4:#9a9aa3; --ink-5:#888888; --ink-6:#767676;
+          --accent:#4fb8d9; --accent-soft:#234450; --accent-border:#2d5866;
+          --accent2:#4fd8d9; --accent2-soft:#1a3a3d;
+          --indigo:#8fa8f0; --indigo-soft:#26314f; --indigo-border:#39456b;
+          --violet:#b39ef0; --violet-soft:#2b2550;
+          --purple:#a68af0; --purple-soft:#2e2540;
+          --sky:#5fc7e8; --sky-soft:#1e3a4a;
+          --ok:#4bcf8b; --ok-soft:#1c3a2a; --ok-border:#2e5a41;
+          --danger:#e0605a; --danger-soft:#3a2422; --danger-border:#5a3330;
+          --warn:#e0b64a; --warn-soft:#3a331c; --warn-border:#5a4a26;
+          --orange:#e8935a; --orange-soft:#3d2a1a; --orange-border:#5c3f26;
+          --input-bg:#2a2a2a; --input-ink:#e8e8e8;
+        }
+        input:not([type="checkbox"]):not([type="radio"]),
+        select,
+        textarea { background:var(--input-bg); color:var(--input-ink); }
+        input::placeholder,
+        textarea::placeholder { color:var(--ink-5); }
+        .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color:var(--line-soft); }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 min-h-screen">
+<body class="bg-[var(--bg-soft)] text-[var(--ink)] min-h-screen">
 <div id="toast" class="toast hidden"></div>
 
 <!-- ══ 設定 / 角色選擇 Modal ══ -->
 <!-- ══ 登入畫面 ══════════════════════════════ -->
 <div id="login-screen" class="modal-overlay" style="display:none">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-2">
-            <div class="bg-teal-100 p-2.5 rounded-lg"><i data-lucide="package" class="w-5 h-5 text-teal-600"></i></div>
+            <div class="bg-[var(--accent2-soft)] p-2.5 rounded-lg"><i data-lucide="package" class="w-5 h-5 text-[var(--accent2)]"></i></div>
             <div>
-                <h2 class="text-xl font-bold text-gray-800">材料庫存管理</h2>
-                <p class="text-xs text-gray-400">追蹤樹脂罐與備料</p>
+                <h2 class="text-xl font-bold text-[var(--ink)]">材料庫存管理</h2>
+                <p class="text-xs text-[var(--ink-5)]">追蹤樹脂罐與備料</p>
             </div>
         </div>
-        <p class="text-sm text-gray-500 mb-6">請使用您的帳號登入。</p>
+        <p class="text-sm text-[var(--ink-4)] mb-6">請使用您的帳號登入。</p>
         <form id="login-form" class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">電子郵件</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">電子郵件</label>
                 <input id="login-email" type="email" required autocomplete="email" placeholder="your@email.com"
-                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm">
+                    class="w-full p-3 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm">
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">密碼</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">密碼</label>
                 <input id="login-password" type="password" required autocomplete="current-password"
-                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm">
+                    class="w-full p-3 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-sm">
             </div>
-            <div id="login-error" class="hidden text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2.5"></div>
+            <div id="login-error" class="hidden text-sm text-[var(--danger)] bg-[var(--danger-soft)] border border-[var(--danger-border)] rounded-lg p-2.5"></div>
             <button id="login-btn" type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">登入</button>
         </form>
-        <p class="mt-6 text-xs text-gray-400 text-center">沒有帳號？請聯絡系統管理員。</p>
+        <p class="mt-6 text-xs text-[var(--ink-5)] text-center">沒有帳號？請聯絡系統管理員。</p>
     </div>
 </div>
 
 <div id="cartridge-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center gap-3">
-                <div class="bg-teal-100 p-2.5 rounded-lg"><i data-lucide="flask-conical" class="w-5 h-5 text-teal-600"></i></div>
+                <div class="bg-[var(--accent2-soft)] p-2.5 rounded-lg"><i data-lucide="flask-conical" class="w-5 h-5 text-[var(--accent2)]"></i></div>
                 <h2 class="text-xl font-bold" id="cartridge-modal-title">編輯樹脂罐</h2>
             </div>
-            <button onclick="closeCartridgeModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            <button onclick="closeCartridgeModal()" class="text-[var(--ink-5)] hover:text-[var(--ink-3)]"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
         <div class="space-y-4" id="cartridge-modal-body"></div>
         <div class="flex gap-3 mt-6">
-            <button onclick="closeCartridgeModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="closeCartridgeModal()" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
             <button onclick="saveCartridgeEdit()" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">儲存</button>
         </div>
     </div>
@@ -229,32 +139,32 @@
 
 <!-- ══ 新增備料 Modal ══ -->
 <div id="stock-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-6">
-            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="package-plus" class="w-5 h-5 text-blue-600"></i></div>
+            <div class="bg-[var(--accent-soft)] p-2.5 rounded-lg"><i data-lucide="package-plus" class="w-5 h-5 text-[var(--accent)]"></i></div>
             <h2 class="text-xl font-bold">新增備料入庫</h2>
         </div>
         <div class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">材料種類</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">材料種類</label>
                 <input list="material-options" id="stock-material" autocomplete="off" placeholder="選擇或直接輸入新材料名稱"
-                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 <datalist id="material-options"></datalist>
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">數量 (L)</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">數量 (L)</label>
                 <input type="number" id="stock-qty" min="0" step="1" value="1" placeholder="例：1.5 = 1500 ml"
-                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                <p class="text-xs text-gray-400">可輸入小數（如 1.5 L = 1500 ml）</p>
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                <p class="text-xs text-[var(--ink-5)]">可輸入小數（如 1.5 L = 1500 ml）</p>
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">備註</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">備註</label>
                 <input type="text" id="stock-note" placeholder="例：補貨入庫"
-                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
         </div>
         <div class="flex gap-3 mt-6">
-            <button onclick="closeStockModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="closeStockModal()" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
             <button onclick="saveStockIn()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認入庫</button>
         </div>
     </div>
@@ -263,31 +173,31 @@
 
 <!-- ══ 變更密碼 Modal ══ -->
 <div id="change-password-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
         <div class="flex items-center gap-3 mb-6">
-            <div class="bg-blue-100 p-2.5 rounded-lg"><i data-lucide="key-round" class="w-5 h-5 text-blue-600"></i></div>
+            <div class="bg-[var(--accent-soft)] p-2.5 rounded-lg"><i data-lucide="key-round" class="w-5 h-5 text-[var(--accent)]"></i></div>
             <h2 class="text-xl font-bold">變更密碼</h2>
         </div>
         <div class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">目前密碼</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">目前密碼</label>
                 <input type="password" id="cp-current" autocomplete="current-password" placeholder="輸入目前的密碼"
-                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">新密碼</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">新密碼</label>
                 <input type="password" id="cp-new" autocomplete="new-password" placeholder="至少 6 個字元"
-                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-700">確認新密碼</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">確認新密碼</label>
                 <input type="password" id="cp-confirm" autocomplete="new-password" placeholder="再次輸入新密碼"
-                    class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
             </div>
-            <p id="cp-error" class="text-xs text-red-500 hidden"></p>
+            <p id="cp-error" class="text-xs text-[var(--danger)] hidden"></p>
         </div>
         <div class="flex gap-3 mt-6">
-            <button onclick="closeChangePasswordModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="closeChangePasswordModal()" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
             <button id="cp-submit" onclick="submitChangePassword()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認變更</button>
         </div>
     </div>
@@ -295,18 +205,18 @@
 
 <!-- ══ 安全庫存設定 Modal ══ -->
 <div id="safety-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center gap-3">
-                <div class="bg-amber-100 p-2.5 rounded-lg"><i data-lucide="shield-alert" class="w-5 h-5 text-amber-600"></i></div>
+                <div class="bg-[var(--warn-soft)] p-2.5 rounded-lg"><i data-lucide="shield-alert" class="w-5 h-5 text-[var(--warn)]"></i></div>
                 <h2 class="text-xl font-bold">安全庫存設定</h2>
             </div>
-            <button onclick="closeSafetyModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            <button onclick="closeSafetyModal()" class="text-[var(--ink-5)] hover:text-[var(--ink-3)]"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
-        <p class="text-sm text-gray-500 mb-4">設定每種材料的安全庫存量（L），低於此量時會顯示叫料提醒。</p>
+        <p class="text-sm text-[var(--ink-4)] mb-4">設定每種材料的安全庫存量（L），低於此量時會顯示叫料提醒。</p>
         <div class="space-y-3" id="safety-modal-body"></div>
         <div class="flex gap-3 mt-6">
-            <button onclick="closeSafetyModal()" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">取消</button>
+            <button onclick="closeSafetyModal()" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
             <button onclick="saveSafetyStock()" class="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">儲存設定</button>
         </div>
     </div>
@@ -314,15 +224,15 @@
 
 <!-- ══ 已停用材料 Modal ══════════════════════════ -->
 <div id="disabled-materials-modal" class="modal-overlay hidden">
-    <div class="bg-white rounded-2xl shadow-xl p-8 w-full max-w-xl mx-4 max-h-screen overflow-y-auto">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-xl mx-4 max-h-screen overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center gap-3">
-                <div class="bg-amber-100 p-2.5 rounded-lg"><i data-lucide="eye-off" class="w-5 h-5 text-amber-600"></i></div>
+                <div class="bg-[var(--warn-soft)] p-2.5 rounded-lg"><i data-lucide="eye-off" class="w-5 h-5 text-[var(--warn)]"></i></div>
                 <h2 class="text-xl font-bold">已停用材料</h2>
             </div>
-            <button onclick="closeDisabledMaterialsModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            <button onclick="closeDisabledMaterialsModal()" class="text-[var(--ink-5)] hover:text-[var(--ink-3)]"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
-        <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+        <div class="mb-4 p-3 bg-[var(--accent-soft)] border border-[var(--accent-border)] rounded-lg text-xs text-[var(--accent)]">
             <p class="font-semibold mb-1">💡 停用機制說明</p>
             <ul class="list-disc list-inside ml-1 space-y-0.5">
                 <li>停用的材料不會在「庫存總覽」、「備料庫存」、「月度分析」中顯示</li>
@@ -336,7 +246,7 @@
             <!-- 動態填充 -->
         </div>
         <div class="mt-6">
-            <button onclick="closeDisabledMaterialsModal()" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">關閉</button>
+            <button onclick="closeDisabledMaterialsModal()" class="w-full px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">關閉</button>
         </div>
     </div>
 </div>
@@ -346,54 +256,54 @@
 <div class="max-w-7xl mx-auto space-y-6">
 
     <!-- Header -->
-    <div class="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between border-l-4 border-teal-600">
+    <div class="bg-[var(--bg)] rounded-xl shadow-sm p-5 flex items-center justify-between border-l-4 border-[var(--accent2)]">
         <div class="flex items-center gap-4">
-            <div class="bg-teal-100 p-3 rounded-lg text-teal-600"><i data-lucide="package" class="w-7 h-7"></i></div>
+            <div class="bg-[var(--accent2-soft)] p-3 rounded-lg text-[var(--accent2)]"><i data-lucide="package" class="w-7 h-7"></i></div>
             <div>
                 <div class="flex items-center gap-3">
-                    <h1 class="text-2xl font-bold text-gray-800">材料庫存管理</h1>
-                    <span class="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">Form 4 / Form 4L</span>
+                    <h1 class="text-2xl font-bold text-[var(--ink)]">材料庫存管理</h1>
+                    <span class="text-xs bg-[var(--accent2-soft)] text-[var(--accent2)] px-2 py-0.5 rounded-full font-medium">Form 4 / Form 4L</span>
                     <span id="role-badge" class="role-badge"></span>
                 </div>
-                <p class="text-sm text-gray-500">追蹤機台樹脂罐 + 備料庫存，自動計算列印消耗。</p>
+                <p class="text-sm text-[var(--ink-4)]">追蹤機台樹脂罐 + 備料庫存，自動計算列印消耗。</p>
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <a href="3DP-BK.html" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 px-3 py-2 rounded-md hover:bg-blue-50 transition-colors">
+            <a href="3DP-BK.html" class="flex items-center gap-1.5 text-sm text-[var(--ink-4)] hover:text-[var(--accent)] px-3 py-2 rounded-md hover:bg-[var(--accent-soft)] transition-colors">
                 <i data-lucide="calendar-check" class="w-4 h-4"></i> 預約系統
             </a>
-            <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors">
+            <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清除並重建
             </button>
-            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除完全相同的重複紀錄（材料/機台/消耗/備註/時間全相同才刪；時間不同保留）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors">
+            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除完全相同的重複紀錄（材料/機台/消耗/備註/時間全相同才刪；時間不同保留）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--orange-border)] bg-[var(--orange-soft)] text-[var(--orange)] hover:bg-[var(--orange-soft)] transition-colors">
                 <i data-lucide="copy-x" class="w-3.5 h-3.5"></i> 去除重複
             </button>
-            <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
+            <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="reload-icon"></i> 重新載入
             </button>
             <div class="text-right mr-2 embedded-hide">
-                <p id="user-name" class="text-sm font-medium text-gray-800">—</p>
-                <p id="user-email" class="text-xs text-gray-400">—</p>
+                <p id="user-name" class="text-sm font-medium text-[var(--ink)]">—</p>
+                <p id="user-email" class="text-xs text-[var(--ink-5)]">—</p>
             </div>
-            <div class="flex items-center gap-1 text-xs text-gray-400">
+            <div class="flex items-center gap-1 text-xs text-[var(--ink-5)]">
                 <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
                 <span id="sync-status">同步中</span>
             </div>
-            <button onclick="doSignOut()" title="登出" class="embedded-hide p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+            <button onclick="doSignOut()" title="登出" class="embedded-hide p-2 text-[var(--ink-5)] hover:text-[var(--ink-2)] hover:bg-[var(--bg-panel)] rounded-md transition-colors">
                 <i data-lucide="log-out" class="w-4 h-4"></i>
             </button>
         </div>
     </div>
 
     <!-- 叫料提醒橫幅 -->
-    <div id="alert-banner" class="hidden bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-xl p-4 shadow-sm">
+    <div id="alert-banner" class="hidden bg-gradient-to-r from-[var(--danger-soft)] to-[var(--orange-soft)] border border-[var(--danger-border)] rounded-xl p-4 shadow-sm">
         <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 w-9 h-9 rounded-full bg-red-100 flex items-center justify-center">
-                <i data-lucide="bell-ring" class="w-5 h-5 text-red-500"></i>
+            <div class="flex-shrink-0 w-9 h-9 rounded-full bg-[var(--danger-soft)] flex items-center justify-center">
+                <i data-lucide="bell-ring" class="w-5 h-5 text-[var(--danger)]"></i>
             </div>
             <div class="flex-1 min-w-0">
-                <p class="font-semibold text-red-700 mb-2 flex items-center gap-2">材料庫存不足，請安排叫料
-                    <span id="alert-count" class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium"></span>
+                <p class="font-semibold text-[var(--danger)] mb-2 flex items-center gap-2">材料庫存不足，請安排叫料
+                    <span id="alert-count" class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium"></span>
                 </p>
                 <div id="alert-items" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
             </div>
@@ -401,18 +311,18 @@
     </div>
 
     <!-- Tab 導航 -->
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div class="bg-gray-50 px-4 py-2 flex items-center gap-1 border-b border-gray-100">
-            <div class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+    <div class="bg-[var(--bg)] rounded-xl shadow-sm border border-[var(--line-soft)] overflow-hidden">
+        <div class="bg-[var(--bg-soft)] px-4 py-2 flex items-center gap-1 border-b border-[var(--line-soft)]">
+            <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5">
                 <button class="tab-btn active" id="tab-stock" onclick="switchTab('stock')">材料庫存</button>
                 <button class="tab-btn" id="tab-history" onclick="switchTab('history')">消耗記錄</button>
                 <button class="tab-btn" id="tab-monthly" onclick="switchTab('monthly')">月度分析</button>
             </div>
             <div class="ml-auto flex gap-2">
-                <button data-admin-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">
+                <button data-admin-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-soft)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">
                     <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
                 </button>
-                <button onclick="exportInventoryExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-gray-300 bg-white text-gray-600 hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition-colors">
+                <button onclick="exportInventoryExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出
                 </button>
             </div>
@@ -421,13 +331,13 @@
         <!-- 材料庫存（樹脂罐 + 圓環總覽 + 備料表格）-->
         <div id="panel-stock" class="p-6">
             <!-- 機台樹脂罐區塊（可摺疊，預設隱藏）-->
-            <details class="mb-6 border border-gray-200 rounded-xl overflow-hidden">
-                <summary class="cursor-pointer p-4 hover:bg-gray-50 flex items-center gap-2 select-none">
+            <details class="mb-6 border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
                     <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
-                    <span class="font-semibold text-gray-800">機台樹脂罐</span>
-                    <span class="text-xs text-gray-400 ml-2">自動從 Formlabs API 抓取；點此展開查看 / 編輯</span>
+                    <span class="font-semibold text-[var(--ink)]">機台樹脂罐</span>
+                    <span class="text-xs text-[var(--ink-5)] ml-2">自動從 Formlabs API 抓取；點此展開查看 / 編輯</span>
                 </summary>
-                <div class="p-4 border-t border-gray-100">
+                <div class="p-4 border-t border-[var(--line-soft)]">
                     <div id="cartridges-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
             </details>
@@ -435,42 +345,42 @@
             <!-- 圓環卡片總覽 -->
             <div class="flex items-center justify-between mb-3">
                 <button onclick="toggleOverviewCards()" class="flex items-center gap-2 group">
-                    <i data-lucide="chevron-down" id="overview-chevron" class="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-transform"></i>
-                    <i data-lucide="layout-grid" class="w-4 h-4 text-gray-500"></i>
-                    <h3 class="text-base font-semibold text-gray-800">材料庫存</h3>
-                    <span class="text-xs text-gray-400">各材料的即時庫存卡片總覽</span>
+                    <i data-lucide="chevron-down" id="overview-chevron" class="w-4 h-4 text-[var(--ink-5)] group-hover:text-[var(--ink-3)] transition-transform"></i>
+                    <i data-lucide="layout-grid" class="w-4 h-4 text-[var(--ink-4)]"></i>
+                    <h3 class="text-base font-semibold text-[var(--ink)]">材料庫存</h3>
+                    <span class="text-xs text-[var(--ink-5)]">各材料的即時庫存卡片總覽</span>
                 </button>
-                <div class="flex bg-gray-100 rounded-lg p-0.5 gap-0.5" id="overview-cols-toggle">
-                    <button class="ov-col-btn text-xs px-2.5 py-1 rounded-md text-gray-500" data-cols="2" onclick="setOverviewCols(2)">2 欄</button>
-                    <button class="ov-col-btn text-xs px-2.5 py-1 rounded-md bg-white text-gray-800 font-medium shadow-sm" data-cols="4" onclick="setOverviewCols(4)">4 欄</button>
-                    <button class="ov-col-btn text-xs px-2.5 py-1 rounded-md text-gray-500" data-cols="6" onclick="setOverviewCols(6)">6 欄</button>
+                <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5" id="overview-cols-toggle">
+                    <button class="ov-col-btn text-xs px-2.5 py-1 rounded-md text-[var(--ink-4)]" data-cols="2" onclick="setOverviewCols(2)">2 欄</button>
+                    <button class="ov-col-btn text-xs px-2.5 py-1 rounded-md bg-[var(--bg)] text-[var(--ink)] font-medium shadow-sm" data-cols="4" onclick="setOverviewCols(4)">4 欄</button>
+                    <button class="ov-col-btn text-xs px-2.5 py-1 rounded-md text-[var(--ink-4)]" data-cols="6" onclick="setOverviewCols(6)">6 欄</button>
                 </div>
             </div>
             <div id="overview-collapsible">
                 <div id="overview-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                    <div class="col-span-full text-center text-gray-400 py-8">載入中...</div>
+                    <div class="col-span-full text-center text-[var(--ink-5)] py-8">載入中...</div>
                 </div>
 
                 <!-- 底部統計列 -->
-                <div id="overview-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-200 border border-gray-200 rounded-xl overflow-hidden mb-8"></div>
+                <div id="overview-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-[var(--line-soft)] border border-[var(--line)] rounded-xl overflow-hidden mb-8"></div>
             </div>
 
             <!-- 備料庫存表格區塊 -->
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center gap-2">
-                    <i data-lucide="table" class="w-4 h-4 text-gray-500"></i>
+                    <i data-lucide="table" class="w-4 h-4 text-[var(--ink-4)]"></i>
                     <div>
-                        <h3 class="text-base font-semibold text-gray-800">材料庫存總覽</h3>
-                        <p class="text-xs text-gray-500">各材料倉庫＋槽內＋機台的彙整</p>
+                        <h3 class="text-base font-semibold text-[var(--ink)]">材料庫存總覽</h3>
+                        <p class="text-xs text-[var(--ink-4)]">各材料倉庫＋槽內＋機台的彙整</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button data-editor-only onclick="showDisabledMaterialsModal()" class="text-xs text-gray-500 hover:text-amber-600 flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-gray-200 hover:border-amber-400">
+                    <button data-editor-only onclick="showDisabledMaterialsModal()" class="text-xs text-[var(--ink-4)] hover:text-[var(--warn)] flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[var(--line)] hover:border-[var(--warn-border)]">
                         <i data-lucide="eye-off" class="w-3.5 h-3.5"></i> 已停用材料 (<span id="disabled-count">0</span>)
                     </button>
                     <!-- 整頁編輯按鈕：點擊後所有列的 input 啟用，編輯完一次儲存 -->
                     <button id="stock-edit-btn" data-editor-only onclick="startStockEdit()"
-                        class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition-colors">
+                        class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                         <i data-lucide="pencil" class="w-4 h-4"></i> 編輯模式
                     </button>
                     <button id="stock-save-btn" onclick="saveStockEdits()" style="display:none;"
@@ -478,7 +388,7 @@
                         <i data-lucide="check" class="w-4 h-4"></i> 儲存全部
                     </button>
                     <button id="stock-cancel-btn" onclick="cancelStockEdit()" style="display:none;"
-                        class="items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 transition-colors flex">
+                        class="items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-panel)] transition-colors flex">
                         <i data-lucide="x" class="w-4 h-4"></i> 取消
                     </button>
                     <button data-editor-only onclick="showStockModal()" class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
@@ -487,30 +397,30 @@
                 </div>
             </div>
             <!-- 圖例 -->
-            <div class="mb-3 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-red-100 border border-red-300"></span>需叫料：總庫存 &lt; 安全庫存</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-green-100 border border-green-300"></span>充足</span>
+            <div class="mb-3 flex flex-wrap items-center gap-3 text-xs text-[var(--ink-4)]">
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[var(--danger-soft)] border border-[var(--danger-border)]"></span>需叫料：總庫存 &lt; 安全庫存</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[var(--ok-soft)] border border-[var(--ok-border)]"></span>充足</span>
             </div>
             <!-- 篩選工具列 -->
             <div class="mb-3 flex flex-wrap items-center gap-2">
-                <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
-                <select id="stock-filter-status" onchange="renderStockTable()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                <span class="text-xs font-medium text-[var(--ink-4)] mr-1">篩選：</span>
+                <select id="stock-filter-status" onchange="renderStockTable()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
                     <option value="">全部狀態</option>
                     <option value="low">僅需叫料</option>
                     <option value="ok">僅充足</option>
                 </select>
-                <input type="text" id="stock-filter-name" oninput="renderStockTable()" placeholder="搜尋材料名稱..." class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white w-40">
-                <button onclick="resetStockFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
+                <input type="text" id="stock-filter-name" oninput="renderStockTable()" placeholder="搜尋材料名稱..." class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)] w-40">
+                <button onclick="resetStockFilters()" class="text-xs text-[var(--ink-4)] hover:text-[var(--accent)] underline ml-1">清除</button>
             </div>
             <div id="stock-table-wrap" class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
-                        <tr class="bg-gray-100 text-gray-600">
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('total_ml')">總庫存 (L)<span id="stock-sort-total_ml" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('on_machine')">機台上存量 (L)<span id="stock-sort-on_machine" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-gray-300"></span></th>
+                        <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('total_ml')">總庫存 (L)<span id="stock-sort-total_ml" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('on_machine')">機台上存量 (L)<span id="stock-sort-on_machine" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium w-40">備註</th>
                             <th class="p-3 border-b font-medium">最後更新</th>
                             <th class="p-3 border-b font-medium text-center">操作</th>
@@ -524,25 +434,25 @@
         <!-- 消耗記錄 -->
         <div id="panel-history" class="p-6 hidden">
             <div class="mb-4">
-                <p class="text-sm text-gray-500 mb-3">列印完成後自動記錄的材料消耗，以及手動入庫紀錄。</p>
+                <p class="text-sm text-[var(--ink-4)] mb-3">列印完成後自動記錄的材料消耗，以及手動入庫紀錄。</p>
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-xs font-medium text-gray-500 mr-1">篩選：</span>
-                    <select id="history-filter" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                    <span class="text-xs font-medium text-[var(--ink-4)] mr-1">篩選：</span>
+                    <select id="history-filter" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
                         <option value="">全部材料</option>
                     </select>
-                    <select id="history-filter-printer" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                    <select id="history-filter-printer" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
                         <option value="">全部機台</option>
                         <option value="AluminumBowfin">Form4</option>
                         <option value="AdroitSauropod">Form4L</option>
                         <option value="備料庫存">備料庫存</option>
                     </select>
-                    <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white">
+                    <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
                         <option value="">全部類型</option>
                         <option value="consume" selected>列印消耗（含中止）</option>
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
-                    <select id="history-filter-workcat" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="依備註解析出的工作類別篩選（備註格式：客戶簡稱-工作類別-EF單號）">
+                    <select id="history-filter-workcat" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="依備註解析出的工作類別篩選（備註格式：客戶簡稱-工作類別-EF單號）">
                         <option value="">全部工作類別</option>
                         <option value="評估">評估</option>
                         <option value="代工">代工</option>
@@ -550,29 +460,29 @@
                         <option value="其他">其他</option>
                         <option value="未分類">未分類（備註不符格式）</option>
                     </select>
-                    <input type="date" id="history-filter-from" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="起始日期">
-                    <span class="text-xs text-gray-400">～</span>
-                    <input type="date" id="history-filter-to" onchange="renderHistory()" class="text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white" title="結束日期">
-                    <button onclick="resetHistoryFilters()" class="text-xs text-gray-500 hover:text-blue-600 underline ml-1">清除</button>
+                    <input type="date" id="history-filter-from" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="起始日期">
+                    <span class="text-xs text-[var(--ink-5)]">～</span>
+                    <input type="date" id="history-filter-to" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="結束日期">
+                    <button onclick="resetHistoryFilters()" class="text-xs text-[var(--ink-4)] hover:text-[var(--accent)] underline ml-1">清除</button>
                 </div>
                 <!-- 載入範圍指示 -->
                 <div class="mt-2 flex items-center gap-3 text-xs">
-                    <span id="history-range-label" class="text-gray-500">資料範圍：載入中...</span>
-                    <button onclick="loadEarlierMonth()" class="flex items-center gap-1 px-2 py-1 border border-gray-300 rounded-md hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 text-gray-600">
+                    <span id="history-range-label" class="text-[var(--ink-4)]">資料範圍：載入中...</span>
+                    <button onclick="loadEarlierMonth()" class="flex items-center gap-1 px-2 py-1 border border-[var(--line-strong)] rounded-md hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] text-[var(--ink-3)]">
                         <i data-lucide="rewind" class="w-3 h-3"></i> 載入更早一個月
                     </button>
-                    <span id="history-loading" class="text-blue-500 hidden">⏳ 載入中...</span>
+                    <span id="history-loading" class="text-[var(--accent)] hidden">⏳ 載入中...</span>
                 </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
-                        <tr class="bg-gray-100 text-gray-600">
-                            <th class="p-3 border-b font-medium w-36 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ts')">時間<span id="hist-sort-ts" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-gray-300"></span></th>
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-gray-300"></span></th>
+                        <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
+                            <th class="p-3 border-b font-medium w-36 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ts')">時間<span id="hist-sort-ts" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium">類型</th>
-                            <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-gray-200" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-gray-300"></span></th>
+                            <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium">備註</th>
                             <th class="p-3 border-b font-medium w-32" title="Formlabs 原始回傳狀態，用於排查分類問題">API狀態</th>
                             <th class="p-3 border-b font-medium w-14 text-center" data-delete-record-only>操作</th>
@@ -581,8 +491,8 @@
                     <tbody id="history-body" class="divide-y divide-gray-100"></tbody>
                 </table>
             </div>
-            <div id="history-pagination" class="px-4 py-3 border-t border-gray-100 bg-gray-50 flex items-center justify-between hidden">
-                <span id="history-page-info" class="text-sm text-gray-500"></span>
+            <div id="history-pagination" class="px-4 py-3 border-t border-[var(--line-soft)] bg-[var(--bg-soft)] flex items-center justify-between hidden">
+                <span id="history-page-info" class="text-sm text-[var(--ink-4)]"></span>
                 <div class="flex gap-1" id="history-page-btns"></div>
             </div>
         </div>
@@ -590,71 +500,71 @@
         <!-- 月度分析 -->
         <div id="panel-monthly" class="p-6 hidden">
             <div class="flex items-center justify-between mb-4">
-                <p class="text-sm text-gray-500">各材料每月消耗量統計。</p>
+                <p class="text-sm text-[var(--ink-4)]">各材料每月消耗量統計。</p>
                 <div class="flex items-center gap-2">
-                    <select id="monthly-printer" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
+                    <select id="monthly-printer" onchange="renderMonthly()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
                         <option value="">全部機台</option>
                         <option value="AluminumBowfin">Form4 (AluminumBowfin)</option>
                         <option value="AdroitSauropod">Form4L (AdroitSauropod)</option>
                     </select>
-                    <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                    <select id="monthly-month" onchange="onMonthlySelChange()" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="monthly-month" onchange="onMonthlySelChange()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
             </div>
             <!-- 圓餅圖 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                <div class="border border-gray-100 rounded-xl p-4">
-                    <h3 id="pie-title" class="text-sm font-semibold text-gray-700 mb-3">當月各材料消耗佔比</h3>
+                <div class="border border-[var(--line-soft)] rounded-xl p-4">
+                    <h3 id="pie-title" class="text-sm font-semibold text-[var(--ink-2)] mb-3">當月各材料消耗佔比</h3>
                     <div style="position:relative; height:280px;">
                         <canvas id="monthly-pie"></canvas>
                     </div>
-                    <p id="pie-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                    <p id="pie-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
                 </div>
-                <div class="border border-gray-100 rounded-xl p-4">
-                    <h3 class="text-sm font-semibold text-gray-700 mb-3">當月消耗明細</h3>
+                <div class="border border-[var(--line-soft)] rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-[var(--ink-2)] mb-3">當月消耗明細</h3>
                     <div id="pie-legend" class="space-y-2"></div>
                 </div>
             </div>
 
             <!-- 工作類別佔比（依備註解析：客戶簡稱-工作類別-EF單號）-->
-            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
                 <div class="flex items-center justify-between mb-3">
-                    <h3 id="workcat-title" class="text-sm font-semibold text-gray-700">當月工作類別佔比</h3>
-                    <span class="text-xs text-gray-400">依備註解析：客戶簡稱-工作類別-EF單號</span>
+                    <h3 id="workcat-title" class="text-sm font-semibold text-[var(--ink-2)]">當月工作類別佔比</h3>
+                    <span class="text-xs text-[var(--ink-5)]">依備註解析：客戶簡稱-工作類別-EF單號</span>
                 </div>
                 <div id="workcat-breakdown" class="space-y-2"></div>
-                <p id="workcat-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                <p id="workcat-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
 
                 <!-- 各工作類別的材料種類佔比（例：評估佔工作類型33%，其中 black佔25%、tough2000佔75%）-->
-                <div class="mt-4 pt-4 border-t border-gray-100">
+                <div class="mt-4 pt-4 border-t border-[var(--line-soft)]">
                     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-                        <h4 class="text-xs font-semibold text-gray-600">各工作類別的材料種類佔比</h4>
+                        <h4 class="text-xs font-semibold text-[var(--ink-3)]">各工作類別的材料種類佔比</h4>
                         <div class="flex items-center gap-2">
-                            <select id="wcm-pie-cat" onchange="renderWorkcatMaterialChart()" class="hidden text-xs border border-gray-300 rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-white"></select>
-                            <div class="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                            <select id="wcm-pie-cat" onchange="renderWorkcatMaterialChart()" class="hidden text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]"></select>
+                            <div class="inline-flex rounded-md border border-[var(--line-strong)] overflow-hidden text-xs">
                                 <button onclick="setWorkcatMatChartType('bar')" id="wcm-bar-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">直條圖</button>
-                                <button onclick="setWorkcatMatChartType('barh')" id="wcm-barh-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">橫條圖</button>
-                                <button onclick="setWorkcatMatChartType('line')" id="wcm-line-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">折線圖</button>
-                                <button onclick="setWorkcatMatChartType('pie')" id="wcm-pie-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">圓餅圖</button>
+                                <button onclick="setWorkcatMatChartType('barh')" id="wcm-barh-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">橫條圖</button>
+                                <button onclick="setWorkcatMatChartType('line')" id="wcm-line-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">折線圖</button>
+                                <button onclick="setWorkcatMatChartType('pie')" id="wcm-pie-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">圓餅圖</button>
                             </div>
                         </div>
                     </div>
                     <div style="position:relative; height:300px;">
                         <canvas id="workcat-material-chart"></canvas>
                     </div>
-                    <p id="workcat-material-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                    <p id="workcat-material-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
                 </div>
             </div>
 
             <!-- 當月消耗紀錄（依用量排序，看哪些列印佔比大）-->
-            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-                    <h3 id="consume-detail-title" class="text-sm font-semibold text-gray-700">當月消耗紀錄（依用量排序）</h3>
-                    <span id="consume-detail-sum" class="text-xs text-gray-500"></span>
+                    <h3 id="consume-detail-title" class="text-sm font-semibold text-[var(--ink-2)]">當月消耗紀錄（依用量排序）</h3>
+                    <span id="consume-detail-sum" class="text-xs text-[var(--ink-4)]"></span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm border-collapse">
-                        <thead><tr class="bg-gray-100 text-gray-600">
+                        <thead><tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                             <th class="p-2 border-b font-medium text-left w-8">#</th>
                             <th class="p-2 border-b font-medium text-left">列印 / 備註</th>
                             <th class="p-2 border-b font-medium text-left">材料</th>
@@ -666,39 +576,39 @@
                         <tbody id="consume-detail-body" class="divide-y divide-gray-100"></tbody>
                     </table>
                 </div>
-                <p id="consume-detail-empty" class="text-center text-gray-400 text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                <p id="consume-detail-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
             </div>
 
             <!-- 月度趨勢圖 -->
-            <div class="border border-gray-100 rounded-xl p-4 mb-6">
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-                    <h3 id="trend-title" class="text-sm font-semibold text-gray-700">月度消耗趨勢</h3>
+                    <h3 id="trend-title" class="text-sm font-semibold text-[var(--ink-2)]">月度消耗趨勢</h3>
                     <div class="flex items-center gap-1">
-                        <button onclick="trendPrevYear()" title="前一年" class="p-1.5 border border-gray-300 hover:bg-gray-50 rounded-md text-gray-500">
+                        <button onclick="trendPrevYear()" title="前一年" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
                             <i data-lucide="chevron-left" class="w-4 h-4"></i>
                         </button>
-                        <button onclick="trendNextYear()" title="後一年" class="p-1.5 border border-gray-300 hover:bg-gray-50 rounded-md text-gray-500">
+                        <button onclick="trendNextYear()" title="後一年" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
                             <i data-lucide="chevron-right" class="w-4 h-4"></i>
                         </button>
-                        <div class="ml-2 inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+                        <div class="ml-2 inline-flex rounded-md border border-[var(--line-strong)] overflow-hidden text-xs">
                             <button onclick="setTrendType('line')" id="trend-line-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">折線圖</button>
-                            <button onclick="setTrendType('bar')" id="trend-bar-btn" class="px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 transition-colors">長條圖</button>
+                            <button onclick="setTrendType('bar')" id="trend-bar-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">長條圖</button>
                         </div>
                     </div>
                 </div>
                 <div style="position:relative; height:300px;">
                     <canvas id="monthly-trend"></canvas>
                 </div>
-                <p id="trend-empty" class="text-center text-gray-400 text-sm py-8 hidden">本年度尚無消耗紀錄</p>
+                <p id="trend-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">本年度尚無消耗紀錄</p>
             </div>
 
             <!-- 詳細統計（可折疊）-->
-            <details class="border border-gray-200 rounded-xl overflow-hidden">
-                <summary class="cursor-pointer p-4 font-medium text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 select-none">
+            <details class="border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 font-medium text-sm text-[var(--ink-2)] hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
                     <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
                     <span id="detail-title">詳細統計（當年每月各材料）</span>
                 </summary>
-                <div id="monthly-content" class="p-4 border-t border-gray-100"></div>
+                <div id="monthly-content" class="p-4 border-t border-[var(--line-soft)]"></div>
             </details>
         </div>
     </div>
@@ -968,9 +878,9 @@ function applyRoleUI() {
     document.getElementById('user-email').textContent = currentUser.email;
     const badge = document.getElementById('role-badge');
     const map = {
-        admin:  { label:'管理員', cls:'bg-red-100 text-red-700',     icon:'shield-alert' },
-        editor: { label:'編輯者', cls:'bg-green-100 text-green-700', icon:'pencil' },
-        viewer: { label:'查看者', cls:'bg-blue-100 text-blue-700',   icon:'eye' },
+        admin:  { label:'管理員', cls:'bg-[var(--danger-soft)] text-[var(--danger)]',     icon:'shield-alert' },
+        editor: { label:'編輯者', cls:'bg-[var(--ok-soft)] text-[var(--ok)]', icon:'pencil' },
+        viewer: { label:'查看者', cls:'bg-[var(--accent-soft)] text-[var(--accent)]',   icon:'eye' },
     };
     const r = map[currentUser.role] || map.viewer;
     badge.className = 'role-badge ' + r.cls;
@@ -1474,11 +1384,11 @@ function renderAlerts() {
         const partno=getPartNo(m);
         const gap=Math.max(0,(safety-total)/1000);
         return `
-        <div class="flex items-center gap-2 bg-white/70 border border-red-200 rounded-lg px-3 py-2">
-            ${partno?`<span class="font-mono text-[11px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded whitespace-nowrap" title="品號">${partno}</span>`:'<span class="text-[11px] text-gray-300 whitespace-nowrap">無品號</span>'}
-            <span class="font-semibold text-gray-800 text-sm truncate">${matName(m)}</span>
-            <span class="text-xs text-gray-500 ml-auto whitespace-nowrap">庫存 <b class="text-red-600">${(total/1000).toFixed(1)}</b> / 安全 ${(safety/1000).toFixed(1)} L</span>
-            <span class="text-xs font-semibold text-red-600 whitespace-nowrap">缺 ${gap.toFixed(1)} L</span>
+        <div class="flex items-center gap-2 bg-[var(--bg)]/70 border border-[var(--danger-border)] rounded-lg px-3 py-2">
+            ${partno?`<span class="font-mono text-[11px] bg-[var(--danger-soft)] text-[var(--danger)] px-1.5 py-0.5 rounded whitespace-nowrap" title="品號">${partno}</span>`:'<span class="text-[11px] text-[var(--ink-6)] whitespace-nowrap">無品號</span>'}
+            <span class="font-semibold text-[var(--ink)] text-sm truncate">${matName(m)}</span>
+            <span class="text-xs text-[var(--ink-4)] ml-auto whitespace-nowrap">庫存 <b class="text-[var(--danger)]">${(total/1000).toFixed(1)}</b> / 安全 ${(safety/1000).toFixed(1)} L</span>
+            <span class="text-xs font-semibold text-[var(--danger)] whitespace-nowrap">缺 ${gap.toFixed(1)} L</span>
         </div>`;
     }).join('');
 }
@@ -1487,7 +1397,7 @@ function renderAlerts() {
 function renderOverview() {
     const grid=document.getElementById('overview-grid');
     let mats=getAllMaterials();
-    if(!mats.length){ grid.innerHTML='<div class="col-span-full text-center text-gray-400 py-8">尚無庫存資料，請先在「機台樹脂罐」展開手動輸入，或新增入庫。</div>'; renderOverviewStats([]); return; }
+    if(!mats.length){ grid.innerHTML='<div class="col-span-full text-center text-[var(--ink-5)] py-8">尚無庫存資料，請先在「機台樹脂罐」展開手動輸入，或新增入庫。</div>'; renderOverviewStats([]); return; }
     // 排序：需叫料優先（依嚴重程度：總庫存缺口大者在前），其次依備料庫存高到低
     mats = mats.slice().sort((a,b)=>{
         const aLow = isLowStock(a), bLow = isLowStock(b);
@@ -1510,11 +1420,11 @@ function renderOverview() {
         // 圓環顏色：紅=需叫料、青=充足
         const ringColor = low ? '#ef4444' : '#0d9488';
         const ringTrack = low ? '#fee2e2' : '#e6f1f0';
-        const textColor = low ? 'text-red-500' : 'text-teal-600';
+        const textColor = low ? 'text-[var(--danger)]' : 'text-[var(--accent2)]';
         // SVG donut
         const R=26, C=2*Math.PI*R, dash=C*(pct/100);
         const card=document.createElement('div');
-        card.className=`border ${low?'border-red-200 bg-red-50/60':'border-gray-200 bg-white'} rounded-xl p-4`;
+        card.className=`border ${low?'border-[var(--danger-border)] bg-[var(--danger-soft)]/60':'border-[var(--line)] bg-[var(--bg)]'} rounded-xl p-4`;
         card.innerHTML=`
             <div class="flex items-start gap-3">
                 <div class="relative flex-shrink-0" style="width:64px;height:64px">
@@ -1529,24 +1439,24 @@ function renderOverview() {
                 </div>
                 <div class="min-w-0 flex-1">
                     <div class="flex items-start justify-between gap-1">
-                        <p class="font-semibold text-gray-800 text-sm truncate">${matName(m)}</p>
-                        ${low?'<span class="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">需叫料</span>':'<span class="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">充足</span>'}
+                        <p class="font-semibold text-[var(--ink)] text-sm truncate">${matName(m)}</p>
+                        ${low?'<span class="text-[10px] bg-[var(--danger-soft)] text-[var(--danger)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">需叫料</span>':'<span class="text-[10px] bg-[var(--ok-soft)] text-[var(--ok)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">充足</span>'}
                     </div>
                     <div class="mt-0.5">
-                        <span class="text-xl font-bold text-gray-800">${(total/1000).toFixed(1)}</span>
-                        <span class="text-xs text-gray-400 ml-0.5">L</span>
+                        <span class="text-xl font-bold text-[var(--ink)]">${(total/1000).toFixed(1)}</span>
+                        <span class="text-xs text-[var(--ink-5)] ml-0.5">L</span>
                     </div>
-                    <p class="text-[10px] text-gray-400 mt-0.5">安全 ${(safety/1000).toFixed(1)} L · ${pct}%</p>
+                    <p class="text-[10px] text-[var(--ink-5)] mt-0.5">安全 ${(safety/1000).toFixed(1)} L · ${pct}%</p>
                 </div>
             </div>
             <div class="grid grid-cols-2 gap-2 mt-3">
-                <div class="bg-gray-50 rounded-md py-1.5 text-center">
-                    <p class="text-[10px] text-gray-400">機台樹脂罐</p>
-                    <p class="text-xs font-semibold text-gray-700">${(cartTotal/1000).toFixed(1)} L</p>
+                <div class="bg-[var(--bg-soft)] rounded-md py-1.5 text-center">
+                    <p class="text-[10px] text-[var(--ink-5)]">機台樹脂罐</p>
+                    <p class="text-xs font-semibold text-[var(--ink-2)]">${(cartTotal/1000).toFixed(1)} L</p>
                 </div>
-                <div class="bg-gray-50 rounded-md py-1.5 text-center">
-                    <p class="text-[10px] text-gray-400">備料庫存</p>
-                    <p class="text-xs font-semibold text-gray-700">${(stockTotal/1000).toFixed(1)} L</p>
+                <div class="bg-[var(--bg-soft)] rounded-md py-1.5 text-center">
+                    <p class="text-[10px] text-[var(--ink-5)]">備料庫存</p>
+                    <p class="text-xs font-semibold text-[var(--ink-2)]">${(stockTotal/1000).toFixed(1)} L</p>
                 </div>
             </div>
         `;
@@ -1565,18 +1475,18 @@ function renderOverviewStats(mats) {
     const totalCart  = mats.reduce((s,m)=>s+getCartridgeTotal(m),0);
     const lowCount   = mats.filter(m=>isLowStock(m)).length;
     const cell = (icon, color, value, label) => `
-        <div class="bg-white p-4 flex items-center gap-3">
+        <div class="bg-[var(--bg)] p-4 flex items-center gap-3">
             <div class="${color} p-2 rounded-lg flex-shrink-0"><i data-lucide="${icon}" class="w-4 h-4"></i></div>
             <div>
-                <p class="text-lg font-bold text-gray-800 leading-tight">${value}</p>
-                <p class="text-xs text-gray-400">${label}</p>
+                <p class="text-lg font-bold text-[var(--ink)] leading-tight">${value}</p>
+                <p class="text-xs text-[var(--ink-5)]">${label}</p>
             </div>
         </div>`;
     el.innerHTML =
-        cell('layers', 'bg-teal-50 text-teal-600', totalKinds, '追蹤材料種類') +
-        cell('droplet', 'bg-blue-50 text-blue-600', (totalInv/1000).toFixed(1)+' L', '總備料量') +
-        cell('flask-conical', 'bg-indigo-50 text-indigo-600', (totalCart/1000).toFixed(1)+' L', '機台樹脂罐') +
-        cell('alert-triangle', 'bg-red-50 text-red-600', lowCount, '需叫料材料');
+        cell('layers', 'bg-[var(--accent2-soft)] text-[var(--accent2)]', totalKinds, '追蹤材料種類') +
+        cell('droplet', 'bg-[var(--accent-soft)] text-[var(--accent)]', (totalInv/1000).toFixed(1)+' L', '總備料量') +
+        cell('flask-conical', 'bg-[var(--indigo-soft)] text-[var(--indigo)]', (totalCart/1000).toFixed(1)+' L', '機台樹脂罐') +
+        cell('alert-triangle', 'bg-[var(--danger-soft)] text-[var(--danger)]', lowCount, '需叫料材料');
     lucide.createIcons();
 }
 
@@ -1600,11 +1510,11 @@ function setOverviewCols(cols) {
     grid.classList.add('lg:grid-cols-'+cols);
     document.querySelectorAll('.ov-col-btn').forEach(b=>{
         const active = (+b.dataset.cols === cols);
-        b.classList.toggle('bg-white', active);
-        b.classList.toggle('text-gray-800', active);
+        b.classList.toggle('bg-[var(--bg)]', active);
+        b.classList.toggle('text-[var(--ink)]', active);
         b.classList.toggle('font-medium', active);
         b.classList.toggle('shadow-sm', active);
-        b.classList.toggle('text-gray-500', !active);
+        b.classList.toggle('text-[var(--ink-4)]', !active);
     });
 }
 
@@ -1622,31 +1532,31 @@ function renderCartridges() {
         let borderClass, headerBg, badge;
         // 閒置類：IDLE / READY / ONLINE / FINISHED / DONE / SLEEPING / STANDBY
         if (['IDLE','READY','ONLINE','FINISHED','DONE','SUCCESS','COMPLETE','SLEEPING','STANDBY','AVAILABLE'].includes(status)) {
-            borderClass = 'border-2 border-green-400';
-            headerBg = 'bg-green-50';
-            badge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">閒置</span>';
+            borderClass = 'border-2 border-[var(--ok-border)]';
+            headerBg = 'bg-[var(--ok-soft)]';
+            badge = '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">閒置</span>';
         } else if (['PRINTING','IN_PROGRESS','PRE_PRINT','PREPRINT','PRE_HEAT','PREHEAT','WAITING_FOR_RESOLUTION','BUSY','QUEUED','STARTING'].includes(status)) {
-            borderClass = 'border-2 border-blue-400';
-            headerBg = 'bg-blue-50';
-            badge = '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">列印中</span>';
+            borderClass = 'border-2 border-[var(--accent-border)]';
+            headerBg = 'bg-[var(--accent-soft)]';
+            badge = '<span class="text-xs bg-[var(--accent-soft)] text-[var(--accent)] px-2 py-0.5 rounded-full font-medium">列印中</span>';
         } else if (['ERROR','FAILED','ABORTED','ABORTING','FAULT'].includes(status)) {
-            borderClass = 'border-2 border-red-400';
-            headerBg = 'bg-red-50';
-            badge = `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">異常 ${status}</span>`;
+            borderClass = 'border-2 border-[var(--danger-border)]';
+            headerBg = 'bg-[var(--danger-soft)]';
+            badge = `<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium">異常 ${status}</span>`;
         } else if (['OFFLINE','DISCONNECTED','UNREACHABLE'].includes(status)) {
-            borderClass = 'border-2 border-gray-300';
-            headerBg = 'bg-gray-50';
-            badge = '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">離線</span>';
+            borderClass = 'border-2 border-[var(--line-strong)]';
+            headerBg = 'bg-[var(--bg-soft)]';
+            badge = '<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">離線</span>';
         } else if (!status) {
             // 完全沒有狀態值 → 視為閒置（多數情況機器是好的，只是 API 沒回 status）
-            borderClass = 'border-2 border-green-400';
-            headerBg = 'bg-green-50';
-            badge = '<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">閒置</span>';
+            borderClass = 'border-2 border-[var(--ok-border)]';
+            headerBg = 'bg-[var(--ok-soft)]';
+            badge = '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">閒置</span>';
         } else {
             // 有值但無法分類 → 顯示原始狀態（方便辨識，不再籠統「未知」）
-            borderClass = 'border-2 border-gray-300';
-            headerBg = 'bg-gray-50';
-            badge = `<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">${status}</span>`;
+            borderClass = 'border-2 border-[var(--line-strong)]';
+            headerBg = 'bg-[var(--bg-soft)]';
+            badge = `<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">${status}</span>`;
         }
         const card=document.createElement('div');
         card.className=`${borderClass} rounded-xl overflow-hidden`;
@@ -1655,31 +1565,31 @@ function renderCartridges() {
             const pct=(!noCapacity && s.initial_ml>0)?Math.round(s.remaining_ml/s.initial_ml*100):null;
             const low=!noCapacity && s.remaining_ml<200;
             return `
-            <div class="p-4 border-t border-gray-100">
+            <div class="p-4 border-t border-[var(--line-soft)]">
                 <div class="flex justify-between items-center mb-2">
                     <div>
-                        <span class="text-xs font-medium text-gray-500">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
-                        <p class="font-semibold text-gray-800 text-sm">${matName(s.material)||'—'}</p>
+                        <span class="text-xs font-medium text-[var(--ink-4)]">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
+                        <p class="font-semibold text-[var(--ink)] text-sm">${matName(s.material)||'—'}</p>
                     </div>
                     <div class="text-right">
                         ${noCapacity
-                            ? '<p class="text-xs text-amber-600 font-medium">容量待補登</p>'
-                            : `<p class="text-sm font-bold ${low?'text-red-500':'text-gray-700'}">${((s.remaining_ml||0)/1000).toFixed(2)} L</p>${pct!=null?`<p class="text-xs text-gray-400">${pct}%</p>`:''}`}
+                            ? '<p class="text-xs text-[var(--warn)] font-medium">容量待補登</p>'
+                            : `<p class="text-sm font-bold ${low?'text-[var(--danger)]':'text-[var(--ink-2)]'}">${((s.remaining_ml||0)/1000).toFixed(2)} L</p>${pct!=null?`<p class="text-xs text-[var(--ink-5)]">${pct}%</p>`:''}`}
                     </div>
                 </div>
                 ${pct!=null?`<div class="progress-bar h-2"><div class="progress-fill ${pct<20?'bg-red-400':pct<40?'bg-yellow-400':'bg-teal-500'}" style="width:${pct}%"></div></div>`:''}
             </div>`;
-        }).join('') : '<div class="p-4 border-t border-gray-100 text-center text-gray-400 text-sm">尚無樹脂罐資料<br><span class="text-xs">系統會在 API 同步後自動帶入，或點上方按鈕手動補登</span></div>';
+        }).join('') : '<div class="p-4 border-t border-[var(--line-soft)] text-center text-[var(--ink-5)] text-sm">尚無樹脂罐資料<br><span class="text-xs">系統會在 API 同步後自動帶入，或點上方按鈕手動補登</span></div>';
         const machineImg = getMachineImage(printer);
         card.innerHTML=`
             <div class="${headerBg} px-4 py-3 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    ${machineImg?`<img src="${machineImg}" alt="${printerDisplay(printer)}" loading="lazy" class="w-10 h-10 object-contain flex-shrink-0 rounded-md bg-white/60">`:'<i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>'}
-                    <span class="font-semibold text-gray-800">${printerDisplay(printer)}</span>
-                    <span class="text-xs text-gray-400">(${printer})</span>
+                    ${machineImg?`<img src="${machineImg}" alt="${printerDisplay(printer)}" loading="lazy" class="w-10 h-10 object-contain flex-shrink-0 rounded-md bg-[var(--bg)]/60">`:'<i data-lucide="printer" class="w-4 h-4 text-[var(--accent2)]"></i>'}
+                    <span class="font-semibold text-[var(--ink)]">${printerDisplay(printer)}</span>
+                    <span class="text-xs text-[var(--ink-5)]">(${printer})</span>
                     ${badge}
                 </div>
-                <span class="text-xs text-gray-400">${slots.length} 個樹脂罐</span>
+                <span class="text-xs text-[var(--ink-5)]">${slots.length} 個樹脂罐</span>
             </div>
             ${slotsHTML}
         `;
@@ -1699,37 +1609,37 @@ function openCartridgeModal() {
         const slots=inv.cartridges[printer]||[{slot:'FRONT',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML},{slot:'BACK',material:'',remaining_ml:0,initial_ml:DEFAULT_CARTRIDGE_ML}];
         const sec=document.createElement('div');
         sec.className='space-y-3';
-        sec.innerHTML=`<h3 class="font-semibold text-gray-700 flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4 text-teal-600"></i>${printerDisplay(printer)} <span class="text-xs text-gray-400 font-normal">(${printer})</span></h3>`;
+        sec.innerHTML=`<h3 class="font-semibold text-[var(--ink-2)] flex items-center gap-2"><i data-lucide="printer" class="w-4 h-4 text-[var(--accent2)]"></i>${printerDisplay(printer)} <span class="text-xs text-[var(--ink-5)] font-normal">(${printer})</span></h3>`;
         slots.forEach((s,i)=>{
             const slotLabel=s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot||`樹脂罐${i+1}`;
             const row=document.createElement('div');
-            row.className='bg-gray-50 rounded-lg p-3 space-y-2';
+            row.className='bg-[var(--bg-soft)] rounded-lg p-3 space-y-2';
             row.innerHTML=`
-                <p class="text-xs font-medium text-gray-500">${slotLabel}</p>
+                <p class="text-xs font-medium text-[var(--ink-4)]">${slotLabel}</p>
                 <div class="grid grid-cols-2 gap-2">
                     <div class="space-y-1">
-                        <label class="text-xs text-gray-600">材料名稱</label>
+                        <label class="text-xs text-[var(--ink-3)]">材料名稱</label>
                         <input type="text" list="material-options" value="${matName(s.material)||''}" data-printer="${printer}" data-idx="${i}" data-field="material"
-                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none" placeholder="e.g. Clear V5">
+                            class="cartridge-input w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none" placeholder="e.g. Clear V5">
                     </div>
                     <div class="space-y-1">
-                        <label class="text-xs text-gray-600">剩餘 (L)</label>
+                        <label class="text-xs text-[var(--ink-3)]">剩餘 (L)</label>
                         <div class="flex items-center gap-1">
-                            <button type="button" onclick="stepCartridgeInput(this,-1)" class="flex-shrink-0 w-7 h-7 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-100" title="-1 L">−</button>
+                            <button type="button" onclick="stepCartridgeInput(this,-1)" class="flex-shrink-0 w-7 h-7 border border-[var(--line-strong)] rounded-md text-[var(--ink-4)] hover:bg-[var(--bg-panel)]" title="-1 L">−</button>
                             <input type="number" value="${((s.remaining_ml||0)/1000).toFixed(2)}" min="0" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="remaining_ml"
-                                class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
-                            <button type="button" onclick="stepCartridgeInput(this,1)" class="flex-shrink-0 w-7 h-7 border border-gray-300 rounded-md text-gray-500 hover:bg-gray-100" title="+1 L">＋</button>
+                                class="cartridge-input w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                            <button type="button" onclick="stepCartridgeInput(this,1)" class="flex-shrink-0 w-7 h-7 border border-[var(--line-strong)] rounded-md text-[var(--ink-4)] hover:bg-[var(--bg-panel)]" title="+1 L">＋</button>
                         </div>
                     </div>
                     <div class="space-y-1">
-                        <label class="text-xs text-gray-600">初始容量 (L)</label>
+                        <label class="text-xs text-[var(--ink-3)]">初始容量 (L)</label>
                         <input type="number" value="${((s.initial_ml||DEFAULT_CARTRIDGE_ML)/1000).toFixed(2)}" min="0.01" step="0.01" data-printer="${printer}" data-idx="${i}" data-field="initial_ml"
-                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                            class="cartridge-input w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                     </div>
                     <div class="space-y-1">
-                        <label class="text-xs text-gray-600">樹脂罐位置</label>
+                        <label class="text-xs text-[var(--ink-3)]">樹脂罐位置</label>
                         <select data-printer="${printer}" data-idx="${i}" data-field="slot"
-                            class="cartridge-input w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+                            class="cartridge-input w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-teal-500 outline-none">
                             <option value="FRONT" ${s.slot==='FRONT'?'selected':''}>前匣 (FRONT)</option>
                             <option value="BACK"  ${s.slot==='BACK'?'selected':''}>後匣 (BACK)</option>
                             <option value="SINGLE" ${s.slot==='SINGLE'?'selected':''}>單匣 (SINGLE)</option>
@@ -1741,7 +1651,7 @@ function openCartridgeModal() {
         });
         // 新增樹脂罐按鈕
         const addBtn=document.createElement('button');
-        addBtn.className='text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1';
+        addBtn.className='text-xs text-[var(--accent2)] hover:text-[var(--accent2)] flex items-center gap-1';
         addBtn.innerHTML='<i data-lucide="plus" class="w-3 h-3"></i> 新增樹脂罐';
         addBtn.onclick=()=>{
             if(!inv.cartridges[printer]) inv.cartridges[printer]=[];
@@ -1810,8 +1720,8 @@ function updateStockSortIndicators(){
         if(!el) return;
         if(f===stockSortField){
             el.textContent = stockSortDir==='asc'?'↑':'↓';
-            el.className = 'ml-1 text-blue-600 font-bold';
-        } else { el.textContent=''; el.className='ml-1 text-gray-300'; }
+            el.className = 'ml-1 text-[var(--accent)] font-bold';
+        } else { el.textContent=''; el.className='ml-1 text-[var(--ink-6)]'; }
     });
 }
 
@@ -1845,7 +1755,7 @@ function renderStockTable() {
         return 0;
     });
 
-    if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">'+(getAllMaterials().length?'沒有符合篩選條件的資料':'尚無庫存資料')+'</td></tr>'; return; }
+    if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-[var(--ink-5)]">'+(getAllMaterials().length?'沒有符合篩選條件的資料':'尚無庫存資料')+'</td></tr>'; return; }
     tbody.innerHTML='';
     mats.forEach(m=>{
         const fam = matCode(m);
@@ -1860,33 +1770,33 @@ function renderStockTable() {
         // 編輯模式下所有列的 input 啟用
         const inputDisabled = !isEditor || !isStockEditMode;
         const tr=document.createElement('tr');
-        tr.className = isStockEditMode ? 'bg-blue-50/30 hover:bg-blue-50' : 'hover:bg-gray-50';
+        tr.className = isStockEditMode ? 'bg-[var(--accent-soft)]/30 hover:bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-soft)]';
         tr.setAttribute('data-material', m);
         tr.innerHTML=`
-            <td class="p-3 font-medium text-gray-800">${matName(m)}</td>
+            <td class="p-3 font-medium text-[var(--ink)]">${matName(m)}</td>
             <td class="p-3 text-right">
                 <input type="number" min="0" step="1" value="${stockLiters.toFixed(1)}" ${inputDisabled?'disabled':''}
-                    class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400 ${low&&!isStockEditMode?'text-red-500 font-medium':''}">
-                <span class="text-xs text-gray-400 ml-1">L</span>
+                    class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)] ${low&&!isStockEditMode?'text-[var(--danger)] font-medium':''}">
+                <span class="text-xs text-[var(--ink-5)] ml-1">L</span>
             </td>
-            <td class="p-3 text-right text-gray-700">${getCartridgeTotal(m) > 0 ? `<span class="text-sm">${(getCartridgeTotal(m)/1000).toFixed(2)} L</span>` : '<span class="text-gray-300 text-xs">—</span>'}</td>
-            <td class="p-3 text-right text-gray-700">
+            <td class="p-3 text-right text-[var(--ink-2)]">${getCartridgeTotal(m) > 0 ? `<span class="text-sm">${(getCartridgeTotal(m)/1000).toFixed(2)} L</span>` : '<span class="text-[var(--ink-6)] text-xs">—</span>'}</td>
+            <td class="p-3 text-right text-[var(--ink-2)]">
                 <span class="font-medium">${(safety/1000).toFixed(1)}</span>
-                <span class="text-xs text-gray-400 ml-1">L</span>
+                <span class="text-xs text-[var(--ink-5)] ml-1">L</span>
             </td>
-            <td class="p-3">${low?'<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
+            <td class="p-3">${low?'<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
             <td class="p-3">
                 <input type="text" value="${(s.note||'').replace(/"/g,'&quot;')}" placeholder="備註" ${inputDisabled?'disabled':''}
-                    class="stock-note-input w-full px-2 py-1 rounded-md border ${isStockEditMode?'border-blue-400 bg-white':'border-gray-200'} focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-gray-50 disabled:text-gray-400">
+                    class="stock-note-input w-full px-2 py-1 rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)]">
             </td>
-            <td class="p-3 text-xs text-gray-400">
+            <td class="p-3 text-xs text-[var(--ink-5)]">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
-                ${s.updated_by && s.updated_by!=='cloud-function' && s.updated_by!=='manual' ? `<div class="text-gray-400">by ${escHtml(s.updated_by)}</div>` : ''}
+                ${s.updated_by && s.updated_by!=='cloud-function' && s.updated_by!=='manual' ? `<div class="text-[var(--ink-5)]">by ${escHtml(s.updated_by)}</div>` : ''}
             </td>
             <td class="p-3 text-center">
-                ${!isEditor ? '<span class="text-gray-300">—</span>'
+                ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
                     : `<button onclick="deleteStock('${me}')" title="刪除此材料"
-                        class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         ${isStockEditMode?'disabled':''}>
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                        </button>`}
@@ -2079,10 +1989,10 @@ function showSafetyModal() {
     const body=document.getElementById('safety-modal-body');
     body.innerHTML='';
     const mats=getAllMaterials();
-    if(!mats.length){ body.innerHTML='<p class="text-gray-400 text-sm">尚無材料，請先設定樹脂罐。</p>'; }
+    if(!mats.length){ body.innerHTML='<p class="text-[var(--ink-5)] text-sm">尚無材料，請先設定樹脂罐。</p>'; }
     else {
         const hdr=document.createElement('div');
-        hdr.className='flex items-center gap-3 pb-1 border-b border-gray-100 text-xs font-medium text-gray-400';
+        hdr.className='flex items-center gap-3 pb-1 border-b border-[var(--line-soft)] text-xs font-medium text-[var(--ink-5)]';
         hdr.innerHTML=`<span class="flex-1">材料</span><span class="w-32 text-center">品號</span><span class="w-24 text-right">安全庫存</span><span class="w-4"></span>`;
         body.appendChild(hdr);
     }
@@ -2096,12 +2006,12 @@ function showSafetyModal() {
         row.innerHTML=`
             <input type="text" value="${name}" placeholder="材料名稱" data-material="${m}"
                 title="${isUnnamed?'尚未命名，目前顯示原始代碼，可直接改成好記的名稱':'點擊可修改顯示名稱'}"
-                class="matname-input flex-1 p-2 border ${isUnnamed?'border-amber-300 bg-amber-50':'border-gray-300'} rounded-md text-sm font-medium text-gray-700 focus:ring-2 focus:ring-amber-500 outline-none">
+                class="matname-input flex-1 p-2 border ${isUnnamed?'border-[var(--warn-border)] bg-[var(--warn-soft)]':'border-[var(--line-strong)]'} rounded-md text-sm font-medium text-[var(--ink-2)] focus:ring-2 focus:ring-amber-500 outline-none">
             <input type="text" value="${partno}" placeholder="品號" data-material="${m}"
-                class="partno-input w-32 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+                class="partno-input w-32 p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none">
             <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="1" data-material="${m}"
-                class="safety-input w-24 p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right">
-            <span class="text-sm text-gray-400 w-4">L</span>
+                class="safety-input w-24 p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right">
+            <span class="text-sm text-[var(--ink-5)] w-4">L</span>
         `;
         body.appendChild(row);
     });
@@ -2152,19 +2062,19 @@ function showDisabledMaterialsModal() {
     const body = document.getElementById('disabled-modal-body');
     const list = getAllDisabledMaterials();
     if (!list.length) {
-        body.innerHTML = '<p class="text-center text-gray-400 py-6 text-sm">目前沒有停用的材料</p>';
+        body.innerHTML = '<p class="text-center text-[var(--ink-5)] py-6 text-sm">目前沒有停用的材料</p>';
     } else {
         body.innerHTML = list.map(m => {
             const userBlocked = (inv.disabled_materials || []).includes(m);
             const defaultBlocked = DEFAULT_DISABLED_NAMES.includes(m) || DEFAULT_DISABLED_NAMES.includes(matName(m));
             const me = m.replace(/'/g, "\\'");
             return `
-                <div class="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                <div class="flex items-center justify-between p-3 border border-[var(--line)] rounded-lg">
                     <div>
-                        <p class="text-sm font-medium text-gray-800">${matName(m)}</p>
-                        <p class="text-xs text-gray-400">${m}${userBlocked && defaultBlocked ? '（系統 + 手動）' : userBlocked ? '（手動停用）' : '（系統預設停用）'}</p>
+                        <p class="text-sm font-medium text-[var(--ink)]">${matName(m)}</p>
+                        <p class="text-xs text-[var(--ink-5)]">${m}${userBlocked && defaultBlocked ? '（系統 + 手動）' : userBlocked ? '（手動停用）' : '（系統預設停用）'}</p>
                     </div>
-                    <button onclick="restoreMaterial('${me}')" class="text-xs px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-md flex items-center gap-1">
+                    <button onclick="restoreMaterial('${me}')" class="text-xs px-3 py-1.5 bg-[var(--ok-soft)] hover:bg-[var(--ok-soft)] text-[var(--ok)] rounded-md flex items-center gap-1">
                         <i data-lucide="eye" class="w-3.5 h-3.5"></i> 恢復顯示
                     </button>
                 </div>
@@ -2311,8 +2221,8 @@ function updateHistorySortIndicators(){
         if(!el) return;
         if(f===histSortField){
             el.textContent = histSortDir==='asc'?'↑':'↓';
-            el.className = 'ml-1 text-blue-600 font-bold';
-        } else { el.textContent=''; el.className='ml-1 text-gray-300'; }
+            el.className = 'ml-1 text-[var(--accent)] font-bold';
+        } else { el.textContent=''; el.className='ml-1 text-[var(--ink-6)]'; }
     });
 }
 
@@ -2363,18 +2273,18 @@ function renderHistory() {
     const page=filtered.slice((historyPage-1)*HISTORY_PAGE_SIZE,historyPage*HISTORY_PAGE_SIZE);
 
     const tbody=document.getElementById('history-body');
-    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-gray-400">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-[var(--ink-5)]">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
         const typeMap={
-            consume:{label:'列印消耗', color:'text-red-600 bg-red-50'},
-            stockin:{label:'備料入庫', color:'text-green-700 bg-green-50'},
-            manual: {label:'手動調整', color:'text-blue-600 bg-blue-50'},
-            aborted:{label:'列印中止', color:'text-orange-700 bg-orange-50 border border-orange-200'},
+            consume:{label:'列印消耗', color:'text-[var(--danger)] bg-[var(--danger-soft)]'},
+            stockin:{label:'備料入庫', color:'text-[var(--ok)] bg-[var(--ok-soft)]'},
+            manual: {label:'手動調整', color:'text-[var(--accent)] bg-[var(--accent-soft)]'},
+            aborted:{label:'列印中止', color:'text-[var(--orange)] bg-[var(--orange-soft)] border border-[var(--orange-border)]'},
         };
-        const t=typeMap[h.type]||{label:h.type,color:'bg-gray-100 text-gray-600'};
+        const t=typeMap[h.type]||{label:h.type,color:'bg-[var(--bg-panel)] text-[var(--ink-3)]'};
         const tr=document.createElement('tr');
-        tr.className='hover:bg-gray-50';
+        tr.className='hover:bg-[var(--bg-soft)]';
         // consume / aborted 都算實際消耗（負值），stockin/manual 加減視 ml 正負
         const isConsumeLike = (h.type==='consume' || h.type==='aborted');
         // 小於 0.01 L（10 mL）改用 mL 顯示，避免小量列印顯示成 0.00 L
@@ -2383,23 +2293,23 @@ function renderHistory() {
         const mlCell = isConsumeLike
             ? `− ${amtStr}`
             : `${(h.ml||0)>=0?'+':'−'} ${amtStr}`;
-        const mlColor = isConsumeLike ? 'text-red-500' : (h.type==='stockin'?'text-green-600':'');
+        const mlColor = isConsumeLike ? 'text-[var(--danger)]' : (h.type==='stockin'?'text-[var(--ok)]':'');
         const canDelRec = canDeleteRecords();
         tr.innerHTML=`
-            <td class="p-3 text-xs text-gray-500">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-            <td class="p-3 font-medium text-gray-800 text-sm">${matName(h.material)||'—'}</td>
-            <td class="p-3 text-sm text-gray-600">${printerDisplay(h.printer)||'—'}</td>
+            <td class="p-3 text-xs text-[var(--ink-4)]">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
+            <td class="p-3 font-medium text-[var(--ink)] text-sm">${matName(h.material)||'—'}</td>
+            <td class="p-3 text-sm text-[var(--ink-3)]">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
-            <td class="p-3 text-xs text-gray-400">
+            <td class="p-3 text-xs text-[var(--ink-5)]">
                 <div class="flex items-center gap-1.5">
                     <span class="truncate max-w-[200px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
-                    ${isEditor?`<button onclick="editHistoryNote('${h.id}')" title="編輯備註" class="text-gray-300 hover:text-blue-600 flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
+                    ${isEditor?`<button onclick="editHistoryNote('${h.id}')" title="編輯備註" class="text-[var(--ink-6)] hover:text-[var(--accent)] flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
                 </div>
             </td>
-            <td class="p-3 text-xs text-gray-500 font-mono">${h.apiStatus||'—'}</td>
+            <td class="p-3 text-xs text-[var(--ink-4)] font-mono">${h.apiStatus||'—'}</td>
             <td class="p-3 text-center" ${canDelRec?'':'style="display:none"'}>
-                <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（消耗/中止類型會自動回補庫存）" class="text-gray-400 hover:text-red-600 transition-colors">
+                <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（消耗/中止類型會自動回補庫存）" class="text-[var(--ink-5)] hover:text-[var(--danger)] transition-colors">
                     <i data-lucide="trash-2" class="w-4 h-4"></i>
                 </button>
             </td>
@@ -2417,7 +2327,7 @@ function renderHistory() {
     pgBtns.innerHTML='';
     ['‹',...Array.from({length:Math.min(totalPages,5)},(_, i)=>i+Math.max(1,historyPage-2)),'›'].forEach((v,idx,arr)=>{
         const btn=document.createElement('button');
-        btn.className=`px-2.5 py-1 rounded border text-sm ${typeof v==='number'&&v===historyPage?'bg-blue-600 text-white border-blue-600':'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'}`;
+        btn.className=`px-2.5 py-1 rounded border text-sm ${typeof v==='number'&&v===historyPage?'bg-blue-600 text-white border-[var(--accent-border)]':'border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]'}`;
         btn.textContent=v;
         if(v==='‹') btn.onclick=()=>{if(historyPage>1){historyPage--;renderHistory();}};
         else if(v==='›') btn.onclick=()=>{if(historyPage<totalPages){historyPage++;renderHistory();}};
@@ -2456,7 +2366,7 @@ function renderMonthly() {
     const printerFilter=document.getElementById('monthly-printer').value;
     const mats=getAllMaterials();
     if(!mats.length){
-        content.innerHTML='<p class="text-center text-gray-400 py-8">尚無資料</p>';
+        content.innerHTML='<p class="text-center text-[var(--ink-5)] py-8">尚無資料</p>';
         renderMonthlyPie();
         return;
     }
@@ -2464,7 +2374,7 @@ function renderMonthly() {
     const matchPrinter = h => !printerFilter || (h.printer||'').includes(printerFilter);
 
     const MONTHS=Array.from({length:12},(_,i)=>i+1);
-    let html=`<table class="w-full text-sm border-collapse"><thead><tr class="bg-gray-100 text-gray-600">
+    let html=`<table class="w-full text-sm border-collapse"><thead><tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
         <th class="p-3 border-b font-medium text-left">材料</th>
         ${MONTHS.map(m=>`<th class="p-3 border-b font-medium text-right">${m}月</th>`).join('')}
         <th class="p-3 border-b font-medium text-right">年計</th>
@@ -2479,10 +2389,10 @@ function renderMonthly() {
         });
         const total=monthly.reduce((s,v)=>s+v,0);
         if(!total) return;
-        html+=`<tr class="hover:bg-gray-50 border-b border-gray-100">
-            <td class="p-3 font-medium text-gray-800">${matName(mat)}</td>
-            ${monthly.map(v=>`<td class="p-3 text-right text-gray-600">${v>0?Math.round(v):'—'}</td>`).join('')}
-            <td class="p-3 text-right font-bold text-gray-800">${Math.round(total)}</td>
+        html+=`<tr class="hover:bg-[var(--bg-soft)] border-b border-[var(--line-soft)]">
+            <td class="p-3 font-medium text-[var(--ink)]">${matName(mat)}</td>
+            ${monthly.map(v=>`<td class="p-3 text-right text-[var(--ink-3)]">${v>0?Math.round(v):'—'}</td>`).join('')}
+            <td class="p-3 text-right font-bold text-[var(--ink)]">${Math.round(total)}</td>
         </tr>`;
     });
     html+='</tbody></table>';
@@ -2504,8 +2414,8 @@ let workcatMatChartType = 'bar';
 
 function setTrendType(t) {
     trendChartType = t;
-    document.getElementById('trend-line-btn').className = 'px-3 py-1.5 transition-colors ' + (t==='line' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
-    document.getElementById('trend-bar-btn').className  = 'px-3 py-1.5 transition-colors ' + (t==='bar'  ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+    document.getElementById('trend-line-btn').className = 'px-3 py-1.5 transition-colors ' + (t==='line' ? 'bg-blue-600 text-white' : 'bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]');
+    document.getElementById('trend-bar-btn').className  = 'px-3 py-1.5 transition-colors ' + (t==='bar'  ? 'bg-blue-600 text-white' : 'bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]');
     renderMonthlyTrend();
 }
 
@@ -2648,21 +2558,21 @@ function renderMonthlyConsume() {
         const pctTxt = pct>=1 ? Math.round(pct) : pct.toFixed(1);
         const qty = ml>=1000 ? (ml/1000).toFixed(2)+' L' : Math.round(ml)+' mL';
         const isAbort = h.type==='aborted';
-        return `<tr class="hover:bg-gray-50">
-            <td class="p-2 text-gray-400">${i+1}</td>
-            <td class="p-2 text-gray-700">${esc(h.note)||'—'}${isAbort?' <span class="text-xs text-amber-600">(中止)</span>':''}</td>
-            <td class="p-2 text-gray-600">${esc(matName(h.material))||'—'}</td>
-            <td class="p-2 text-gray-600">${esc(printerDisplay(h.printer))||'—'}</td>
-            <td class="p-2 text-right font-medium text-gray-800">${qty}</td>
+        return `<tr class="hover:bg-[var(--bg-soft)]">
+            <td class="p-2 text-[var(--ink-5)]">${i+1}</td>
+            <td class="p-2 text-[var(--ink-2)]">${esc(h.note)||'—'}${isAbort?' <span class="text-xs text-[var(--warn)]">(中止)</span>':''}</td>
+            <td class="p-2 text-[var(--ink-3)]">${esc(matName(h.material))||'—'}</td>
+            <td class="p-2 text-[var(--ink-3)]">${esc(printerDisplay(h.printer))||'—'}</td>
+            <td class="p-2 text-right font-medium text-[var(--ink)]">${qty}</td>
             <td class="p-2">
                 <div class="flex items-center gap-2">
-                    <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden" style="min-width:60px">
+                    <div class="flex-1 h-2 bg-[var(--bg-panel)] rounded-full overflow-hidden" style="min-width:60px">
                         <div class="h-full bg-teal-500 rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
                     </div>
-                    <span class="text-xs text-gray-500 w-9 text-right">${pctTxt}%</span>
+                    <span class="text-xs text-[var(--ink-4)] w-9 text-right">${pctTxt}%</span>
                 </div>
             </td>
-            <td class="p-2 text-gray-400 text-xs">${h.ts?new Date(h.ts).toLocaleDateString('zh-TW'):'—'}</td>
+            <td class="p-2 text-[var(--ink-5)] text-xs">${h.ts?new Date(h.ts).toLocaleDateString('zh-TW'):'—'}</td>
         </tr>`;
     }).join('');
 }
@@ -2707,13 +2617,13 @@ function renderMonthlyWorkCategory() {
         const pct = total>0 ? (ml/total*100) : 0;
         const qty = ml>=1000 ? (ml/1000).toFixed(2)+' L' : Math.round(ml)+' mL';
         return `<div class="flex items-center gap-2">
-            <span class="text-sm text-gray-700 w-20 flex-shrink-0">${escHtml(c)}</span>
-            <div class="flex-1 h-3 bg-gray-100 rounded-full overflow-hidden">
+            <span class="text-sm text-[var(--ink-2)] w-20 flex-shrink-0">${escHtml(c)}</span>
+            <div class="flex-1 h-3 bg-[var(--bg-panel)] rounded-full overflow-hidden">
                 <div class="h-full ${CAT_COLOR[c]||'bg-gray-400'} rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
             </div>
-            <span class="text-xs text-gray-500 w-16 text-right">${byCat[c].count} 筆</span>
-            <span class="text-xs text-gray-700 font-medium w-16 text-right">${qty}</span>
-            <span class="text-xs text-gray-400 w-10 text-right">${Math.round(pct)}%</span>
+            <span class="text-xs text-[var(--ink-4)] w-16 text-right">${byCat[c].count} 筆</span>
+            <span class="text-xs text-[var(--ink-2)] font-medium w-16 text-right">${qty}</span>
+            <span class="text-xs text-[var(--ink-5)] w-10 text-right">${Math.round(pct)}%</span>
         </div>`;
     }).join('');
 }
@@ -2722,7 +2632,7 @@ function renderMonthlyWorkCategory() {
 function setWorkcatMatChartType(t) {
     workcatMatChartType = t;
     ['bar','barh','line','pie'].forEach(k=>{
-        document.getElementById('wcm-'+k+'-btn').className = 'px-3 py-1.5 transition-colors ' + (t===k ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50');
+        document.getElementById('wcm-'+k+'-btn').className = 'px-3 py-1.5 transition-colors ' + (t===k ? 'bg-blue-600 text-white' : 'bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]');
     });
     document.getElementById('wcm-pie-cat').classList.toggle('hidden', t!=='pie');   // 圓餅圖一次只能看一個工作類別，需要選單挑選
     renderWorkcatMaterialChart();
@@ -2890,7 +2800,7 @@ function renderMonthlyPie() {
     if(!entries.length){
         canvas.style.display='none';
         empty.classList.remove('hidden');
-        legend.innerHTML='<p class="text-gray-400 text-sm text-center py-8">當月尚無消耗紀錄</p>';
+        legend.innerHTML='<p class="text-[var(--ink-5)] text-sm text-center py-8">當月尚無消耗紀錄</p>';
         return;
     }
     canvas.style.display='block';
@@ -2922,13 +2832,13 @@ function renderMonthlyPie() {
         return `<div class="flex items-center justify-between text-sm">
             <div class="flex items-center gap-2">
                 <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colors[i]}"></span>
-                <span class="text-gray-700">${matName(mat)}</span>
+                <span class="text-[var(--ink-2)]">${matName(mat)}</span>
             </div>
-            <div class="text-gray-500"><span class="font-medium text-gray-800">${(ml/1000).toFixed(2)}</span> L · ${pct}%</div>
+            <div class="text-[var(--ink-4)]"><span class="font-medium text-[var(--ink)]">${(ml/1000).toFixed(2)}</span> L · ${pct}%</div>
         </div>`;
-    }).join('') + `<div class="flex items-center justify-between text-sm pt-2 mt-2 border-t border-gray-100">
-        <span class="font-medium text-gray-700">當月總計</span>
-        <span class="font-bold text-gray-800">${(total/1000).toFixed(2)} L</span></div>`;
+    }).join('') + `<div class="flex items-center justify-between text-sm pt-2 mt-2 border-t border-[var(--line-soft)]">
+        <span class="font-medium text-[var(--ink-2)]">當月總計</span>
+        <span class="font-bold text-[var(--ink)]">${(total/1000).toFixed(2)} L</span></div>`;
 }
 
 // ══ 匯出 ══
