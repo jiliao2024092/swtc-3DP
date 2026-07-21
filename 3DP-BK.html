@@ -444,7 +444,8 @@
 
         <!-- 新增預約（僅 editor/admin）-->
         <div id="booking-section" class="bg-[var(--bg)] rounded-xl shadow-sm p-6 border border-[var(--line-soft)] hidden">
-            <h2 class="text-lg font-semibold mb-4 text-[var(--ink)] border-b pb-2">新增預約單</h2>
+            <h2 class="text-lg font-semibold mb-4 text-[var(--ink)] border-b border-[var(--line-soft)] pb-2">新增預約單</h2>
+            <div id="selected-slot-display" class="hidden mb-4 text-sm font-medium text-[var(--accent)] bg-[var(--accent-soft)] border border-[var(--accent-border)] rounded-md px-3 py-2"></div>
             <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-[var(--ink-2)]">申請業務</label>
@@ -767,19 +768,31 @@ function applyRoleUI() {
 let selectedBooking = null;   // {printer, date, slot, endDate, endSlot}
 let pendingSelection = null;  // 點選中、還差第二下的起點
 let cellClickTimer = null;
+let pendingClickCell = null;  // 目前排程中的單擊所屬格子 {printer, dateKey, slot}
 function slotLabel(slot){ return slot==='PM'?'下午':slot==='EV'?'晚上':slot==='ALL'?'全天':'上午'; }
 function slotSortKey(dateKey, slot){ return dateKey + String(SLOT_ORDER.indexOf(slot||'AM')); }
 window.clearGanttSelection = function(){
     selectedBooking = null; pendingSelection = null;
+    renderSelectedSlotDisplay();
     renderGantt();
 };
 // 單擊一格＝當日單一時段（等同過去的雙擊快速新增）；點兩格＝跨天/跨時段範圍。
-// 預約單本身不再顯示選取狀態文字，一律看甘特圖格子的顏色/外框（淺黃=起點待選、藍框=已完成選取）。
-// click 與 dblclick 會在雙擊時依序觸發（click, click, dblclick），用計時器讓「這是雙擊的一部分」時取消單擊動作，
-// 兩者現在都導向同一套 selectedBooking 邏輯，避免混亂
+// click 與 dblclick 會在雙擊時依序觸發（click, click, dblclick），用計時器讓「同一格的第二次點擊」視為雙擊的一部分而取消；
+// 但若第二次點擊是「不同格」（正在選跨天/跨時段範圍），代表使用者已經確定要用兩次單擊來選，
+// 應立即把前一格的單擊補上去，而不是整個吃掉（吃掉會讓兩次快速點選完全沒反應）。
 window.cellClick = function(printer, dateKey, slot){
-    if (cellClickTimer){ clearTimeout(cellClickTimer); cellClickTimer = null; return; }
-    cellClickTimer = setTimeout(()=>{ cellClickTimer = null; onGanttCellClick(printer, dateKey, slot); }, 260);
+    if (cellClickTimer && pendingClickCell &&
+        pendingClickCell.printer===printer && pendingClickCell.dateKey===dateKey && pendingClickCell.slot===slot){
+        clearTimeout(cellClickTimer); cellClickTimer = null; pendingClickCell = null;
+        return;
+    }
+    if (cellClickTimer){
+        clearTimeout(cellClickTimer); cellClickTimer = null;
+        const prev = pendingClickCell; pendingClickCell = null;
+        if (prev) onGanttCellClick(prev.printer, prev.dateKey, prev.slot);
+    }
+    pendingClickCell = {printer, dateKey, slot};
+    cellClickTimer = setTimeout(()=>{ cellClickTimer = null; pendingClickCell = null; onGanttCellClick(printer, dateKey, slot); }, 260);
 };
 window.quickAddBooking = function(printer, dateKey, slot){
     // 雙擊：直接視為「起訖點相同」的單一時段預約，不需要點兩下
@@ -816,6 +829,17 @@ function applySelectedBooking(printer, date, slot, endDate, endSlot){
     showToast(endDate!==date
         ? `已選 ${date} ${slotLabel(slot)} ～ ${endDate} ${slotLabel(endSlot)}，請補齊其他資料後送出`
         : `已選 ${printer} ${date} ${slotLabel(slot)}，請補齊其他資料後送出`);
+}
+// 在「新增預約單」表單上顯示目前甘特圖選到的日期/時段，讓使用者送出前能核對
+function renderSelectedSlotDisplay(){
+    const el = document.getElementById('selected-slot-display');
+    if (!el) return;
+    if (!selectedBooking){ el.classList.add('hidden'); el.textContent = ''; return; }
+    const { printer, date, slot, endDate, endSlot } = selectedBooking;
+    el.textContent = (endDate && endDate!==date)
+        ? `已選擇：${printer}　${date} ${slotLabel(slot)} ～ ${endDate} ${slotLabel(endSlot)}`
+        : `已選擇：${printer}　${date} ${slotLabel(slot)}`;
+    el.classList.remove('hidden');
 }
 addEventListener('keydown', e=>{
     if (e.key==='Escape' && pendingSelection){ pendingSelection = null; renderGantt(); showToast('已取消選擇'); }
@@ -1024,7 +1048,7 @@ window.renderTable = function() {
                 ${displayDate}${(b.endDate && b.endDate!==b.date) ? ` <span class="text-xs text-[var(--ink-5)]">~${new Date(b.endDate+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})}</span>` : ''}${isOverdue?' <span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-1 rounded">逾期</span>':''}
             </td>
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
-            <td class="p-3"><span class="bg-[var(--purple-soft)] text-[var(--purple)] px-2 py-1 rounded-md text-xs font-medium">${salesDisplay(b.sales)}</span></td>
+            <td class="p-3"><span class="bg-[var(--purple-soft)] text-[var(--purple)] px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap">${salesDisplay(b.sales)}</span></td>
             <td class="p-3">${printerCell}</td>
             <td class="p-3"><span class="bg-[var(--indigo-soft)] text-[var(--indigo)] px-2 py-1 rounded-md text-xs font-medium border border-[var(--indigo-border)] whitespace-nowrap">${engDisplay(b.engineer)}</span></td>
             <td class="p-3">${purposeCell}</td>
