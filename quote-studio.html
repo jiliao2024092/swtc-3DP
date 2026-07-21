@@ -1643,7 +1643,7 @@ function runOverhang(){
   if (S.results.overhang) return S.results.overhang;
   const t = m.raw.tris, w = m.world, nf = t.length/3;
   const faceGamma = new Float32Array(nf).fill(999);
-  let supArea=0, dangerArea=0, flatArea=0, total=0, minGamma=999;
+  let supArea=0, dangerArea=0, flatArea=0, total=0, minGamma=999, minGammaPos=null;
   for (let f=0; f<nf; f++){
     const a=t[f*3]*3,b=t[f*3+1]*3,c=t[f*3+2]*3;
     const ux=w[b]-w[a],uy=w[b+1]-w[a+1],uz=w[b+2]-w[a+2];
@@ -1657,11 +1657,14 @@ function runOverhang(){
       const minY = Math.min(w[a+1],w[b+1],w[c+1]);
       const nearPlat = minY < S.support.lift + 3.5;
       if (gamma < 50) supArea += area;
-      if (gamma < SPEC.overhangAngle.v && !nearPlat){ dangerArea += area; if(gamma<minGamma)minGamma=gamma; }
+      if (gamma < SPEC.overhangAngle.v && !nearPlat){
+        dangerArea += area;
+        if (gamma<minGamma){ minGamma=gamma; minGammaPos=[(w[a]+w[b]+w[c])/3, (w[a+1]+w[b+1]+w[c+1])/3, (w[a+2]+w[b+2]+w[c+2])/3]; }
+      }
       if (gamma < 5) flatArea += area;
     }
   }
-  const res = { faceGamma, supArea, dangerArea, flatArea, total, minGamma: minGamma===999?null:minGamma };
+  const res = { faceGamma, supArea, dangerArea, flatArea, total, minGamma: minGamma===999?null:minGamma, minGammaPos };
   S.results.overhang = res;
   return res;
 }
@@ -2237,6 +2240,35 @@ async function runValidation(){
   updateAllUI();
   return res;
 }
+// 可行性檢查每一項的「點我查看」：依項目類型切換對應顏色模式，並把視角轉到問題實際發生的位置
+function validationFixFor(label){
+  const map = {
+    '懸垂角度': ()=>{
+      const O = S.results.overhang;
+      setColorMode('overhang');
+      if (O && O.minGammaPos) focusCameraOn(new THREE.Vector3(...O.minGammaPos));
+    },
+    '懸垂長度': ()=>{
+      const O = S.results.overhang;
+      setColorMode('overhang');
+      if (O && O.minGammaPos) focusCameraOn(new THREE.Vector3(...O.minGammaPos));
+    },
+    '孤島': async ()=>{
+      if (!S.results.islands) await runIslands();
+      drawIslandMarkers();
+    },
+    '底部抬升': ()=>{
+      const m = activeModel(); if (!m) return;
+      const bb = m.worldBB;
+      focusCameraOn(new THREE.Vector3((bb.min[0]+bb.max[0])/2, bb.min[1], (bb.min[2]+bb.max[2])/2));
+    },
+    '支撐跨距': async ()=>{ S.supportsOn=true; await rebuildScene(true); renderStep(); },
+    '無支撐壁厚': ()=>setColorMode('thickness'),
+    '支撐壁厚': ()=>setColorMode('thickness'),
+    '線材直徑': ()=>setColorMode('thickness'),
+  };
+  return map[label] || null;
+}
 /* ============================== 16. 五步驟精靈 ============================== */
 const STEPS = ['上傳檔案','選擇機台','材料與參數','可行性檢查','報價'];
 async function gotoStep(i){
@@ -2416,8 +2448,16 @@ function renderStep(){
       for (const c of bad){
         const cls = c.status==='fail'?'err':c.status==='warn'?'warn':'';
         const icon = c.status==='fail'?'✕':c.status==='warn'?'⚠':'👁';
-        B.appendChild(el('div','chk '+cls,
-          `<div class="t">${icon} ${c.label} <small>${c.kind}</small></div><div class="d">${c.detail}</div>`));
+        const chk = el('div','chk '+cls,
+          `<div class="t">${icon} ${c.label} <small>${c.kind}</small></div><div class="d">${c.detail}</div>`);
+        const vf = validationFixFor(c.label);
+        if (vf){
+          const a = el('span','fcFix','點我查看');
+          a.addEventListener('click', vf);
+          chk.querySelector('.d').appendChild(document.createTextNode(' '));
+          chk.querySelector('.d').appendChild(a);
+        }
+        B.appendChild(chk);
       }
       const pass = R.checks.filter(c=>c.status==='pass');
       if (pass.length){
@@ -3417,7 +3457,11 @@ function fcFixLink(fix){
     scaleUp:  ['⇱ ×25.4 放大', ()=>{ if(confirm('確定將模型放大 25.4 倍（inch→mm）？')) applyUnitScale(25.4); }],
     scaleDown:['⇲ ÷25.4 縮小', ()=>{ if(confirm('確定將模型縮小 25.4 倍？')) applyUnitScale(1/25.4); }],
     heatmap:  ['▤ 厚度熱圖', ()=>setColorMode('thickness')],
-    overhang: ['⚠ 懸垂標色', ()=>setColorMode('overhang')],
+    overhang: ['⚠ 懸垂標色', ()=>{
+      setColorMode('overhang');
+      const O = S.results.overhang;
+      if (O && O.minGammaPos) focusCameraOn(new THREE.Vector3(...O.minGammaPos));
+    }],
     orient:   ['⚡ 自動擺放', ()=>autoOrient()],
     supports: ['🖊 生成支撐', async ()=>{ S.supportsOn=true; await rebuildScene(true); renderStep(); }],
     islands:  ['📍 標示孤島位置', async ()=>{ await runIslands(); drawIslandMarkers(); toast(`已標示 ${S.results.islands.clusters.length} 處孤島位置`,'warn'); }],
@@ -3521,7 +3565,8 @@ function buildGizmo(m){
     const tubeR = Math.max(0.35, R*0.008125);   // 再縮小為原本的 1/2（相對加粗前已是 1/8）
     // 可見粗弧：只畫一段弧（不整圈環繞，貼近參考圖），弧線中點對齊箭頭方向(u)。
     // 直接用 u/w 基底手算弧上的點再做成管狀，不靠 TorusGeometry 的內建旋轉，
-    // 確保弧線visible範圍與箭頭方向精準對齊。依真實深度測試繪製，被模型擋住處自然隱沒。
+    // 確保弧線visible範圍與箭頭方向精準對齊。永遠顯示在最上層（depthTest:false + renderOrder），
+    // 不被模型擋住，操控旋轉時才不會因為環被模型遮住而抓不到。
     const ARC_SPAN = Math.PI * 0.8;   // 弧長約144°
     const arcPts = [];
     const SEG = 40;
@@ -3531,15 +3576,17 @@ function buildGizmo(m){
     }
     const ring = new THREE.Mesh(
       new THREE.TubeGeometry(new THREE.CatmullRomCurve3(arcPts), 40, tubeR, 10, false),
-      new THREE.MeshBasicMaterial({ color:a.c, transparent:true, opacity:.92 }));
+      new THREE.MeshBasicMaterial({ color:a.c, transparent:true, opacity:.92, depthTest:false }));
     ring.userData.axis = k;
+    ring.renderOrder = 15;
     V.gizmo.add(ring); V.gizmoPicks.push(ring);
     // 方向箭頭：圓錐，指向該軸環正旋轉方向的切線，取代原本的把手小球
     const arrow = new THREE.Mesh(
       new THREE.ConeGeometry(tubeR*1.7, tubeR*4.2, 12),
-      new THREE.MeshBasicMaterial({ color:a.c }));
+      new THREE.MeshBasicMaterial({ color:a.c, depthTest:false }));
     arrow.position.copy(P).addScaledVector(u, R).addScaledVector(w, tubeR*2.4);
     arrow.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), w.clone().normalize()));
+    arrow.renderOrder = 15;
     V.gizmo.add(arrow);
   }
   V.gizmo.add(makeGizmoCenterIcon(P, R));

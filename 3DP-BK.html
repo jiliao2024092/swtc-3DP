@@ -868,6 +868,18 @@ function getStatusColor(status){
 }
 function getOccupiedSlots(b) { return b.slot==='ALL' ? ['AM','PM','EV'] : [b.slot||'AM']; }
 const SLOT_ORDER = ['AM','PM','EV'];
+// 上午/下午/晚上以 9:00 / 12:00 / 18:00 為界（上午 9~12、下午 12~18、晚上 18~24）；
+// 逾期判斷只需要「結束時刻」：上午 12:00 結束、下午 18:00 結束，晚上/全天要跨過午夜才算逾期（已由日期比較涵蓋，不需額外處理）
+const SLOT_END_HOUR = { AM: 12, PM: 18 };
+function isBookingOverdue(b, todayStr){
+    if (!b.date || DONE_STATUSES.has(effectiveStatus(b))) return false;
+    if (b.date < todayStr) return true;
+    if (b.date === todayStr){
+        const endHour = SLOT_END_HOUR[b.slot];
+        if (endHour != null) return new Date().getHours() >= endHour;
+    }
+    return false;
+}
 // 跨天預約每一天佔用的時段：起始日從 slot 開始佔到當天結束，中間日全天佔用，結束日從當天開始佔到 endSlot 為止；
 // 未跨天（endDate===date 或沒設）則沿用原本 getOccupiedSlots（含 ALL=全天）
 function occupiedSlotsForDay(b, dayKey){
@@ -982,7 +994,7 @@ window.renderTable = function() {
         if(fStatus  && effectiveStatus(b) !== fStatus)  return false;
         if(fPrinter && b.printer  !== fPrinter) return false;
         if(fSales   && b.sales    !== fSales)   return false;
-        if(fSpecial==='overdue'  && !(b.date && b.date<today && !DONE_STATUSES.has(effectiveStatus(b)))) return false;
+        if(fSpecial==='overdue'  && !isBookingOverdue(b, today)) return false;
         if(fSpecial==='active'   && DONE_STATUSES.has(effectiveStatus(b))) return false;
         if(fSpecial==='conflict' && !bookingHasConflict(b, conflicts)) return false;
         return true;
@@ -1026,7 +1038,7 @@ window.renderTable = function() {
         const displayDate = b.date
             ? new Date(b.date+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})
             : '—';
-        const isOverdue = b.date && b.date<today && !DONE_STATUSES.has(dispStatus);
+        const isOverdue = isBookingOverdue(b, today);
         const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='EV' ? '晚上' : b.slot==='ALL' ? '全天' : '—';
         const slotColor = isConflict ? 'bg-[var(--orange-soft)] text-[var(--orange)]' : (b.slot==='PM' ? 'bg-[var(--orange-soft)] text-[var(--orange)]' : b.slot==='EV' ? 'bg-[var(--indigo-soft)] text-[var(--indigo)]' : b.slot==='ALL' ? 'bg-[var(--violet-soft)] text-[var(--violet)]' : 'bg-[var(--sky-soft)] text-[var(--sky)]');
         const printerCell = isConflict
