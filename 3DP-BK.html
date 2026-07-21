@@ -842,7 +842,20 @@ function renderSelectedSlotDisplay(){
     el.classList.remove('hidden');
 }
 addEventListener('keydown', e=>{
-    if (e.key==='Escape' && pendingSelection){ pendingSelection = null; renderGantt(); showToast('已取消選擇'); }
+    if (e.key==='Escape' && (pendingSelection || selectedBooking)){
+        pendingSelection = null; selectedBooking = null;
+        renderSelectedSlotDisplay(); renderGantt();
+        showToast('已取消選擇');
+    }
+});
+// 點擊甘特圖與預約表單以外的空白處，視同放棄目前選取的時段（起點待選 或 已完成的起訖選取）
+addEventListener('click', e=>{
+    if (!pendingSelection && !selectedBooking) return;
+    const gc = document.getElementById('gantt-container');
+    const bs = document.getElementById('booking-section');
+    if ((gc && gc.contains(e.target)) || (bs && bs.contains(e.target))) return;
+    pendingSelection = null; selectedBooking = null;
+    renderSelectedSlotDisplay(); renderGantt();
 });
 
 // ══════════════════════════════════════════════
