@@ -974,7 +974,7 @@ function initViewer(){
   const resize = () => { const w=innerWidth,h=innerHeight;
     V.renderer.setSize(w,h,false); V.camera.aspect=w/h; V.camera.updateProjectionMatrix(); };
   addEventListener('resize', resize); resize();
-  (function loop(){ requestAnimationFrame(loop); V.renderer.render(V.scene, V.camera); })();
+  (function loop(){ requestAnimationFrame(loop); updateGizmoScreenScale(); V.renderer.render(V.scene, V.camera); })();
 }
 function buildPlatform(){
   while(V.platGroup.children.length){ const c=V.platGroup.children[0]; V.platGroup.remove(c); if(c.geometry)c.geometry.dispose(); }
@@ -3506,9 +3506,11 @@ function buildGizmo(m){
   if (!m || !m.worldBB) return;
   const bb = m.worldBB;
   const P = new THREE.Vector3((bb.min[0]+bb.max[0])/2, (bb.min[1]+bb.max[1])/2, (bb.min[2]+bb.max[2])/2);
-  const R = Math.max(12, Math.max(bb.size[0], bb.size[1], bb.size[2])*0.42 + 3);   // 縮小旋轉環（原0.62倍模型最大邊，改0.42倍）
+  const R = Math.max(12, Math.max(bb.size[0], bb.size[1], bb.size[2])*0.42 + 3) * 0.75;   // 縮小旋轉環（原0.62倍模型最大邊，改0.42倍，再縮小25%）
   V.gizmo = new THREE.Group(); V.gizmoCenter = P; V.gizmoR = R;
   V.gizmoPicks = []; V.gizmoBasis = {};
+  // 記錄建立當下相機到中心點的距離，供 updateGizmoScreenScale() 換算「視野恆定大小」用的縮放比例
+  V.gizmoBaseDist = V.camera.position.distanceTo(P);
   const AXES = {
     x: { v:new THREE.Vector3(1,0,0), c:0xc0392b },
     y: { v:new THREE.Vector3(0,1,0), c:0x1d6f43 },
@@ -3579,6 +3581,14 @@ function removeGizmo(){
     if (o.material){ if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
   });
   V.gizmo = null; V.gizmoPicks = [];
+}
+// 旋轉環「視野恆定大小」：每禎依目前相機到中心點的距離，跟建立當下的距離比較，
+// 反向縮放整個 gizmo 群組，讓它在螢幕上看起來永遠一樣大，不會因為滑鼠滾輪縮放鏡頭而變大變小
+function updateGizmoScreenScale(){
+  if (!V.gizmo || !V.gizmoCenter || !V.gizmoBaseDist) return;
+  const dist = V.camera.position.distanceTo(V.gizmoCenter);
+  const s = dist / V.gizmoBaseDist;
+  V.gizmo.scale.setScalar(s);
 }
 function gizmoDragBegin(){
   V.supGroup.visible = false; V.markGroup.visible = false;   // 旋轉中支撐失效（PreForm：X/Y 旋轉會移除支撐）

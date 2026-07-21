@@ -1652,7 +1652,7 @@ async function saveCartridgeEdit() {
         else val = parseFloat(el.value)||0;
         inv.cartridges[printer][idx][field]=val;
         inv.cartridges[printer][idx].updated_at=new Date().toISOString();
-        inv.cartridges[printer][idx].updated_by=currentUser.email;
+        inv.cartridges[printer][idx].updated_by=currentUser.displayName;
     });
     closeCartridgeModal();
     renderAll();
@@ -1750,7 +1750,7 @@ function renderStockTable() {
             </td>
             <td class="p-3 text-xs text-gray-400">
                 ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
-                ${s.updated_by && s.updated_by!=='cloud-function' ? `<div class="text-gray-400">by ${escHtml(s.updated_by.split('@')[0])}</div>` : ''}
+                ${s.updated_by && s.updated_by!=='cloud-function' && s.updated_by!=='manual' ? `<div class="text-gray-400">by ${escHtml(s.updated_by)}</div>` : ''}
             </td>
             <td class="p-3 text-center">
                 ${!isEditor ? '<span class="text-gray-300">—</span>'
@@ -1822,7 +1822,7 @@ async function saveStockEdits() {
         inv.stock[fam].total_ml   = newMl;
         inv.stock[fam].note       = newNote;
         inv.stock[fam].updated_at = new Date().toISOString();
-        inv.stock[fam].updated_by = currentUser.email;
+        inv.stock[fam].updated_by = currentUser.displayName;
 
         if (diff !== 0) {
             historyEntries.push({
@@ -1935,7 +1935,7 @@ async function saveStockIn() {
     inv.stock[mat].bottles  = Math.round(((inv.stock[mat].bottles||0) + bottles) * 10) / 10;
     inv.stock[mat].total_ml = Math.round(((inv.stock[mat].total_ml||0) + totalMl) * 10) / 10;
     inv.stock[mat].updated_at = new Date().toISOString();
-    inv.stock[mat].updated_by = currentUser.email;
+    inv.stock[mat].updated_by = currentUser.displayName;
 
     addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${liters.toFixed(1)} L）` });
     closeStockModal();
@@ -2906,7 +2906,7 @@ async function deleteHistoryEntry(id) {
             if (!inv.stock[fam]) inv.stock[fam] = { bottles: 0, total_ml: 0 };
             inv.stock[fam].total_ml = Math.round(((inv.stock[fam].total_ml || 0) + ml) * 10) / 10;
             inv.stock[fam].updated_at = new Date().toISOString();
-            inv.stock[fam].updated_by = currentUser.email;
+            inv.stock[fam].updated_by = currentUser.displayName;
             await saveAll(`刪除消耗紀錄回補庫存：${matName(h.material)} +${ml.toFixed(1)}mL（${currentUser.displayName}）`);
             addHistory({ type:'manual', material: h.material, printer:'備料庫存',
                 ml: ml, note: `刪除紀錄回補（原：${h.note||h.print_guid||id}）` });
