@@ -1589,7 +1589,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260708i"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260708j"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260708g"></script>
 
 <!-- ⑦ 主 App -->
@@ -2291,8 +2291,14 @@ function Shell({ user, onLogout }) {
             </button>
           </div>
           <span className="sidebar-foot-date">{dateStr}</span>
-          <span style={{fontSize:9,color:'var(--ink-4)',wordBreak:'break-all',fontFamily:'monospace'}}>
-            perms: {JSON.stringify(user.permissions)}
+          <span style={{fontSize:9,color:'var(--ink-4)'}}>
+            {(()=>{
+              const p = user.permissions || [];
+              if (p.includes('admin')) return '管理員';
+              if (p.includes('delete_board') || p.includes('delete_issues')) return '主管';
+              if (p.includes('edit_board')) return '工程師';
+              return '查閱';
+            })()}
           </span>
           <div style={{display:'flex',gap:6,marginTop:6}}>
             <button onClick={()=>setShowPwModal(true)} style={{flex:1,background:'none',border:'1px solid var(--line)',borderRadius:5,padding:'4px 10px',fontSize:11,cursor:'pointer',color:'var(--ink-3)',fontFamily:'inherit'}}>變更密碼</button>
