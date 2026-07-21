@@ -2195,18 +2195,25 @@ function Shell({ user, onLogout }) {
     try { return localStorage.getItem('swtc_darkMode') === '1'; } catch(e){ return false; }
   });
   const quoteIframeRef = React.useRef(null);
-  // 把黑暗模式狀態同步進 quote-studio.html 的 iframe（同源，直接摸 contentDocument）；
-  // quote-studio 自己的切換鈕已拿掉，一律由 portal 這裡的狀態決定
-  const applyThemeToQuoteIframe = () => {
+  const bookingIframeRef = React.useRef(null);
+  const inventoryIframeRef = React.useRef(null);
+  // 把黑暗模式狀態同步進各 iframe 頁面（同源，直接摸 contentDocument）；
+  // 這些頁面自己沒有切換鈕，一律由 portal 這裡的狀態決定
+  const applyThemeToIframe = (ref) => {
     try {
-      const doc = quoteIframeRef.current && quoteIframeRef.current.contentDocument;
+      const doc = ref.current && ref.current.contentDocument;
       if (doc && doc.documentElement) doc.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
     } catch(e){}
   };
+  const applyThemeToQuoteIframe = () => applyThemeToIframe(quoteIframeRef);
+  const applyThemeToBookingIframe = () => applyThemeToIframe(bookingIframeRef);
+  const applyThemeToInventoryIframe = () => applyThemeToIframe(inventoryIframeRef);
   React.useEffect(()=>{
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
     try { localStorage.setItem('swtc_darkMode', darkMode ? '1' : '0'); } catch(e){}
     applyThemeToQuoteIframe();
+    applyThemeToBookingIframe();
+    applyThemeToInventoryIframe();
   }, [darkMode]);
 
   const isAdmin = window.hasPerm(user, 'admin');
@@ -2298,8 +2305,8 @@ function Shell({ user, onLogout }) {
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}
         {page==='admin'     && isAdmin && <AdminPanel          user={user}/>}
-        {page==='booking'   && canBooking && <iframe src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印機預約"/>}
-        {page==='inventory' && canInventory && <iframe src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
+        {page==='booking'   && canBooking && <iframe ref={bookingIframeRef} onLoad={applyThemeToBookingIframe} src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印機預約"/>}
+        {page==='inventory' && canInventory && <iframe ref={inventoryIframeRef} onLoad={applyThemeToInventoryIframe} src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
         {page==='quote'     && canQuote && <iframe ref={quoteIframeRef} onLoad={applyThemeToQuoteIframe} src="../quote-studio.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價（Beta）"/>}
       </main>
     </div>
