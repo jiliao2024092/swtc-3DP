@@ -438,7 +438,7 @@
                         <span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-red-300"></span>異常/取消</span>
                     </div>
                 </div>
-                <div id="gantt-container" class="overflow-x-auto"></div>
+                <div id="gantt-container"></div>
             </div>
         </div>
 
@@ -1202,21 +1202,21 @@ function renderGantt() {
     const todayKey = fmtDateLocal(new Date());
     const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
 
-    let html = '<table class="w-full border-collapse text-xs" style="min-width:760px"><thead>';
-    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-2 border border-[var(--line)] w-24 sticky left-0 bg-[var(--bg-panel)]">機台</th>';
+    let html = '<table class="w-full border-collapse text-xs" style="table-layout:fixed"><thead>';
+    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-1 border border-[var(--line)] w-14 sticky left-0 bg-[var(--bg-panel)]">機台</th>';
     days.forEach(d=>{
         const isToday = fmtDateLocal(d)===todayKey;
-        html += `<th class="p-2 border border-[var(--line)] ${isToday?'bg-[var(--accent-soft)]':''}" colspan="3">
+        html += `<th class="p-1 border border-[var(--line)] ${isToday?'bg-[var(--accent-soft)]':''}" colspan="3">
             <div class="font-medium ${isToday?'text-[var(--accent)]':''}">${d.getMonth()+1}/${d.getDate()}</div>
             <div class="text-[var(--ink-5)] font-normal">${weekdayNames[d.getDay()===0?6:d.getDay()-1]}</div>
         </th>`;
     });
-    html += '</tr><tr class="bg-[var(--bg-soft)] text-[var(--ink-5)]"><th class="p-1 border border-[var(--line)] sticky left-0 bg-[var(--bg-soft)]"></th>';
-    days.forEach(()=>{ html += '<th class="p-1 border border-[var(--line)] font-normal">上午</th><th class="p-1 border border-[var(--line)] font-normal">下午</th><th class="p-1 border border-[var(--line)] font-normal">晚上</th>'; });
+    html += '</tr><tr class="bg-[var(--bg-soft)] text-[var(--ink-5)]"><th class="p-0.5 border border-[var(--line)] sticky left-0 bg-[var(--bg-soft)]"></th>';
+    days.forEach(()=>{ html += '<th class="p-0.5 border border-[var(--line)] font-normal">上午</th><th class="p-0.5 border border-[var(--line)] font-normal">下午</th><th class="p-0.5 border border-[var(--line)] font-normal">晚上</th>'; });
     html += '</tr></thead><tbody>';
 
     GANTT_PRINTERS.forEach(printer=>{
-        html += `<tr><td class="p-2 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)]">${printer}</td>`;
+        html += `<tr><td class="p-1 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] truncate">${printer}</td>`;
         days.forEach(d=>{
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
@@ -1242,13 +1242,13 @@ function renderGantt() {
             const isSelectedRange = (slot)=> selectedBooking && selectedBooking.printer===printer
                 && bookingCoversDay(selectedBooking, dayKey) && occupiedSlotsForDay(selectedBooking, dayKey).includes(slot);
 
-            // 渲染一個預約色塊
+            // 渲染一個預約色塊：只顯示用途類別（不顯示備註），備註/業務/工程師等細節收進 title 提示
             const renderItem = (b) => {
                 const color = ganttStatusColor(effectiveStatus(b));
-                const text = b.engineer ? `${engDisplay(b.engineer)}: ${b.purpose||'—'}` : (b.purpose||salesDisplay(b.sales));
+                const catTxt = b.category==='其他' ? (b.categoryOther||'其他') : (b.category||'—');
                 const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                return `<div class="${color} rounded px-1.5 py-1 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}>
-                    ${text}${allDayMark}
+                return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
+                    ${catTxt}${allDayMark}
                 </div>`;
             };
             const renderConflictBadge = (n) => `<div class="text-xs text-[var(--orange)] font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
@@ -1260,26 +1260,39 @@ function renderGantt() {
                 const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
                 const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
                 const content = allDayItems.map(renderItem).join('');
-                html += `<td colspan="3" class="p-1 border border-[var(--line)] align-top ${bg}${ring}" style="min-width:210px"${dbl('ALL')}>${badge}${content}</td>`;
+                html += `<td colspan="3" class="p-1 border border-[var(--line)] align-top ${bg}${ring}"${dbl('ALL')}>${badge}${content}</td>`;
                 return;  // 跳過下面三格
             }
 
-            // 情境 B/C/D：逐時段渲染（每格 = 該時段單獨預約 + 全天預約）
-            SLOTS.forEach(sl=>{
+            // 情境 B/C/D：逐時段渲染；同一筆預約若連續佔用多個時段（例如跨天預約起始日佔下午+晚上），
+            // 合併成單一 colspan 儲存格，畫面上呈現一個連續色塊，不切成兩個方塊。
+            // 已有預約佔用的格子不再綁定 pick()（單擊選時段），避免點擊既有預約時又誤觸發新的時段選取。
+            let slIdx = 0;
+            while (slIdx < 3){
+                const sl = SLOTS[slIdx];
                 const combined = [...indiv[sl], ...allDayItems];
                 const pendRing = isPending(sl) ? ' ring-2 ring-yellow-300 ring-inset'
                     : isSelectedRange(sl) ? ' ring-2 ring-blue-400 ring-inset' : '';
                 const selBg = isPending(sl) ? 'bg-yellow-200/40' : isSelectedRange(sl) ? 'bg-[var(--accent-soft)]' : '';
-                if(combined.length){
-                    const conflict = combined.length > 1;
-                    const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : pendRing;
-                    const bg   = conflict ? 'bg-[var(--orange-soft)]' : (selBg || todayBg);
-                    const badge = conflict ? renderConflictBadge(combined.length) : '';
-                    html += `<td class="p-1 border border-[var(--line)] align-top ${bg}${ring}" style="min-width:70px"${dbl(sl)}${pick(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
+                if (combined.length === 1){
+                    let span = 1;
+                    while (slIdx+span < 3){
+                        const nSl = SLOTS[slIdx+span];
+                        const nCombined = [...indiv[nSl], ...allDayItems];
+                        if (nCombined.length===1 && nCombined[0].id===combined[0].id) span++;
+                        else break;
+                    }
+                    html += `<td${span>1?` colspan="${span}"`:''} class="p-1 border border-[var(--line)] align-top ${selBg||todayBg}${pendRing}"${dbl(sl)}>${combined.map(renderItem).join('')}</td>`;
+                    slIdx += span;
+                } else if (combined.length > 1){
+                    const badge = renderConflictBadge(combined.length);
+                    html += `<td class="p-1 border border-[var(--line)] align-top bg-[var(--orange-soft)] ring-2 ring-orange-400 ring-inset"${dbl(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
+                    slIdx++;
                 } else {
                     html += `<td class="p-1 border border-[var(--line)] ${selBg||todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
+                    slIdx++;
                 }
-            });
+            }
         });
         html += '</tr>';
     });
