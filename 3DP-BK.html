@@ -826,7 +826,7 @@ function applySelectedBooking(printer, date, slot, endDate, endSlot){
     const sec = document.getElementById('booking-section');
     if (sec.classList.contains('hidden')) sec.classList.remove('hidden');
     sec.scrollIntoView({behavior:'smooth', block:'center'});
-    showToast(endDate!==date
+    showToast((endDate!==date || endSlot!==slot)
         ? `已選 ${date} ${slotLabel(slot)} ～ ${endDate} ${slotLabel(endSlot)}，請補齊其他資料後送出`
         : `已選 ${printer} ${date} ${slotLabel(slot)}，請補齊其他資料後送出`);
 }
@@ -836,7 +836,7 @@ function renderSelectedSlotDisplay(){
     if (!el) return;
     if (!selectedBooking){ el.classList.add('hidden'); el.textContent = ''; return; }
     const { printer, date, slot, endDate, endSlot } = selectedBooking;
-    el.textContent = (endDate && endDate!==date)
+    el.textContent = (endDate && (endDate!==date || endSlot!==slot))
         ? `已選擇：${printer}　${date} ${slotLabel(slot)} ～ ${endDate} ${slotLabel(endSlot)}`
         : `已選擇：${printer}　${date} ${slotLabel(slot)}`;
     el.classList.remove('hidden');
@@ -866,7 +866,16 @@ function subscribeBookings() {
 function getStatusColor(status){
     return {'待確認':'bg-[var(--warn-soft)] text-[var(--warn)] border-[var(--warn-border)]','執行中':'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--accent-border)]','已完成':'bg-[var(--ok-soft)] text-[var(--ok)] border-[var(--ok-border)]','異常/取消':'bg-[var(--danger-soft)] text-[var(--danger)] border-[var(--danger-border)]'}[status]||'bg-[var(--bg-panel)] text-[var(--ink)]';
 }
-function getOccupiedSlots(b) { return b.slot==='ALL' ? ['AM','PM','EV'] : [b.slot||'AM']; }
+// 單日佔用時段：ALL=全天；否則是 slot~endSlot 的範圍（同一天內跨時段點選時 endSlot 可能與 slot 不同，
+// 例如同一天選「下午～晚上」；沒有 endSlot 或 endSlot===slot 則只佔用單一時段）
+function getOccupiedSlots(b) {
+    if (b.slot==='ALL') return ['AM','PM','EV'];
+    const s = b.slot || 'AM', e = b.endSlot || s;
+    if (e===s) return [s];
+    const si = SLOT_ORDER.indexOf(s), ei = SLOT_ORDER.indexOf(e);
+    const lo = Math.min(si,ei), hi = Math.max(si,ei);
+    return SLOT_ORDER.slice(lo, hi+1);
+}
 const SLOT_ORDER = ['AM','PM','EV'];
 // 上午/下午/晚上以 9:00 / 12:00 / 18:00 為界（上午 9~12、下午 12~18、晚上 18~24）；
 // 逾期判斷只需要「結束時刻」：上午 12:00 結束、下午 18:00 結束，晚上/全天要跨過午夜才算逾期（已由日期比較涵蓋，不需額外處理）
