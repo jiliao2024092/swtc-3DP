@@ -422,7 +422,6 @@ body.big{--fs:1.16}
     <button class="abtn on" id="btnRange" title="顯示/隱藏列印範圍框" style="border-color:var(--accent);color:var(--accent)">▦ 範圍框</button>
     <div class="vsep"></div>
     <button class="abtn" id="btnFs" title="字級切換：小字 / 大字"><span style="font-size:9px;font-weight:700">A</span><span style="font-size:13px;font-weight:700">A</span></button>
-    <button class="abtn" id="btnDark" title="切換黑暗模式">🌙 黑暗</button>
     <button class="abtn" id="btnFullscreen" title="全螢幕檢視（填滿瀏覽器視窗，保留書籤列與工作列）">⛶ 全螢幕</button>
   </div>
   <div id="cubeWrap">
@@ -754,7 +753,6 @@ const S = {
   selected: false,      // 模型選取狀態（PreForm 式）
   rangeBoxOn: true,     // 列印範圍框線
   fontBig: false,       // 大字模式
-  darkMode: false,      // 黑暗模式
   appFullscreen: false, // 全螢幕檢視（隱藏 portal 側欄，填滿瀏覽器視窗；非原生Fullscreen API，保留書籤列/工作列）
   orientGoal: 'time',   // 自動擺放目標：balance | time | support
   undoStack: [],        // 擺放操作復原（Ctrl+Z，同 PreForm）
@@ -3017,13 +3015,6 @@ function bindEvents(){
     try { localStorage.setItem('aps_fontBig', S.fontBig?'1':'0'); } catch(e){}
     toast(S.fontBig ? 'Ａ 大字模式' : 'A 小字模式','ok');
   });
-  $('#btnDark').addEventListener('click', ()=>{
-    S.darkMode = !S.darkMode;
-    document.documentElement.dataset.theme = S.darkMode ? 'dark' : 'light';
-    $('#btnDark').classList.toggle('on', S.darkMode);
-    try { localStorage.setItem('aps_darkMode', S.darkMode?'1':'0'); } catch(e){}
-    toast(S.darkMode ? '🌙 黑暗模式' : '☀ 一般模式','ok');
-  });
   $('#btnFullscreen').addEventListener('click', ()=>{
     S.appFullscreen = !S.appFullscreen;
     setPortalSidebarHidden(S.appFullscreen);
@@ -3077,11 +3068,7 @@ function bindEvents(){
 function boot(){
   restore();
   try { if (localStorage.getItem('aps_fontBig')==='1'){ S.fontBig=true; document.body.classList.add('big'); $('#btnFs').classList.add('on'); } } catch(e){}
-  try {
-    if (localStorage.getItem('aps_darkMode')==='1'){
-      S.darkMode=true; document.documentElement.dataset.theme='dark'; $('#btnDark').classList.add('on');
-    }
-  } catch(e){}
+  // 黑暗模式不再由本頁自己的按鈕控制，改由 portal.html 外殼統一管理（同源直接寫 document.documentElement.dataset.theme）
   initViewer();
   bindEvents();
   renderStep();
@@ -3400,6 +3387,13 @@ async function applyUnitScale(k){
 
 /* ---------- 步驟卡內的檢查結果渲染 ---------- */
 /* 孤島位置標示：於世界座標畫紅球標記各孤島群集起點（clusters 座標已是 worldBB 座標系） */
+// 把視角轉到指定世界座標點：保留目前的觀察角度(theta/phi)，只把軌道中心(target)移過去，
+// 並適度拉近，讓問題點就在畫面正中央、看得清楚
+function focusCameraOn(point, opts={}){
+  V.target.copy(point);
+  V.radius = Math.max(30, Math.min(V.radius, opts.radius ?? 80));
+  V.updateCam();
+}
 function drawIslandMarkers(){
   while (V.markGroup.children.length) disposeChild(V.markGroup);
   const IS = S.results.islands;
@@ -3412,6 +3406,9 @@ function drawIslandMarkers(){
     V.markGroup.add(sph);
   }
   V.markGroup.visible = true;
+  // 點擊後直接把視角轉到「最嚴重」的那一群（clusters 已依偵測順序排列，取第一筆）
+  const first = IS.clusters[0];
+  focusCameraOn(new THREE.Vector3(first.x, first.y, first.z));
 }
 function fcFixLink(fix){
   // 註：drain(標記排液位置) 連結依使用者回饋效果不佳已移除；islands(孤島位置) 應使用者要求重新加回

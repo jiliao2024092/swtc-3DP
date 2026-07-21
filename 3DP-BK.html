@@ -173,9 +173,6 @@
                 <label class="text-sm font-medium text-gray-700">用途類別</label>
                 <select id="edit-category" onchange="onEditCategoryChange(this.value)" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                     <option value="">請選擇</option>
-                    <option value="活動展示">活動展示</option>
-                    <option value="工程測試">工程測試</option>
-                    <option value="其他">其他</option>
                 </select>
             </div>
             <div class="space-y-1 hidden" id="edit-category-other-wrap">
@@ -412,13 +409,6 @@
         <div id="booking-section" class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hidden">
             <h2 class="text-lg font-semibold mb-4 text-gray-800 border-b pb-2">新增預約單</h2>
             <form id="booking-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-8 gap-4">
-                <div class="space-y-1 lg:col-span-2">
-                    <label class="text-sm font-medium text-gray-700">預約時段<span class="text-xs text-gray-400 ml-1">(在上方甘特圖點選)</span></label>
-                    <div id="selected-slot-display" class="w-full p-2 border border-dashed border-gray-300 rounded-md text-sm text-gray-400 bg-gray-50 flex items-center justify-between gap-2">
-                        <span id="selected-slot-text">尚未選擇，請在甘特圖點選開始與結束時段（單擊一格＝當日單一時段；點兩格＝範圍）</span>
-                        <button type="button" id="clear-selection-btn" onclick="clearGanttSelection()" class="text-xs text-gray-400 hover:text-red-600 flex-shrink-0" style="display:none">✕ 清除</button>
-                    </div>
-                </div>
                 <div class="space-y-1">
                     <label class="text-sm font-medium text-gray-700">申請業務</label>
                     <select id="sales-select" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"></select>
@@ -431,9 +421,6 @@
                     <label class="text-sm font-medium text-gray-700">用途類別</label>
                     <select id="category-select" onchange="onCategoryChange(this.value)" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                         <option value="">請選擇</option>
-                        <option value="活動展示">活動展示</option>
-                        <option value="工程測試">工程測試</option>
-                        <option value="其他">其他</option>
                     </select>
                 </div>
                 <div class="space-y-1 hidden" id="category-other-wrap">
@@ -521,6 +508,10 @@ const DEFAULT_GANTT_PRINTERS = ['Form4','Form4L','MarkTwo','UR'];
 // subscribeSettings() 會用 settings/workspace.bk_machines 覆蓋這兩個陣列並重新渲染甘特圖/下拉選單
 let PRINTERS = DEFAULT_PRINTERS.slice();
 let GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
+// 用途類別清單：與admin後台「3D列印機預約設定」的「用途類別清單」(bk_categories)同源；
+// 「其他」固定保留在最後（選了才會出現自行填寫欄位），不受admin清單管理
+const DEFAULT_CATEGORIES = ['活動展示','工程測試','代工','評估'];
+let CATEGORY_ORDER = DEFAULT_CATEGORIES.slice();
 
 // 應用程式狀態
 let currentUser = null;            // {uid, email, displayName, role}
@@ -741,29 +732,12 @@ let pendingSelection = null;  // 點選中、還差第二下的起點
 let cellClickTimer = null;
 function slotLabel(slot){ return slot==='PM'?'下午':slot==='EV'?'晚上':slot==='ALL'?'全天':'上午'; }
 function slotSortKey(dateKey, slot){ return dateKey + String(SLOT_ORDER.indexOf(slot||'AM')); }
-function renderSelectedSlotDisplay(){
-    const txt = document.getElementById('selected-slot-text');
-    const clearBtn = document.getElementById('clear-selection-btn');
-    const wrap = document.getElementById('selected-slot-display');
-    if (!selectedBooking){
-        txt.textContent = '尚未選擇，請在甘特圖點選開始與結束時段（單擊一格＝當日單一時段；點兩格＝範圍）';
-        wrap.className = 'w-full p-2 border border-dashed border-gray-300 rounded-md text-sm text-gray-400 bg-gray-50 flex items-center justify-between gap-2';
-        clearBtn.style.display = 'none';
-        return;
-    }
-    const b = selectedBooking;
-    const isMultiDay = b.endDate !== b.date;
-    txt.textContent = isMultiDay
-        ? `${b.printer} · ${b.date} ${slotLabel(b.slot)} ～ ${b.endDate} ${slotLabel(b.endSlot)}`
-        : `${b.printer} · ${b.date} ${slotLabel(b.slot)}`;
-    wrap.className = 'w-full p-2 border border-blue-300 rounded-md text-sm text-gray-800 bg-blue-50 flex items-center justify-between gap-2';
-    clearBtn.style.display = '';
-}
 window.clearGanttSelection = function(){
     selectedBooking = null; pendingSelection = null;
-    renderSelectedSlotDisplay(); renderGantt();
+    renderGantt();
 };
 // 單擊一格＝當日單一時段（等同過去的雙擊快速新增）；點兩格＝跨天/跨時段範圍。
+// 預約單本身不再顯示選取狀態文字，一律看甘特圖格子的顏色/外框（淺黃=起點待選、藍框=已完成選取）。
 // click 與 dblclick 會在雙擊時依序觸發（click, click, dblclick），用計時器讓「這是雙擊的一部分」時取消單擊動作，
 // 兩者現在都導向同一套 selectedBooking 邏輯，避免混亂
 window.cellClick = function(printer, dateKey, slot){
@@ -1190,6 +1164,10 @@ function renderGantt() {
             const dbl = (slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增單一時段預約；單擊兩次選起訖時段"` : '';
             const pick = (slot)=> canEdit ? ` onclick="cellClick('${printer}','${dayKey}','${slot}')"` : '';
             const isPending = (slot)=> pendingSelection && pendingSelection.printer===printer && pendingSelection.date===dayKey && pendingSelection.slot===slot;
+            // 已完成的選取範圍（點兩下後、送出預約前）：整段跨天/跨時段範圍都用藍框標示，
+            // 因為表單本身不再顯示選取文字，唯一的視覺回饋就是甘特圖上的這個標示
+            const isSelectedRange = (slot)=> selectedBooking && selectedBooking.printer===printer
+                && bookingCoversDay(selectedBooking, dayKey) && occupiedSlotsForDay(selectedBooking, dayKey).includes(slot);
 
             // 渲染一個預約色塊
             const renderItem = (b) => {
@@ -1216,15 +1194,17 @@ function renderGantt() {
             // 情境 B/C/D：逐時段渲染（每格 = 該時段單獨預約 + 全天預約）
             SLOTS.forEach(sl=>{
                 const combined = [...indiv[sl], ...allDayItems];
-                const pendRing = isPending(sl) ? ' ring-2 ring-yellow-300 ring-inset' : '';
+                const pendRing = isPending(sl) ? ' ring-2 ring-yellow-300 ring-inset'
+                    : isSelectedRange(sl) ? ' ring-2 ring-blue-400 ring-inset' : '';
+                const selBg = isPending(sl) ? 'bg-yellow-200/40' : isSelectedRange(sl) ? 'bg-blue-50' : '';
                 if(combined.length){
                     const conflict = combined.length > 1;
                     const ring = conflict ? ' ring-2 ring-orange-400 ring-inset' : pendRing;
-                    const bg   = conflict ? 'bg-orange-100' : (isPending(sl) ? 'bg-yellow-200/40' : todayBg);
+                    const bg   = conflict ? 'bg-orange-100' : (selBg || todayBg);
                     const badge = conflict ? renderConflictBadge(combined.length) : '';
                     html += `<td class="p-1 border border-gray-200 align-top ${bg}${ring}" style="min-width:70px"${dbl(sl)}${pick(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
                 } else {
-                    html += `<td class="p-1 border border-gray-200 ${isPending(sl)?'bg-yellow-200/40':todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
+                    html += `<td class="p-1 border border-gray-200 ${selBg||todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
                 }
             });
         });
@@ -1988,6 +1968,16 @@ function populatePrinterSelects(){
         sel.innerHTML = opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('');
     });
 }
+// 填入用途類別下拉（清單與 admin 後台「用途類別清單」(bk_categories)同源；「其他」固定放最後）
+function populateCategorySelects(){
+    const opts = [...CATEGORY_ORDER, '其他'];
+    [['category-select',''],['edit-category','']].forEach(([id])=>{
+        const sel = document.getElementById(id);
+        if(!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">請選擇</option>' + opts.map(o=>`<option value="${o}" ${cur===o?'selected':''}>${o}</option>`).join('');
+    });
+}
 
 // 填入業務下拉（value=key，顯示=中文名；清單與 admin 後台「業務清單」bk_sales 同源）
 function populateSalesSelects(){
@@ -2032,6 +2022,11 @@ function subscribeSettings(){
             GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
         }
         populatePrinterSelects();
+        // 用途類別清單：與 admin 後台「用途類別清單」(bk_categories)同源
+        CATEGORY_ORDER = (s && Array.isArray(s.bk_categories) && s.bk_categories.length)
+            ? s.bk_categories.map(c=>c.name||c).filter(Boolean)
+            : DEFAULT_CATEGORIES.slice();
+        populateCategorySelects();
         if (currentUser){ renderTable(); renderGantt(); }
     }, (err)=>console.error('讀取 settings/workspace 失敗', err));
 }
@@ -2040,6 +2035,7 @@ function subscribeSettings(){
 populatePrinterSelects();   // 機台下拉：settings.bk_machines 載入後會重填
 populateEngineerSelects();  // 工程師下拉：value=key、顯示中文(英文)，settings 載入後會重填
 populateSalesSelects();     // 業務下拉：value=key、顯示中文名，settings.bk_sales 載入後會重填
+populateCategorySelects();  // 用途類別下拉：settings.bk_categories 載入後會重填
 ganttWeekStart = startOfWeek(new Date());
 lucide.createIcons();
 </script>

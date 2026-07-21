@@ -12,24 +12,24 @@
 body{font-family:'Noto Sans TC',system-ui,sans-serif;background:var(--bg);height:100vh;overflow:auto}
 :root {
   --bg: #ffffff;
-  --bg-soft: var(--bg-soft);
+  --bg-soft: #fafbfc;
   --bg-panel: #f5f7f9;
-  --line: var(--line);
-  --line-soft: var(--line-soft);
-  --ink: var(--ink);
-  --ink-2: var(--ink-2);
-  --ink-3: var(--ink-3);
-  --ink-4: var(--ink-4);
-  --accent: var(--accent);
-  --accent-soft: var(--accent-soft);
-  --ok: var(--ok);
-  --ok-soft: var(--ok-soft);
-  --warn: var(--warn);
-  --warn-soft: var(--warn-soft);
-  --danger: var(--danger);
-  --danger-soft: var(--danger-soft);
-  --purple: var(--purple);
-  --purple-soft: var(--purple-soft);
+  --line: #e6e8ec;
+  --line-soft: #eef0f3;
+  --ink: #0a0e14;
+  --ink-2: #3b4250;
+  --ink-3: #5a6270;
+  --ink-4: #8a93a3;
+  --accent: #0c7a99;
+  --accent-soft: #e6f1f6;
+  --ok: #1d6f43;
+  --ok-soft: #e6f1ea;
+  --warn: #c79b2a;
+  --warn-soft: #fbf3dc;
+  --danger: #c0392b;
+  --danger-soft: #fbe7e3;
+  --purple: #6b3fa0;
+  --purple-soft: #efe9f7;
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-card: 0 1px 0 rgba(10,14,20,0.04), 0 1px 2px rgba(10,14,20,0.04);
@@ -1748,6 +1748,7 @@ function AdminPanel({ user }) {
   const [bkEng,   setBkEng]   = useSt([]);
   const [bkMach,  setBkMach]  = useSt([]);
   const [bkSales, setBkSales] = useSt([]);
+  const [bkCategories, setBkCategories] = useSt([]);   // 預約用途類別清單（「其他」固定保留，不列在此清單內）
   // 樣品借用人清單
   const [borrowers, setBorrowers] = useSt([]);
   // 角色分頁權限（可編輯的角色預設；儲存於 settings.role_presets）
@@ -1759,6 +1760,7 @@ function AdminPanel({ user }) {
   const DEF_MACH = K.MACHINES.map(m=>({name:m}));
   const DEF_BORR = [{key:'Wang',label:'王小明'},{key:'Lee',label:'李美華'},{key:'Chang',label:'張大偉'},{key:'Chen',label:'陳怡君'},{key:'Lin',label:'林志豪'}];
   const DEF_SALES = [{key:'Amber',label:'安柏'},{key:'Charlie',label:'查理'}];
+  const DEF_CATEGORIES = [{name:'活動展示'},{name:'工程測試'},{name:'代工'},{name:'評估'}];
 
   // 角色分級：管理員(admin) > 主管(有刪除權，但非 admin) > 工程師(有編輯權) > 查閱
   // 主管與工程師的差異在於「刪除」權（delete_board/delete_issues），單靠 edit_board 無法區分兩者
@@ -1818,13 +1820,14 @@ function AdminPanel({ user }) {
         setBkEng(st.bk_engineers  || (bkS ? (st.engineers||DEF_ENG)  : DEF_ENG));
         setBkMach(st.bk_machines  || (bkS ? (st.machines||DEF_MACH)  : DEF_MACH));
         setBkSales(st.bk_sales || DEF_SALES);
+        setBkCategories(st.bk_categories || DEF_CATEGORIES);
         // 角色分頁權限：合併原廠預設與已存設定
         setRolePresets({ ...JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)), ...(st.role_presets||{}) });
       } else {
         setWbEng(DEF_ENG); setWbMach(DEF_MACH);
         setIsEng(DEF_ENG); setIsMach(DEF_MACH);
         setBorrowers(DEF_BORR);
-        setBkEng(DEF_ENG); setBkMach(DEF_MACH); setBkSales(DEF_SALES);
+        setBkEng(DEF_ENG); setBkMach(DEF_MACH); setBkSales(DEF_SALES); setBkCategories(DEF_CATEGORIES);
       }
       setLoading(false);
     })();
@@ -1861,6 +1864,7 @@ function AdminPanel({ user }) {
       bk_engineers: bkSync ? wbEng  : bkEng,
       bk_machines:  bkSync ? wbMach : bkMach,
       bk_sales:     bkSales,
+      bk_categories: bkCategories,
       role_presets: rolePresets,
     };
     await FBSettings.save(s);
@@ -2089,6 +2093,8 @@ function AdminPanel({ user }) {
                 }
                 {/* 業務清單（獨立，含中英文） */}
                 {SalesEditor()}
+                {ListEditor({label:"用途類別清單", list:bkCategories, setList:setBkCategories, keyField:false})}
+                <div style={{fontSize:11,color:'var(--ink-4)',marginTop:-16,marginBottom:20}}>「其他」選項固定保留（選擇後可自行輸入說明），不需列在此清單中</div>
               </div>
             )}
 
@@ -2188,9 +2194,19 @@ function Shell({ user, onLogout }) {
   const [darkMode, setDarkMode] = React.useState(()=>{
     try { return localStorage.getItem('swtc_darkMode') === '1'; } catch(e){ return false; }
   });
+  const quoteIframeRef = React.useRef(null);
+  // 把黑暗模式狀態同步進 quote-studio.html 的 iframe（同源，直接摸 contentDocument）；
+  // quote-studio 自己的切換鈕已拿掉，一律由 portal 這裡的狀態決定
+  const applyThemeToQuoteIframe = () => {
+    try {
+      const doc = quoteIframeRef.current && quoteIframeRef.current.contentDocument;
+      if (doc && doc.documentElement) doc.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
+    } catch(e){}
+  };
   React.useEffect(()=>{
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
     try { localStorage.setItem('swtc_darkMode', darkMode ? '1' : '0'); } catch(e){}
+    applyThemeToQuoteIframe();
   }, [darkMode]);
 
   const isAdmin = window.hasPerm(user, 'admin');
@@ -2264,7 +2280,7 @@ function Shell({ user, onLogout }) {
             <span style={{color:'var(--ink-2)',fontWeight:600}}>{user.displayName}</span>
             <button onClick={()=>setDarkMode(v=>!v)} title={darkMode?'切換為亮色模式':'切換為黑暗模式'}
               style={{flexShrink:0,width:24,height:24,border:'1px solid var(--line)',borderRadius:5,background:'var(--bg)',color:'var(--ink-3)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              {darkMode ? '☀' : '🌙'}
+              <span style={{filter:'grayscale(1)'}}>{darkMode ? '☀' : '🌙'}</span>
             </button>
           </div>
           <span className="sidebar-foot-date">{dateStr}</span>
@@ -2284,7 +2300,7 @@ function Shell({ user, onLogout }) {
         {page==='admin'     && isAdmin && <AdminPanel          user={user}/>}
         {page==='booking'   && canBooking && <iframe src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印機預約"/>}
         {page==='inventory' && canInventory && <iframe src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
-        {page==='quote'     && canQuote && <iframe src="../quote-studio.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價（Beta）"/>}
+        {page==='quote'     && canQuote && <iframe ref={quoteIframeRef} onLoad={applyThemeToQuoteIframe} src="../quote-studio.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價（Beta）"/>}
       </main>
     </div>
   );
