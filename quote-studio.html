@@ -471,7 +471,7 @@ body.big{--fs:1.16}
 </div>
 
 <!-- bottom widgets -->
-<div id="statsPill" class="glass-sm">尚未載入模型 · 請先上傳 STL / OBJ / 3MF</div>
+<div id="statsPill" class="glass-sm">尚未載入模型 · 請先上傳 STL / OBJ / 3MF / STEP</div>
 <div id="dock" class="glass"></div>
 <div id="priceCard" class="glass">
   <div class="costRow"><span id="pcL1">本體 — mL</span><b id="pcV1">NT$ —</b></div>
@@ -492,7 +492,7 @@ body.big{--fs:1.16}
 <div id="toast"></div>
 <div id="dragOverlay">📂 放開以載入模型檔案</div>
 <div id="gizmoTip"></div>
-<input type="file" id="fileInput" accept=".stl,.obj,.3mf" multiple style="display:none">
+<input type="file" id="fileInput" accept=".stl,.obj,.3mf,.step,.stp" multiple style="display:none">
 
 <!-- quote modal -->
 <div id="quoteModal"><div id="quoteSheet"></div></div>
@@ -1074,7 +1074,8 @@ async function parseFile(file){
   if (name.endsWith('.stl')) return parseSTL(buf);
   if (name.endsWith('.obj')) return parseOBJ(new TextDecoder().decode(buf));
   if (name.endsWith('.3mf')) return await parse3MF(buf);
-  throw new Error('不支援的檔案格式（僅支援 STL / OBJ / 3MF）');
+  if (name.endsWith('.step') || name.endsWith('.stp')) return await parseSTEP(buf);
+  throw new Error('不支援的檔案格式（僅支援 STL / OBJ / 3MF / STEP）');
 }
 /* 回傳非索引三角形頂點陣列 Float32Array [x,y,z ×3 ×n]（Z-up 轉 Y-up 於 STL/3MF） */
 function parseSTL(buf){
@@ -1189,6 +1190,46 @@ async function parse3MF(buf){
     }
   } else Object.values(objects).forEach(o=>push(o,null));
   if (!arr.length) throw new Error('3MF 無網格資料');
+  return new Float32Array(arr);
+}
+/* STEP/STP = CAD B-rep（NURBS 曲面＋解析幾何，非三角網格），須用 CAD 核心鑲嵌成三角面才能顯示/分析。
+   採 occt-import-js（OpenCASCADE 的 WASM 版）；WASM＋JS glue 於「首次匯入 STEP」才從 CDN 延遲載入並快取，
+   平常只用 STL/OBJ/3MF 的人不受影響、不會多下載。 */
+let _occtPromise = null;
+const OCCT_BASE = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/';
+function loadOcct(){
+  if (_occtPromise) return _occtPromise;
+  _occtPromise = new Promise((resolve, reject)=>{
+    if (window.occtimportjs) return resolve(window.occtimportjs);
+    const s = document.createElement('script');
+    s.src = OCCT_BASE + 'occt-import-js.js';
+    s.onload = ()=> window.occtimportjs ? resolve(window.occtimportjs)
+                                        : reject(new Error('occt-import-js 載入後找不到入口函式'));
+    s.onerror = ()=> reject(new Error('CAD 核心載入失敗——STEP 需連外下載 occt-import-js，請確認網路'));
+    document.head.appendChild(s);
+  }).then(factory => factory({ locateFile: name => OCCT_BASE + name }))
+    .catch(err => { _occtPromise = null; throw err; });   // 失敗不快取，讓下次重試
+  return _occtPromise;
+}
+async function parseSTEP(buf){
+  $('#busyMsg').textContent = '載入 CAD 核心中…（首次匯入 STEP 需連外下載，約數秒）';
+  const occt = await loadOcct();
+  $('#busyMsg').textContent = 'STEP 鑲嵌轉網格中…'; await frame();
+  const result = occt.ReadStepFile(new Uint8Array(buf), null);
+  if (!result || !result.success) throw new Error('STEP 解析失敗（檔案可能毀損或非標準 AP203/214/242 STEP）');
+  if (!result.meshes || !result.meshes.length) throw new Error('STEP 內找不到可鑲嵌的實體或曲面');
+  // occt 回傳 indexed 網格（多個 solid/face 各一份），去索引攤平成非索引三角面並合併，與其他解析器一致格式
+  const arr = [];
+  for (const mesh of result.meshes){
+    const pos = mesh.attributes && mesh.attributes.position && mesh.attributes.position.array;
+    const idx = mesh.index && mesh.index.array;
+    if (!pos || !idx) continue;
+    for (let i=0;i<idx.length;i++){
+      const vi = idx[i]*3;
+      arr.push(pos[vi], pos[vi+2], -pos[vi+1]);   // STEP（機械 CAD 慣例 Z-up）→Y-up，與 STL/3MF 一致
+    }
+  }
+  if (!arr.length) throw new Error('STEP 鑲嵌後無三角面資料');
   return new Float32Array(arr);
 }
 
@@ -2307,7 +2348,7 @@ function renderStep(){
       });
       B.appendChild(r);
     }
-    const dz = el('div','', `<div id="dropZone"><div class="ic">📂</div><div class="t1">點擊上傳或拖曳檔案至視窗</div><div class="t2">STL · OBJ · 3MF（單位 mm）</div></div>`);
+    const dz = el('div','', `<div id="dropZone"><div class="ic">📂</div><div class="t1">點擊上傳或拖曳檔案至視窗</div><div class="t2">STL · OBJ · 3MF · STEP（單位 mm）</div></div>`);
     dz.querySelector('#dropZone').addEventListener('click', ()=>$('#fileInput').click());
     B.appendChild(dz);
     const demo = el('button','ghostBtn','⬡ 載入內建示範模型（L 型支架）');
@@ -2973,7 +3014,7 @@ function updateAllUI(){
       `模型 ${F(C.modelML,1)} mL · ${supTxt} · ${timeStr(C.time)} · ` +
       (fits ? `<span class="okc">✓ 在列印範圍內</span>` : `<span class="errc">✕ 超出列印範圍</span>`) +
       (S.results.validation ? ` · 成功率 <span class="${S.results.validation.rate>=80?'okc':'errc'}">${S.results.validation.rate}%</span>` : '');
-  } else $('#statsPill').textContent = '尚未載入模型 · 請先上傳 STL / OBJ / 3MF';
+  } else $('#statsPill').textContent = '尚未載入模型 · 請先上傳 STL / OBJ / 3MF / STEP';
   // 價格卡
   if (C){
     $('#pcL1').textContent = `本體材料 ${F(C.modelML,1)} mL`;
@@ -3034,8 +3075,8 @@ function bindEvents(){
   addEventListener('dragover', e=>e.preventDefault());
   addEventListener('drop', e=>{
     e.preventDefault(); dragDepth=0; $('#dragOverlay').classList.remove('show');
-    const fs = Array.from(e.dataTransfer.files).filter(f=>/\.(stl|obj|3mf)$/i.test(f.name));
-    if (fs.length) handleFiles(fs); else toast('僅支援 STL / OBJ / 3MF','warn');
+    const fs = Array.from(e.dataTransfer.files).filter(f=>/\.(stl|obj|3mf|step|stp)$/i.test(f.name));
+    if (fs.length) handleFiles(fs); else toast('僅支援 STL / OBJ / 3MF / STEP','warn');
   });
   $$('.vtab').forEach(b=>b.addEventListener('click', ()=>{
     $$('.vtab').forEach(x=>x.classList.remove('on')); b.classList.add('on'); setCam(b.dataset.view);
@@ -3114,7 +3155,7 @@ function boot(){
   renderStep();
   updateAllUI();
   initFirebaseSync();   // 非阻塞：連線成功後 onSnapshot 會自動更新工單/歷史 UI
-  toast('AI Print Studio 已就緒 — 拖曳 STL/OBJ/3MF 或載入示範模型','ok');
+  toast('AI Print Studio 已就緒 — 拖曳 STL/OBJ/3MF/STEP 或載入示範模型','ok');
 }
 boot();
 /* ============================== 23. 檔案檢查引擎（上傳後自動執行） ==============================
