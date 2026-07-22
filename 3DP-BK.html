@@ -1202,12 +1202,18 @@ function ganttStatusColor(status) {
     return {'待確認':'bg-yellow-300 text-[var(--warn)]','執行中':'bg-blue-400 text-white','已完成':'bg-green-400 text-white','異常/取消':'bg-red-300 text-[var(--danger)]'}[status] || 'bg-gray-300 text-[var(--ink-2)]';
 }
 // 依日期自動判斷「顯示用」狀態：已完成/異常取消 不自動變動；今天在[date,endDate]內→執行中；
-// 超過結束日期還沒人工結案→已完成。純顯示層計算，不寫回 Firestore（避免每次讀取都多一次寫入）。
+// 超過結束日期還沒人工結案→已完成；結束日就是今天時，再看結束時段的時刻是否已過
+// （上午 12:00、下午 18:00 結束，晚上/全天要跨過午夜才算，已由日期比較涵蓋）。
+// 純顯示層計算，不寫回 Firestore（避免每次讀取都多一次寫入）。
 function effectiveStatus(b){
     if(DONE_STATUSES.has(b.status)) return b.status;
     const today = fmtDateLocal(new Date());
     const end = (b.endDate && b.endDate>=b.date) ? b.endDate : b.date;
     if(today > end) return '已完成';
+    if(today === end){
+        const endHour = SLOT_END_HOUR[b.endSlot || b.slot];
+        if (endHour != null && new Date().getHours() >= endHour) return '已完成';
+    }
     if(today >= b.date) return '執行中';
     return b.status || '待確認';
 }
