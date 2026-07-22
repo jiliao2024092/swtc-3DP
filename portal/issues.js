@@ -610,6 +610,142 @@
     );
   }
 
+  // ── 每月登記表 Excel 匯入（把月表「編號2」格式的勾選格批次轉成出借紀錄）──
+  // 流程：admin 每月將手填掃描表辨識填回 Excel（編號/位置/樣品名稱/材質 + 1~31 日欄，格內有記號＝當天借出），
+  // 上傳後解析各日欄的記號 → 每一格產生一筆 sample_loans（loanDate=該月該日），自動彙進既有借出統計。
+  // 從二維陣列抽出月表：回傳 { ym, items:[{name,material,location,days:[int...]}] }；找不到回 null
+  function extractMonthlySheet(aoa) {
+    if (!aoa || !aoa.length) return null;
+    let ymFound = '';
+    for (let i=0;i<Math.min(5,aoa.length);i++){
+      for (const c of (aoa[i]||[])) {
+        const m = String(c).match(/(\d{4})\s*[_\-\/年]?\s*(\d{1,2})\s*月/);
+        if (m && +m[2]>=1 && +m[2]<=12) { ymFound = `${m[1]}-${String(+m[2]).padStart(2,'0')}`; break; }
+      }
+      if (ymFound) break;
+    }
+    const norm = c => String(c==null?'':c).replace(/\s/g,'');
+    const hi = aoa.findIndex(row => (row||[]).some(c => norm(c)==='樣品名稱'));
+    if (hi<0) return null;
+    const hdr = aoa[hi];
+    const findCol = (...kws) => hdr.findIndex(c => kws.some(k => norm(c).includes(k)));
+    const nameCol = findCol('樣品名稱');
+    const matCol  = findCol('材質','材料');
+    const locCol  = findCol('位置');
+    const dayCols = [];
+    hdr.forEach((c,ci)=>{ const n=Number(c); if (Number.isInteger(n) && n>=1 && n<=31) dayCols.push([ci,n]); });
+    if (nameCol<0 || !dayCols.length) return null;
+    const items = [];
+    for (let ri=hi+1; ri<aoa.length; ri++){
+      const row = aoa[ri]||[];
+      const name = String(row[nameCol]||'').trim();
+      if (!name) continue;
+      const material = matCol>=0 ? String(row[matCol]||'').trim() : '';
+      const location = locCol>=0 ? String(row[locCol]||'').trim() : '';
+      const days = [];
+      dayCols.forEach(([ci,n])=>{ if (String(row[ci]==null?'':row[ci]).trim()!=='') days.push(n); });
+      if (days.length) items.push({ name, material, location, days });
+    }
+    return { ym: ymFound, items };
+  }
+
+  function ImportMonthlyModal({ samples, loans, onClose, onImport }) {
+    const { useState, useRef } = React;
+    const [parsed, setParsed] = useState(null);   // { ym, items, sheet, fileName }
+    const [ym, setYm] = useState('');
+    const [autoCreate, setAutoCreate] = useState(true);
+    const [busy, setBusy] = useState(false);
+    const fileRef = useRef(null);
+
+    const prevMonthYm = () => { const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
+
+    const onPick = async (file) => {
+      if (!file) return;
+      if (!window.XLSX) { showToast('Excel 元件尚未載入，請稍候重試','err'); return; }
+      try {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type:'array' });
+        let best = null;
+        for (const sn of wb.SheetNames) {
+          const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header:1, raw:true, defval:'' });
+          const r = extractMonthlySheet(aoa);
+          if (r && r.items.length && (!best || r.items.length>best.items.length)) { r.sheet=sn; best=r; }
+        }
+        if (!best) { showToast('找不到月表格式（需有「樣品名稱／材質」表頭與 1~31 日欄）','err'); return; }
+        best.fileName = file.name;
+        setParsed(best);
+        setYm(best.ym || prevMonthYm());
+      } catch(e){ showToast('讀取失敗：'+(e.message||e),'err'); }
+    };
+
+    const totalMarks = parsed ? parsed.items.reduce((s,it)=>s+it.days.length,0) : 0;
+    const knownNames = new Set(samples.map(s=>(s.name||'').trim()));
+    const newNames   = parsed ? [...new Set(parsed.items.map(i=>i.name).filter(n=>!knownNames.has(n)))] : [];
+    const alreadyN   = parsed ? loans.filter(l=>l.src==='monthly' && l.ym===ym).length : 0;
+
+    const confirm = async () => {
+      if (!parsed) return;
+      if (!/^\d{4}-\d{2}$/.test(ym)) { showToast('月份格式需為 YYYY-MM','err'); return; }
+      setBusy(true);
+      try { await onImport({ items:parsed.items, ym, autoCreate }); onClose(); }
+      catch(e){ showToast('匯入失敗：'+(e.message||e),'err'); }
+      finally { setBusy(false); }
+    };
+
+    return (
+      <div className="m-overlay">
+        <div className="m-box" style={{width:640,maxHeight:'88vh',display:'flex',flexDirection:'column'}}>
+          <div className="m-hd"><h3>📥 匯入每月登記表</h3><button className="m-close" onClick={onClose}>×</button></div>
+          <div className="m-body" style={{overflow:'auto'}}>
+            <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.6,marginBottom:12}}>
+              上傳月表 Excel（編號／位置／樣品名稱／材質 ＋ 1~31 日欄，格內有記號＝當天借出）。每個記號會產生一筆出借紀錄，自動彙進「借出統計」。
+            </div>
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={e=>{onPick(e.target.files[0]); e.target.value='';}}/>
+            <button className="btn-cancel" style={{padding:'8px 14px',fontSize:13}} onClick={()=>fileRef.current&&fileRef.current.click()}>📂 選擇月表 Excel…</button>
+
+            {parsed && <div style={{marginTop:16,display:'flex',flexDirection:'column',gap:12}}>
+              <div style={{display:'flex',gap:12,alignItems:'flex-end',flexWrap:'wrap'}}>
+                <div className="m-field" style={{maxWidth:180}}>
+                  <label style={LBL}>資料月份（YYYY-MM）</label>
+                  <input style={S_INP} value={ym} onChange={e=>setYm(e.target.value.trim())} placeholder="2026-08"/>
+                </div>
+                <div style={{fontSize:11.5,color:'var(--ink-4)',paddingBottom:9}}>
+                  來源：{parsed.fileName} · 工作表「{parsed.sheet}」{parsed.ym?`（表內月份 ${parsed.ym}）`:'（表內無月份，預設為匯入前一月）'}
+                </div>
+              </div>
+              <div style={{fontSize:12.5,color:'var(--ink-2)'}}>
+                共 <b>{parsed.items.length}</b> 樣品、<b style={{color:'var(--accent)'}}>{totalMarks}</b> 筆出借（勾選格）
+              </div>
+              {newNames.length>0 && <label style={{display:'flex',alignItems:'center',gap:7,fontSize:12,color:'var(--ink-3)',cursor:'pointer'}}>
+                <input type="checkbox" checked={autoCreate} onChange={e=>setAutoCreate(e.target.checked)}/>
+                找不到的 {newNames.length} 個樣品自動新增到清冊（{newNames.slice(0,4).join('、')}{newNames.length>4?'…':''}）
+              </label>}
+              {alreadyN>0 && <div style={{fontSize:12,color:'var(--warn)',background:'var(--warn-soft)',border:'1px solid var(--warn-border)',borderRadius:6,padding:'7px 10px'}}>
+                ⚠ {ym} 已匯入過 {alreadyN} 筆，確認後會先刪除舊的月表匯入紀錄再重匯（避免重複計算）。
+              </div>}
+              <div className="table-wrap" style={{maxHeight:220,overflow:'auto',border:'1px solid var(--line)',borderRadius:6}}>
+                <table className="kt"><thead><tr>
+                  <th style={{width:150}}>樣品名稱</th><th style={{width:120}}>材質</th><th style={{width:60,textAlign:'center'}}>天數</th><th>勾選日</th>
+                </tr></thead><tbody>
+                  {parsed.items.map((it,i)=>(<tr key={i}>
+                    <td className="col-customer">{it.name}{!knownNames.has(it.name)&&<span style={{marginLeft:6,fontSize:10,color:'var(--accent)'}}>新</span>}</td>
+                    <td>{it.material||'—'}</td>
+                    <td style={{textAlign:'center',fontFamily:'var(--font-mono)'}}>{it.days.length}</td>
+                    <td style={{fontSize:11,color:'var(--ink-4)'}}>{it.days.join(', ')}</td>
+                  </tr>))}
+                </tbody></table>
+              </div>
+            </div>}
+          </div>
+          <div className="m-foot">
+            <button className="btn-cancel" onClick={onClose}>取消</button>
+            <button className="btn-save" onClick={confirm} disabled={busy||!parsed||totalMarks===0}>{busy?'匯入中...':`✓ 匯入 ${totalMarks||''} 筆`}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── 分析頁（預設 + 自由分析）──
   function IssuesStats({ anomalies, ipa, tools }) {
     const STATUS_COLORS_A = { '處理中':'var(--warn)', '已完成':'var(--ok)', '暫停':'var(--danger)' };
@@ -881,6 +1017,7 @@
     const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
     const [ganttPrefill, setGanttPrefill] = useState(null); // 甘特圖雙擊帶入的 { loanDate, slot }
     const [sampleView, setSampleView] = useState('list'); // 樣品分頁檢視：list 清冊 / gantt 甘特圖 / ledger 出借總表 / stats 借出統計
+    const [importOpen, setImportOpen] = useState(false);  // 每月登記表匯入 modal
     const openSampleLoans = (sample) => { setGanttPrefill(null); setLoanSample(sample); };
     const openQuickAdd = (sample, dateKey, slot) => { setGanttPrefill({ loanDate:dateKey, slot }); setLoanSample(sample); };
     const closeLoanModal = () => { setLoanSample(null); setGanttPrefill(null); };
@@ -1004,6 +1141,42 @@
     const returnLoan = async l  => { await FBSampleLoans.update(l._id, { returnDate: new Date().toISOString().split('T')[0] }); showToast('已標記歸還 ✓'); };
     const delLoan    = async l  => { if(!confirm('刪除此出借紀錄？'))return; await FBSampleLoans.del(l._id); showToast('已刪除','inf'); };
     const loansOf = id => loans.filter(l=>l.itemId===id);
+
+    // 每月登記表匯入：把月表各勾選格批次寫成 sample_loans（同月重匯先汰換舊的月表匯入紀錄，避免重複計算）
+    const importMonthly = async ({ items, ym, autoCreate }) => {
+      // 步驟一：汰換同月舊的月表匯入紀錄
+      const old = loans.filter(l=>l.src==='monthly' && l.ym===ym);
+      for (let i=0;i<old.length;i+=10) await Promise.all(old.slice(i,i+10).map(o=>FBSampleLoans.del(o._id)));
+      // 步驟二：自動新增缺少樣品到清冊（itemId 交由下次快照連結；紀錄本身以 itemName/material 即可統計）
+      const byName = {}; samples.forEach(s=>byName[(s.name||'').trim()]=s);
+      if (autoCreate) {
+        let seq = nextSeq(samples);
+        for (const it of items) if (!byName[it.name]) { await FBSampleItems.add({ name:it.name, material:it.material||'', location:it.location||'', seq:seq++ }); byName[it.name]={_id:''}; }
+      }
+      // 步驟三：每個勾選格產生一筆出借紀錄（當天借出、當天歸還，避免永遠顯示借出中）
+      const recs = [];
+      for (const it of items) {
+        const s = byName[it.name];
+        for (const d of it.days) {
+          const loanDate = `${ym}-${String(d).padStart(2,'0')}`;
+          recs.push({ itemId:(s&&s._id)||'', itemName:it.name, material:it.material||'', borrower:'', loanDate, slot:'', returnDate:loanDate, remark:'每月登記表匯入', src:'monthly', ym });
+        }
+      }
+      for (let i=0;i<recs.length;i+=10) await Promise.all(recs.slice(i,i+10).map(r=>FBSampleLoans.add(r)));
+      showToast(`已匯入 ${ym}：${recs.length} 筆${old.length?`（汰換舊 ${old.length} 筆）`:''} ✓`);
+    };
+    // 空白月表範本（公版）：依現有清冊產生可列印的月表 Excel（編號/位置/樣品名稱/材質 + 1~31 日欄）
+    const exportMonthlyTemplate = () => {
+      if (!window.XLSX) { showToast('Excel 元件尚未載入，請稍候重試','err'); return; }
+      const d = new Date(); const ymTitle = `${d.getFullYear()}_${String(d.getMonth()+1).padStart(2,'0')}`;
+      const header = ['編號','位置','樣品名稱','材質', ...Array.from({length:31},(_,i)=>i+1)];
+      const aoa = [[`${ymTitle}月樣品登記`], [], header];
+      [...samples].sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach((s,i)=> aoa.push([i+1, s.location||'桌面', s.name||'', s.material||'']));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '月表');
+      XLSX.writeFile(wb, `每月樣品登記表_空白_${ymTitle}.xlsx`);
+      showToast('已下載空白月表範本 ✓');
+    };
 
     // 借出統計：每個樣品 / 每種材料 / 每位借出人的借出次數（依次數由大到小）
     const loanStats = () => {
@@ -1344,6 +1517,8 @@
               <select className="t-sel" value={outF} onChange={e=>setOutF(e.target.value)}><option value="">全部狀態</option><option value="out">借出中</option><option value="in">可借出</option></select>
               <span className="toolbar-sub">共 <b style={{color:'var(--ink)'}}>{filtS.length}</b> 件，借出中 <b style={{color:'var(--danger)'}}>{filtS.filter(it=>isSampleOut(loansOf(it._id))).length}</b> 件</span>
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
+              {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportMonthlyTemplate} title="依現有清冊下載空白每月登記表（公版，供列印手填）">⬇ 空白月表</button>}
+              {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={()=>setImportOpen(true)} title="上傳填好的每月登記表 Excel，批次匯入出借紀錄">📥 匯入月表</button>}
               <button className={'btn-edit-mode'+(sampleView==='gantt'?' active':'')} onClick={()=>setSampleView(v=>v==='gantt'?'list':'gantt')} title="切換甘特圖行事曆（雙擊格子快速登記出借）">
                 🗓 {sampleView==='gantt'?'回清冊':'甘特圖'}
               </button>
@@ -1406,6 +1581,7 @@
           {modal==='s'&&<SampleModal  item={editItem} onClose={()=>setModal(null)} onSave={saveS}/>}
           {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} borrowers={borrowers} canManage={canD} prefill={ganttPrefill}
                                   onClose={closeLoanModal} onAddLoan={addLoan} onReturnLoan={returnLoan} onDelLoan={delLoan}/>}
+          {importOpen&&<ImportMonthlyModal samples={samples} loans={loans} onClose={()=>setImportOpen(false)} onImport={importMonthly}/>}
         </div>
       </div>
     );
