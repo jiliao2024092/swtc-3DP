@@ -1243,14 +1243,38 @@ function renderGantt() {
     days.forEach(()=>{ html += '<th class="p-0.5 border border-[var(--line)] font-normal">上午</th><th class="p-0.5 border border-[var(--line)] font-normal">下午</th><th class="p-0.5 border border-[var(--line)] font-normal">晚上</th>'; });
     html += '</tr></thead><tbody>';
 
+    const SLOTS = ['AM','PM','EV'];
     GANTT_PRINTERS.forEach(printer=>{
         html += `<tr><td class="p-1 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] truncate">${printer}</td>`;
+
+        // 雙擊格子 → 快速新增預約（帶入設備/日期/時段）；單擊格子 → 兩次點選起訖時段建立跨天/跨時段預約
+        // （click 與 dblclick 用計時器互斥，見 cellClick()），僅 editor/admin
+        const dbl = (dayKey,slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增單一時段預約；單擊兩次選起訖時段"` : '';
+        const pick = (dayKey,slot)=> canEdit ? ` onclick="cellClick('${printer}','${dayKey}','${slot}')"` : '';
+        const isPending = (dayKey,slot)=> pendingSelection && pendingSelection.printer===printer && pendingSelection.date===dayKey && pendingSelection.slot===slot;
+        // 已完成的選取範圍（點兩下後、送出預約前）：整段跨天/跨時段範圍都用藍框標示，
+        // 因為表單本身不再顯示選取文字，唯一的視覺回饋就是甘特圖上的這個標示
+        const isSelectedRange = (dayKey,slot)=> selectedBooking && selectedBooking.printer===printer
+            && bookingCoversDay(selectedBooking, dayKey) && occupiedSlotsForDay(selectedBooking, dayKey).includes(slot);
+
+        // 渲染一個預約色塊：只顯示用途類別（不顯示備註），備註/業務/工程師等細節收進 title 提示
+        const renderItem = (b) => {
+            const color = ganttStatusColor(effectiveStatus(b));
+            const catTxt = b.category==='其他' ? (b.categoryOther||'其他') : (b.category||'—');
+            const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
+            return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
+                ${catTxt}${allDayMark}
+            </div>`;
+        };
+        const renderConflictBadge = (n) => `<div class="text-xs text-[var(--orange)] font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
+
+        // 把整週 21 格（7 天 × 3 時段）攤平成一維陣列，同一筆預約若連續佔用多個時段——包含跨越日期邊界
+        // （例如 7/23 晚上～7/24 上午）——才能在合併判斷時直接相鄰，合併成一個連續色塊，不會被日期分隔切開。
+        const flat = [];
         days.forEach(d=>{
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
             const dayBookings = bookings.filter(b=>b.printer===printer && bookingCoversDay(b,dayKey));
-            // 每筆預約在「這一天」實際佔用的時段（跨天預約起訖日可能只佔部分時段，中間日全天佔用）
-            const SLOTS = ['AM','PM','EV'];
             const allDayItems = dayBookings.filter(b=>occupiedSlotsForDay(b,dayKey).length===3);
             const indiv = { AM: [], PM: [], EV: [] };
             dayBookings.forEach(b=>{
@@ -1259,69 +1283,49 @@ function renderGantt() {
                 slots.forEach(s=>indiv[s].push(b));
             });
             const anyIndiv = indiv.AM.length || indiv.PM.length || indiv.EV.length;
-            const todayBg = isToday?'bg-[var(--accent-soft)]/40':'';
-            // 雙擊格子 → 快速新增預約（帶入設備/日期/時段）；單擊格子 → 兩次點選起訖時段建立跨天/跨時段預約
-            // （click 與 dblclick 用計時器互斥，見 cellClick()），僅 editor/admin
-            const dbl = (slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增單一時段預約；單擊兩次選起訖時段"` : '';
-            const pick = (slot)=> canEdit ? ` onclick="cellClick('${printer}','${dayKey}','${slot}')"` : '';
-            const isPending = (slot)=> pendingSelection && pendingSelection.printer===printer && pendingSelection.date===dayKey && pendingSelection.slot===slot;
-            // 已完成的選取範圍（點兩下後、送出預約前）：整段跨天/跨時段範圍都用藍框標示，
-            // 因為表單本身不再顯示選取文字，唯一的視覺回饋就是甘特圖上的這個標示
-            const isSelectedRange = (slot)=> selectedBooking && selectedBooking.printer===printer
-                && bookingCoversDay(selectedBooking, dayKey) && occupiedSlotsForDay(selectedBooking, dayKey).includes(slot);
-
-            // 渲染一個預約色塊：只顯示用途類別（不顯示備註），備註/業務/工程師等細節收進 title 提示
-            const renderItem = (b) => {
-                const color = ganttStatusColor(effectiveStatus(b));
-                const catTxt = b.category==='其他' ? (b.categoryOther||'其他') : (b.category||'—');
-                const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-                return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
-                    ${catTxt}${allDayMark}
-                </div>`;
-            };
-            const renderConflictBadge = (n) => `<div class="text-xs text-[var(--orange)] font-medium mb-0.5 flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>衝突 ${n}筆</div>`;
-
-            // 情境 A：當天只有全天預約，無 上午/下午/晚上 單獨預約 → 用 colspan=3 橫跨
-            if(allDayItems.length && !anyIndiv){
-                const isConflict = allDayItems.length > 1;
-                const bg = isConflict ? 'bg-[var(--orange-soft)]' : todayBg;
-                const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
-                const badge = isConflict ? renderConflictBadge(allDayItems.length) : '';
-                const content = allDayItems.map(renderItem).join('');
-                html += `<td colspan="3" class="p-1 border border-[var(--line)] align-top ${bg}${ring}"${dbl('ALL')}>${badge}${content}</td>`;
-                return;  // 跳過下面三格
-            }
-
-            // 情境 B/C/D：逐時段渲染；同一筆預約若連續佔用多個時段（例如跨天預約起始日佔下午+晚上），
-            // 合併成單一 colspan 儲存格，畫面上呈現一個連續色塊，不切成兩個方塊。
-            // 已有預約佔用的格子不再綁定 pick()（單擊選時段），避免點擊既有預約時又誤觸發新的時段選取。
-            let slIdx = 0;
-            while (slIdx < 3){
-                const sl = SLOTS[slIdx];
-                const combined = [...indiv[sl], ...allDayItems];
-                const pendRing = isPending(sl) ? ' ring-2 ring-yellow-300 ring-inset'
-                    : isSelectedRange(sl) ? ' ring-2 ring-blue-400 ring-inset' : '';
-                const selBg = isPending(sl) ? 'bg-yellow-200/40' : isSelectedRange(sl) ? 'bg-[var(--accent-soft)]' : '';
-                if (combined.length === 1){
-                    let span = 1;
-                    while (slIdx+span < 3){
-                        const nSl = SLOTS[slIdx+span];
-                        const nCombined = [...indiv[nSl], ...allDayItems];
-                        if (nCombined.length===1 && nCombined[0].id===combined[0].id) span++;
-                        else break;
-                    }
-                    html += `<td${span>1?` colspan="${span}"`:''} class="p-1 border border-[var(--line)] align-top ${selBg||todayBg}${pendRing}"${dbl(sl)}>${combined.map(renderItem).join('')}</td>`;
-                    slIdx += span;
-                } else if (combined.length > 1){
-                    const badge = renderConflictBadge(combined.length);
-                    html += `<td class="p-1 border border-[var(--line)] align-top bg-[var(--orange-soft)] ring-2 ring-orange-400 ring-inset"${dbl(sl)}>${badge}${combined.map(renderItem).join('')}</td>`;
-                    slIdx++;
-                } else {
-                    html += `<td class="p-1 border border-[var(--line)] ${selBg||todayBg}${pendRing}"${dbl(sl)}${pick(sl)}></td>`;
-                    slIdx++;
-                }
+            if (allDayItems.length && !anyIndiv){
+                // 情境 A：當天只有全天預約，無 上午/下午/晚上 單獨預約 → 整天一格（colspan=3）
+                flat.push({ dayKey, isToday, slot:'ALL', combined:allDayItems, allDay:true });
+            } else {
+                SLOTS.forEach(sl=> flat.push({ dayKey, isToday, slot:sl, combined:[...indiv[sl], ...allDayItems], allDay:false }));
             }
         });
+
+        // 情境 B/C/D：已有預約佔用的格子不再綁定 pick()（單擊選時段），避免點擊既有預約時又誤觸發新的時段選取。
+        let i = 0;
+        while (i < flat.length){
+            const cur = flat[i];
+            const todayBg = cur.isToday ? 'bg-[var(--accent-soft)]/40' : '';
+            if (cur.allDay){
+                const isConflict = cur.combined.length > 1;
+                const bg = isConflict ? 'bg-[var(--orange-soft)]' : todayBg;
+                const ring = isConflict ? ' ring-2 ring-orange-400 ring-inset' : '';
+                const badge = isConflict ? renderConflictBadge(cur.combined.length) : '';
+                html += `<td colspan="3" class="p-1 border border-[var(--line)] align-top ${bg}${ring}"${dbl(cur.dayKey,'ALL')}>${badge}${cur.combined.map(renderItem).join('')}</td>`;
+                i++;
+                continue;
+            }
+            const pendRing = isPending(cur.dayKey,cur.slot) ? ' ring-2 ring-yellow-300 ring-inset'
+                : isSelectedRange(cur.dayKey,cur.slot) ? ' ring-2 ring-blue-400 ring-inset' : '';
+            const selBg = isPending(cur.dayKey,cur.slot) ? 'bg-yellow-200/40' : isSelectedRange(cur.dayKey,cur.slot) ? 'bg-[var(--accent-soft)]' : '';
+            if (cur.combined.length === 1){
+                let span = 1;
+                while (i+span < flat.length){
+                    const nxt = flat[i+span];
+                    if (nxt.allDay || nxt.combined.length!==1 || nxt.combined[0].id!==cur.combined[0].id) break;
+                    span++;
+                }
+                html += `<td${span>1?` colspan="${span}"`:''} class="p-1 border border-[var(--line)] align-top ${selBg||todayBg}${pendRing}"${dbl(cur.dayKey,cur.slot)}>${cur.combined.map(renderItem).join('')}</td>`;
+                i += span;
+            } else if (cur.combined.length > 1){
+                const badge = renderConflictBadge(cur.combined.length);
+                html += `<td class="p-1 border border-[var(--line)] align-top bg-[var(--orange-soft)] ring-2 ring-orange-400 ring-inset"${dbl(cur.dayKey,cur.slot)}>${badge}${cur.combined.map(renderItem).join('')}</td>`;
+                i++;
+            } else {
+                html += `<td class="p-1 border border-[var(--line)] ${selBg||todayBg}${pendRing}"${dbl(cur.dayKey,cur.slot)}${pick(cur.dayKey,cur.slot)}></td>`;
+                i++;
+            }
+        }
         html += '</tr>';
     });
     html += '</tbody></table>';
