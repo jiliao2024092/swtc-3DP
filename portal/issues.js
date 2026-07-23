@@ -5,7 +5,7 @@
   const { useState, useEffect, useMemo } = React;
   const K = window.K;
 
-  const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
+  const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const LBL   = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
   // ── 異常 Modal ──

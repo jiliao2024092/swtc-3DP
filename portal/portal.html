@@ -392,7 +392,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .preset-chip.p-admin{border-color:#e6b800;color:var(--warn);background:var(--warn-soft)}
 .preset-chip.p-mgr{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .preset-chip.p-eng{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
-.preset-chip.p-view{border-color:var(--ink-4);color:var(--ink-3);background:#f5f6f8}
+.preset-chip.p-view{border-color:var(--ink-4);color:var(--ink-3);background:var(--bg-soft)}
 .u-tbl{width:100%;border-collapse:collapse}
 .u-tbl th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-4);text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid var(--line);background:var(--bg-soft);white-space:nowrap}
 .u-tbl td{padding:11px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle}
@@ -402,7 +402,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .role-chip.admin{background:var(--warn-soft);color:var(--warn)}
 .role-chip.manager{background:var(--accent-soft);color:var(--accent)}
 .role-chip.operator{background:var(--ok-soft);color:var(--ok)}
-.role-chip.viewer{background:#f5f6f8;color:var(--ink-3)}
+.role-chip.viewer{background:var(--bg-soft);color:var(--ink-3)}
 .st-dot{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
 .st-dot.on{color:var(--ok)}.st-dot.off{color:var(--ink-4)}
 .seg{display:flex;gap:2px}
@@ -1211,7 +1211,7 @@ function GanttView({ data }) {
         return (
           <div style={{
             position:'fixed',left:xPos,top:yPos,zIndex:9999,
-            background:'#fff',border:'1px solid var(--line)',borderRadius:10,
+            background:'var(--bg)',border:'1px solid var(--line)',borderRadius:10,
             boxShadow:'0 8px 24px rgba(10,14,20,0.13)',
             padding:'12px 14px',width:230,pointerEvents:'none',
             fontFamily:'var(--font-ui)',fontSize:12
@@ -1590,7 +1590,7 @@ window.DashboardView = DashboardView;
 
 <!-- ⑥ workboard.js + issues.js -->
 <script type="text/babel" data-presets="react" src="workboard.js?v=20260708j"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260708i"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260708j"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -1640,7 +1640,7 @@ function LoginPage({ onLogin }) {
 function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
   const PERMS   = window.PERMS_MAP   || {};
   const PRESETS = window.ROLE_PRESETS || {};
-  const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none' };
+  const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
   const empty = { displayName:'', email:'', password:'', permissions:['view_board','view_issues','view_booking','view_inventory','view_quote'], active:true };
@@ -1755,7 +1755,7 @@ function AdminPanel({ user }) {
   const DEF_ROLE_PRESETS = window.DEFAULT_ROLE_PRESETS || {};
   const [rolePresets, setRolePresets] = useSt(JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)));
 
-  const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none'};
+  const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none',background:'var(--bg)',color:'var(--ink)'};
   const DEF_ENG  = K.ENG_ORDER.map(k=>({key:k,label:K.ENG_LABEL[k]||k}));
   const DEF_MACH = K.MACHINES.map(m=>({name:m}));
   const DEF_BORR = [{key:'Wang',label:'王小明'},{key:'Lee',label:'李美華'},{key:'Chang',label:'張大偉'},{key:'Chen',label:'陳怡君'},{key:'Lin',label:'林志豪'}];
@@ -2014,9 +2014,9 @@ function AdminPanel({ user }) {
             </div>
 
             {/* 分頁切換 */}
-            <div style={{display:'flex',gap:4,marginBottom:24,background:'#f5f6f8',padding:4,borderRadius:8,width:'fit-content'}}>
+            <div style={{display:'flex',gap:4,marginBottom:24,background:'var(--bg-soft)',padding:4,borderRadius:8,width:'fit-content'}}>
               {SETTING_TABS.map(t=>(
-                <button key={t.key} onClick={()=>setSettingTab(t.key)} style={{padding:'6px 18px',borderRadius:6,border:'none',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .15s',background:settingTab===t.key?'#fff':'transparent',color:settingTab===t.key?'var(--ink)':'var(--ink-3)',boxShadow:settingTab===t.key?'0 1px 3px rgba(0,0,0,.1)':'none',fontFamily:'inherit'}}>
+                <button key={t.key} onClick={()=>setSettingTab(t.key)} style={{padding:'6px 18px',borderRadius:6,border:'none',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .15s',background:settingTab===t.key?'var(--bg)':'transparent',color:settingTab===t.key?'var(--ink)':'var(--ink-3)',boxShadow:settingTab===t.key?'0 1px 3px rgba(0,0,0,.1)':'none',fontFamily:'inherit'}}>
                   {t.label}
                 </button>
               ))}
@@ -2034,7 +2034,7 @@ function AdminPanel({ user }) {
             {settingTab==='issues'&&(
               <div>
                 {/* 同步開關 */}
-                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:sync?'var(--ok-soft)':'#f5f6f8',border:'1.5px solid',borderColor:sync?'#9acfb4':'var(--line)',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleSync(!sync)}>
+                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:sync?'var(--ok-soft)':'var(--bg-soft)',border:'1.5px solid',borderColor:sync?'#9acfb4':'var(--line)',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleSync(!sync)}>
                   <div style={{width:36,height:20,background:sync?'var(--ok)':'#cbd0d8',borderRadius:10,position:'relative',transition:'background .2s',flexShrink:0}}>
                     <div style={{position:'absolute',top:2,left:sync?18:2,width:16,height:16,background:'#fff',borderRadius:'50%',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
                   </div>
@@ -2071,7 +2071,7 @@ function AdminPanel({ user }) {
             {settingTab==='booking'&&(
               <div>
                 {/* 工程師/機台同步開關 */}
-                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:bkSync?'var(--ok-soft)':'#f5f6f8',border:'1.5px solid',borderColor:bkSync?'#9acfb4':'var(--line)',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleBkSync(!bkSync)}>
+                <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:bkSync?'var(--ok-soft)':'var(--bg-soft)',border:'1.5px solid',borderColor:bkSync?'#9acfb4':'var(--line)',borderRadius:8,marginBottom:20,cursor:'pointer'}} onClick={()=>toggleBkSync(!bkSync)}>
                   <div style={{width:36,height:20,background:bkSync?'var(--ok)':'#cbd0d8',borderRadius:10,position:'relative',transition:'background .2s',flexShrink:0}}>
                     <div style={{position:'absolute',top:2,left:bkSync?18:2,width:16,height:16,background:'#fff',borderRadius:'50%',transition:'left .2s',boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
                   </div>
@@ -2167,7 +2167,7 @@ function ChangePasswordModal({ onClose }) {
       window.showToast(map[e.code] || e.message || '變更失敗','err');
     } finally { setBusy(false); }
   };
-  const S_INP = {width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',marginTop:4,boxSizing:'border-box'};
+  const S_INP = {width:'100%',padding:'8px 10px',border:'1px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',marginTop:4,boxSizing:'border-box',background:'var(--bg)',color:'var(--ink)'};
   const LBL = {fontSize:12,color:'var(--ink-3)',fontWeight:600};
   return (
     <div className="m-overlay">
