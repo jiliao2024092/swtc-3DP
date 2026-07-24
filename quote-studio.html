@@ -1083,7 +1083,7 @@ function setCam(v){
 }
 function syncCube(){
   const rx = -(Math.PI/2 - V.phi) * 180/Math.PI;
-  const ry = -(V.theta*180/Math.PI - 90) ;
+  const ry = (V.theta*180/Math.PI - 90);   // 水平旋轉需與相機同向（原本符號反了→方塊左右與實際視角相反）
   $('#cubeInner').style.transform = `rotateX(${rx.toFixed(1)}deg) rotateY(${ry.toFixed(1)}deg)`;
 }
 /* ============================== 5. 檔案解析 ============================== */
