@@ -85,7 +85,7 @@ button{font-family:inherit}
 #cube{width:52px;height:52px;perspective:200px}
 #cubeInner{transform-style:preserve-3d;transform:rotateX(-22deg) rotateY(-38deg);width:52px;height:52px;position:relative;transition:transform .18s}
 .cface{position:absolute;width:52px;height:52px;display:flex;align-items:center;justify-content:center;
-  font-size:calc(11px * var(--fs));font-weight:600;color:var(--ink3);background:rgba(255,255,255,.92);border:1px solid var(--line);cursor:pointer;user-select:none}
+  font-size:calc(11px * var(--fs));font-weight:600;color:var(--ink3);background:rgba(255,255,255,.92);border:1px solid var(--line);cursor:pointer;user-select:none;backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .cface:hover{background:var(--accentBg);color:var(--accent)}
 #cubeHome{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.92);font-size:calc(11px * var(--fs));cursor:pointer;color:var(--ink3)}
 
@@ -440,8 +440,11 @@ body.big{--fs:1.16}
   <div id="cubeWrap">
     <div id="cube"><div id="cubeInner">
       <div class="cface" style="transform:translateZ(26px)" data-cam="front">前</div>
+      <div class="cface" style="transform:rotateY(180deg) translateZ(26px)" data-cam="back">後</div>
       <div class="cface" style="transform:rotateY(90deg) translateZ(26px)" data-cam="right">右</div>
+      <div class="cface" style="transform:rotateY(-90deg) translateZ(26px)" data-cam="left">左</div>
       <div class="cface" style="transform:rotateX(90deg) translateZ(26px)" data-cam="top">頂</div>
+      <div class="cface" style="transform:rotateX(-90deg) translateZ(26px)" data-cam="bottom">底</div>
     </div></div>
     <button id="cubeHome" data-cam="home" title="回復視角">⌂</button>
   </div>
@@ -1069,7 +1072,9 @@ function deselectModel(){
 }
 function setCam(v){
   if (v==='front'){ V.theta=Math.PI/2; V.phi=Math.PI/2-0.02; }
+  else if (v==='back'){ V.theta=-Math.PI/2; V.phi=Math.PI/2-0.02; }
   else if (v==='right'){ V.theta=0; V.phi=Math.PI/2-0.02; }
+  else if (v==='left'){ V.theta=Math.PI; V.phi=Math.PI/2-0.02; }
   else if (v==='side'){ V.theta=0; V.phi=Math.PI/2-0.02; }
   else if (v==='top'){ V.phi=0.14; }
   else if (v==='bottom'){ V.phi=Math.PI-0.14; }
