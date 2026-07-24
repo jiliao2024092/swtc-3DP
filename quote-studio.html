@@ -1697,6 +1697,7 @@ function runOverhang(){
   const t = m.raw.tris, w = m.world, nf = t.length/3;
   const faceGamma = new Float32Array(nf).fill(999);
   let supArea=0, dangerArea=0, flatArea=0, total=0, minGamma=999, minGammaPos=null;
+  const dangerFaces=[];   // 危險懸垂面中心/面積，供支撐涵蓋判定（讓驗證知道支撐是否已覆蓋）
   for (let f=0; f<nf; f++){
     const a=t[f*3]*3,b=t[f*3+1]*3,c=t[f*3+2]*3;
     const ux=w[b]-w[a],uy=w[b+1]-w[a+1],uz=w[b+2]-w[a+2];
@@ -1712,12 +1713,14 @@ function runOverhang(){
       if (gamma < 50) supArea += area;
       if (gamma < SPEC.overhangAngle.v && !nearPlat){
         dangerArea += area;
-        if (gamma<minGamma){ minGamma=gamma; minGammaPos=[(w[a]+w[b]+w[c])/3, (w[a+1]+w[b+1]+w[c+1])/3, (w[a+2]+w[b+2]+w[c+2])/3]; }
+        const dcx=(w[a]+w[b]+w[c])/3, dcy=(w[a+1]+w[b+1]+w[c+1])/3, dcz=(w[a+2]+w[b+2]+w[c+2])/3;
+        dangerFaces.push([dcx, dcy, dcz, area]);
+        if (gamma<minGamma){ minGamma=gamma; minGammaPos=[dcx, dcy, dcz]; }
       }
       if (gamma < 5) flatArea += area;
     }
   }
-  const res = { faceGamma, supArea, dangerArea, flatArea, total, minGamma: minGamma===999?null:minGamma, minGammaPos };
+  const res = { faceGamma, supArea, dangerArea, flatArea, total, minGamma: minGamma===999?null:minGamma, minGammaPos, dangerFaces };
   S.results.overhang = res;
   return res;
 }
@@ -2041,7 +2044,8 @@ async function generateSupports(){
       if (g) V.supGroup.add(new THREE.Mesh(g, V.matTpType[k]));
     }
     S.supportStat = { points: kept.length, byType, volSupMM3: volSup, volRaftMM3: volRaft,
-                      volMM3: volSup + volRaft, braces };
+                      volMM3: volSup + volRaft, braces,
+                      pts: kept.map(p=>[p.x, p.z, p.top]) };   // 接觸點世界座標 [x,z,y]，供驗證判定支撐涵蓋
   });
   $('#legTp').textContent = F(S.sup.tpSize);
   updateAllUI();
@@ -2244,6 +2248,15 @@ function applyColorMode(){
   colAttr.needsUpdate = true;
 }
 
+/* 支撐涵蓋判定：讓「可行性驗證」知道支撐生成在哪，不再對「裸模型」評分——
+   這是「支撐已生成卻仍報孤島／懸垂」矛盾的根因修正（支撐生成與孤島/懸垂偵測原本各跑一套、互不知情）。
+   接觸點世界座標存於 S.supportStat.pts（[x,z,y]），與偵測結果同一擺放（rebuildScene 會一起清快取+重生成）。 */
+function supportCoverageReady(){ return !!(S.supportsOn && S.supportStat && S.supportStat.pts && S.supportStat.pts.length); }
+function nearSupport(x, z, y, rXZ, rY){
+  const P = S.supportStat && S.supportStat.pts; if (!P) return false;
+  for (let i=0;i<P.length;i++){ const p=P[i]; if (Math.hypot(p[0]-x, p[1]-z) <= rXZ && Math.abs(p[2]-y) <= rY) return true; }
+  return false;
+}
 /* ============================== 15. 可行性驗證（Form 4 設計規範） ============================== */
 async function runValidation(){
   const m = activeModel(); if(!m) return null;
@@ -2257,6 +2270,7 @@ async function runValidation(){
   const checks = [];
   const add = (label, status, detail, kind)=>checks.push({label, status, detail, kind});
   const ms = mach().size;
+  const covReady = supportCoverageReady();   // 已生成支撐 → 孤島/懸垂改判「未被支撐涵蓋」的部分
 
   // 幾何可自動量測
   const fits = modelFits(m);
@@ -2266,9 +2280,20 @@ async function runValidation(){
       `最薄取樣 ${F(TH.minTh)}mm（規範 >${SPEC.wallSupported.v}mm）`, '量測');
   add('無支撐壁厚', TH.minTh < 0.4 ? 'warn' : 'pass',
       `薄壁區 ${F(TH.thinArea,0)}mm² · 無支撐處建議 >0.4mm`, '近似');
-  add('懸垂角度', O.dangerArea > 2 ? 'fail' : O.supArea > 0 && !S.supportsOn ? 'warn' : 'pass',
-      O.dangerArea>2 ? `${F(O.dangerArea,0)}mm² 面與水平 <${SPEC.overhangAngle.v}°（最小 ${F(O.minGamma,0)}°）`
-                     : `需支撐面 ${F(O.supArea,0)}mm²，危險懸垂 ${F(O.dangerArea,1)}mm²`, '量測');
+  let uncoveredDanger = O.dangerArea;
+  if (covReady && O.dangerFaces && O.dangerFaces.length){
+    uncoveredDanger = 0;
+    for (const df of O.dangerFaces){ if (!nearSupport(df[0], df[2], df[1], 7, 5)) uncoveredDanger += df[3]; }
+  }
+  add('懸垂角度',
+      uncoveredDanger > 2 ? (covReady ? 'warn' : 'fail') : (O.supArea > 0 && !S.supportsOn ? 'warn' : 'pass'),
+      covReady
+        ? (uncoveredDanger > 2
+            ? `${F(uncoveredDanger,0)}mm² 危險懸垂未被支撐涵蓋（總 ${F(O.dangerArea,0)}mm²，最小 ${F(O.minGamma,0)}°）— 建議提高懸空密度`
+            : `危險懸垂 ${F(O.dangerArea,0)}mm² 已由支撐涵蓋（請於 PreForm 確認）`)
+        : (O.dangerArea>2 ? `${F(O.dangerArea,0)}mm² 面與水平 <${SPEC.overhangAngle.v}°（最小 ${F(O.minGamma,0)}°）`
+                          : `需支撐面 ${F(O.supArea,0)}mm²，危險懸垂 ${F(O.dangerArea,1)}mm²`),
+      '量測');
   add('懸垂長度', O.flatArea > 25 ? 'warn' : 'pass',
       O.flatArea>25 ? `近水平大面約 ${F(Math.sqrt(O.flatArea),0)}mm 跨幅（規範無支撐 ≤${SPEC.overhangLen.v}mm）` : `近水平面 ${F(O.flatArea,0)}mm²`, '近似');
   const spacing = Math.max(3.5, 9/S.support.density);
@@ -2278,8 +2303,15 @@ async function runValidation(){
       TH.minTh<SPEC.wireDia.v ? `偵測 <${SPEC.wireDia.v}mm 細部（${F(TH.minTh)}mm），若為獨立細柱請加粗或多點支撐` : `未偵測獨立細柱風險`, '近似');
   add('零件間隙', m.shells>1 ? 'warn' : 'pass',
       m.shells>1 ? `偵測 ${m.shells} 個殼體，請確認間隙 ≥${SPEC.clearance.v}mm` : '單一殼體，不適用', '近似');
-  add('孤島', IS.clusters.length===0 ? 'pass' : S.supportsOn ? 'warn' : 'fail',
-      IS.clusters.length ? `${IS.clusters.length} 處孤島起點${S.supportsOn?'（支撐近似涵蓋，請於 PreForm 確認）':'（無支撐必失敗）'}` : '未偵測孤島', '近似');
+  const uncoveredIslands = covReady ? IS.clusters.filter(c=>!nearSupport(c.x, c.z, c.y, 7, 4)).length : IS.clusters.length;
+  add('孤島',
+      IS.clusters.length===0 ? 'pass' : uncoveredIslands===0 ? 'pass' : covReady ? 'warn' : S.supportsOn ? 'warn' : 'fail',
+      IS.clusters.length===0 ? '未偵測孤島'
+        : covReady
+          ? (uncoveredIslands===0 ? `${IS.clusters.length} 處孤島皆已由支撐涵蓋（請於 PreForm 確認）`
+                                  : `${uncoveredIslands}/${IS.clusters.length} 處孤島未被支撐涵蓋 — 建議提高懸空密度或補點`)
+          : `${IS.clusters.length} 處孤島起點（無支撐必失敗）`,
+      '近似');
   add('截面突變', C.maxJump > 3 ? 'warn' : 'pass',
       C.maxJump>3 ? `層截面積突增 ×${F(C.maxJump,1)} @ 高度 ${F(C.jumpAt,0)}mm，剝離力尖峰` : `最大突變 ×${F(C.maxJump,1)}`, '近似');
   add('吸盤效應', CU.risk ? 'warn' : 'pass',
