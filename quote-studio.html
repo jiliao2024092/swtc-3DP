@@ -426,6 +426,7 @@ body.big{--fs:1.16}
     <div class="vsep"></div>
     <button class="abtn" id="btnModeNormal" data-mode="normal" title="一般顯示">◻ 一般</button>
     <button class="abtn warnb" id="btnModeOverhang" data-mode="overhang" title="懸垂區域標色">⚠ 懸垂</button>
+    <button class="abtn" data-mode="suprisk" title="支撐風險：危險懸垂面依是否已被支撐涵蓋分色（紅=未涵蓋 / 青綠=已涵蓋）">🧩 支撐風險</button>
     <button class="abtn" data-mode="thickness" title="厚度熱圖">▤ 厚度</button>
     <button class="abtn" data-mode="curvature" title="曲率熱圖">◠ 曲率</button>
     <div class="vsep"></div>
@@ -497,6 +498,7 @@ body.big{--fs:1.16}
   <div><span class="sw swr" style="background:#e8930c"></span> 懸空點 <span class="sw swr" style="background:#0d9488"></span> 懸空</div>
   <div><span class="sw swr" style="background:#d6409f"></span> 穩定化 <span class="sw swr" style="background:#46a758"></span> 強化 <span id="legTp" class="mono">0.60</span>mm</div>
   <div id="legExtra" style="display:none"><span class="sw swr" style="background:#c0392b"></span> 孤島 / 風險標記</div>
+  <div id="legSupRisk" style="display:none"><span class="sw swr" style="background:#d1281f"></span> 未涵蓋危險懸垂 <span class="sw swr" style="background:#218c80"></span> 已涵蓋 <span class="sw swr" style="background:#e8a24a"></span> 需注意</div>
 </div>
 
 <!-- overlays -->
@@ -2200,7 +2202,9 @@ async function setColorMode(mode){
   if (mode==='thickness') await runThickness();
   if (mode==='curvature') await runCurvature();
   if (mode==='overhang') runOverhang();
+  if (mode==='suprisk') runOverhang();   // 需 faceGamma；支撐涵蓋由 S.supportStat.pts 提供
   applyColorMode();
+  const lsr = $('#legSupRisk'); if (lsr) lsr.style.display = mode==='suprisk' ? '' : 'none';
   $$('#viewbar .abtn[data-mode]').forEach(b=>b.classList.toggle('on', b.dataset.mode===mode));
 }
 function applyColorMode(){
@@ -2221,6 +2225,26 @@ function applyColorMode(){
       if (g < SPEC.overhangAngle.v) set(i, .78,.16,.13);
       else if (g < 50){ const t=(g-SPEC.overhangAngle.v)/(50-SPEC.overhangAngle.v); set(i, .9, .35+.45*t, .15+.5*t); }
       else set(i, base[0],base[1],base[2]);
+    }
+  } else if (mode==='suprisk'){
+    // 支撐風險：危險懸垂面依「是否已被支撐涵蓋」分色（把耦合修復視覺化）
+    const O = S.results.overhang;
+    const cov = supportCoverageReady();
+    const w = m.world, t = tris;
+    for (let i=0;i<n;i++){
+      const f = (i/3)|0;
+      const g = O ? O.faceGamma[f] : 999;
+      if (g < SPEC.overhangAngle.v){                        // 危險懸垂面
+        if (cov){
+          const a=t[f*3]*3, b=t[f*3+1]*3, c=t[f*3+2]*3;
+          const cx=(w[a]+w[b]+w[c])/3, cy=(w[a+1]+w[b+1]+w[c+1])/3, cz=(w[a+2]+w[b+2]+w[c+2])/3;
+          if (nearSupport(cx, cz, cy, 7, 5)) set(i, .13,.60,.55);   // 青綠：已被支撐涵蓋
+          else set(i, .82,.14,.12);                                 // 紅：未被涵蓋（真正要處理）
+        } else set(i, .82,.14,.12);                                 // 紅：危險（尚未生成支撐）
+      } else if (g < 50){                                   // 需注意（淡橘、不強調）
+        const tt=(g-SPEC.overhangAngle.v)/(50-SPEC.overhangAngle.v);
+        set(i, .92, .62+.24*tt, .34+.42*tt);
+      } else set(i, base[0],base[1],base[2]);
     }
   } else if (mode==='thickness'){
     const TH = S.results.thickness || (activeModel().cacheTh);
@@ -2256,6 +2280,12 @@ function nearSupport(x, z, y, rXZ, rY){
   const P = S.supportStat && S.supportStat.pts; if (!P) return false;
   for (let i=0;i<P.length;i++){ const p=P[i]; if (Math.hypot(p[0]-x, p[1]-z) <= rXZ && Math.abs(p[2]-y) <= rY) return true; }
   return false;
+}
+/* 第一個「未被支撐涵蓋」的危險懸垂面中心 [x,y,z]（供「點我查看」把視角轉到真正還要處理的位置） */
+function firstUncoveredDanger(O){
+  if (!O || !O.dangerFaces) return null;
+  for (const df of O.dangerFaces){ if (!nearSupport(df[0], df[2], df[1], 7, 5)) return [df[0], df[1], df[2]]; }
+  return null;
 }
 /* ============================== 15. 可行性驗證（Form 4 設計規範） ============================== */
 async function runValidation(){
@@ -2344,14 +2374,16 @@ async function runValidation(){
 function validationFixFor(label){
   const map = {
     '懸垂角度': ()=>{
-      const O = S.results.overhang;
-      setColorMode('overhang');
-      if (O && O.minGammaPos) focusCameraOn(new THREE.Vector3(...O.minGammaPos));
+      const O = S.results.overhang; const cov = supportCoverageReady();
+      setColorMode(cov ? 'suprisk' : 'overhang');
+      const pos = (cov && firstUncoveredDanger(O)) || (O && O.minGammaPos);
+      if (pos) focusCameraOn(new THREE.Vector3(...pos));
     },
     '懸垂長度': ()=>{
-      const O = S.results.overhang;
-      setColorMode('overhang');
-      if (O && O.minGammaPos) focusCameraOn(new THREE.Vector3(...O.minGammaPos));
+      const O = S.results.overhang; const cov = supportCoverageReady();
+      setColorMode(cov ? 'suprisk' : 'overhang');
+      const pos = (cov && firstUncoveredDanger(O)) || (O && O.minGammaPos);
+      if (pos) focusCameraOn(new THREE.Vector3(...pos));
     },
     '孤島': async ()=>{
       if (!S.results.islands) await runIslands();
