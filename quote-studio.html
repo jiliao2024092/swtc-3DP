@@ -2179,6 +2179,26 @@ async function recommendLayer(){
    目前為 Tough 2000 常數；其他材料主要差在「曝光」，日後給暴露量三數字即可微調 base，
    面積係數/開銷可沿用（同機、智慧剝離物理相近）。多給實測 → 改下面常數重新校準。 */
 const TIME_MODEL = { refLayerH:0.05, startup:2870, basePerLayer:4.90, areaCoef:0.01474 };
+/* 各材料「速度係數」— 以 Tough 2000 幾何模型為基準，由該材料的真實列印(同一塞座件 ~3.8mL)反解校準。
+   時間 = 基準幾何模型 × 材料係數。純設定(曝光+早期層)推不準(±30%)，剝離/黏度差異只有實測抓得到。
+   係數在校準尺寸(~4mL)最準；很大/很小的件為外插(尤其 flexible 80a 曝光極高、對層數特別敏感)。
+   日後某材料再給一筆不同大小實測即可改善。校準資料(暴露量/早期層/體積/層數/時間)見專案記憶 quote-system。 */
+const MAT_TIME_FACTOR = {
+  tough2000:1.00, tough1500:1.03, tough1000:1.20,      // 0.05mm 層厚校準
+  rigid10k:0.84, rigid4k:0.85,
+  grey:0.60, black:0.71, clear:0.64, white:0.64,
+  elastic50a:0.93, flexible80a:2.29, fastmodel:0.50,   // 0.1mm 層厚校準
+};
+function matTimeFactor(){
+  const m = mat(); if(!m) return 1.0;
+  const norm = s => (s||'').toLowerCase().replace(/resin|v\d+/g,'').replace(/[\s\-_.]/g,'');
+  const kn = norm(m.name), ki = norm(m.id), F = MAT_TIME_FACTOR;
+  if (F[kn]!=null) return F[kn];
+  if (F[ki]!=null) return F[ki];
+  for (const k in F){ if (kn && (kn.includes(k)||k.includes(kn))) return F[k]; }
+  for (const k in F){ if (ki && (ki.includes(k)||k.includes(ki))) return F[k]; }
+  return 1.0;   // 未知材料 → Tough 2000 基準
+}
 function calcTime(){
   const m = activeModel(); if(!m) return null;
   const lt = S.layerH, M = TIME_MODEL;
@@ -2190,8 +2210,9 @@ function calcTime(){
   const startup  = M.startup * (M.refLayerH / lt);        // 早期層開銷 ∝ 1/層厚
   const layerSec = M.basePerLayer * layers;
   const areaSec  = M.areaCoef * (curedVol / lt);
-  const sec = Math.round(startup + layerSec + areaSec);
-  return { layers, sec, h:Math.floor(sec/3600), min:Math.round((sec%3600)/60),
+  const factor   = matTimeFactor();                       // 材料速度係數（實印校準）
+  const sec = Math.round((startup + layerSec + areaSec) * factor);
+  return { layers, sec, factor, h:Math.floor(sec/3600), min:Math.round((sec%3600)/60),
            startup:Math.round(startup), layerSec:Math.round(layerSec), areaSec:Math.round(areaSec) };
 }
 function calcCost(){
@@ -2890,7 +2911,7 @@ function openModule(mod){
       if (C.multiplier!==1) box.appendChild(mrow(`${C.workType}倍率`, `×${C.multiplier}`));
       box.appendChild(el('div','costTotal',`<span>總計</span><b>${NTD(C.total)}</b>`));
       B.appendChild(box);
-      B.appendChild(el('div','mnote',`時間模型（Tough 2000 實測校準，誤差<5%）：固定開銷 ${Math.round((C.time?.startup||0)/60)}min ＋ 每層 ${TIME_MODEL.basePerLayer}s×${C.time?.layers||0}層 ＋ 面積項 ${Math.round((C.time?.areaSec||0)/60)}min ≈ ${timeStr(C.time)}。`));
+      B.appendChild(el('div','mnote',`時間 = 基準(開銷${Math.round((C.time?.startup||0)/60)}min＋每層${TIME_MODEL.basePerLayer}s×${C.time?.layers||0}層＋面積${Math.round((C.time?.areaSec||0)/60)}min) × ${mat().name}係數 ${(C.time?.factor||1).toFixed(2)} ≈ ${timeStr(C.time)}（Tough2000幾何基準＋各材料實印校準）。`));
     } else B.appendChild(el('div','mnote','載入模型後即顯示明細。'));
   }
 
