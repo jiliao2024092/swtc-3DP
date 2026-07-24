@@ -1333,14 +1333,14 @@ function DashboardView({ data }) {
       const s0=acc*2*Math.PI-Math.PI/2; acc+=pct; const s1=acc*2*Math.PI-Math.PI/2;
       const large=pct>0.5?1:0;
       const x1=cx+R*Math.cos(s0),y1=cy+R*Math.sin(s0),x2=cx+R*Math.cos(s1),y2=cy+R*Math.sin(s1);
-      return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="#fff" strokeWidth="2"/>;
+      return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="var(--bg)" strokeWidth="2"/>;
     });
     return (
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12,width:'100%'}}>
         <div style={{position:'relative',display:'inline-flex',alignItems:'center',justifyContent:'center'}}>
           <svg width="180" height="180" viewBox="0 0 180 180">
             {paths}
-            <circle cx={cx} cy={cy} r={R-thick} fill="#fff"/>
+            <circle cx={cx} cy={cy} r={R-thick} fill="var(--bg)"/>
           </svg>
           <div style={{position:'absolute',textAlign:'center',pointerEvents:'none'}}>
             <div style={{fontSize:28,fontWeight:700,fontFamily:'var(--font-mono)',letterSpacing:'-0.02em',color:'var(--ink)',lineHeight:1}}>{total}</div>
@@ -1590,7 +1590,7 @@ window.DashboardView = DashboardView;
 
 <!-- ⑥ workboard.js + issues.js -->
 <script type="text/babel" data-presets="react" src="workboard.js?v=20260708j"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260708j"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260708k"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">

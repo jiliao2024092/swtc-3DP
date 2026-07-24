@@ -434,10 +434,10 @@
             <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="var(--bg)"/></svg>
             <div style={{position:'absolute',textAlign:'center',pointerEvents:'none'}}>
               <div style={{fontSize:26,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',lineHeight:1}}>{total}</div>
-              <div style={{fontSize:10,color:'var(--ink-4)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'借出'}</div>
+              <div style={{fontSize:10,color:'var(--ink-3)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'借出'}</div>
             </div>
           </div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:'4px 10px',justifyContent:'center',fontSize:10.5,color:'var(--ink-3)',fontFamily:'var(--font-mono)'}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'4px 10px',justifyContent:'center',fontSize:10.5,color:'var(--ink-2)',fontFamily:'var(--font-mono)'}}>
             {slices.filter(s=>s.value>0).map(s=>(
               <span key={s.label} style={{display:'inline-flex',alignItems:'center',gap:4}}>
                 <span style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>{s.label} · {s.value}
@@ -723,10 +723,10 @@
             <svg width="170" height="170" viewBox="0 0 170 170">{paths}<circle cx={cx} cy={cy} r={R-18} fill="var(--bg)"/></svg>
             <div style={{position:'absolute',textAlign:'center',pointerEvents:'none'}}>
               <div style={{fontSize:26,fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--ink)',lineHeight:1}}>{total}</div>
-              <div style={{fontSize:10,color:'var(--ink-4)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'總計'}</div>
+              <div style={{fontSize:10,color:'var(--ink-3)',fontFamily:'var(--font-mono)',marginTop:2,letterSpacing:'0.06em',textTransform:'uppercase'}}>{centerLabel||'總計'}</div>
             </div>
           </div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:'4px 10px',justifyContent:'center',fontSize:10.5,color:'var(--ink-3)',fontFamily:'var(--font-mono)'}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:'4px 10px',justifyContent:'center',fontSize:10.5,color:'var(--ink-2)',fontFamily:'var(--font-mono)'}}>
             {slices.filter(s=>s.value>0).map(s=>(
               <span key={s.label} style={{display:'inline-flex',alignItems:'center',gap:4}}>
                 <span style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>{s.label} · {s.value}
