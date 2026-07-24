@@ -1872,7 +1872,18 @@ async function generateSupports(){
   await busy('支撐材生成中（內建近似 · PreForm 參數）…', async ()=>{
     const grid = gridOf(m);
     const bb = m.worldBB;
-    const baseSpacing = Math.max(3.0, 9 / Math.max(0.1, P.over.density));
+    // 取樣網格間距原本固定用密度換算（9/density，預設=9mm），跟模型尺寸/局部特徵完全無關：
+    // 小模型的水平跨度一旦小於間距會整個落網（見下方 sizeSpacing 修正）；
+    // 但即使整體模型不小，像「多片細窄葉片中間橫接一條薄橋」這種局部窄特徵，
+    // 只要橋寬小於網格間距，射線網格也會直接跳過整條橋、完全抓不到懸空點——
+    // 這正是「明明懸垂/孤島都偵測到了，支撐卻只有寥寥幾根」的主因。
+    // 把預設密度對應的間距從 9mm 收緊到 6mm，全面提高取樣解析度以涵蓋這類窄特徵，
+    // 使用者仍可透過面板的「懸空密度」調更密（值越高間距越小）。
+    const densitySpacing = Math.max(2.0, 6 / Math.max(0.1, P.over.density));
+    const minCols = 10;
+    const minSpan = Math.min(bb.size[0], bb.size[2]);
+    const sizeSpacing = Math.max(0.5, minSpan / minCols);
+    const baseSpacing = Math.min(densitySpacing, sizeSpacing);
     const raftTh = P.raft.type==='none' ? 0 : P.raft.thickness;
     /* ---- 1) 收集附著點（由下向上射線，僅向下面） ---- */
     const pts = [];
@@ -1885,9 +1896,13 @@ async function generateSupports(){
           const y = 0.05 + hits[hi].t;
           if (n[1] < -0.15 && y > raftTh + 0.6){
             const internal = hi>0;
-            if (internal && !P.tpS.internal) break;
+            // 這一候選點不合格（內部懸空未啟用支援 / 這段跨距太短不需支撐）時，
+            // 原本直接 break 掉整條射線，導致同一欄柱若第一個候選不合格，
+            // 即使更上面還有真正需要支撐的懸空面也永遠不會被抓到，才會出現「明明懸空卻只有1根」。
+            // 改成 continue 換下一個交點繼續找，仍只取每欄柱「第一個可用」的附著點。
+            if (internal && !P.tpS.internal) continue;
             const base = internal ? 0.05 + hits[hi-1].t + 0.25 : raftTh;
-            if (y - base < 1.2) break;
+            if (y - base < 1.2) continue;
             const gamma = Math.acos(Math.min(1, Math.max(0, -n[1]))) * 57.2958;   // 0°=平行平台
             pts.push({ x:gx, z:gz, top:y, base, gamma, internal });
             if (y < minAttach) minAttach = y;
@@ -1903,7 +1918,7 @@ async function generateSupports(){
     const nearMinima = p => minimaPts.some(q => Math.hypot(q.x-p.x, q.z-p.z) < baseSpacing*1.9);
     for (const p of pts){
       if (p.type) continue;
-      if (90 - p.gamma < P.over.angle) p.type = 'over';        // 面與水平夾角 < 門檻 → 懸空
+      if (p.gamma < P.over.angle) p.type = 'over';              // 面與水平夾角 < 門檻 → 懸空
       else if (p.gamma < 50 && nearMinima(p)) p.type = 'stab'; // 最低點周圍 → 穩定化
       else if (p.gamma < 50) p.type = 'rein';                  // 其餘向下面 → 強化
       else p.type = 'skip';
