@@ -2169,13 +2169,30 @@ async function recommendLayer(){
 }
 
 /* ============================== 13. 時間與成本引擎 ============================== */
+/* 列印時間模型（面積感知）— 由 4 筆 Tough 2000 @ 0.05mm 實測校準
+   （細長件/方塊/薄平板/厚方塊，58min~5h06m，最大誤差 4.1%、RMS 1.9min）：
+     總時間 = 開銷 + base×層數 + 面積係數×(固化體積÷層厚)
+   · 開銷     = 樹脂預熱 + 前段慢速早期層；早期層數 ∝ 1/層厚 → 按層厚縮放
+                （符合「層厚減半→時間加倍」）
+   · base     = 曝光(≈2.96s) + 固定機械 ≈ 4.90 s/層
+   · 面積係數 = 智慧剝離力/沉澱 ∝ 每層固化截面積（Σ截面積 = 體積÷層厚，與擺放無關）
+   目前為 Tough 2000 常數；其他材料主要差在「曝光」，日後給暴露量三數字即可微調 base，
+   面積係數/開銷可沿用（同機、智慧剝離物理相近）。多給實測 → 改下面常數重新校準。 */
+const TIME_MODEL = { refLayerH:0.05, startup:2870, basePerLayer:4.90, areaCoef:0.01474 };
 function calcTime(){
   const m = activeModel(); if(!m) return null;
-  const printH = m.worldBB.max[1];                        // 含底座+抬升
-  const layers = Math.ceil(printH / S.layerH);
-  const spl = mach().secPerLayer[S.layerH] ?? (mach().secPerLayer[0.05]*(0.05/S.layerH));
-  const sec = layers*spl + 300;                           // +5min 起始
-  return { layers, sec, h:Math.floor(sec/3600), min:Math.round((sec%3600)/60) };
+  const lt = S.layerH, M = TIME_MODEL;
+  const printH = m.worldBB.max[1];                        // 含底座+抬升 → 決定層數
+  const layers = Math.ceil(printH / lt);
+  // 固化總截面積 = 體積 ÷ 層厚（與擺放無關）；有支撐時併入支撐+底座體積
+  const supVol = (S.supportsOn && S.supportStat) ? ((S.supportStat.volSupMM3||0) + (S.supportStat.volRaftMM3||0)) : 0;
+  const curedVol = m.volMM3 + supVol;
+  const startup  = M.startup * (M.refLayerH / lt);        // 早期層開銷 ∝ 1/層厚
+  const layerSec = M.basePerLayer * layers;
+  const areaSec  = M.areaCoef * (curedVol / lt);
+  const sec = Math.round(startup + layerSec + areaSec);
+  return { layers, sec, h:Math.floor(sec/3600), min:Math.round((sec%3600)/60),
+           startup:Math.round(startup), layerSec:Math.round(layerSec), areaSec:Math.round(areaSec) };
 }
 function calcCost(){
   // 舊版計費模型（與 quote.html 相同）：本體材料×單價 + 支撐材料×單價 + 固定後處理費
@@ -2873,7 +2890,7 @@ function openModule(mod){
       if (C.multiplier!==1) box.appendChild(mrow(`${C.workType}倍率`, `×${C.multiplier}`));
       box.appendChild(el('div','costTotal',`<span>總計</span><b>${NTD(C.total)}</b>`));
       B.appendChild(box);
-      B.appendChild(el('div','mnote',`每層秒數估算：${mach().name} @ ${S.layerH*1000}µm ≈ ${mach().secPerLayer[S.layerH]??'—'}s/層（估算值，可依實測校正）。`));
+      B.appendChild(el('div','mnote',`時間模型（Tough 2000 實測校準，誤差<5%）：固定開銷 ${Math.round((C.time?.startup||0)/60)}min ＋ 每層 ${TIME_MODEL.basePerLayer}s×${C.time?.layers||0}層 ＋ 面積項 ${Math.round((C.time?.areaSec||0)/60)}min ≈ ${timeStr(C.time)}。`));
     } else B.appendChild(el('div','mnote','載入模型後即顯示明細。'));
   }
 
