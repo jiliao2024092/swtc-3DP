@@ -2034,8 +2034,13 @@ async function saveSafetyStock() {
     document.querySelectorAll('.matname-input').forEach(el=>{
         const fam = matCode(el.dataset.material);
         const v = (el.value||'').trim();
-        // 若改回跟系統預設名稱一樣就不用存覆寫，減少 Firestore 資料量
-        if(v && v !== (FAMILY_TO_NAME[fam] || fam)) inv.matNames[fam] = v; else delete inv.matNames[fam];
+        // 「自動顯示名稱」= 無覆寫時 matName 實際會回傳的值（最新版本名 latestName 優先於家族泛用名）。
+        // 只有輸入 ≠ 自動名稱時才存覆寫；否則刪除。
+        // （原本只比 FAMILY_TO_NAME → 使用者把 "Tough 2000 V2" 改成家族名 "Tough 2000" 時會被誤刪覆寫、
+        //   再被 latestName "Tough 2000 V2" 蓋回，導致改名無效。）
+        const latestRaw = inv.family_latest_version && inv.family_latest_version[fam];
+        const autoName = (latestRaw && CODE_TO_NAME[latestRaw]) || FAMILY_TO_NAME[fam] || fam;
+        if(v && v !== autoName) inv.matNames[fam] = v; else delete inv.matNames[fam];
     });
     closeSafetyModal();
     renderAll();
