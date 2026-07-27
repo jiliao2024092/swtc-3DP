@@ -324,6 +324,9 @@ body.big{--fs:1.16}
 .inRow input[type=number],.inRow input[type=text]{width:86px;height:24px;border:1px solid var(--line);border-radius:5px;
   padding:0 6px;font:calc(11px * var(--fs)) var(--mono);color:var(--ink2);text-align:right;background:var(--panelBg)}
 .inRow input[type=text]{text-align:left;width:150px}
+/* 數字輸入框增減箭頭：點擊(focus)才出現、編輯完(blur)消失 */
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{opacity:0}
+input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-webkit-outer-spin-button{opacity:1}
 .inRow .un{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono);width:38px}
 .tgl{display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--fs));color:var(--ink3);cursor:pointer;padding:3px 0}
 .tgl input{accent-color:var(--accent)}

@@ -190,6 +190,9 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .t-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);color:var(--ink-2)}
 .t-search input{border:0;outline:0;background:transparent;font:inherit;width:100%;color:var(--ink)}
 .t-search input::placeholder{color:var(--ink-4)}
+/* 數字輸入框增減箭頭：點擊(focus)才出現、編輯完(blur)消失 */
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{opacity:0}
+input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-webkit-outer-spin-button{opacity:1}
 .t-sel{height:32px;padding:0 28px 0 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink-2);font:inherit;font-size:13px;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' fill='none' stroke='%235a6270' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");background-repeat:no-repeat;background-position:right 8px center}
 .t-sel:hover{border-color:#cdd1d8}
 .t-sel:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
