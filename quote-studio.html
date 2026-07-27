@@ -131,8 +131,10 @@ button{font-family:inherit}
 .segRow{display:flex;gap:4px}
 .seg{flex:1;padding:6px 3px;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);color:var(--ink3);font-size:calc(10.5px * var(--fs));font-weight:600;cursor:pointer}
 .seg.mono{font-family:var(--mono)}
-.seg.on{border-color:var(--ink);background:var(--ink);color:#fff}
-.seg.onA{border-color:var(--accent);background:var(--accent);color:#fff}
+/* 選取態一律用 accent（藍）。原本 .on 用 var(--ink) 當底色，深色模式下 --ink 是接近白的
+   淺灰，配白字幾乎看不見；全站其他選取態（railBtn/smTabs/goalSeg/ppFace…）本來就是 accent，
+   這裡統一。.onA 保留為同義 class，既有 markup 不用改。 */
+.seg.on,.seg.onA{border-color:var(--accent);background:var(--accent);color:#fff}
 
 .sliderRow{display:flex;align-items:center;gap:7px;margin-bottom:6px}
 .sliderRow .sl{font-size:calc(11px * var(--fs));color:var(--ink3);width:60px;flex-shrink:0}
@@ -392,24 +394,34 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 /* ============ quote modal ============ */
 #quoteModal{position:absolute;inset:0;z-index:80;background:rgba(10,14,20,.35);display:none;align-items:center;justify-content:center}
 #quoteModal.show{display:flex}
-#quoteSheet{width:560px;max-height:88vh;overflow-y:auto;background:#fff;border-radius:12px;padding:28px 32px;box-shadow:0 24px 64px rgba(10,14,20,.3)}
+/* 背景/框線一律走主題變數，不要寫死 #fff、#f2f4f6 ——
+   內文顏色本來就用 var(--ink*)，底色寫死會變成「深色模式下白底淺字」看不見。
+   列印時另外在 @media print 內把變數覆寫回淺色，確保 PDF 永遠是白紙。 */
+#quoteSheet{width:560px;max-height:88vh;overflow-y:auto;background:var(--panelBg);color:var(--ink);border-radius:12px;padding:28px 32px;box-shadow:0 24px 64px rgba(10,14,20,.3)}
 #quoteSheet h2{font-size:calc(19px * var(--fs));letter-spacing:.05em}
 #quoteSheet .qsub{font-size:calc(10px * var(--fs));color:var(--ink4);font-family:var(--mono);margin-top:2px}
 #quoteSheet table{width:100%;border-collapse:collapse;margin-top:14px;font-size:calc(11.5px * var(--fs))}
 #quoteSheet th{text-align:left;font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono);text-transform:uppercase;
   letter-spacing:.06em;border-bottom:1px solid var(--line);padding:5px 4px}
-#quoteSheet td{padding:6px 4px;border-bottom:1px solid #f2f4f6}
+#quoteSheet td{padding:6px 4px;border-bottom:1px solid var(--line)}
 #quoteSheet td.r,#quoteSheet th.r{text-align:right;font-family:var(--mono)}
 #quoteSheet .qtotal{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;font-weight:700;font-size:calc(14px * var(--fs))}
 #quoteSheet .qtotal b{font-size:calc(22px * var(--fs));color:var(--accent);font-family:var(--mono)}
 #quoteSheet .qnote{font-size:calc(9.5px * var(--fs));color:var(--ink4);line-height:1.6;margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
-#quoteSheet input.qc{border:0;border-bottom:1px dashed var(--line);font:inherit;padding:2px;width:200px;color:var(--ink)}
+/* background:transparent 不可省 —— 沒設的話 input 會吃瀏覽器預設白底，
+   深色模式下變成白方塊配近白文字 */
+#quoteSheet input.qc{border:0;border-bottom:1px dashed var(--line);font:inherit;padding:2px;width:200px;color:var(--ink);background:transparent}
 .qbtns{display:flex;gap:8px;margin-top:16px}
-.qbtns button{flex:1;padding:9px;border-radius:6px;font:inherit;font-size:calc(12px * var(--fs));font-weight:600;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--ink3)}
+.qbtns button{flex:1;padding:9px;border-radius:6px;font:inherit;font-size:calc(12px * var(--fs));font-weight:600;cursor:pointer;border:1px solid var(--line);background:var(--panelBg);color:var(--ink3)}
 .qbtns button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
 @media print{
   body>*{display:none !important}
-  #quoteModal{display:block !important;position:static;background:#fff}
+  /* 報價單改吃主題變數後，深色模式會印出深底淺字 → 列印時在此子樹把變數覆寫回淺色，
+     PDF/紙本永遠是白底深字（不影響畫面顯示） */
+  #quoteModal{display:block !important;position:static;background:#fff;
+    --panelBg:#fff; --line:#e6e8ec;
+    --ink:#0a0e14; --ink2:#3b4250; --ink3:#5a6270; --ink4:#8a93a3;
+    --accent:#0c7a99}
   #quoteSheet{display:block !important;width:100%;max-height:none;box-shadow:none;border-radius:0}
   .qbtns{display:none !important}
 }
@@ -770,6 +782,7 @@ const S = {
   supTab: 'pil',        // 支撐材結構分頁：tp | pil | raft
   forceSupports: false, // 於步驟1、2 由面板明確按「自動生成所有」時強制生成
   supportsOn: true,
+  supDisplay: 'solid',  // 支撐顯示方式：solid | transparent | points（純視覺，不影響幾何生成）
   colorMode: 'normal',
   clipOn: false, clipPct: 100,
   engine: 'builtin',    // builtin | pfs
@@ -2049,19 +2062,21 @@ async function generateSupports(){
       out.computeVertexNormals();
       return out;
     };
+    // userData.supPart 標記給「只顯示支撐點」用：body=支柱/齒/底座（结构本体）、point=接觸點球
     const gStrut = mergeSafe(geoms.strut), gTip = mergeSafe(geoms.tip);
-    if (gStrut) V.supGroup.add(new THREE.Mesh(gStrut, V.matSup));
-    if (gTip) V.supGroup.add(new THREE.Mesh(gTip, V.matSup));
+    if (gStrut){ const mm=new THREE.Mesh(gStrut, V.matSup); mm.userData.supPart='body'; V.supGroup.add(mm); }
+    if (gTip){ const mm=new THREE.Mesh(gTip, V.matSup); mm.userData.supPart='body'; V.supGroup.add(mm); }
     const byType = {};
     for (const k of ['minima','over','stab','rein']){
       byType[k] = geoms.tpBy[k].length;
       const g = mergeSafe(geoms.tpBy[k]);
-      if (g) V.supGroup.add(new THREE.Mesh(g, V.matTpType[k]));
+      if (g){ const mm=new THREE.Mesh(g, V.matTpType[k]); mm.userData.supPart='point'; V.supGroup.add(mm); }
     }
     S.supportStat = { points: kept.length, byType, volSupMM3: volSup, volRaftMM3: volRaft,
                       volMM3: volSup + volRaft, braces,
                       pts: kept.map(p=>[p.x, p.z, p.top]) };   // 接觸點世界座標 [x,z,y]，供驗證判定支撐涵蓋
   });
+  applySupDisplay();   // 依目前選擇的顯示方式套用新產生的支撐（透明度/只顯示支撐點）
   $('#legTp').textContent = F(S.sup.tpSize);
   updateAllUI();
 }
@@ -2079,7 +2094,23 @@ function addRaftLabel(m, cx, topY, cz, R){
     new THREE.MeshBasicMaterial({ map:tex, transparent:true, depthWrite:false }));
   pl.rotation.x = -Math.PI/2;
   pl.position.set(cx, topY + 0.15, cz);
+  pl.userData.supPart = 'body';   // 底座標籤：只顯示支撐點模式下沒有底座，標籤也一併隱藏
   V.supGroup.add(pl);
+}
+
+/* 支撐顯示方式：實體／半透明／只顯示支撐點（純視覺切換，不重新生成幾何）。
+   材料是共用單例(V.matSup/V.matTpType)，故切換立即生效、跨次 generateSupports() 持續有效。 */
+const SUP_DISPLAY_OPACITY = { solid:1, transparent:.35, points:1 };
+function applySupDisplay(){
+  const mode = S.supDisplay || 'solid';
+  const op = SUP_DISPLAY_OPACITY[mode] ?? 1;
+  const isTransparent = mode === 'transparent';
+  V.matSup.transparent = isTransparent; V.matSup.opacity = op;
+  for (const k of Object.keys(V.matTpType)){
+    V.matTpType[k].transparent = isTransparent; V.matTpType[k].opacity = op;
+  }
+  const showBody = mode !== 'points';   // 只顯示支撐點：隱藏支柱/齒/底座，只留接觸點球
+  V.supGroup.children.forEach(c=>{ if (c.userData && c.userData.supPart==='body') c.visible = showBody; });
 }
 
 /* ============================== 12. AI 最佳化 ============================== */
@@ -2580,6 +2611,22 @@ function renderStep(){
       supTg.appendChild(b);
     }
     B.appendChild(supTg);
+
+    if (S.supportsOn){
+      B.appendChild(el('div','lbl','支撐顯示方式'));
+      const dispRow = el('div','segRow');
+      for (const [key, lab] of [['solid','實體顯示'],['transparent','半透明顯示'],['points','只顯示支撐點']]){
+        const b = el('button','seg'+((S.supDisplay||'solid')===key?' on':''), lab);
+        b.addEventListener('click', ()=>{
+          if ((S.supDisplay||'solid')===key) return;
+          S.supDisplay = key;
+          applySupDisplay();
+          renderStep();
+        });
+        dispRow.appendChild(b);
+      }
+      B.appendChild(dispRow);
+    }
 
     B.appendChild(el('div','lbl','支撐材（參數對齊 PreForm 3.51+）'));
     const sb = el('div','mbox');
