@@ -1412,11 +1412,25 @@ function renderAlerts() {
 }
 
 // ══ 總覽 ══
+// 非材料品項：機台配件（攪拌器／樹脂槽），不是樹脂耗材，不該被當成「待命名的新材料」提示
+// 只影響下方的命名提示橫幅；其餘（總覽卡片、庫存加總）維持現狀
+const NON_MATERIAL_ITEMS = new Set([
+    'formlabs form 4 mixer',
+    'formlabs form 4 resin tank',
+    'formlabs form 4l mixer',
+    'formlabs form 4l resin tank',
+]);
+// 比對用正規化：忽略大小寫與多餘空白
+function isNonMaterialItem(m) {
+    return NON_MATERIAL_ITEMS.has(String(m || '').trim().replace(/\s+/g, ' ').toLowerCase());
+}
+
 // 新材料未命名提示：Formlabs 自動抓到的代碼，尚未有內建名稱也未手動命名者
 function renderNewMaterialBanner(mats) {
     const banner = document.getElementById('newmat-banner');
     if(!banner) return;
     const unnamed = (mats||[]).filter(m =>
+        !isNonMaterialItem(m) &&
         !FAMILY_TO_NAME[m] && !CODE_TO_NAME[m] && !(inv.matNames && inv.matNames[m]));
     if(!unnamed.length || !(currentUser && currentUser.role === 'admin')){ banner.classList.add('hidden'); return; }
     document.getElementById('newmat-count').textContent = `${unnamed.length} 項`;

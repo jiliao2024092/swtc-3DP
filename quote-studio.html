@@ -202,7 +202,7 @@ button{font-family:inherit}
 .fcheck .chk.defer .t{color:var(--ink4)}
 
 /* ============ 擺放面板（PreForm 式） ============ */
-#placePanel{position:absolute;top:80px;right:72px;width:calc(218px * var(--fs));padding:12px;z-index:17;display:none}
+#placePanel{position:absolute;top:104px;right:72px;width:calc(218px * var(--fs));padding:12px;z-index:17;display:none}
 #placePanel.open{display:block}
 #placePanel h4{font-size:calc(12px * var(--fs));display:flex;justify-content:space-between;align-items:center}
 #placePanel h4 .x{color:var(--ink4);cursor:pointer;font-weight:400}
@@ -296,7 +296,10 @@ body.big{--fs:1.16}
 .costTotal b{font-family:var(--mono);color:var(--accent);font-size:calc(17px * var(--fs))}
 
 /* ============ right module rail + panel ============ */
-#rail{position:absolute;top:80px;right:14px;display:flex;flex-direction:column;gap:5px;z-index:16;padding:6px;border-radius:10px}
+/* top 從 80px 改 104px：右上角視角方塊(#cubeWrap 在 #topbar 內，z-index 20)
+   往下延伸到 95px，原本會蓋住工具列最上方的收合鈕與展開鈕，點不到。
+   104px = 方塊底部 95px + 9px 間距。#modPanel / #placePanel 一起下移保持對齊。 */
+#rail{position:absolute;top:104px;right:14px;display:flex;flex-direction:column;gap:5px;z-index:16;padding:6px;border-radius:10px}
 .railBtn{width:42px;height:42px;border-radius:8px;border:1px solid transparent;background:transparent;
   cursor:pointer;font-size:calc(16px * var(--fs));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:var(--ink3)}
 .railBtn small{font-size:calc(8px * var(--fs));font-weight:600;transform:scale(.92)}
@@ -304,9 +307,11 @@ body.big{--fs:1.16}
 .railBtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #railHide{width:42px;height:20px;border:1px solid var(--line);background:var(--panelBg);border-radius:6px;cursor:pointer;color:var(--ink3);font-size:calc(10px * var(--fs))}
 #railHide:hover{color:var(--accent);border-color:var(--accent)}
-#railShow{position:absolute;top:80px;right:14px;z-index:15;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:calc(11.5px * var(--fs));font-weight:600;color:var(--ink3);display:none}
+/* 不在這裡寫 display:none —— 初始隱藏改用 HTML inline style（同 #stepShow）。
+   JS 展開時是 style.display=''，空字串會還原成 CSS 值，寫在這裡會導致永遠展不開。 */
+#railShow{position:absolute;top:104px;right:14px;z-index:15;padding:8px 6px;border-radius:8px;cursor:pointer;font-size:calc(11.5px * var(--fs));font-weight:600;color:var(--ink3)}
 #railShow:hover{color:var(--accent)}
-#modPanel{position:absolute;top:80px;right:72px;width:calc(302px * var(--fs));max-height:calc(100vh - 175px);overflow-y:auto;
+#modPanel{position:absolute;top:104px;right:72px;width:calc(302px * var(--fs));max-height:calc(100vh - 199px);overflow-y:auto;
   padding:14px;z-index:15;display:none}
 #modPanel::-webkit-scrollbar{width:5px}
 #modPanel::-webkit-scrollbar-thumb{background:#cfd6dd;border-radius:3px}
@@ -470,7 +475,7 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
   <button class="railBtn" data-mod="cloud" title="雲端管理">☁<small>雲端</small></button>
   <button class="railBtn" data-mod="admin" id="railAdmin" title="材料與價格設定（限管理員／主管）" style="display:none">⚙<small>設定</small></button>
 </div>
-<button id="railShow" class="glass-sm" title="展開右側工具列">◀</button>
+<button id="railShow" class="glass-sm" title="展開右側工具列" style="display:none">◀</button>
 <div id="modPanel" class="glass">
   <div id="modHead"><b id="modTitle"></b><button id="modClose">✕</button></div>
   <div id="modBody"></div>
