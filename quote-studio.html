@@ -390,6 +390,8 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 #dragOverlay{position:absolute;inset:0;z-index:70;background:rgba(12,122,153,.12);border:3px dashed var(--accent);
   display:none;align-items:center;justify-content:center;font-size:calc(18px * var(--fs));font-weight:700;color:var(--accent)}
 #dragOverlay.show{display:flex}
+/* 左鍵框選拉出的矩形；pointer-events:none 避免蓋住 canvas 導致 pointer capture 收不到 move/up */
+#selBox{position:fixed;z-index:19;border:1.5px dashed var(--accent);background:rgba(12,122,153,.12);display:none;pointer-events:none}
 
 /* ============ quote modal ============ */
 #quoteModal{position:absolute;inset:0;z-index:80;background:rgba(10,14,20,.35);display:none;align-items:center;justify-content:center}
@@ -528,6 +530,7 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 <div id="busy"><div class="spin"></div><div id="busyMsg">處理中…</div></div>
 <div id="toast"></div>
 <div id="dragOverlay">📂 放開以載入模型檔案</div>
+<div id="selBox"></div>
 <div id="gizmoTip"></div>
 <input type="file" id="fileInput" accept=".stl,.obj,.3mf,.step,.stp" multiple style="display:none">
 
@@ -879,12 +882,13 @@ function initViewer(){
   V.markGroup = new THREE.Group();    // 孤島/風險/排液孔標記
   V.scene.add(V.modelGroup, V.supGroup, V.markGroup);
 
-  // 軌道控制 + PreForm 式操縱器（環=繞軸旋轉、拖模型=移動、點空白=轉視角）
+  // 軌道控制 + PreForm 式操縱器（環=繞軸旋轉、拖模型=移動、右鍵=轉視角、中鍵=平移、左鍵空白處=框選）
   V.theta = 0.62; V.phi = 1.08; V.radius = 300; V.target = new THREE.Vector3(0,38,0);
   let dragging=false, panning=false, px=0, py=0;
   let dragModel=false, moved=false, grabPlane=null, grabMeshPos=null;
   let ringAxis=null, ringStart=0, ringDelta=0;
   let dragClampNotified=false;   // 硬性邊界提醒：同一次拖曳只跳一次
+  let boxSelecting=false, boxStart={x:0,y:0};   // 左鍵拖曳空白處＝框選矩形
   V.ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
   const setRay = e => {
     const r = canvas.getBoundingClientRect();
@@ -922,6 +926,31 @@ function initViewer(){
     const v = o.clone().addScaledVector(d, t).sub(P);
     return Math.atan2(v.dot(B.w), v.dot(B.u));
   };
+  // 左鍵框選：拉出矩形，鬆開時比對模型世界包圍盒投影到螢幕座標後是否與矩形重疊
+  const selBoxEl = $('#selBox');
+  const updateSelBox = (a,b) => {
+    selBoxEl.style.left   = Math.min(a.x,b.x)+'px';
+    selBoxEl.style.top    = Math.min(a.y,b.y)+'px';
+    selBoxEl.style.width  = Math.abs(b.x-a.x)+'px';
+    selBoxEl.style.height = Math.abs(b.y-a.y)+'px';
+  };
+  const finishBoxSelect = (a,b,didMove) => {
+    const m = activeModel();
+    // 沒真的拖出矩形（只是點一下）或沒有模型可選 → 視為點空白：取消選取（沿用舊行為）
+    if (!didMove || !m || !m.mesh || Math.hypot(b.x-a.x,b.y-a.y) < 3){ deselectModel(); return; }
+    const x0=Math.min(a.x,b.x), x1=Math.max(a.x,b.x), y0=Math.min(a.y,b.y), y1=Math.max(a.y,b.y);
+    const box = m.worldBB;
+    const r = canvas.getBoundingClientRect();
+    const v = new THREE.Vector3();
+    let sx0=Infinity, sx1=-Infinity, sy0=Infinity, sy1=-Infinity;
+    for (let i=0;i<8;i++){
+      v.set(i&1?box.max[0]:box.min[0], i&2?box.max[1]:box.min[1], i&4?box.max[2]:box.min[2]).project(V.camera);
+      const sx = r.left + (v.x*0.5+0.5)*r.width, sy = r.top + (1-(v.y*0.5+0.5))*r.height;
+      sx0=Math.min(sx0,sx); sx1=Math.max(sx1,sx); sy0=Math.min(sy0,sy); sy1=Math.max(sy1,sy);
+    }
+    const overlap = sx1>=x0 && sx0<=x1 && sy1>=y0 && sy0<=y1;
+    if (overlap) selectModel(); else deselectModel();
+  };
   const updateCam = () => {
     V.camera.position.set(
       V.target.x + V.radius*Math.sin(V.phi)*Math.cos(V.theta),
@@ -935,8 +964,9 @@ function initViewer(){
   canvas.addEventListener('pointerdown', e=>{
     px=e.clientX; py=e.clientY; moved=false;
     canvas.setPointerCapture(e.pointerId);
-    if (e.button===2 || e.button===1){ panning=true; return; }
-    if (e.button!==0) return;
+    if (e.button===1){ panning=true; return; }    // 中鍵：平移
+    if (e.button===2){ dragging=true; return; }    // 右鍵：旋轉視角（不論按在模型或空白處）
+    if (e.button!==0) return;                        // 以下皆左鍵
     const axis = pickRing(e);                    // 旋轉環優先
     if (axis){
       const a0 = ringAngleAt(axis, e);
@@ -944,26 +974,33 @@ function initViewer(){
     }
     const hit = pickModel(e);
     if (hit && S.faceDownMode){ applyFaceDown(hit); return; }
-    if (hit){                                   // 點到模型 → 選取並準備拖移
+    if (hit){                                   // 左鍵點到模型 → 選取並準備拖移（保留原行為，與框選不衝突）
       selectModel();
       dragModel=true;
       dragClampNotified=false;                  // 新的一次拖曳 → 重置邊界提醒
       grabPlane = planeHit(e) || new THREE.Vector3();
       grabMeshPos = activeModel().mesh.position.clone();
       canvas.style.cursor='grabbing';
-    } else {                                     // 點到空白 → 轉視角並取消選取
-      deselectModel();
-      dragging=true;
+    } else {                                     // 左鍵點空白 → 開始框選矩形，鬆開時再判定選取/取消
+      boxSelecting = true;
+      boxStart = {x:e.clientX, y:e.clientY};
+      updateSelBox(boxStart, boxStart);
+      selBoxEl.style.display = 'block';
     }
   });
-  canvas.addEventListener('pointerup', ()=>{
+  canvas.addEventListener('pointerup', e=>{
     if (ringAxis){ const ax=ringAxis, d=ringDelta; ringAxis=null; commitGizmo(ax, d); }
     if (dragModel){ dragModel=false; canvas.style.cursor='';
       if (moved) commitModelDrag(); }
+    if (boxSelecting){
+      boxSelecting=false;
+      selBoxEl.style.display='none';
+      finishBoxSelect(boxStart, {x:e.clientX, y:e.clientY}, moved);
+    }
     dragging=false; panning=false;
   });
   canvas.addEventListener('pointermove', e=>{
-    if (!dragging && !panning && !dragModel && !ringAxis) return;
+    if (!dragging && !panning && !dragModel && !ringAxis && !boxSelecting) return;
     const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
     if (Math.abs(dx)+Math.abs(dy) > 1) moved=true;
     if (ringAxis){                               // 拖曳旋轉環：1° 吸附，Shift 自由角度
@@ -998,13 +1035,14 @@ function initViewer(){
       }
       return;
     }
+    if (boxSelecting){ updateSelBox(boxStart, {x:e.clientX, y:e.clientY}); return; }
     if (dragging){ V.theta += dx*0.008; V.phi = Math.min(Math.PI-0.01, Math.max(0.01, V.phi - dy*0.006)); }
-    else { const s=V.radius*0.0016;
+    else if (panning){ const s=V.radius*0.0016;
       const right=new THREE.Vector3().subVectors(V.camera.position,V.target).cross(V.camera.up).normalize();
       V.target.addScaledVector(right, dx*s); V.target.y += dy*s; }
     updateCam();
   });
-  canvas.addEventListener('contextmenu', e=>e.preventDefault());
+  canvas.addEventListener('contextmenu', e=>e.preventDefault());   // 右鍵已改為旋轉視角，需擋掉瀏覽器原生選單
   canvas.addEventListener('wheel', e=>{ e.preventDefault(); V.radius=Math.min(1200,Math.max(60,V.radius+e.deltaY*0.4)); updateCam(); }, {passive:false});
 
   const resize = () => { const w=innerWidth,h=innerHeight;
