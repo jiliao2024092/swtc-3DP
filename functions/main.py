@@ -138,11 +138,22 @@ def material_display_name(code: Optional[str]) -> Optional[str]:
     return FAMILY_TO_NAME.get(fam, code)
 
 
+# 版本號特例：不同代碼其實是「同一個實際產品版本」，末 2 碼不能直接拿來比新舊。
+# FLRG1002 與 FLRG1011 在 Formlabs 對照中都是 "Rigid 10K V1.1"，但末 2 碼是 02 vs 11，
+# 直接比會把 FLRG1002 判成舊版而不扣庫存 → 這裡把它拉平成跟 FLRG1002 同一個版本號。
+VERSION_ALIAS = {
+    "FLRG1011": 2,   # = FLRG1002，同為 Rigid 10K V1.1
+}
+
+
 def raw_version_num(code: Optional[str]) -> Optional[int]:
-    """取 Formlabs 代碼末 2 碼當版本號（數字），供比較同家族的新舊版本。非標準代碼回傳 None。"""
+    """取 Formlabs 代碼末 2 碼當版本號（數字），供比較同家族的新舊版本。非標準代碼回傳 None。
+    VERSION_ALIAS 中的代碼改用對照表指定的版本號（同版本不同代碼的特例）。"""
     if not code:
         return None
     c = str(code).upper()
+    if c in VERSION_ALIAS:
+        return VERSION_ALIAS[c]
     if re.fullmatch(r"FL[A-Z0-9]{6}", c) and any(ch.isdigit() for ch in c) and c[6:8].isdigit():
         return int(c[6:8])
     return None
