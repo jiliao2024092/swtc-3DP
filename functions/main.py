@@ -148,6 +148,27 @@ def raw_version_num(code: Optional[str]) -> Optional[int]:
     return None
 
 
+def is_outdated_version(raw_code: Optional[str], *latest_dicts) -> bool:
+    """判斷 raw_code 是否為該材料家族的「舊版本」（版本號小於已知最新版本）。
+
+    用途：消耗以最新版本計算 —— 例如家族最新為 FLTO2002 時，FLTO2001 的消耗
+    不扣備料庫存（備料存的是新版本，舊版罐的用量不該扣新版庫存）。
+    保守判定：無法解析版本號、或該家族尚未看過更新版本時一律回 False（照常扣）。
+    """
+    v = raw_version_num(raw_code)
+    if v is None:
+        return False
+    fam = family_code(raw_code)
+    best = -1
+    for d in latest_dicts:
+        if not d:
+            continue
+        cur_v = raw_version_num(d.get(fam))
+        if cur_v is not None and cur_v > best:
+            best = cur_v
+    return best > v
+
+
 def note_family_latest_version(raw_code: Optional[str], family_latest: dict) -> None:
     """記錄每個材料家族目前看過的最新版本原始代碼（只認可解析出版本號的標準代碼），
     供前端自動判斷「最新版本」使用，取代過去手動維護 DEFAULT_DISABLED_NAMES 的做法。
@@ -585,6 +606,15 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 if _is_debug_print:
                     print(f"[sync][DEBUG目標print] 採用時間 ts={finished!r} → tsDate={ts_dt.isoformat()}")
 
+                # 消耗以最新版本計算：舊版本代碼（如家族已看過 FLTO2002 時的 FLTO2001）
+                # 只記錄不扣庫存 —— 備料存的是新版本，舊版罐用量不該扣新版庫存。
+                outdated = is_outdated_version(raw_material, family_latest, family_latest_seen)
+                will_deduct = (not backfill) and (guid not in deducted) and (not outdated)
+                if outdated:
+                    stats["skipped_outdated_deduct"] = stats.get("skipped_outdated_deduct", 0) + 1
+                    print(f"[sync] 舊版本不扣庫存: {raw_material!r}(家族最新非此版) "
+                          f"guid={guid[:8]} ml={volume_num}")
+
                 new_history_entries.append({
                     "guid":     guid,
                     "data": {
@@ -593,6 +623,11 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         "type":        record_type,
                         "material":    material,
                         "material_raw": raw_material,   # 原始代碼（未截斷版本），供日後版本判斷用；舊紀錄沒有此欄位
+                        # 這筆是否真的扣過備料庫存；前端刪除紀錄時據此決定要不要回補
+                        # （沒扣過就回補會憑空多出庫存）。舊紀錄無此欄位 → 前端視為 True（沿用舊行為）
+                        "stock_deducted":     will_deduct,
+                        "deduct_skip_reason": ("outdated_version" if outdated
+                                               else ("backfill" if backfill else None)),
                         "printer":     alias,
                         "ml":          volume_num,
                         "note":        pr.get("name", "") or f"列印 {guid[:8]}",
@@ -605,8 +640,8 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 processed.add(guid)
                 stats["processed_new"] += 1
 
-                # ── 消耗扣備料庫存：每筆 print 只扣一次（backfill 模式不扣，避免重設時誤扣）──
-                if not backfill and guid not in deducted:
+                # ── 消耗扣備料庫存：每筆 print 只扣一次（backfill 不扣、舊版本不扣）──
+                if will_deduct:
                     stock_deductions[material] = stock_deductions.get(material, 0.0) + volume_num
                     deducted.add(guid)
             except Exception as e:

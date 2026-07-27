@@ -311,6 +311,23 @@
         </div>
     </div>
 
+    <!-- 新材料未命名提示：Formlabs 同步抓到新代碼但尚未設定顯示名稱時出現 -->
+    <div id="newmat-banner" class="hidden bg-[var(--warn-soft)] border border-[var(--warn-border)] rounded-xl p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+            <div class="flex-shrink-0 w-9 h-9 rounded-full bg-[var(--warn-soft)] flex items-center justify-center">
+                <i data-lucide="sparkles" class="w-5 h-5 text-[var(--warn)]"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-[var(--warn)] mb-1 flex items-center gap-2">偵測到新材料，建議設定顯示名稱
+                    <span id="newmat-count" class="text-xs bg-[var(--warn-soft)] text-[var(--warn)] px-2 py-0.5 rounded-full font-medium"></span>
+                </p>
+                <p class="text-xs text-[var(--ink-4)] mb-2">以下代碼由 Formlabs 列印紀錄自動抓取，目前直接以原始代碼顯示。</p>
+                <div id="newmat-items" class="flex flex-wrap gap-2 mb-2"></div>
+                <button data-admin-only onclick="showSafetyModal()" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--bg)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">✎ 設定顯示名稱</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Tab 導航 -->
     <div class="bg-[var(--bg)] rounded-xl shadow-sm border border-[var(--line-soft)] overflow-hidden">
         <div class="bg-[var(--bg-soft)] px-4 py-2 flex items-center gap-1 border-b border-[var(--line-soft)]">
@@ -1395,9 +1412,26 @@ function renderAlerts() {
 }
 
 // ══ 總覽 ══
+// 新材料未命名提示：Formlabs 自動抓到的代碼，尚未有內建名稱也未手動命名者
+function renderNewMaterialBanner(mats) {
+    const banner = document.getElementById('newmat-banner');
+    if(!banner) return;
+    const unnamed = (mats||[]).filter(m =>
+        !FAMILY_TO_NAME[m] && !CODE_TO_NAME[m] && !(inv.matNames && inv.matNames[m]));
+    if(!unnamed.length || !(currentUser && currentUser.role === 'admin')){ banner.classList.add('hidden'); return; }
+    document.getElementById('newmat-count').textContent = `${unnamed.length} 項`;
+    document.getElementById('newmat-items').innerHTML = unnamed.map(m=>{
+        const raw = (inv.family_latest_version && inv.family_latest_version[m]) || m;
+        return `<span class="text-xs font-mono px-2 py-1 rounded-md bg-[var(--bg)] border border-[var(--warn-border)] text-[var(--ink-2)]" title="家族代碼 ${escHtml(m)}">${escHtml(raw)}</span>`;
+    }).join('');
+    banner.classList.remove('hidden');
+    lucide.createIcons();
+}
+
 function renderOverview() {
     const grid=document.getElementById('overview-grid');
     let mats=getAllMaterials();
+    renderNewMaterialBanner(mats);
     if(!mats.length){ grid.innerHTML='<div class="col-span-full text-center text-[var(--ink-5)] py-8">尚無庫存資料，請先在「機台樹脂罐」展開手動輸入，或新增入庫。</div>'; renderOverviewStats([]); return; }
     // 排序：需叫料優先（依嚴重程度：總庫存缺口大者在前），其次依備料庫存高到低
     mats = mats.slice().sort((a,b)=>{
@@ -1966,6 +2000,22 @@ async function saveStockIn() {
     if(!matInput){ showToast('請輸入材料種類','error'); return; }
     const mat = matCode(matInput);  // 名稱→代碼
 
+    // 防呆：輸入無法對應到 Formlabs 家族代碼時（打錯字／自創名稱），會以「自訂名稱」
+    // 另開一筆獨立庫存，日後 Formlabs 同步進來的正式代碼不會自動併入 → 庫存被拆成兩份。
+    // 這是材料家族正規化最容易踩的坑，先攔一次讓使用者確認。
+    const isKnownFamily = /^FL[A-Z0-9]{4,6}$/i.test(mat) && /\d/.test(mat);
+    if(!isKnownFamily){
+        const near = Object.values(CODE_TO_NAME).filter(n =>
+            n.toLowerCase().includes(matInput.toLowerCase()) ||
+            matInput.toLowerCase().includes(n.toLowerCase().split(' ')[0]));
+        const hint = near.length ? `\n\n您是不是要選：${[...new Set(near)].slice(0,5).join('、')}` : '';
+        if(!confirm(
+            `「${matInput}」不是內建材料名稱或 Formlabs 代碼。\n\n` +
+            `將以自訂名稱建立獨立庫存；日後 Formlabs 同步到的正式代碼不會自動併入，` +
+            `庫存可能被拆成兩筆。\n\n建議改用清單中的正式名稱，或直接輸入 Formlabs 代碼（如 FLTO2002）。${hint}\n\n` +
+            `仍要以「${matInput}」建立嗎？`)) return;
+    }
+
     const liters = parseFloat(document.getElementById('stock-qty').value);
     if(isNaN(liters) || liters <= 0){ showToast('請輸入有效的數量 (L)','error'); return; }
 
@@ -2306,7 +2356,10 @@ function renderHistory() {
             <td class="p-3 font-medium text-[var(--ink)] text-sm">${matName(h.material)||'—'}</td>
             <td class="p-3 text-sm text-[var(--ink-3)]">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
-            <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}</td>
+            <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}${
+                isConsumeLike && h.stock_deducted === false
+                ? `<span class="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)] border border-[var(--warn-border)] font-normal" title="${h.deduct_skip_reason==='outdated_version'?'舊版本代碼（家族已有更新版本）→ 消耗以最新版本計算，此筆不扣備料庫存':'此筆未扣除備料庫存'}">未扣庫存</span>`
+                : ''}</td>
             <td class="p-3 text-xs text-[var(--ink-5)]">
                 <div class="flex items-center gap-1.5">
                     <span class="truncate max-w-[200px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
@@ -2937,9 +2990,15 @@ async function deleteHistoryEntry(id) {
     if (!h) return;
     const label = `${matName(h.material)||''} · ${printerDisplay(h.printer)||''} · ${h.note||''}`;
     const ml = Number(h.ml) || 0;
-    const restockMsg = (ml > 0 && h.type !== 'manual')
+    // 這筆當初有沒有真的扣過庫存？沒扣過就不能回補（否則憑空多出庫存）。
+    // 舊紀錄沒有 stock_deducted 欄位 → undefined，視為 true 沿用舊行為；只有明確 false 才跳過。
+    const didDeduct = h.stock_deducted !== false;
+    const willRestock = ml > 0 && h.type !== 'manual' && didDeduct;
+    const restockMsg = willRestock
         ? `\n\n刪除後會將此筆消耗量 ${ml.toFixed(1)} mL 加回「${matName(h.material)}」備料庫存。`
-        : '';
+        : (ml > 0 && h.type !== 'manual' && !didDeduct
+            ? `\n\n此筆當初${h.deduct_skip_reason==='outdated_version'?'因屬舊版本代碼':''}未扣除庫存，刪除不會回補。`
+            : '');
     if (!confirm(`確定要刪除這筆紀錄嗎？\n\n${label}${restockMsg}\n\n此操作無法復原。`)) return;
     try {
         await deleteDoc(doc(db, 'inventory_history', id));
@@ -2948,7 +3007,7 @@ async function deleteHistoryEntry(id) {
         rebuildInvHistory();
         // 回補庫存：只對「消耗/中止」類型且有實際用量的紀錄回補，手動調整類(manual)紀錄本身
         // 不代表真實列印消耗，刪除它不該動庫存數字
-        if (ml > 0 && h.type !== 'manual') {
+        if (willRestock) {
             const fam = matCode(h.material);
             if (!inv.stock[fam]) inv.stock[fam] = { bottles: 0, total_ml: 0 };
             inv.stock[fam].total_ml = Math.round(((inv.stock[fam].total_ml || 0) + ml) * 10) / 10;
@@ -2962,7 +3021,8 @@ async function deleteHistoryEntry(id) {
         renderOverview();
         renderStockTable();
         if (currentTab === 'monthly') renderMonthly();
-        showToast(ml > 0 && h.type !== 'manual' ? `已刪除並回補庫存 ${ml.toFixed(1)} mL` : '已刪除該筆紀錄', 'success');
+        showToast(willRestock ? `已刪除並回補庫存 ${ml.toFixed(1)} mL`
+            : (ml > 0 && h.type !== 'manual' && !didDeduct ? '已刪除（該筆未扣過庫存，不回補）' : '已刪除該筆紀錄'), 'success');
     } catch (err) {
         console.error('[deleteHistoryEntry] 失敗:', err);
         showToast('刪除失敗：' + err.message, 'error');
