@@ -360,7 +360,7 @@
                 </p>
                 <p class="text-xs text-[var(--ink-4)] mb-2">以下代碼由 Formlabs 列印紀錄自動抓取，目前直接以原始代碼顯示。</p>
                 <div id="newmat-items" class="flex flex-wrap gap-2 mb-2"></div>
-                <button data-admin-only onclick="showSafetyModal()" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--bg)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">✎ 設定顯示名稱</button>
+                <button data-inv-manage-only onclick="showSafetyModal()" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--bg)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">✎ 設定顯示名稱</button>
             </div>
         </div>
     </div>
@@ -394,7 +394,7 @@
                 <button class="tab-btn" id="tab-monthly" onclick="switchTab('monthly')">月度分析</button>
             </div>
             <div class="ml-auto flex gap-2">
-                <button data-admin-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-soft)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">
+                <button data-inv-manage-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-soft)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">
                     <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
                 </button>
                 <button onclick="exportInventoryExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
@@ -779,6 +779,14 @@ function canDeleteRecords() {
     return p.includes('delete_board') || p.includes('delete_issues');
 }
 function isAdminUser() { return !!(currentUser && currentUser.role === 'admin'); }
+// 「材料庫存設定」權限（安全庫存設定／顯示名稱、L樹脂槽標記）：admin 或有 manage_inventory 的主管，
+// 與 canDeleteRecords 同一套模式——role 只有三級分不出主管，另外檢查 permissions 陣列
+function canManageInventorySettings() {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    const p = currentUser.permissions || [];
+    return p.includes('manage_inventory');
+}
 let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
 // 消耗紀錄載入範圍：預設只訂閱最近 30 天，使用者點「載入更早」按鈕往前推一個月
 let historySinceDate = null;  // Date 物件 - 訂閱起點
@@ -998,6 +1006,9 @@ function applyRoleUI() {
     });
     document.querySelectorAll('[data-delete-record-only]').forEach(el=>{
         el.style.display = canDeleteRecords() ? '' : 'none';
+    });
+    document.querySelectorAll('[data-inv-manage-only]').forEach(el=>{
+        el.style.display = canManageInventorySettings() ? '' : 'none';
     });
     lucide.createIcons();
 }
@@ -2006,18 +2017,20 @@ function renderStockTable() {
         const low=isLowStock(m);
         const stockLiters = getStockTotal(m) / 1000;   // 顯示家族加總值（不是單一 key）
         const me=m.replace(/'/g,"\\'");
-        // 編輯模式下所有列的 input 啟用
+        // 編輯模式下所有列的 input 啟用；L樹脂槽標記另外看「材料庫存設定」權限（跟安全庫存設定同一套），
+        // 不是隨便一個 editor 都能改
         const inputDisabled = !isEditor || !isStockEditMode;
+        const ltankDisabled = !canManageInventorySettings() || !isStockEditMode;
         const tr=document.createElement('tr');
         tr.className = isStockEditMode ? 'bg-[var(--accent-soft)]/30 hover:bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-soft)]';
         tr.setAttribute('data-material', m);
         tr.innerHTML=`
             <td class="p-3 font-medium text-[var(--ink)]">${matName(m)}</td>
             <td class="p-3 text-center">
-                ${isAdminUser()
-                    ? `<label class="inline-flex items-center gap-1.5 cursor-pointer select-none ${inputDisabled?'cursor-not-allowed opacity-60':''}">
+                ${canManageInventorySettings()
+                    ? `<label class="inline-flex items-center gap-1.5 cursor-pointer select-none ${ltankDisabled?'cursor-not-allowed opacity-60':''}">
                         <input type="checkbox" class="stock-ltank-input w-4 h-4 accent-[var(--indigo)] cursor-pointer disabled:cursor-not-allowed"
-                            ${hasLTank(m)?'checked':''} ${inputDisabled?'disabled':''}
+                            ${hasLTank(m)?'checked':''} ${ltankDisabled?'disabled':''}
                             title="勾選＝配有 Form 4L 樹脂槽（進入編輯模式打勾後按「儲存全部」才會生效）">
                         <span class="text-[11px] text-[var(--ink-4)]">L槽</span>
                        </label>`

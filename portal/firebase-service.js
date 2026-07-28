@@ -39,6 +39,7 @@
     view_inventory:'查看材料庫存',
     view_quote:    '使用 3D 列印估價',
     manage_quote_pricing: '設定 3D列印估價 材料與價格',
+    manage_inventory: '設定材料庫存（安全庫存／L樹脂槽標記）',
     admin:         '管理員（所有權限）',
   };
 
@@ -53,9 +54,9 @@
 
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','admin'],
-    // 主管：比工程師多「刪除」權與「估價材料/價格設定」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
-    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing'],
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','admin'],
+    // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory'],
     operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
     viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote'],
   };
