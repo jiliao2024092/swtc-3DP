@@ -26,7 +26,7 @@
 2. 點該檔案 → ✏️ Edit
 3. 改完內容
 4. **若改了 `portal/workboard.js`、`portal/issues.js`、`portal/firebase-*.js`**：
-   - 同時打開 `portal/portal.html`，升該支 `.js` 對應的 `?v=` cache 版本號（每支 `.js` 各自獨立編號，只需升有改動的那支；目前 `workboard.js`=`20260708h`、`firebase-service.js`=`20260708g`、`issues.js`/`firebase-config.js`=`20260708f`）
+   - 同時打開 `portal/portal.html`，升該支 `.js` 對應的 `?v=` cache 版本號（每支 `.js` 各自獨立編號，只需升有改動的那支；目前 `workboard.js`=`20260708j`、`issues.js`=`20260708k`、`firebase-service.js`=`20260708g`、`firebase-config.js`=`20260708f`——**版本號會持續往上升，這裡僅供參考，實際請直接看 `portal/portal.html` 內對應 `<script src="...?v=...">` 的當下數值**）
    - 只改 portal.html 本身（CSS / React 元件）則不需升號
 5. Commit changes → Commit directly to `main`
 6. 等 GitHub Pages 自動部署（約 1-2 分鐘）
@@ -156,6 +156,10 @@ https://console.cloud.google.com/billing/projects/swtc-3dp-poc
 
 > **v2.2 新增**：同一材料家族出現新版本代碼（如 `FLTO2002`）時，Cloud Function 會自動記錄到 `inventory/main.family_latest_version`，`inventory.html` 顯示名稱會自動改用新版本對應的名稱——**不需要**每次新版本上市都手動改 `FAMILY_TO_NAME`。只有新增「全新材料家族」（前所未見的家族代碼）才需要照上面步驟手動補 `NAME_TO_CODE`/`CODE_TO_NAME`。
 
+> **v2.3 新增（消耗以最新版本計算的特例）**：若發現某個材料出現**兩個不同代碼、但其實是同一個實際版本**（像 `FLRG1002`/`FLRG1011` 都對應 "Rigid 10K V1.1"），代表 `is_outdated_version()` 單純比末 2 碼版本號會誤判其中一個代碼是舊版而停止扣庫存。處理方式是在 `functions/main.py` 的 `VERSION_ALIAS` 字典加一筆對照（讓兩者算出同一個版本號），**不要**改 `is_outdated_version`/`raw_version_num` 的比較邏輯本身。判斷依據：查 `NAME_TO_CODE`/`CODE_TO_NAME` 是否有兩個代碼對到同一個顯示名稱。
+>
+> 另外：Formlabs 回傳但**不是樹脂耗材**的品項（如 `Formlabs Form 4 Mixer`、`Formlabs Form 4 Resin Tank`）不該出現在「新材料未命名」提示裡——`inventory.html` 的 `NON_MATERIAL_ITEMS` 清單負責排除，若之後 Formlabs 新增其他型號的配件（如 Form 4L 的其他零件）誤跳出提示，比照現有項目加進這個清單即可（忽略大小寫與多餘空白比對）。
+
 ### 4.2 新增追蹤機台
 
 **Formlabs 樹脂罐/消耗自動同步**（需要程式改動）：
@@ -208,6 +212,12 @@ F12 → Console 看紅字：
 
 確認該主管帳號的 `permissions` 陣列有 `delete_board` 或 `delete_issues`（後台「使用者」分頁可查看/設定）。若權限正確仍失敗，檢查 `firestore.rules` 的 `inventory_history` delete 規則是否為最新部署版本（v2.2 起才開放主管，之前只有 admin）。
 
+### Q3.2a：某材料庫存都不會扣（v2.3）
+
+先看該材料的消耗紀錄是否都標示「未扣庫存」。若是，代表這些列印用的代碼版本號比系統目前記錄的最新版本舊，被 `is_outdated_version()` 判定為舊版而略過扣庫存（見 [02-TECHNICAL-REPORT.md](./02-TECHNICAL-REPORT.md) 第四章「消耗以最新版本計算」）。兩種可能：
+1. 該材料家族其實仍有舊版本備料瓶在用（不符合「備料只進新版本」的前提）→ 需評估是否要為該家族加白名單排除此規則
+2. 兩個代碼其實是同一個實際版本（像 `FLRG1002`/`FLRG1011`）→ 補一筆 `VERSION_ALIAS` 對照即可，見本文件第四章「新增材料代碼」
+
 ### Q3.2：工作看板「實際消耗量」沒有自動帶入
 
 1. 確認該工單有填 EF 單號
@@ -235,6 +245,10 @@ admin → 庫存頁 → 消耗紀錄 → 「🚫 去除重複」。Cloud Functio
 1. 確認在 Firebase Console → Authentication 列表中
 2. 確認 `users/{uid}` doc 存在（若無 → 手動建立，role:viewer）
 3. 嘗試「Reset password」
+
+### Q7.1：quote-studio 匯入 STEP 檔失敗（v2.3）
+
+STEP/STP 匯入依賴外部 CDN（`cdn.jsdelivr.net/npm/occt-import-js`）首次延遲載入 WASM 核心，若使用者網路擋外部 CDN 或該 CDN 暫時不可用會失敗，錯誤訊息會提示「CAD 核心載入失敗」。**STL/OBJ/3MF 不受影響**（純前端手寫解析器，無外部依賴）。排查：確認能連到 jsdelivr、換網路環境重試；若 CDN 長期不穩定，可考慮把 WASM 檔案改放進 repo 自行託管。
 
 ### Q8：自動部署 workflow 紅叉
 
@@ -357,5 +371,5 @@ gcloud firestore export gs://YOUR-BUCKET/backup-$(date +%Y%m%d) --project=swtc-3
 
 ---
 
-**最後更新**：2026/07/20
-**文件版本**：v2.2
+**最後更新**：2026/07/27
+**文件版本**：v2.3

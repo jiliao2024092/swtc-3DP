@@ -13,7 +13,7 @@ SWTC（3D列印設備代理商）內部管理系統。純 HTML/JS 前端（GitHu
 2. **不過度工程化**：能簡單解決就不加戲；修 bug 就修 bug。
 3. **不碰無關範圍**：不順手重構全世界。
 4. **做完必須驗證**：改完跑對應語法/邏輯檢查（見下）再交付。
-5. 思考過程用英文（省 token），結論與部署說明用中文。
+5. 思考過程用英文且減少顯示（省 token），結論與部署說明用中文。
 6. 例行小改用較省的模型（Haiku/Sonnet），複雜除錯再切較強模型控成本。
 
 ## 架構重點（避免改錯檔）
@@ -34,7 +34,7 @@ portal.html 是 React 外殼（React18 + Babel CDN + Firebase compat SDK），�
 
 ## 部署
 - 前端（根目錄檔或 portal 檔）：`git push` → GitHub Actions 自動部署 → 使用者 **Ctrl+Shift+R**（iframe cache 頑固，建議關分頁重開）
-- **改 portal 本地 js（issues.js/workboard.js/firebase-*.js）後，務必升 portal.html 對應那支 `.js` 的 `?v=` cache 版本號**（每支各自獨立編號，只升有改動的那支；目前 `workboard.js`=`20260708h`、`firebase-service.js`=`20260708g`、`issues.js`/`firebase-config.js`=`20260708f`）。只改 portal.html 自身（CSS/元件）不需升號
+- **改 portal 本地 js（issues.js/workboard.js/firebase-*.js）後，務必升 portal.html 對應那支 `.js` 的 `?v=` cache 版本號**（每支各自獨立編號，只升有改動的那支；版本號會持續往上升，實際數值請直接看 `portal/portal.html` 內對應 `<script src="...?v=...">`，不要照抄這裡的舊範例）。只改 portal.html 自身（CSS/元件）不需升號
 - Cloud Function：`git push`（functions/ 變動觸發），或 `firebase deploy --only functions --project swtc-3dp-poc`
 - `firestore.rules`：`git push` 即自動部署；**新增權限保護某個 collection/doc 時，務必檢查有沒有更泛用的萬用字元規則（如 `match /settings/{docId}`）會先蓋過具體路徑規則**——Firestore rules 是「最具體路徑優先」，不是疊加 OR，泛用規則若寫在前面且路徑更廣，會讓新權限完全不生效（實際踩過：`manage_quote_pricing`、`inventory_history` 主管刪除權限，都要在泛用規則之前另外寫具體路徑）
 

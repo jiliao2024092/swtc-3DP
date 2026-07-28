@@ -1,8 +1,8 @@
 # SWTC 3D 列印系統 — 技術原理報告
 
-> **版本**：v2.2
+> **版本**：v2.3
 > **適用範圍**：開發 / 維護人員
-> **重點**：架構決策、API 對接、材料計算邏輯
+> **重點**：架構決策、API 對接、材料計算邏輯、quote-studio.html 估價引擎
 
 ---
 
@@ -192,6 +192,27 @@ family = code[:6] if re.match(r'^FL[A-Z0-9]{4}[0-9]', code) else code
 - 只在**寫入前**、只影響**之後同步進來的新資料**；歷史紀錄的 `material` 欄位在寫入當下就已經是截斷後的家族代碼，無法回溯分辨版本
 - 若未來需要對歷史紀錄做版本分析，需另外對 `inventory_history` 加一個 `material_raw` 欄位並重新向 Formlabs API 拉取（目前新寫入的紀錄已含 `material_raw`，見下方 Firestore 結構）
 
+### 消耗以最新版本計算（v2.3 新增）
+
+`main.py` 新增 `is_outdated_version()`：判斷某筆列印用的原始代碼（`raw_material`）版本號是否**小於**該材料家族目前已知的最新版本。若是，該筆消耗**只寫入 history、不扣備料庫存**（例：家族最新為 `FLTO2002` 時，`FLTO2001` 的列印不扣庫存）——理由是備料存的是新版本，舊版罐用量不該扣新版庫存。
+
+```python
+def raw_version_num(code):
+    # 取 Formlabs 代碼末 2 碼當版本號；VERSION_ALIAS 命中的代碼改用對照表指定版本號
+    if code in VERSION_ALIAS: return VERSION_ALIAS[code]
+    ...
+
+def is_outdated_version(raw_code, *latest_dicts):
+    # 版本號解析不出來、或該家族尚未見過更新版本 → 一律回 False（照常扣，保守設計）
+    ...
+```
+
+- **比較基準**：持久化的 `family_latest_version`（扣帳迴圈前已從 Firestore 載入）+ 本次同步所見（`note_family_latest_version()` 逐筆更新）
+- **保守設計**：解析不出版本號、或家族沒見過更新版本 → 一律照常扣，不會意外靜默停扣
+- **`VERSION_ALIAS` 特例**（處理「不同代碼、實際是同一個版本」）：`CODE_TO_NAME` 中 `FLRG1002` 與 `FLRG1011` 都對應 "Rigid 10K V1.1"，末 2 碼卻是 `02` 與 `11`，直接比會把 `FLRG1002` 誤判成舊版而不扣。`VERSION_ALIAS = {"FLRG1011": 2}` 讓 `FLRG1011` 的版本號拉平成跟 `FLRG1002` 一樣，兩者互不判對方為舊版。**未來若再遇到同版本不同代碼的情形，加進 `VERSION_ALIAS` 即可，不要改比較邏輯**
+- **一致性配套**：`inventory_history` 新增 `stock_deducted`（bool）/`deduct_skip_reason` 欄位；前端 `deleteHistoryEntry` 只在當初真的扣過才回補庫存（沒扣過卻回補會憑空生出庫存）。舊紀錄無此欄位視為 `true`，行為不變
+- **⚠️ 風險**：此規則前提是「備料只進新版本」。若某材料家族**仍有舊版本備料瓶在用**，該家族庫存會停止下降、系統數字比實際多；可視需要對特定家族加白名單排除
+
 ### 為何不從 prints 自行扣減？
 
 舊版做法：每筆 print 從 cartridges.remaining_ml 扣 volume_ml → double deduction 風險（API 已扣過一次）。
@@ -239,6 +260,17 @@ family = code[:6] if re.match(r'^FL[A-Z0-9]{4}[0-9]', code) else code
 { date, description, status, note, createdAt, createdBy, updatedAt }
 ```
 
+### `sample_items/{auto-id}`（v2.3 新增，樣品出借清冊主檔）
+```typescript
+{ seq, name, location, material, createdAt, createdBy }
+```
+
+### `sample_loans/{auto-id}`（v2.3 新增，借出紀錄）
+```typescript
+{ itemId, itemName, material, loanDate, remark, createdAt, createdBy }
+```
+v2.3 簡化後只是單純的借出日誌（樣品/日期/備註），無借出人、歸還日期、時段欄位。`sample_items` 的新增/刪除限 admin；`sample_loans` 的 create/update 只需 `view_issues` 權限（開放一般 viewer 登記），delete 限 `edit_issues`。每月登記表 Excel 匯入會把月表勾選格批次寫成多筆 `sample_loans`，同月重匯先刪除該月既有的匯入紀錄再寫入，避免重複計算。
+
 ### `settings/workspace`（單一 doc）
 ```typescript
 {
@@ -273,12 +305,14 @@ doc_id 命名：`consume/aborted` = print_guid（防重複）；其他 = auto-id
   material,               // 家族代碼（截斷後）
   material_raw,           // v2.2 新增：原始代碼（截斷前），僅新寫入的紀錄才有此欄位
   printer, ml,
+  stock_deducted,         // v2.3 新增：這筆是否真的扣了 stock（bool）；舊紀錄無此欄位視為 true
+  deduct_skip_reason,     // v2.3 新增：stock_deducted=false 時的原因（如 'outdated_version'）
   note,                   // 建議格式「客戶簡稱-工作類別-EF單號」，供工作看板自動比對消耗量
   print_guid, apiStatus,
   createdBy, createdByEmail
 }
 ```
-刪除 `consume`/`aborted` 類型的紀錄時，前端會自動把 `ml` 加回 `stock` 對應家族，並另外寫一筆 `manual` 類型的回補紀錄留痕；`manual` 類型本身刪除不影響庫存數字。
+刪除 `consume`/`aborted` 類型的紀錄時，前端**只在 `stock_deducted !== false` 時**才把 `ml` 加回 `stock` 對應家族，並另外寫一筆 `manual` 類型的回補紀錄留痕；`manual` 類型本身、以及 `stock_deducted === false`（未扣庫存）的紀錄，刪除都不影響庫存數字。
 
 ### `printer_status/current`（單一 doc）
 ```typescript
@@ -378,6 +412,8 @@ sync_formlabs_scheduled（每 30 分鐘）
 | `bookings` | 任何登入者 | editor / admin |
 | `workboard_orders` | 任何登入者 | editor / admin |
 | `issues_*` | 任何登入者 | editor / admin |
+| `sample_items` | `view_issues` | admin only（v2.3 新增） |
+| `sample_loans` | `view_issues` | create/update：`view_issues`（開放 viewer 登記）；delete：`edit_issues`（v2.3 新增） |
 | `settings/workspace` | 任何登入者 | admin |
 | `settings/quote_materials`、`settings/quote_studio_pricing` | 任何登入者 | **admin 或有 `manage_quote_pricing` 權限者**（v2.2 新增；務必寫在 `settings/{docId}` 泛用規則之前，否則會被泛用規則的 admin-only 蓋掉） |
 | `print_orders` | 任何登入者 | create: 任何登入者；update: editor/admin；delete: admin |
@@ -395,7 +431,43 @@ sync_formlabs_scheduled（每 30 分鐘）
 
 ---
 
-## 十二、已知限制與未來改進
+## 十二、quote-studio.html 估價引擎技術重點（v2.3）
+
+quote-studio.html 是純前端、單一 HTML 檔（Three.js r128），所有模型處理都在瀏覽器完成，不上傳伺服器。
+
+### STEP/STP 匯入
+
+STEP（ISO 10303）是 CAD B-rep 格式（NURBS 曲面 + 拓樸），不像 STL/OBJ/3MF 本身就是三角網格，需要 CAD 核心「鑲嵌（tessellate）」成三角面才能顯示/分析。採 **occt-import-js**（OpenCASCADE 編譯的 WASM 精簡匯入版），CDN：`cdn.jsdelivr.net/npm/occt-import-js@0.0.23/`，WASM + JS glue 只在「第一次匯入 STEP」才延遲載入並快取（`loadOcct()`），平常用 STL/OBJ/3MF 的人不受影響。回傳的 indexed 網格去索引攤平、Z-up→Y-up 座標轉換後，接入既有的 `addModelFromPos()`，後續整條估價管線完全不用改。細分精度為固定預設值，複雜組裝件或極端尺寸屬近似。
+
+### 列印時間模型
+
+```js
+const TIME_MODEL = { refLayerH:0.05, startup:2870, basePerLayer:4.90, areaCoef:0.01474 };
+// 總時間 = startup(開銷) + basePerLayer×層數 + areaCoef×(固化體積÷層厚)
+```
+取代舊版「層數 × 固定 spl 常數 + 300」——舊模型無法區分幾何差異（方塊與高瘦件同層數但實際耗時不同）。`areaCoef` 項 = 智慧剝離/沉澱時間 ∝ 每層固化截面積（Σ截面積 = 體積 ÷ 層厚，與擺放無關）。由 Tough 2000 @0.05mm 的真實列印校準（4 筆，含 1 筆盲測驗證，最大誤差 4.1%）。
+
+各材料另外套一個實測速度係數 `MAT_TIME_FACTOR`（如 `flexible80a: 2.29`、`grey: 0.60`），因為純設定推算（曝光+早期層）誤差可達 ±30%，剝離/黏度差異只有實測抓得到；每種材料用同一塞座件（~3.8mL）真實列印反解係數。**每種材料僅一個尺寸校準，極大/極小件屬外插**。
+
+### 支撐生成準確度修正
+
+`generateSupports()`（格網取樣 + 由下往上射線的內建近似）原本有三個採樣問題：(1) 取樣間距固定用密度公式換算，跟模型尺寸/局部特徵無關，窄特徵（如多片葉片中間橫接的薄橋）寬度小於間距時射線網格會整條跳過；(2) 懸空分類角度門檻方向寫反，導致最危險的平坦懸空面反而分類不到；(3) 同一射線第一個候選附著點不合格就放棄整條射線。修法：預設間距 9mm→6mm 並依模型尺寸調整最小取樣格數（6→10）、修正角度判斷方向、改成換下一個交點繼續找。
+
+### 支撐生成與驗證耦合修復
+
+`generateSupports()` 與 `runIslands()`/`runOverhang()`（可行性驗證）原本各跑一套、互不知情，導致「支撐已生成，驗證仍對裸模型評分」的矛盾。修法：`generateSupports` 持久化接觸點世界座標 `S.supportStat.pts`；驗證的孤島/懸垂改判「未被支撐涵蓋」的部分（`nearSupport()`/`supportCoverageReady()`）。「🧩 支撐風險」熱力圖把這個涵蓋關係視覺化（紅＝未涵蓋、青綠＝已涵蓋）。
+
+### 支撐三種顯示方式
+
+支撐材質是共用單例（`V.matSup` 灰色支柱/齒/底座、`V.matTpType` 四色接觸點球）。切換「實體/半透明/只顯示支撐點」只改這些材質的 `opacity`/`transparent`，**不重新生成幾何**。「只顯示支撐點」用 `mesh.userData.supPart`（`body`=支柱/齒/底座/底座標籤、`point`=接觸點球）分別控制可見性；`generateSupports()` 結尾呼叫 `applySupDisplay()`，確保重新生成幾何時延續目前顯示方式。
+
+### 3D 檢視滑鼠操作
+
+`initViewer()` 內的 `pointerdown/move/up` 依 `e.button` 路由：右鍵（2）＝旋轉視角、中鍵（1）＝平移、左鍵（0）在模型上＝選取＋拖曳移動（沿用 PreForm 式操縱器）、左鍵在空白處＝框選（拉出矩形 `#selBox`，鬆開時把模型世界包圍盒 8 角投影到螢幕座標，跟矩形做重疊測試決定選取/取消）。純點擊（沒有真的拖出矩形）視為點空白＝取消選取，與改版前行為一致。
+
+---
+
+## 十三、已知限制與未來改進
 
 ### 限制
 
@@ -405,6 +477,8 @@ sync_formlabs_scheduled（每 30 分鐘）
 4. **材料版本追蹤僅適用未來資料**：`family_latest_version` 只在寫入前用截斷前的原始代碼比對，舊歷史紀錄的原始代碼早已丟失，無法回溯
 5. **admin 人數下限只在前端擋**：`AdminPanel` 會擋下刪除/移除最後一位管理員，但 Firestore rules 沒有對應的硬性限制，直接操作 Firestore 可繞過
 6. **bookings 刪除無 audit log**：3D列印機預約刪除目前沒有留痕紀錄（inventory_history 的刪除已有回補+留痕，bookings 還沒有）
+7. **消耗以最新版本計算的前提風險**（v2.3）：假設「備料只進新版本」，若某材料家族仍有舊版本備料瓶在用，該家族庫存會停止下降。目前透過 `VERSION_ALIAS` 處理已知的「同版本不同代碼」特例（FLRG1002/FLRG1011），未來若發現同類情形需再加對照表
+8. **STEP 匯入為固定精度近似鑲嵌**：occt-import-js 細分精度未提供 UI 調整，複雜組裝件或極端尺寸的網格可能不夠精細
 
 ### 可能的未來改進
 
@@ -415,3 +489,5 @@ sync_formlabs_scheduled（每 30 分鐘）
 | 列印失敗自動 email 通知 | 1 天 |
 | bookings 刪除 audit log | 半天 |
 | Firestore rules 也強制 admin 人數下限（transaction 檢查） | 半天 |
+| STEP 匯入細分精度可調 UI | 半天 |
+| 消耗版本規則加白名單設定介面（取代改程式碼） | 半天 |
