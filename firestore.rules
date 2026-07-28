@@ -55,13 +55,28 @@ service cloud.firestore {
       return isLoggedIn() && request.auth.token.email == 'jiliao@swtc.com';
     }
 
+    // 主管（有 manage_users 權限）可代其他使用者套用角色/停用帳號，但兩道防線都要過：
+    //   1) 目標使用者「原本」不能是 admin（不可異動管理員本人）
+    //   2) 寫入後的 permissions「不能」含 admin（不可把別人升級成管理員）
+    // 個別權限勾選限制（只能套角色預設、不能勾細項）是前端 UserModal 的 UI 限制，
+    // 規則層只把關「不能造出/異動 admin」這條硬邊界，避免過度複雜難以維護。
+    function canManageOtherUser() {
+      return hasPerm('manage_users')
+        && !('admin' in resource.data.permissions)
+        && !('admin' in request.resource.data.permissions);
+    }
+    function canCreateOtherUser() {
+      return hasPerm('manage_users') && !('admin' in request.resource.data.permissions);
+    }
     match /users/{userId} {
       allow read: if isLoggedIn();
       allow create: if isLoggedIn() && (
         (request.auth.uid == userId)
         || isAdmin()
+        || canCreateOtherUser()
       );
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() || canManageOtherUser();
+      allow delete: if isAdmin();
     }
 
     match /bookings/{bookingId} {

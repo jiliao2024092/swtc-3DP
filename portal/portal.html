@@ -455,7 +455,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-config.js?v=20260708f"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260708h"></script>
+<script src="firebase-service.js?v=20260708i"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1640,9 +1640,12 @@ function LoginPage({ onLogin }) {
 }
 
 /* 使用者 Modal — 獨立元件，使用 React.useState 避免 Hooks alias 問題 */
-function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
+function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }) {
   const PERMS   = window.PERMS_MAP   || {};
   const PRESETS = window.ROLE_PRESETS || {};
+  // 主管（非 admin）呼叫時：不能編輯既有的 admin 使用者、不能個別勾選權限、套用角色不能選「管理員」
+  const targetIsAdmin = !!(item && (item.permissions||[]).includes('admin'));
+  const blockedForManager = !callerIsAdmin && targetIsAdmin;
   const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
@@ -1654,6 +1657,8 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
   const applyPreset = role => set('permissions', PRESETS[role]||[]);
 
   const save = async () => {
+    if (blockedForManager) { showToast('主管無法異動管理員帳號','err'); return; }
+    if (!callerIsAdmin && form.permissions.includes('admin')) { showToast('主管無法將使用者設為管理員','err'); return; }
     if (!form.displayName || !form.email) { showToast('請填姓名與 Email','err'); return; }
     if (!item && !form.password) { showToast('請設定密碼','err'); return; }
     if (item && (item.permissions||[]).includes('admin') && !form.permissions.includes('admin') && otherAdmins===0) {
@@ -1696,24 +1701,34 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
               {[true,false].map(v=><button key={String(v)} className={`seg-btn${form.active===v?' active':''}`} onClick={()=>set('active',v)}>{v?'✅ 啟用':'⛔ 停用'}</button>)}
             </div>
           </div>
-          <div className="m-field">
-            <label style={LBL}>角色快速套用</label>
-            <div className="preset-row">
-              {[['admin','p-admin','管理員'],['manager','p-mgr','主管'],['operator','p-eng','工程師'],['viewer','p-view','查閱']].map(([r,cls,l])=>(
-                <button key={r} className={`preset-chip ${cls}`} onClick={()=>applyPreset(r)}>{l}</button>
-              ))}
+          {blockedForManager ? (
+            <div style={{padding:'12px 14px',background:'var(--warn-soft)',border:'1px solid #e8d9a8',borderRadius:8,fontSize:12.5,color:'var(--warn)',lineHeight:1.7}}>
+              ⚠ 主管無法異動管理員帳號的權限，請洽 admin 處理。
             </div>
-          </div>
-          <div className="m-field">
-            <label style={LBL}>個別權限</label>
-            <div className="perm-grid">
-              {Object.entries(PERMS).map(([p,label])=>(
-                <label key={p} className={`perm-chip${form.permissions.includes(p)?' on':''}`}>
-                  <input type="checkbox" checked={form.permissions.includes(p)} onChange={()=>togglePerm(p)}/>{label}
-                </label>
-              ))}
+          ) : <>
+            <div className="m-field">
+              <label style={LBL}>角色快速套用</label>
+              <div className="preset-row">
+                {(callerIsAdmin
+                  ? [['admin','p-admin','管理員'],['manager','p-mgr','主管'],['operator','p-eng','工程師'],['viewer','p-view','查閱']]
+                  : [['manager','p-mgr','主管'],['operator','p-eng','工程師'],['viewer','p-view','查閱']]
+                ).map(([r,cls,l])=>(
+                  <button key={r} className={`preset-chip ${cls}`} onClick={()=>applyPreset(r)}>{l}</button>
+                ))}
+              </div>
             </div>
-          </div>
+            {callerIsAdmin && <div className="m-field">
+              <label style={LBL}>個別權限</label>
+              <div className="perm-grid">
+                {Object.entries(PERMS).map(([p,label])=>(
+                  <label key={p} className={`perm-chip${form.permissions.includes(p)?' on':''}`}>
+                    <input type="checkbox" checked={form.permissions.includes(p)} onChange={()=>togglePerm(p)}/>{label}
+                  </label>
+                ))}
+              </div>
+            </div>}
+            {!callerIsAdmin && <div style={{fontSize:11.5,color:'var(--ink-4)'}}>主管僅能套用角色預設，個別權限勾選請洽 admin。</div>}
+          </>}
         </div>
         <div className="m-foot">
           <button className="btn-cancel" onClick={onClose}>取消</button>
@@ -1725,7 +1740,7 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0 }) {
 }
 
 /* 管理員後台 */
-function AdminPanel({ user }) {
+function AdminPanel({ user, isAdmin }) {
   const K = window.K;
   const {useState: useSt, useEffect: useEff} = React;
   const [sub, setSub]           = useSt('users');
@@ -1940,7 +1955,7 @@ function AdminPanel({ user }) {
     {key:'issues',    label:'異常與資源'},
     {key:'booking',   label:'3D列印機預約'},
     {key:'samples',   label:'3D列印樣品'},
-    {key:'roles',     label:'角色權限'},
+    ...(isAdmin ? [{key:'roles', label:'角色權限'}] : []),  // 角色權限僅開放 admin，主管不可見
   ];
 
   // 角色分頁權限：切換某角色的某權限
@@ -1992,12 +2007,13 @@ function AdminPanel({ user }) {
                     <td><span className={`role-chip ${roleTierOf(u)}`}>{ROLE_TIER_LABEL[roleTierOf(u)]}</span></td>
                     <td><span className={`st-dot${u.active?' on':' off'}`}>{u.active?'● 啟用':'● 停用'}</span></td>
                     <td><span className="kt-act">
-                      <button className="kt-actbtn" onClick={()=>{setEditUser(u);setUserModal(true);}}>✎</button>
-                      <button className="kt-actbtn danger" onClick={async()=>{
+                      {(isAdmin || !(u.permissions||[]).includes('admin')) &&
+                        <button className="kt-actbtn" onClick={()=>{setEditUser(u);setUserModal(true);}}>✎</button>}
+                      {isAdmin && <button className="kt-actbtn danger" onClick={async()=>{
                         if((u.permissions||[]).includes('admin') && users.filter(x=>(x.permissions||[]).includes('admin')).length<=1){
                           showToast('至少需保留一位管理員，無法刪除','err'); return;
                         }
-                        if(!confirm('確定刪除？'))return;await FBAuth.deleteUser(u._id);await refreshUsers();showToast('已刪除','inf');}}>✕</button>
+                        if(!confirm('確定刪除？'))return;await FBAuth.deleteUser(u._id);await refreshUsers();showToast('已刪除','inf');}}>✕</button>}
                     </span></td>
                   </tr>
                 ))}
@@ -2101,8 +2117,8 @@ function AdminPanel({ user }) {
               </div>
             )}
 
-            {/* 角色分頁權限設定 */}
-            {settingTab==='roles'&&(
+            {/* 角色分頁權限設定（admin 專屬） */}
+            {settingTab==='roles'&&isAdmin&&(
               <div>
                 <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:6}}>角色分頁權限設定</div>
                 <div style={{fontSize:12,color:'var(--ink-4)',marginBottom:16,lineHeight:1.7}}>
@@ -2139,7 +2155,7 @@ function AdminPanel({ user }) {
           </div>
         )}
       </div>
-      {userModal&&<UserModal item={editUser} onClose={()=>setUserModal(false)} onSaved={refreshUsers}
+      {userModal&&<UserModal item={editUser} onClose={()=>setUserModal(false)} onSaved={refreshUsers} callerIsAdmin={isAdmin}
         otherAdmins={users.filter(x=>x._id!==(editUser&&editUser._id) && (x.permissions||[]).includes('admin')).length}/>}
     </div>
   );
@@ -2220,6 +2236,7 @@ function Shell({ user, onLogout }) {
   }, [darkMode]);
 
   const isAdmin = window.hasPerm(user, 'admin');
+  const canManageUsers = isAdmin || window.hasPerm(user, 'manage_users');
   const canBoard = window.hasPerm(user, 'view_board');
   const canIssues = window.hasPerm(user, 'view_issues');
   const canQuote = window.hasPerm(user, 'view_quote');
@@ -2247,7 +2264,7 @@ function Shell({ user, onLogout }) {
       show: canIssues },
     { key:'admin', label:'後台管理', sub:'ADMIN',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="6" r="3" stroke="currentColor" strokeWidth="1.4"/><path d="M3 15c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
-      show: isAdmin },
+      show: canManageUsers },
   ].filter(n => n.show);
 
   // 若目前頁面不在可見清單（例如非 admin 卻停在 admin），自動導到第一個可見頁
@@ -2313,7 +2330,7 @@ function Shell({ user, onLogout }) {
       <main className="shell-main">
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}
-        {page==='admin'     && isAdmin && <AdminPanel          user={user}/>}
+        {page==='admin'     && canManageUsers && <AdminPanel    user={user} isAdmin={isAdmin}/>}
         {page==='booking'   && canBooking && <iframe ref={bookingIframeRef} onLoad={applyThemeToBookingIframe} src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印機預約"/>}
         {page==='inventory' && canInventory && <iframe ref={inventoryIframeRef} onLoad={applyThemeToInventoryIframe} src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
         {page==='quote'     && canQuote && <iframe ref={quoteIframeRef} onLoad={applyThemeToQuoteIframe} src="../quote-studio.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價（Beta）"/>}
