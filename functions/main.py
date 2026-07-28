@@ -90,7 +90,7 @@ FAMILY_TO_NAME = {
     "FLFL80": "Flexible 80A",  "FLHTAM": "High Temp",     "FLFLES": "Elastic 50A",
     "FLESD0": "ESD Resin",     "FLSI40": "Silicone 40A",  "FLFAMD": "Fast Model",
     "FLPRMD": "Precision Model","FLFRGR": "Flame Retardant","FLDU20": "Durable",
-    "FLCEBL": "Ceramic",       "FLPUBK": "Polyurethane",
+    "FLCEBL": "Ceramic",       "FLPUBK": "Polyurethane",  "FLOPEN": "Open Material",
 }
 
 
@@ -629,6 +629,21 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     print(f"[sync] 舊版本不扣庫存: {raw_material!r}(家族最新非此版) "
                           f"guid={guid[:8]} ml={volume_num}")
 
+                # 這筆是否真的扣過備料庫存；前端刪除紀錄時據此決定要不要回補
+                # （沒扣過就回補會憑空多出庫存）。舊紀錄無此欄位 → 前端視為 True（沿用舊行為）
+                # ★ backfill 會重建整份 history，但「當初有沒有扣過」是既成事實，不能一律寫 False，
+                #   否則這些紀錄日後被刪除時不會回補（少補庫存）。deducted_prints 在 backfill
+                #   模式下是保留的（不像 last_processed_prints 會被清空），直接拿它當事實依據。
+                actually_deducted = (guid in deducted) if backfill else will_deduct
+                if actually_deducted:
+                    skip_reason = None
+                elif outdated:
+                    skip_reason = "outdated_version"
+                elif backfill:
+                    skip_reason = "backfill"
+                else:
+                    skip_reason = None      # 已扣過的重複 guid
+
                 new_history_entries.append({
                     "guid":     guid,
                     "data": {
@@ -637,11 +652,8 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         "type":        record_type,
                         "material":    material,
                         "material_raw": raw_material,   # 原始代碼（未截斷版本），供日後版本判斷用；舊紀錄沒有此欄位
-                        # 這筆是否真的扣過備料庫存；前端刪除紀錄時據此決定要不要回補
-                        # （沒扣過就回補會憑空多出庫存）。舊紀錄無此欄位 → 前端視為 True（沿用舊行為）
-                        "stock_deducted":     will_deduct,
-                        "deduct_skip_reason": ("outdated_version" if outdated
-                                               else ("backfill" if backfill else None)),
+                        "stock_deducted":     actually_deducted,
+                        "deduct_skip_reason": skip_reason,
                         "printer":     alias,
                         "ml":          volume_num,
                         "note":        pr.get("name", "") or f"列印 {guid[:8]}",

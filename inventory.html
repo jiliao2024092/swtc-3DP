@@ -1013,6 +1013,24 @@ function applyRoleUI() {
     lucide.createIcons();
 }
 
+// ══ inventory_history doc → 前端物件（訂閱與補撈共用的唯一轉換點）══
+// ★ 一定要走這支，不要在各處自己 map。曾因訂閱與補撈各寫一份、都漏掉 stock_deducted，
+//   導致 h.stock_deducted 永遠是 undefined：「未扣庫存」標籤從未顯示，且刪除舊版本紀錄時
+//   會誤判成「當初有扣」而憑空回補庫存。新增欄位請一律加在這裡。
+function mapHistoryDoc(d) {
+    const data = d.data();
+    return {
+        id: d.id,
+        ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
+        type: data.type, material: data.material, printer: data.printer,
+        ml: data.ml, note: data.note, print_guid: data.print_guid,
+        apiStatus: data.apiStatus,
+        material_raw: data.material_raw,             // 原始代碼（未截斷版本）
+        stock_deducted: data.stock_deducted,         // 這筆有沒有真的扣過庫存 → 刪除是否回補
+        deduct_skip_reason: data.deduct_skip_reason, // outdated_version / backfill / null
+    };
+}
+
 // ══ Firestore 即時訂閱 ══
 function subscribeAll() {
     console.log('[subscribeAll] 開始訂閱，user:', currentUser?.email, 'role:', currentUser?.role);
@@ -1092,16 +1110,7 @@ function subscribeAll() {
     unsubscribeHist = onSnapshot(histQ, (snap) => {
         console.log('[history snapshot] 觸發，筆數:', snap.docs.length);
         try {
-            historyFromSubscription = snap.docs.map(d => {
-                const data = d.data();
-                return {
-                    id: d.id,
-                    ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
-                    type: data.type, material: data.material, printer: data.printer,
-                    ml: data.ml, note: data.note, print_guid: data.print_guid,
-                    apiStatus: data.apiStatus,
-                };
-            });
+            historyFromSubscription = snap.docs.map(mapHistoryDoc);
             rebuildInvHistory();
             updateHistoryRangeLabel();
             renderHistory();
@@ -1128,6 +1137,7 @@ const CODE_TO_NAME = {
     'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
     'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
     'FLTO1001':'Tough 1000 V1','FLTO1002':'Tough 1000 V2',
+    'FLDU2001':'Durable V2.1','FLOPEN01':'Open Material V1',
 };
 const NAME_TO_CODE_FE = {};
 Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code; });
@@ -1144,7 +1154,7 @@ const FAMILY_TO_NAME = {
     'FLFL80':'Flexible 80A',  'FLHTAM':'High Temp',     'FLFLES':'Elastic 50A',
     'FLESD0':'ESD Resin',     'FLSI40':'Silicone 40A',  'FLFAMD':'Fast Model',
     'FLPRMD':'Precision Model','FLFRGR':'Flame Retardant','FLDU20':'Durable',
-    'FLCEBL':'Ceramic',       'FLPUBK':'Polyurethane',
+    'FLCEBL':'Ceramic',       'FLPUBK':'Polyurethane',   'FLOPEN':'Open Material',
 };
 // 家族名稱 → 家族代碼（讓 'Tough 1000' 這類家族名也能解析、合併）
 Object.entries(FAMILY_TO_NAME).forEach(([fam,name])=>{ if(!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name]=fam; });
@@ -2295,7 +2305,17 @@ async function saveStockEdits() {
         const next = Math.round((cur - ml) * 10) / 10;
         // 不扣成負數（與 Cloud Function 的扣減行為一致）；扣不完的部分明講，不要靜默吞掉
         if (next < 0) {
-            showToast(`${matName(material)} 庫存不足，僅扣至 0（差 ${((ml-cur)/1000).toFixed(1)} L）`, 'error');
+            const short = Math.round((ml - cur) * 10) / 10;
+            showToast(`${matName(material)} 庫存不足，僅扣至 0（差 ${(short/1000).toFixed(1)} L）`, 'error');
+            // 比照 Cloud Function：把扣不完的差額累計進 stock_shortfalls，讓前端跳警示橫幅、
+            // 留下可稽核的證據。只跳 toast 的話訊息一關就沒了，歷史紀錄也只記「實際扣掉多少」，
+            // 看不出「原本要扣多少」。累計值由使用者查明後從警示橫幅手動清除。
+            if (!inv.stock_shortfalls) inv.stock_shortfalls = {};
+            const prevSf = inv.stock_shortfalls[fam] || {};
+            inv.stock_shortfalls[fam] = {
+                ml: Math.round(((prevSf.ml || 0) + short) * 10) / 10,
+                last_at: new Date().toISOString(),
+            };
         }
         Object.keys(inv.stock).forEach(k=>{ if(matCode(k)===fam && k!==fam) delete inv.stock[k]; });
         inv.stock[fam].total_ml   = Math.max(0, next);
@@ -2741,16 +2761,7 @@ async function fetchHistoryRange(lowerBound, upperBound) {
         orderBy('tsDate', 'desc')
     );
     const snap = await getDocs(q);
-    const newEntries = snap.docs.map(d => {
-        const data = d.data();
-        return {
-            id: d.id,
-            ts: data.ts || (data.tsDate?.toDate?.()?.toISOString?.() || ''),
-            type: data.type, material: data.material, printer: data.printer,
-            ml: data.ml, note: data.note, print_guid: data.print_guid,
-            apiStatus: data.apiStatus,
-        };
-    });
+    const newEntries = snap.docs.map(mapHistoryDoc);
     const existingIds = new Set(extraHistory.map(e => e.id));
     const added = newEntries.filter(e => !existingIds.has(e.id));
     extraHistory = [...extraHistory, ...added];
