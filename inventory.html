@@ -492,6 +492,7 @@
                     <thead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                             <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium text-center w-24 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('ltank')" title="是否配有 Form 4L 樹脂槽">L樹脂槽<span id="stock-sort-ltank" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('total_ml')">總庫存 (L)<span id="stock-sort-total_ml" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('on_machine')">機台上存量 (L)<span id="stock-sort-on_machine" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-[var(--ink-6)]"></span></th>
@@ -760,7 +761,9 @@ let inv = {
     last_processed_prints: [],
     disabled_materials: [],  // 使用者主動停用的材料代碼
     disabled_overrides: [],  // 使用者覆寫「預設停用」的清單（讓系統預設停用的材料重新顯示）
-    family_latest_version: {}   // 家族代碼 → 目前看過的最新版本原始代碼（Cloud Function 自動追蹤）
+    family_latest_version: {},  // 家族代碼 → 目前看過的最新版本原始代碼（Cloud Function 自動追蹤）
+    stock_shortfalls: {},    // 消耗超過帳上庫存、扣不掉的累計差額（Cloud Function 寫入）
+    l_tank_materials: []     // 標記「有 Form 4L 樹脂槽」的材料家族代碼；減少 4L 槽時自動標記，admin 可手動開關
 };
 let currentTab = 'stock';
 let historyPage = 1;
@@ -775,6 +778,7 @@ function canDeleteRecords() {
     const p = currentUser.permissions || [];
     return p.includes('delete_board') || p.includes('delete_issues');
 }
+function isAdminUser() { return !!(currentUser && currentUser.role === 'admin'); }
 let invLoadedFromFirestore = false;  // onSnapshot 第一次觸發後才設為 true，之前 saveAll 一律 skip 避免覆寫空資料
 // 消耗紀錄載入範圍：預設只訂閱最近 30 天，使用者點「載入更早」按鈕往前推一個月
 let historySinceDate = null;  // Date 物件 - 訂閱起點
@@ -1022,11 +1026,12 @@ function subscribeAll() {
                 inv.disabled_overrides    = d.disabled_overrides    || [];
                 inv.family_latest_version = d.family_latest_version || {};
                 inv.stock_shortfalls      = d.stock_shortfalls      || {};
+                inv.l_tank_materials      = d.l_tank_materials      || [];
                 invLoadedFromFirestore = true;
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
-                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = []; inv.family_latest_version = {}; inv.stock_shortfalls = {};
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = []; inv.family_latest_version = {}; inv.stock_shortfalls = {}; inv.l_tank_materials = [];
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
             const merged = mergeMaterialAliases();
@@ -1272,6 +1277,7 @@ async function saveAll(reason) {
             disabled_materials: inv.disabled_materials || [],
             disabled_overrides: inv.disabled_overrides || [],
             stock_shortfalls:   inv.stock_shortfalls   || {},   // 清除警示要能真的寫回空值
+            l_tank_materials:   inv.l_tank_materials   || [],
             updatedAt:      serverTimestamp(),
             updatedBy:      currentUser.uid,
             updatedByEmail: currentUser.email,
@@ -1549,6 +1555,35 @@ function resinTankDeductMl(name) {
     return RESIN_TANK_DEDUCT_ML[normItemKey(name)] || null;
 }
 
+// ══ 「L 樹脂槽」標記 ══
+// 記錄哪些材料目前有搭配 Form 4L 的樹脂槽。減少 Form 4L Resin Tank 並指定材料時自動標記，
+// admin 也可在材料庫存表格手動開關（例如換槽前先標、或槽退掉後取消標記）。
+// 只認 4L，Form 4（小台）的槽不算。
+const L_TANK_ITEM = 'formlabs form 4l resin tank';
+function isFormLTank(name) {
+    return normItemKey(name) === L_TANK_ITEM;
+}
+function hasLTank(material) {
+    const fam = matCode(material);
+    return (inv.l_tank_materials || []).some(m => matCode(m) === fam);
+}
+function setLTank(material, on) {
+    const fam = matCode(material);
+    if (!inv.l_tank_materials) inv.l_tank_materials = [];
+    // 一律以家族代碼存，並清掉同家族的其他寫法，避免同一材料重複記錄
+    inv.l_tank_materials = inv.l_tank_materials.filter(m => matCode(m) !== fam);
+    if (on) inv.l_tank_materials.push(fam);
+}
+// admin 手動開關（材料庫存表格的 L 樹脂槽欄位）
+async function toggleLTank(material) {
+    if (!(currentUser && currentUser.role === 'admin')) return;
+    const on = !hasLTank(material);
+    setLTank(material, on);
+    renderAll();
+    await saveAll(`${on?'標記':'取消標記'} L 樹脂槽：${matName(material)}`);
+    showToast(`${matName(material)} ${on?'已標記':'已取消'} L 樹脂槽`, 'success');
+}
+
 // ══ 消耗紀錄異常提示 ══
 // Cloud Function 扣庫存時是「扣到 0 為止不到負」，扣不完的差額以前會被靜默丟棄，
 // 前端只看得到庫存卡在 0、看不出有一筆消耗沒被反映。改由 CF 累計寫入 stock_shortfalls，
@@ -1644,7 +1679,10 @@ function renderOverview() {
                 <div class="min-w-0 flex-1">
                     <div class="flex items-start justify-between gap-1">
                         <p class="font-semibold text-[var(--ink)] text-sm truncate">${matName(m)}</p>
-                        ${low?'<span class="text-[10px] bg-[var(--danger-soft)] text-[var(--danger)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">需叫料</span>':'<span class="text-[10px] bg-[var(--ok-soft)] text-[var(--ok)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">充足</span>'}
+                        <div class="flex items-center gap-1 flex-shrink-0">
+                            ${hasLTank(m)?'<span class="text-[10px] bg-[var(--indigo-soft)] text-[var(--indigo)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap" title="配有 Form 4L 樹脂槽">L槽</span>':''}
+                            ${low?'<span class="text-[10px] bg-[var(--danger-soft)] text-[var(--danger)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">需叫料</span>':'<span class="text-[10px] bg-[var(--ok-soft)] text-[var(--ok)] px-1.5 py-0.5 rounded-full font-medium whitespace-nowrap">充足</span>'}
+                        </div>
                     </div>
                     <div class="mt-0.5">
                         <span class="text-xl font-bold text-[var(--ink)]">${(total/1000).toFixed(1)}</span>
@@ -1919,7 +1957,7 @@ function resetStockFilters(){
     renderStockTable();
 }
 function updateStockSortIndicators(){
-    ['material','bottles','total_ml','on_machine','safety','status'].forEach(f=>{
+    ['material','ltank','bottles','total_ml','on_machine','safety','status'].forEach(f=>{
         const el=document.getElementById('stock-sort-'+f);
         if(!el) return;
         if(f===stockSortField){
@@ -1953,13 +1991,14 @@ function renderStockTable() {
         else if(stockSortField==='on_machine'){ ka=getCartridgeTotal(a); kb=getCartridgeTotal(b); }
         else if(stockSortField==='safety'){ ka=getSafetyStock(a); kb=getSafetyStock(b); }
         else if(stockSortField==='status'){ ka=isLowStock(a)?0:1; kb=isLowStock(b)?0:1; }
+        else if(stockSortField==='ltank'){ ka=hasLTank(a)?0:1; kb=hasLTank(b)?0:1; }
         const dir = stockSortDir==='asc'?1:-1;
         if(ka<kb) return -1*dir;
         if(ka>kb) return  1*dir;
         return 0;
     });
 
-    if(!mats.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-[var(--ink-5)]">'+(getAllMaterials().length?'沒有符合篩選條件的資料':'尚無庫存資料')+'</td></tr>'; return; }
+    if(!mats.length){ tbody.innerHTML='<tr><td colspan="9" class="p-8 text-center text-[var(--ink-5)]">'+(getAllMaterials().length?'沒有符合篩選條件的資料':'尚無庫存資料')+'</td></tr>'; return; }
     tbody.innerHTML='';
     mats.forEach(m=>{
         const fam = matCode(m);
@@ -1978,6 +2017,18 @@ function renderStockTable() {
         tr.setAttribute('data-material', m);
         tr.innerHTML=`
             <td class="p-3 font-medium text-[var(--ink)]">${matName(m)}</td>
+            <td class="p-3 text-center">
+                ${isAdminUser()
+                    ? `<button onclick="toggleLTank('${me}')" title="${hasLTank(m)?'點擊取消 L 樹脂槽標記':'點擊標記為有 L 樹脂槽'}"
+                        class="text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors ${hasLTank(m)
+                            ? 'bg-[var(--indigo-soft)] text-[var(--indigo)] border-[var(--indigo)]/40 hover:opacity-80'
+                            : 'bg-transparent text-[var(--ink-6)] border-[var(--line)] hover:border-[var(--indigo)]/40 hover:text-[var(--indigo)]'}">
+                        ${hasLTank(m)?'✓ L槽':'＋ 標記'}
+                       </button>`
+                    : (hasLTank(m)
+                        ? '<span class="text-[11px] px-2 py-0.5 rounded-full font-medium bg-[var(--indigo-soft)] text-[var(--indigo)]">✓ L槽</span>'
+                        : '<span class="text-[var(--ink-6)] text-xs">—</span>')}
+            </td>
             <td class="p-3 text-right">
                 <input type="number" min="0" step="1" value="${stockLiters.toFixed(1)}" ${inputDisabled?'disabled':''}
                     class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)] ${low&&!isStockEditMode?'text-[var(--danger)] font-medium':''}">
@@ -2231,6 +2282,11 @@ async function saveStockEdits() {
             ml: -Math.min(ml, cur),
             note:`更換 ${tankName} ${count} 個（每個 ${(resinTankDeductMl(tankName)/1000).toFixed(1)} L）${note?`：${note}`:''}`
         });
+        // 換的是 Form 4L 的槽 → 這個材料現在配著 L 樹脂槽，自動標記（Form 4 的小槽不標）
+        if (isFormLTank(tankName) && !hasLTank(fam)) {
+            setLTank(fam, true);
+            summaryLines.push(`${matName(material)} 標記 L 樹脂槽`);
+        }
         changedCount++;
         summaryLines.push(`${matName(material)} −${(ml/1000).toFixed(1)} L（換槽）`);
     });
@@ -3696,6 +3752,7 @@ window.resolveTankModal = resolveTankModal;
 window.onTankMaterialChange = onTankMaterialChange;
 window.clearStockShortfalls = clearStockShortfalls;
 window.onConsumableQtyChange = onConsumableQtyChange;
+window.toggleLTank = toggleLTank;
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
