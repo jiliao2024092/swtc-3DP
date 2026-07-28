@@ -1,8 +1,10 @@
 # SWTC 3D 列印系統 — 技術原理報告
 
-> **版本**：v2.3
+> **版本**：v2.4
 > **適用範圍**：開發 / 維護人員
-> **重點**：架構決策、API 對接、材料計算邏輯、quote-studio.html 估價引擎
+> **重點**：架構決策、API 對接、材料計算邏輯、權限模型、quote-studio.html 估價引擎
+
+> 📌 **要動庫存計算邏輯前，先讀 [INVENTORY-ALGORITHM.md](../INVENTORY-ALGORITHM.md)**。那份文件把庫存演算法逐條拆解（含換槽扣料模型的物質守恆驗證與累積誤差分析），本報告第四章只做摘要。
 
 ---
 
@@ -85,7 +87,7 @@ Cloud Scheduler (30 min) → Cloud Function → Firestore (onSnapshot 即時推�
 - ✅ Firestore onSnapshot 即時推送到前端（端到端延遲 < 2 秒）
 - ✅ Function 失敗自動重試（內建 retry）
 - ✅ 完整 logging（GCP Console）
-- ✅ Free Tier 對小用量足夠（每月 ~4320 次呼叫 << 200 萬次免費額度）
+- ✅ Free Tier 對小用量足夠
 
 ### 月帳單估算
 
@@ -93,7 +95,7 @@ Cloud Scheduler (30 min) → Cloud Function → Firestore (onSnapshot 即時推�
 |------|------|------|
 | Cloud Functions | 1440 次（每天48次 × 30天/月） | $0 (200 萬次免費內) |
 | Cloud Scheduler | 1 個 job | $0 (3 個 job 免費) |
-| Secret Manager | 2 個 secret + ~4320 次 access | $0 (6 個 + 10K access 免費) |
+| Secret Manager | 2 個 secret + ~4320 次 access | $0 |
 | Firestore | ~10MB 儲存 + ~50K 讀寫/天 | $0 (1GB + 50K/天 免費) |
 | Artifact Registry | container images | <$0.05 |
 | **合計** | | **<$1/月** |
@@ -140,11 +142,12 @@ client_secret=...
 | FINISHED, SUCCESS, COMPLETE, DONE, COMPLETED, PRINTED | `consume` | ✅ |
 | ERROR, FAILED | `consume` | ✅（仍消耗了材料） |
 | ABORTED, ABORTING | `aborted` | ✅ |
-| IN_PROGRESS, QUEUED, CANCELED, NOT_STARTED, PREPRINT, PREHEAT | 跳過 | ❌ |
+| CANCELED / CANCELLED **且有實際用量** | `aborted` | ✅ |
+| IN_PROGRESS, QUEUED, NOT_STARTED, PREPRINT, PREHEAT | 跳過 | ❌ |
 
 ### parse_valid_ts：epoch 時間退回機制
 
-Formlabs 偶爾回傳 epoch(1970) 的 `print_finished_at`。`parse_valid_ts`（`main.py:137`）處理規則：
+Formlabs 偶爾回傳 epoch(1970) 的 `print_finished_at`。處理規則：
 
 ```python
 def parse_valid_ts(val, floor_year: int = 2000):
@@ -165,74 +168,175 @@ ts = (parse_valid_ts(pr.get("print_finished_at"))
 
 ## 四、材料計算邏輯（核心）
 
+> 完整版見 [INVENTORY-ALGORITHM.md](../INVENTORY-ALGORITHM.md)。以下為摘要與跨系統介面。
+
+### 核心公式
+
+```
+總庫存      = 備料庫存（inv.stock 中同家族所有 key 的 total_ml 加總）
+機台樹脂罐   = 純顯示，不計入總庫存
+低庫存警示   = 總庫存 < 安全庫存（預設 1000 ml）
+```
+
+樹脂罐不計入總庫存，是因為消耗發生時 Cloud Function 已直接從備料庫存扣掉；再算一次會重複計算。
+
 ### 三組數值定義
 
 | 名稱 | 來源 | 儲存位置 | 誰維護 |
 |------|------|---------|--------|
 | **Cartridges 剩餘量** | Formlabs API `initial - dispensed` | `inventory/main.cartridges` | Cloud Function 自動 |
-| **Stock 備料量** | 使用者手動 | `inventory/main.stock` | 前端編輯 |
+| **Stock 備料/耗材量** | 使用者手動 + CF 自動扣減 | `inventory/main.stock` | 兩者皆有 |
 | **History 消耗紀錄** | 每筆 print 寫一筆 | `inventory_history/{guid}` | Cloud Function 自動 |
 
 ### 材料代碼家族正規化
 
-```python
-# familyCode = 材料代碼前 6 碼，須符合 /^FL[A-Z0-9]{6}$/ 且含數字
-# 防止 "Flexible" 被誤截為家族碼
-family = code[:6] if re.match(r'^FL[A-Z0-9]{4}[0-9]', code) else code
+```
+familyCode(code):
+    1. 在 FAMILY_REMAP 表裡          → 直接回傳對照值
+    2. 符合 /^FL[A-Z0-9]{6}$/ 且含數字 → 取前 6 碼，再查一次 FAMILY_REMAP
+    3. 其他（材料名稱、自訂名稱）      → 原樣回傳
 ```
 
-前後端使用相同規則；所有計算按「家族」加總與去重。
+「且含數字」是必要條件，否則 `FLEXIBLE`／`FLAMERET` 這種名稱會被誤截。`FAMILY_REMAP` 目前有三筆：`FLEXIB→FLFL80`、`FLAMER→FLFRGR`（皆為舊版誤截殘骸）、`FLRGWH→FLRG40`（v2.4，使用者確認為同一材料）。
 
-**⚠️ 重要限制**：家族代碼正規化在資料寫入 Firestore「之前」就發生（`main.py` 的 `raw_material`→`canon_material()`），也就是說 `FLTO2001`／`FLTO2002` 這種版本差異在存進 `inventory_history`/`inventory/main.cartridges` 之前就已經被截斷成同一個 `FLTO20`。若要做版本相關的邏輯，必須在截斷之前（`raw_material` 變數還在時）處理。
+**⚠️ 前後端必須同步**：`inventory.html` 的 `familyCode()` 與 `functions/main.py` 的 `family_code()` 是同一套邏輯的兩份實作（無 build step，無法共用程式碼）。漂移時**不會拋錯，只會默默把庫存算到錯的家族**。
 
-### 材料版本自動追蹤（v2.2 新增）
+v2.4 起有自動檢查：
 
-`main.py` 的 `note_family_latest_version()` 會在每次同步時，用截斷前的原始代碼（`raw_material`／cartridge 的 `raw_cart_material`）解析出末 2 碼版本號，記錄每個家族「目前看過的最新版本代碼」，寫入 `inventory/main.family_latest_version`（`{family: rawCode}`）。前端 `matName()` 顯示名稱時優先採用這個最新版本代碼對應的名稱，取代原本寫死的 `FAMILY_TO_NAME` 泛用名稱。
-
-- 只在**寫入前**、只影響**之後同步進來的新資料**；歷史紀錄的 `material` 欄位在寫入當下就已經是截斷後的家族代碼，無法回溯分辨版本
-- 若未來需要對歷史紀錄做版本分析，需另外對 `inventory_history` 加一個 `material_raw` 欄位並重新向 Formlabs API 拉取（目前新寫入的紀錄已含 `material_raw`，見下方 Firestore 結構）
-
-### 消耗以最新版本計算（v2.3 新增）
-
-`main.py` 新增 `is_outdated_version()`：判斷某筆列印用的原始代碼（`raw_material`）版本號是否**小於**該材料家族目前已知的最新版本。若是，該筆消耗**只寫入 history、不扣備料庫存**（例：家族最新為 `FLTO2002` 時，`FLTO2001` 的列印不扣庫存）——理由是備料存的是新版本，舊版罐用量不該扣新版庫存。
-
-```python
-def raw_version_num(code):
-    # 取 Formlabs 代碼末 2 碼當版本號；VERSION_ALIAS 命中的代碼改用對照表指定版本號
-    if code in VERSION_ALIAS: return VERSION_ALIAS[code]
-    ...
-
-def is_outdated_version(raw_code, *latest_dicts):
-    # 版本號解析不出來、或該家族尚未見過更新版本 → 一律回 False（照常扣，保守設計）
-    ...
+```bash
+python tools/check_material_sync.py
 ```
 
-- **比較基準**：持久化的 `family_latest_version`（扣帳迴圈前已從 Firestore 載入）+ 本次同步所見（`note_family_latest_version()` 逐筆更新）
-- **保守設計**：解析不出版本號、或家族沒見過更新版本 → 一律照常扣，不會意外靜默停扣
-- **`VERSION_ALIAS` 特例**（處理「不同代碼、實際是同一個版本」）：`CODE_TO_NAME` 中 `FLRG1002` 與 `FLRG1011` 都對應 "Rigid 10K V1.1"，末 2 碼卻是 `02` 與 `11`，直接比會把 `FLRG1002` 誤判成舊版而不扣。`VERSION_ALIAS = {"FLRG1011": 2}` 讓 `FLRG1011` 的版本號拉平成跟 `FLRG1002` 一樣，兩者互不判對方為舊版。**未來若再遇到同版本不同代碼的情形，加進 `VERSION_ALIAS` 即可，不要改比較邏輯**
-- **一致性配套**：`inventory_history` 新增 `stock_deducted`（bool）/`deduct_skip_reason` 欄位；前端 `deleteHistoryEntry` 只在當初真的扣過才回補庫存（沒扣過卻回補會憑空生出庫存）。舊紀錄無此欄位視為 `true`，行為不變
-- **⚠️ 風險**：此規則前提是「備料只進新版本」。若某材料家族**仍有舊版本備料瓶在用**，該家族庫存會停止下降、系統數字比實際多；可視需要對特定家族加白名單排除
+比對 `FAMILY_REMAP`、`FAMILY_TO_NAME` 與所有已知代碼／顯示名稱的解析結果，會影響庫存正確性的差異 exit 1。
 
-### 為何不從 prints 自行扣減？
+**⚠️ 正規化在寫入 Firestore「之前」就發生**：`FLTO2001`／`FLTO2002` 在存進 Firestore 前就已被截斷成 `FLTO20`。要做版本相關邏輯，必須在截斷之前（`raw_material` 還在時）處理。
 
-舊版做法：每筆 print 從 cartridges.remaining_ml 扣 volume_ml → double deduction 風險（API 已扣過一次）。
+### 材料版本自動追蹤
 
-現行做法：cartridges 直接用 API 的 `initial_volume_ml - volume_dispensed_ml`；prints 只寫 history，不扣減。結果永遠跟 Formlabs 真實狀態一致。
+`note_family_latest_version()` 用截斷前的原始代碼解析末 2 碼版本號，記錄每個家族「目前看過的最新版本代碼」到 `inventory/main.family_latest_version`。前端 `matName()` 顯示名稱時優先採用這個最新版本對應的名稱。
+
+### 消耗以最新版本計算
+
+`is_outdated_version()` 判斷某筆列印的原始代碼版本號是否小於該家族目前已知的最新版本。若是，該筆消耗**只寫入 history、不扣備料庫存**。
+
+- **比較基準**：持久化的 `family_latest_version` + 本次同步所見
+- **保守設計**：解析不出版本號、或家族沒見過更新版本 → 一律照常扣
+- **`VERSION_ALIAS` 特例**：`FLRG1002` 與 `FLRG1011` 都對應 "Rigid 10K V1.1"，末 2 碼卻是 `02`/`11`，直接比會誤判。`VERSION_ALIAS = {"FLRG1011": 2}` 把版本號拉平。**未來遇到同版本不同代碼，加進 `VERSION_ALIAS` 即可，不要改比較邏輯**
+- **⚠️ 風險**：前提是「備料只進新版本」。若某家族仍有舊版本備料瓶在用，該家族庫存會停止下降
+
+### `stock_deducted` 一致性配套（v2.4 修正）
+
+`inventory_history` 的 `stock_deducted`（bool）記錄「這筆有沒有真的扣過庫存」，前端 `deleteHistoryEntry` 據此決定刪除時是否回補（沒扣過卻回補會憑空生出庫存）。舊紀錄無此欄位視為 `true`。
+
+> **v2.4 修正的 bug**：前端讀取 `inventory_history` 的兩條路徑（onSnapshot 訂閱、「載入更早」補撈）原本各自寫了一份欄位清單，**兩份都漏掉 `stock_deducted`**，導致 `h.stock_deducted` 永遠是 `undefined`——整個保護機制形同虛設（刪除舊版本紀錄照樣回補、「未扣庫存」標籤從未顯示）。現已抽出共用的 `mapHistoryDoc()`，**讀取 `inventory_history` 一律走這支，不要在各處自己寫 `.map()`**。
+
+`backfill` 模式重建 history 時，`stock_deducted` 以 `deducted_prints`（backfill 不清空）為準寫回**當初是否真的扣過**的事實，而非一律 `false`——否則會讓這些紀錄日後刪除時不回補。
+
+### 材料 / 耗材分離（v2.4）
+
+`inv.stock` 現在同時存兩類品項，以 `kind` 欄位區分：
+
+| | 材料（樹脂） | 耗材（`kind:'consumable'`） |
+|---|---|---|
+| 識別 | Formlabs 家族代碼 | 直接用輸入名稱當 key |
+| 家族正規化 | ✅ | ❌ 不做 |
+| 顯示單位 | L | 個 |
+| 內部儲存 | ml | 同欄位借用，1 個 = 1000 |
+
+`NON_MATERIAL_ITEMS` 清單（Mixer / Resin Tank 等）確保這些配件即使從 cartridges/history 混進來也不會被當成材料。
+
+### 樹脂槽換槽扣材料（v2.4）
+
+耗材數量**減少**（＝從庫存領新槽）時扣對應材料：Form 4 Resin Tank 每個 400 ml、Form 4L 每個 1000 ml。這對應「新槽必須倒入的最小列印材料量」，該筆料進槽後就出不來。
+
+**模型正確性已驗證**（物質守恆推導 + 1～200 次循環模擬）：Formlabs API 的 `volume_ml` 只算固化進成品的樹脂，不含倒進槽裡的預留量，因此換槽扣的 400 ml 正好補上 API 看不到的缺口，**兩個機制互補、無重複扣款**，理想條件下 drift 恆為 0。
+
+⚠️ 但模型**沒有自我修正機制**，系統性偏差會線性累積（每次偏 20 ml → 50 次換槽累積 1 L）。詳細分析與對帳建議見 [INVENTORY-ALGORITHM.md 第五節](../INVENTORY-ALGORITHM.md)。
+
+### `stock_shortfalls`：扣不完的差額（v2.4）
+
+扣庫存時若帳上不足（只能扣到 0），差額累計進 `inventory/main.stock_shortfalls`，前端跳警示橫幅。**Cloud Function 自動扣減與前端換槽扣料兩條路徑都會寫入**（前端這條是 v2.4 補上的，先前只跳一個關掉就消失的 toast）。
+
+### 為何不從 prints 自行扣減 cartridges？
+
+舊版做法：每筆 print 從 `cartridges.remaining_ml` 扣 `volume_ml` → double deduction 風險（API 已扣過一次）。
+
+現行做法：cartridges 直接用 API 的 `initial_volume_ml - volume_dispensed_ml`；prints 只寫 history 並扣 **stock**（備料），不動 cartridges。結果永遠跟 Formlabs 真實狀態一致。
 
 ---
 
-## 五、Firestore 資料結構
+## 五、權限模型
+
+### 權限定義位置
+
+`portal/firebase-service.js`：
+
+- `PERMS_MAP` — 權限鍵 → 中文說明（後台「角色權限」分頁自動列出）
+- `DEFAULT_ROLE_PRESETS` — 各角色的預設權限陣列，可被 `settings/workspace.role_presets` 覆寫
+- `window.hasPerm(user, perm)` — 有 `admin` 視為擁有一切
+- `roleFromPermissions()` — 由 permissions 推導舊系統相容的 `role` 欄位
+
+### 權限清單
+
+| 權限 | 說明 | admin | manager | operator | viewer |
+|------|------|:-----:|:-------:|:--------:|:------:|
+| `view_board` / `edit_board` / `delete_board` | 工作看板 | ✅ | ✅ | 前二 | 僅 view |
+| `view_issues` / `edit_issues` / `delete_issues` | 異常與資源 | ✅ | ✅ | 前二 | 僅 view |
+| `view_booking` | 列印機預約 | ✅ | ✅ | ✅ | ✅ |
+| `view_inventory` | 材料庫存 | ✅ | ✅ | ✅ | ✅ |
+| `view_quote` | 3D 列印估價 | ✅ | ✅ | ✅ | ✅ |
+| `manage_quote_pricing` | 估價材料與價格設定 | ✅ | ✅ | — | — |
+| `manage_inventory` | 材料庫存設定（v2.4） | ✅ | ✅ | — | — |
+| `manage_users` | 後台使用者管理（v2.4） | ✅ | ✅ | — | — |
+| `admin` | 所有權限 | ✅ | — | — | — |
+
+### ⚠️ 舊 `role` 欄位分不出主管
+
+`role` 只有 `admin`/`editor`/`viewer` 三級，manager 與 operator 都推導成 `editor`。**需要辨別主管的邏輯一律檢查 `permissions` 陣列，不要用 `role`**。既有範例：
+
+```javascript
+// inventory.html
+function canDeleteRecords() {          // 刪除消耗紀錄
+    if (currentUser.role === 'admin') return true;
+    const p = currentUser.permissions || [];
+    return p.includes('delete_board') || p.includes('delete_issues');
+}
+function canManageInventorySettings() { // 庫存設定
+    if (currentUser.role === 'admin') return true;
+    return (currentUser.permissions || []).includes('manage_inventory');
+}
+```
+
+反之，**刻意要限制成「只有 admin」的破壞性功能**（`purgeAndRebuildHistory` / `deduplicateHistory`）就直接用 `currentUser.role === 'admin'` 嚴格判斷——manager 推導出來是 `editor`，天然被擋掉。
+
+### 後台管理下放主管的邊界（v2.4）
+
+`AdminPanel` 現在接受 `isAdmin` prop，主管進得去但受限：
+
+| 限制 | 前端實作 | Firestore rules |
+|------|---------|-----------------|
+| 角色權限分頁不可見 | `SETTING_TABS` 依 `isAdmin` 條件加入 + render guard | — |
+| 個別權限勾選格不顯示 | `UserModal` 的 `callerIsAdmin` prop | — |
+| 套用角色不含「管理員」 | preset 清單依 `callerIsAdmin` 過濾 | `!('admin' in request.resource.data.permissions)` |
+| 不可編輯 admin 使用者 | 使用者列表對 admin 列隱藏編輯鈕 + `blockedForManager` | `!('admin' in resource.data.permissions)` |
+| 不可刪除使用者 | 刪除鈕僅 `isAdmin` 顯示 | `allow delete: if isAdmin()` |
+
+**兩層都有把關**：前端隱藏 UI，Firestore rules 擋住「新增/異動 admin」這條硬邊界，不是只靠隱藏按鈕。
+
+---
+
+## 六、Firestore 資料結構
 
 ### `users/{uid}`
 ```typescript
 {
   email, displayName,
-  role: 'admin'|'editor'|'viewer',        // 舊系統相容欄位，由 permissions 推導（roleFromPermissions）
-  permissions: string[],                   // 細權限陣列，如 ['view_board','edit_board','delete_board','manage_quote_pricing',...]
+  role: 'admin'|'editor'|'viewer',        // 舊系統相容欄位，由 permissions 推導
+  permissions: string[],                   // 細權限陣列
   active: boolean, createdAt
 }
 ```
-系統至少需保留一位 `permissions` 含 `admin` 的使用者；後台使用者管理頁面會擋下刪除/移除最後一位管理員的操作。
+系統至少需保留一位 `permissions` 含 `admin` 的使用者；後台會擋下刪除/移除最後一位管理員的操作（僅前端擋，見已知限制）。
 
 ### `bookings/{auto-id}`
 ```typescript
@@ -240,12 +344,12 @@ def is_outdated_version(raw_code, *latest_dicts):
   date, endDate,          // endDate 支援跨天預約；未跨天則等於 date
   slot: 'AM'|'PM'|'EV'|'ALL',
   sales, printer, hasOrder, purpose,
-  category: '活動展示'|'工程測試'|'其他', categoryOther,   // 用途類別，選「其他」才需 categoryOther
+  category: '活動展示'|'工程測試'|'其他', categoryOther,
   engineer, status: '待確認'|'執行中'|'已完成'|'異常/取消',
   createdAt, createdBy, createdByEmail, updatedAt, updatedBy, updatedByEmail
 }
 ```
-顯示狀態（執行中/已完成）由前端依日期即時計算（`effectiveStatus()`），不寫回 `status` 欄位，避免多餘寫入；已完成/異常取消不會被自動覆蓋。
+顯示狀態（執行中/已完成）由前端依日期即時計算（`effectiveStatus()`），不寫回 `status` 欄位。
 
 ### `workboard_orders/{auto-id}`
 ```typescript
@@ -255,28 +359,26 @@ def is_outdated_version(raw_code, *latest_dicts):
   progress, complete, remark, link, createdAt, createdBy, updatedAt }
 ```
 
-### `issues_anomalies/{auto-id}` / `issues_ipa/{auto-id}` / `issues_equipment/{auto-id}`
+### `issues_anomalies` / `issues_ipa` / `issues_equipment`
 ```typescript
 { date, description, status, note, createdAt, createdBy, updatedAt }
 ```
 
-### `sample_items/{auto-id}`（v2.3 新增，樣品出借清冊主檔）
+### `sample_items/{auto-id}` / `sample_loans/{auto-id}`
 ```typescript
+// sample_items：樣品清冊主檔
 { seq, name, location, material, createdAt, createdBy }
-```
-
-### `sample_loans/{auto-id}`（v2.3 新增，借出紀錄）
-```typescript
+// sample_loans：借出日誌（無借出人/歸還日期/時段）
 { itemId, itemName, material, loanDate, remark, createdAt, createdBy }
 ```
-v2.3 簡化後只是單純的借出日誌（樣品/日期/備註），無借出人、歸還日期、時段欄位。`sample_items` 的新增/刪除限 admin；`sample_loans` 的 create/update 只需 `view_issues` 權限（開放一般 viewer 登記），delete 限 `edit_issues`。每月登記表 Excel 匯入會把月表勾選格批次寫成多筆 `sample_loans`，同月重匯先刪除該月既有的匯入紀錄再寫入，避免重複計算。
+每月登記表 Excel 匯入會把勾選格批次寫成多筆 `sample_loans`，同月重匯先刪除該月既有匯入紀錄再寫入。
 
 ### `settings/workspace`（單一 doc）
 ```typescript
 {
-  workspaceName, engineers, machines,       // 工作看板/庫存同步用的預設清單
-  bk_engineers, bk_machines, bk_sales,      // 3D列印機預約獨立設定（bkSync=false 時才會跟 engineers/machines 不同）
-  role_presets: { manager: [...], operator: [...], viewer: [...] },   // 角色權限預設，後台「角色權限」分頁可調整
+  workspaceName, engineers, machines,       // 工作看板/庫存同步用
+  bk_engineers, bk_machines, bk_sales,      // 3D列印機預約獨立設定
+  role_presets: { manager: [...], operator: [...], viewer: [...] },
   ...
 }
 ```
@@ -284,57 +386,64 @@ v2.3 簡化後只是單純的借出日誌（樣品/日期/備註），無借出�
 ### `inventory/main`（單一 doc）
 ```typescript
 {
-  cartridges: { AluminumBowfin: [{ material, material_raw, remaining_ml, initial_ml, slot, ... }], AdroitSauropod: [...] },
-  stock: { FLGPCL05: { bottles, total_ml, note, updated_at, updated_by, ... }, ... },
-  safety: { FLGPCL05: 2000, ... },     // ml
-  last_processed_prints: ['guid1', ...],
-  disabled_materials: [...],
-  family_latest_version: { FLTO20: 'FLTO2002', ... },   // v2.2 新增：各材料家族目前看過的最新版本原始代碼
+  cartridges: { AluminumBowfin: [{ material, material_raw, remaining_ml, initial_ml, slot, ... }], ... },
+  stock: {
+    FLGPCL05: { bottles, total_ml, note, updated_at, updated_by },              // 材料
+    'Formlabs Form 4 Resin Tank': { total_ml, bottles, kind:'consumable', ... } // 耗材（v2.4）
+  },
+  safety: { FLGPCL05: 2000, ... },                      // ml
+  partno, matNames,                                     // 手動品號 / 顯示名稱覆寫
+  last_processed_prints: ['guid1', ...],                // 已寫過 history
+  deducted_prints: ['guid1', ...],                      // 已扣過庫存
+  family_latest_version: { FLTO20: 'FLTO2002', ... },   // 各家族最新版本原始代碼
+  stock_shortfalls: { FLTO20: { ml, last_at }, ... },   // v2.4：扣不掉的累計差額
+  l_tank_materials: ['FLTO20', ...],                    // v2.4：配著 Form 4L 樹脂槽的家族
+  disabled_materials, disabled_overrides,
   updatedAt, updatedBy, lastReason
 }
 ```
 
 ### `inventory_history/{doc_id}`
 
-doc_id 命名：`consume/aborted` = print_guid（防重複）；其他 = auto-id。
+doc_id 命名：`consume`/`aborted` = print_guid（防重複）；其他 = auto-id。
 
 ```typescript
 {
   ts, tsDate,
   type: 'consume'|'aborted'|'stockin'|'manual',
   material,               // 家族代碼（截斷後）
-  material_raw,           // v2.2 新增：原始代碼（截斷前），僅新寫入的紀錄才有此欄位
+  material_raw,           // 原始代碼（截斷前），僅新寫入的紀錄才有
   printer, ml,
-  stock_deducted,         // v2.3 新增：這筆是否真的扣了 stock（bool）；舊紀錄無此欄位視為 true
-  deduct_skip_reason,     // v2.3 新增：stock_deducted=false 時的原因（如 'outdated_version'）
-  note,                   // 建議格式「客戶簡稱-工作類別-EF單號」，供工作看板自動比對消耗量
+  stock_deducted,         // 是否真的扣了 stock（bool）；舊紀錄無此欄位視為 true
+  deduct_skip_reason,     // 'outdated_version' | 'backfill' | null
+  note,                   // 建議格式「客戶簡稱-工作類別-EF單號」
   print_guid, apiStatus,
   createdBy, createdByEmail
 }
 ```
-刪除 `consume`/`aborted` 類型的紀錄時，前端**只在 `stock_deducted !== false` 時**才把 `ml` 加回 `stock` 對應家族，並另外寫一筆 `manual` 類型的回補紀錄留痕；`manual` 類型本身、以及 `stock_deducted === false`（未扣庫存）的紀錄，刪除都不影響庫存數字。
+
+刪除 `consume`/`aborted` 類型時，前端**只在 `stock_deducted !== false` 時**才把 `ml` 加回 `stock` 對應家族，並另寫一筆 `manual` 回補紀錄留痕。
+
+> **讀取這個 collection 一律經 `mapHistoryDoc()`**（inventory.html），否則容易漏欄位造成下游判斷靜默失效。
 
 ### `printer_status/current`（單一 doc）
 ```typescript
 {
-  printers: [{ alias, serial, status, machine_type_id, cartridges, updated_at }, ...],
+  printers: [{ alias, serial, status, print_name, progress, machine_type_id, cartridges, updated_at }, ...],
   updated_at: serverTimestamp
 }
 ```
 
-### `settings/quote_materials`（單一 doc，quote-studio.html 專用）
+### `settings/quote_materials` / `settings/quote_studio_pricing`
 ```typescript
+// quote_materials
 { list: [{ name, code, price, density }, ...], _ts }
-```
-與舊版 `quote.html` 的材料設定共用同一份清單。admin 或有 `manage_quote_pricing` 權限的主管可在 quote-studio.html 內編輯。
-
-### `settings/quote_studio_pricing`（單一 doc，quote-studio.html 專用）
-```typescript
+// quote_studio_pricing
 { multipliers: { '代工': 1, '評估': 1.2 }, _ts }
 ```
-與 `settings/quote_materials` 分開存放，避免舊版 `quote.html` 材料設定頁的整份覆寫（`.set()` 無 merge）把倍率設定沖掉。
+分開存放，避免整份覆寫（`.set()` 無 merge）互相沖掉。
 
-### `print_orders/{auto-id}` / `print_history/{auto-id}`（quote-studio.html 專用）
+### `print_orders` / `print_history`（quote-studio.html 專用）
 ```typescript
 // print_orders：估價工單
 { no, customer, item, machine, material, resinML, timeS, total, workType, status, createdAt }
@@ -344,7 +453,7 @@ doc_id 命名：`consume/aborted` = print_guid（防重複）；其他 = auto-id
 
 ---
 
-## 六、Cloud Function 內部流程
+## 七、Cloud Function 內部流程
 
 ```
 sync_formlabs_scheduled（每 30 分鐘）
@@ -355,18 +464,21 @@ sync_formlabs_scheduled（每 30 分鐘）
   5. 寫 printer_status/current
   6. 同步追蹤機台 cartridges → inventory/main.cartridges
   7. GET /prints/?printer={serial} 逐台分頁拉取（不加 date/sort）
-  8. 每筆 print 用 parse_valid_ts 取有效時間
-  9. doc_id = print_guid，set history（防重複）
- 10. 寫回 inventory/main（merge，保留 stock/safety）
+  8. 每筆 print：跳過已處理 guid → 判斷 record_type 與 will_deduct
+  9. doc_id = print_guid，batch set history（防重複）
+ 10. 套用 stock_deductions 到 inv.stock（扣到 0 為止，差額進 stock_shortfalls）
+ 11. 寫回 inventory/main（merge，保留 stock/safety）
 ```
+
+> ⚠️ **步驟 8 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過**。Firestore 的 `.set()` 即使內容不變也計費一筆寫入，曾因每輪重寫全部 ~777 筆 × 每天 144 次 ≈ **11 萬寫入/天**（免費額度 2 萬/天）爆量。
 
 ---
 
-## 七、前端架構：portal.html
+## 八、前端架構：portal.html
 
 `portal/portal.html` 是 React18 + Babel CDN 的 SPA 外殼：
 - 工作看板、異常與資源、後台管理 → React 元件內建
-- 3D列印機預約、材料庫存管理、3D列印估價 → `<iframe src="../3DP-BK.html">` / `<iframe src="../inventory.html">` / `<iframe src="../quote-studio.html">`
+- 3D列印機預約、材料庫存管理、3D列印估價 → iframe 載入根目錄檔案
 
 **改各模組時注意對應檔案**（不是全在 portal.html）：
 
@@ -376,16 +488,18 @@ sync_formlabs_scheduled（每 30 分鐘）
 | 工作看板邏輯 | `portal/workboard.js` |
 | 異常與資源邏輯 | `portal/issues.js` |
 | Firebase 設定 | `portal/firebase-config.js` |
-| Firebase 服務封裝 | `portal/firebase-service.js`（角色權限定義 `PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 也在這） |
+| Firebase 服務封裝 | `portal/firebase-service.js`（`PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 也在這） |
 | 預約系統 | `3DP-BK.html`（根目錄） |
 | 材料庫存 | `inventory.html`（根目錄） |
 | 3D列印估價（Beta） | `quote-studio.html`（根目錄）；舊版 `quote.html` 已下線移除 |
 
-**升 cache 版本號**：改完 `portal/` 下的 `.js` 後，必須升 `portal.html` 的 `?v=` 參數（目前 `workboard.js`/`firebase-service.js` 為 `20260708h`/`20260708g`，`issues.js`/`firebase-config.js` 仍是 `20260708f`；每個 `.js` 檔各自獨立編號，只需升有改動的那支）。只改 portal.html 自身（CSS/元件）不需升號。
+**升 cache 版本號**：改完 `portal/` 下的 `.js` 後，必須升 `portal.html` 的 `?v=` 參數。每支 `.js` 各自獨立編號，只需升有改動的那支；只改 portal.html 自身（CSS/元件）不需升號。
+
+> 版本號會持續往上升，**實際數值請直接看 `portal/portal.html` 內對應的 `<script src="...?v=...">`**，不要照抄文件。（撰寫本文時：`workboard.js`=`20260708j`、`issues.js`=`20260708k`、`firebase-service.js`=`20260708i`、`firebase-config.js`=`20260708f`）
 
 ---
 
-## 八、為何前端用 onSnapshot
+## 九、為何前端用 onSnapshot
 
 舊版：`setInterval(fetch, 5min)` → 背景 tab throttle，CDN cache，整份 JSON。
 
@@ -393,35 +507,41 @@ sync_formlabs_scheduled（每 30 分鐘）
 
 ---
 
-## 九、Firestore 讀取量優化
+## 十、Firestore 讀取量優化
 
 - **消耗紀錄**：預設只訂閱最近 30 天（`where tsDate >= sinceDate`）
-- **「載入更早」**：用 `getDocs` 一次性 query 指定月份範圍，不擴大 onSnapshot 訂閱
+- **「載入更早」**：用 `getDocs` 一次性 query 指定月份範圍，不擴大 onSnapshot 訂閱；補撈結果只存在本次 session
 - **bookings 複合索引**：`date desc + createdAt desc`，已在 `firestore.indexes.json`
 
 ---
 
-## 十、Security Rules 摘要
+## 十一、Security Rules 摘要
 
 | Collection | read | write |
 |-----------|------|-------|
 | `inventory/main` | 任何登入者 | editor / admin |
-| `inventory_history` | 任何登入者 | create: editor+；update: admin；**delete: admin 或主管**（`delete_board`/`delete_issues`，v2.2 為配合刪除回補庫存功能開放） |
+| `inventory_history` | 任何登入者 | create: editor+；update: admin；**delete: admin 或主管**（`delete_board`/`delete_issues`） |
 | `printer_status/current` | 任何登入者 | `allow write: if false`（Cloud Function admin SDK 跳過） |
-| `users/{uid}` | 自己 / admin | create: 任何登入者；update/delete: admin（**注意**：至少保留一位 admin 的檢查目前只在前端 `AdminPanel` 做，Firestore rules 沒有硬性擋，直接改 Firestore 可繞過，屬已知限制） |
+| `users/{uid}` | 任何登入者 | create: 自己 / admin / **`manage_users` 且新值不含 admin**；update: admin / **`manage_users` 且目標與新值皆不含 admin**；delete: admin only |
 | `bookings` | 任何登入者 | editor / admin |
-| `workboard_orders` | 任何登入者 | editor / admin |
-| `issues_*` | 任何登入者 | editor / admin |
-| `sample_items` | `view_issues` | admin only（v2.3 新增） |
-| `sample_loans` | `view_issues` | create/update：`view_issues`（開放 viewer 登記）；delete：`edit_issues`（v2.3 新增） |
+| `workboard_orders` | `view_board` | create/update: `edit_board`；delete: `delete_board` |
+| `issues_*` | `view_issues` | create/update: `edit_issues`；delete: `delete_issues` |
+| `sample_items` | `view_issues` | admin only |
+| `sample_loans` | `view_issues` | create/update：`view_issues`（開放 viewer 登記）；delete：`edit_issues` |
 | `settings/workspace` | 任何登入者 | admin |
-| `settings/quote_materials`、`settings/quote_studio_pricing` | 任何登入者 | **admin 或有 `manage_quote_pricing` 權限者**（v2.2 新增；務必寫在 `settings/{docId}` 泛用規則之前，否則會被泛用規則的 admin-only 蓋掉） |
+| `settings/quote_materials`、`settings/quote_studio_pricing` | 任何登入者 | admin 或 `manage_quote_pricing` |
 | `print_orders` | 任何登入者 | create: 任何登入者；update: editor/admin；delete: admin |
 | `print_history` | 任何登入者 | create: 任何登入者；update/delete: admin |
 
+### ⚠️ 泛用萬用字元規則會蓋過具體路徑
+
+Firestore rules 是「**最具體路徑優先**」，不是疊加 OR。新增權限保護某個 collection/doc 時，務必檢查有沒有更泛用的規則（如 `match /settings/{docId}`）會先蓋過去——泛用規則若路徑更廣，會讓新權限完全不生效。
+
+實際踩過的案例：`manage_quote_pricing`（`settings/quote_materials`）、`inventory_history` 主管刪除權限，都必須在泛用規則**之前**另外寫具體路徑。
+
 ---
 
-## 十一、Secrets 管理
+## 十二、Secrets 管理
 
 | Secret 名稱 | 用途 | 位置 |
 |------------|------|------|
@@ -431,13 +551,13 @@ sync_formlabs_scheduled（每 30 分鐘）
 
 ---
 
-## 十二、quote-studio.html 估價引擎技術重點（v2.3）
+## 十三、quote-studio.html 估價引擎技術重點
 
 quote-studio.html 是純前端、單一 HTML 檔（Three.js r128），所有模型處理都在瀏覽器完成，不上傳伺服器。
 
 ### STEP/STP 匯入
 
-STEP（ISO 10303）是 CAD B-rep 格式（NURBS 曲面 + 拓樸），不像 STL/OBJ/3MF 本身就是三角網格，需要 CAD 核心「鑲嵌（tessellate）」成三角面才能顯示/分析。採 **occt-import-js**（OpenCASCADE 編譯的 WASM 精簡匯入版），CDN：`cdn.jsdelivr.net/npm/occt-import-js@0.0.23/`，WASM + JS glue 只在「第一次匯入 STEP」才延遲載入並快取（`loadOcct()`），平常用 STL/OBJ/3MF 的人不受影響。回傳的 indexed 網格去索引攤平、Z-up→Y-up 座標轉換後，接入既有的 `addModelFromPos()`，後續整條估價管線完全不用改。細分精度為固定預設值，複雜組裝件或極端尺寸屬近似。
+STEP（ISO 10303）是 CAD B-rep 格式（NURBS 曲面 + 拓樸），需要 CAD 核心「鑲嵌（tessellate）」成三角面才能顯示/分析。採 **occt-import-js**（OpenCASCADE 編譯的 WASM 精簡匯入版），CDN：`cdn.jsdelivr.net/npm/occt-import-js@0.0.23/`，WASM + JS glue 只在「第一次匯入 STEP」才延遲載入並快取（`loadOcct()`）。回傳的 indexed 網格去索引攤平、Z-up→Y-up 座標轉換後，接入既有的 `addModelFromPos()`。細分精度為固定預設值，複雜組裝件或極端尺寸屬近似。
 
 ### 列印時間模型
 
@@ -445,40 +565,43 @@ STEP（ISO 10303）是 CAD B-rep 格式（NURBS 曲面 + 拓樸），不像 STL/
 const TIME_MODEL = { refLayerH:0.05, startup:2870, basePerLayer:4.90, areaCoef:0.01474 };
 // 總時間 = startup(開銷) + basePerLayer×層數 + areaCoef×(固化體積÷層厚)
 ```
-取代舊版「層數 × 固定 spl 常數 + 300」——舊模型無法區分幾何差異（方塊與高瘦件同層數但實際耗時不同）。`areaCoef` 項 = 智慧剝離/沉澱時間 ∝ 每層固化截面積（Σ截面積 = 體積 ÷ 層厚，與擺放無關）。由 Tough 2000 @0.05mm 的真實列印校準（4 筆，含 1 筆盲測驗證，最大誤差 4.1%）。
 
-各材料另外套一個實測速度係數 `MAT_TIME_FACTOR`（如 `flexible80a: 2.29`、`grey: 0.60`），因為純設定推算（曝光+早期層）誤差可達 ±30%，剝離/黏度差異只有實測抓得到；每種材料用同一塞座件（~3.8mL）真實列印反解係數。**每種材料僅一個尺寸校準，極大/極小件屬外插**。
+取代舊版「層數 × 固定 spl 常數 + 300」——舊模型無法區分幾何差異。`areaCoef` 項 = 智慧剝離/沉澱時間 ∝ 每層固化截面積（Σ截面積 = 體積 ÷ 層厚，與擺放無關）。由 Tough 2000 @0.05mm 的真實列印校準（4 筆，含 1 筆盲測驗證，最大誤差 4.1%）。
+
+各材料另套實測速度係數 `MAT_TIME_FACTOR`（如 `flexible80a: 2.29`、`grey: 0.60`）。**每種材料僅一個尺寸校準，極大/極小件屬外插**。
 
 ### 支撐生成準確度修正
 
-`generateSupports()`（格網取樣 + 由下往上射線的內建近似）原本有三個採樣問題：(1) 取樣間距固定用密度公式換算，跟模型尺寸/局部特徵無關，窄特徵（如多片葉片中間橫接的薄橋）寬度小於間距時射線網格會整條跳過；(2) 懸空分類角度門檻方向寫反，導致最危險的平坦懸空面反而分類不到；(3) 同一射線第一個候選附著點不合格就放棄整條射線。修法：預設間距 9mm→6mm 並依模型尺寸調整最小取樣格數（6→10）、修正角度判斷方向、改成換下一個交點繼續找。
+`generateSupports()` 原本有三個採樣問題：(1) 取樣間距固定用密度公式換算，與模型尺寸/局部特徵無關，窄特徵會被射線網格整條跳過；(2) 懸空分類角度門檻方向寫反；(3) 同一射線第一個候選附著點不合格就放棄整條射線。修法：預設間距 9mm→6mm 並依模型尺寸調整最小取樣格數（6→10）、修正角度判斷方向、改成換下一個交點繼續找。
 
 ### 支撐生成與驗證耦合修復
 
-`generateSupports()` 與 `runIslands()`/`runOverhang()`（可行性驗證）原本各跑一套、互不知情，導致「支撐已生成，驗證仍對裸模型評分」的矛盾。修法：`generateSupports` 持久化接觸點世界座標 `S.supportStat.pts`；驗證的孤島/懸垂改判「未被支撐涵蓋」的部分（`nearSupport()`/`supportCoverageReady()`）。「🧩 支撐風險」熱力圖把這個涵蓋關係視覺化（紅＝未涵蓋、青綠＝已涵蓋）。
+`generateSupports()` 與 `runIslands()`/`runOverhang()` 原本各跑一套、互不知情，導致「支撐已生成，驗證仍對裸模型評分」的矛盾。修法：`generateSupports` 持久化接觸點世界座標 `supportStat.pts`；驗證的孤島/懸垂改判「未被支撐涵蓋」的部分（`nearSupport()`/`supportCoverageReady()`）。「🧩 支撐風險」熱力圖把涵蓋關係視覺化。
 
 ### 支撐三種顯示方式
 
-支撐材質是共用單例（`V.matSup` 灰色支柱/齒/底座、`V.matTpType` 四色接觸點球）。切換「實體/半透明/只顯示支撐點」只改這些材質的 `opacity`/`transparent`，**不重新生成幾何**。「只顯示支撐點」用 `mesh.userData.supPart`（`body`=支柱/齒/底座/底座標籤、`point`=接觸點球）分別控制可見性；`generateSupports()` 結尾呼叫 `applySupDisplay()`，確保重新生成幾何時延續目前顯示方式。
+支撐材質是共用單例（`V.matSup`、`V.matTpType`）。切換「實體/半透明/只顯示支撐點」只改材質的 `opacity`/`transparent`，**不重新生成幾何**。「只顯示支撐點」用 `mesh.userData.supPart` 分別控制可見性；`generateSupports()` 結尾呼叫 `applySupDisplay()` 確保延續目前顯示方式。
 
 ### 3D 檢視滑鼠操作
 
-`initViewer()` 內的 `pointerdown/move/up` 依 `e.button` 路由：右鍵（2）＝旋轉視角、中鍵（1）＝平移、左鍵（0）在模型上＝選取＋拖曳移動（沿用 PreForm 式操縱器）、左鍵在空白處＝框選（拉出矩形 `#selBox`，鬆開時把模型世界包圍盒 8 角投影到螢幕座標，跟矩形做重疊測試決定選取/取消）。純點擊（沒有真的拖出矩形）視為點空白＝取消選取，與改版前行為一致。
+`initViewer()` 內的 `pointerdown/move/up` 依 `e.button` 路由：右鍵（2）＝旋轉視角、中鍵（1）＝平移、左鍵（0）在模型上＝選取＋拖曳移動、左鍵在空白處＝框選（拉出矩形，鬆開時把模型世界包圍盒 8 角投影到螢幕座標做重疊測試）。純點擊視為點空白＝取消選取。
 
 ---
 
-## 十三、已知限制與未來改進
+## 十四、已知限制與未來改進
 
 ### 限制
 
 1. **換罐不自動扣 stock**：無法 100% 確定來源，需人工確認
 2. **每次 sync 拉全部 cartridges**：資料量小，目前不必要增量
-3. **`last_processed_prints` 上限 2000 guid**：每天 10 筆量，足夠 200 天保護期
-4. **材料版本追蹤僅適用未來資料**：`family_latest_version` 只在寫入前用截斷前的原始代碼比對，舊歷史紀錄的原始代碼早已丟失，無法回溯
-5. **admin 人數下限只在前端擋**：`AdminPanel` 會擋下刪除/移除最後一位管理員，但 Firestore rules 沒有對應的硬性限制，直接操作 Firestore 可繞過
-6. **bookings 刪除無 audit log**：3D列印機預約刪除目前沒有留痕紀錄（inventory_history 的刪除已有回補+留痕，bookings 還沒有）
-7. **消耗以最新版本計算的前提風險**（v2.3）：假設「備料只進新版本」，若某材料家族仍有舊版本備料瓶在用，該家族庫存會停止下降。目前透過 `VERSION_ALIAS` 處理已知的「同版本不同代碼」特例（FLRG1002/FLRG1011），未來若發現同類情形需再加對照表
-8. **STEP 匯入為固定精度近似鑲嵌**：occt-import-js 細分精度未提供 UI 調整，複雜組裝件或極端尺寸的網格可能不夠精細
+3. **`last_processed_prints` / `deducted_prints` 上限 2000 guid**：每天 10 筆量，足夠 200 天保護期
+4. **材料版本追蹤僅適用未來資料**：舊歷史紀錄的原始代碼已丟失，無法回溯（可用 backfill 重抓補上 `material_raw`）
+5. **admin 人數下限只在前端擋**：Firestore rules 沒有對應硬性限制，直接操作 Firestore 可繞過
+6. **bookings 刪除無 audit log**：inventory_history 的刪除已有回補+留痕，bookings 還沒有
+7. **消耗以最新版本計算的前提風險**：假設「備料只進新版本」，若某家族仍有舊版本備料瓶在用，該家族庫存會停止下降
+8. **STEP 匯入為固定精度近似鑲嵌**：occt-import-js 細分精度未提供 UI 調整
+9. **換槽扣料為固定常數、無自我修正**（v2.4）：模型經驗證正確且無內建累積偏差，但實際注入量若與常數有固定偏差、或作業上回收舊槽樹脂，誤差會線性累積，需定期實體盤點
+10. **前後端材料正規化為兩份實作**：無 build step 無法共用，靠 `tools/check_material_sync.py` 把關
 
 ### 可能的未來改進
 
@@ -491,3 +614,5 @@ const TIME_MODEL = { refLayerH:0.05, startup:2870, basePerLayer:4.90, areaCoef:0
 | Firestore rules 也強制 admin 人數下限（transaction 檢查） | 半天 |
 | STEP 匯入細分精度可調 UI | 半天 |
 | 消耗版本規則加白名單設定介面（取代改程式碼） | 半天 |
+| 換槽扣料常數改為可設定（依實測校準） | 半天 |
+| `check_material_sync.py` 掛進 GitHub Actions 擋 PR | 1 小時 |
