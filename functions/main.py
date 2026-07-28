@@ -401,6 +401,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         inv.setdefault("disabled_materials", [])
         inv.setdefault("disabled_overrides", [])
         inv.setdefault("family_latest_version", {})
+        inv.setdefault("stock_shortfalls", {})   # 消耗超過庫存的累計差額（使用者查明後可從前端清除）
         family_latest = inv["family_latest_version"]
 
         # backfill 模式：清空 history + last_processed_prints
@@ -674,6 +675,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         # 9. 套用消耗扣減到備料庫存（從實際存在的同家族 key 扣，不建立幽靈 key）
         if stock_deductions:
             print(f"[sync] 套用消耗扣備料庫存: {stock_deductions}")
+            shortfalls = {}   # 帳上庫存不足、扣不掉的差額 → 代表消耗紀錄與庫存對不上
             for mat, amount in stock_deductions.items():
                 fam = canon_material(mat)
                 # 找出所有同家族的 stock key（可能是舊代碼/名稱/家族代碼）
@@ -690,7 +692,22 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     d = min(cur, remaining)
                     inv["stock"][k]["total_ml"] = round(cur - d, 1)
                     remaining -= d
+                # 扣不完 = 這批消耗超過帳上庫存。以前這裡靜默丟棄，前端完全看不出異常
+                # （庫存卡在 0，但實際上有一筆消耗沒被反映）→ 累計記錄下來讓前端跳警示。
+                if remaining > 0.05:
+                    shortfalls[fam] = round(remaining, 1)
+                    print(f"[sync][警示] 消耗超過庫存: {fam} 差額 {remaining:.1f} ml（庫存已扣至 0）")
             stats["stock_deducted"] = {m: round(v, 2) for m, v in stock_deductions.items()}
+            if shortfalls:
+                stats["stock_shortfall"] = shortfalls
+                existing = inv.get("stock_shortfalls") or {}
+                for fam, ml in shortfalls.items():
+                    prev = existing.get(fam) or {}
+                    existing[fam] = {
+                        "ml":      round((prev.get("ml") or 0) + ml, 1),   # 累計，直到使用者查明後清除
+                        "last_at": now_iso,
+                    }
+                inv["stock_shortfalls"] = existing
 
         inv["last_processed_prints"] = list(processed)[-2000:]  # 保留最近 2000 個
         inv["deducted_prints"]       = list(deducted)[-2000:]   # 已扣庫存的 print
@@ -706,6 +723,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             "disabled_materials":    inv["disabled_materials"],
             "disabled_overrides":    inv["disabled_overrides"],
             "family_latest_version": family_latest,
+            # 消耗超過帳上庫存的累計差額（前端據此跳「消耗紀錄可能有誤」警示）；
+            # 沒有新差額時寫回既有值（可能是空 dict＝已被使用者清除），不要用 merge 把舊值留著
+            "stock_shortfalls":      inv.get("stock_shortfalls") or {},
             "updatedAt":             firestore.SERVER_TIMESTAMP,
             "updatedBy":             "cloud-function",
             "updatedByEmail":        "sync-formlabs@cloud-function",

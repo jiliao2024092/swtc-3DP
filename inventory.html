@@ -147,16 +147,26 @@
         </div>
         <div class="space-y-4">
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-[var(--ink-2)]">材料種類</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]">入庫類型</label>
+                <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5">
+                    <button type="button" id="stock-kind-material" onclick="setStockKind('material')"
+                        class="flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors">材料</button>
+                    <button type="button" id="stock-kind-consumable" onclick="setStockKind('consumable')"
+                        class="flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors">耗材</button>
+                </div>
+                <p class="text-xs text-[var(--ink-5)]" id="stock-kind-hint">材料：Formlabs 樹脂，以公升計算，會比對 Formlabs 家族代碼。</p>
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-[var(--ink-2)]" id="stock-material-label">材料種類</label>
                 <input list="material-options" id="stock-material" autocomplete="off" placeholder="選擇或直接輸入新材料名稱"
                     class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 <datalist id="material-options"></datalist>
             </div>
             <div class="space-y-1.5">
-                <label class="text-sm font-medium text-[var(--ink-2)]">數量 (L)</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]" id="stock-qty-label">數量 (L)</label>
                 <input type="number" id="stock-qty" min="0" step="1" value="1" placeholder="例：1.5 = 1500 ml"
                     class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-                <p class="text-xs text-[var(--ink-5)]">可輸入小數（如 1.5 L = 1500 ml）</p>
+                <p class="text-xs text-[var(--ink-5)]" id="stock-qty-hint">可輸入小數（如 1.5 L = 1500 ml）</p>
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-[var(--ink-2)]">備註</label>
@@ -167,6 +177,33 @@
         <div class="flex gap-3 mt-6">
             <button onclick="closeStockModal()" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
             <button onclick="saveStockIn()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認入庫</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ 樹脂槽用途 Modal（減少樹脂槽庫存時詢問用在哪個材料，連帶扣該材料備料庫存）══ -->
+<div id="tank-modal" class="modal-overlay hidden">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-md mx-4">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="bg-[var(--warn-soft)] p-2.5 rounded-lg"><i data-lucide="flask-conical" class="w-5 h-5 text-[var(--warn)]"></i></div>
+            <h2 class="text-xl font-bold">樹脂槽用途</h2>
+        </div>
+        <p id="tank-modal-desc" class="text-sm text-[var(--ink-3)] mb-5 leading-relaxed"></p>
+        <div class="space-y-4">
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-[var(--ink-2)]">用在哪個材料？</label>
+                <select id="tank-material" onchange="onTankMaterialChange()"
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-[var(--bg)]"></select>
+            </div>
+            <div class="space-y-1.5">
+                <label class="text-sm font-medium text-[var(--ink-2)]">備註<span id="tank-note-req" class="text-[var(--danger)] hidden"> *</span></label>
+                <input type="text" id="tank-note" placeholder="選填"
+                    class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+            </div>
+        </div>
+        <div class="flex gap-3 mt-6">
+            <button onclick="resolveTankModal(null)" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
+            <button onclick="submitTankModal()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium">確認</button>
         </div>
     </div>
 </div>
@@ -303,7 +340,7 @@
                 <i data-lucide="bell-ring" class="w-5 h-5 text-[var(--danger)]"></i>
             </div>
             <div class="flex-1 min-w-0">
-                <p class="font-semibold text-[var(--danger)] mb-2 flex items-center gap-2">材料庫存不足，請安排叫料
+                <p class="font-semibold text-[var(--danger)] mb-2 flex items-center gap-2">庫存不足，請安排叫料（材料／耗材）
                     <span id="alert-count" class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium"></span>
                 </p>
                 <div id="alert-items" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
@@ -324,6 +361,26 @@
                 <p class="text-xs text-[var(--ink-4)] mb-2">以下代碼由 Formlabs 列印紀錄自動抓取，目前直接以原始代碼顯示。</p>
                 <div id="newmat-items" class="flex flex-wrap gap-2 mb-2"></div>
                 <button data-admin-only onclick="showSafetyModal()" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--bg)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">✎ 設定顯示名稱</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 消耗紀錄異常提示：Cloud Function 扣庫存時扣不完（消耗量 > 帳上庫存）就會累計差額 -->
+    <div id="shortfall-banner" class="hidden bg-[var(--danger-soft)] border border-[var(--danger-border)] rounded-xl p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+            <div class="flex-shrink-0 w-9 h-9 rounded-full bg-[var(--danger-soft)] flex items-center justify-center">
+                <i data-lucide="triangle-alert" class="w-5 h-5 text-[var(--danger)]"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-[var(--danger)] mb-1 flex items-center gap-2">消耗紀錄可能有誤，請檢查
+                    <span id="shortfall-count" class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium"></span>
+                </p>
+                <p class="text-xs text-[var(--ink-4)] mb-2">以下材料的列印消耗量超過帳上庫存，庫存已扣至 0，超出的部分無法反映。常見原因：消耗紀錄重複、材料歸屬錯誤，或入庫時漏登記。</p>
+                <div id="shortfall-items" class="flex flex-wrap gap-2 mb-2"></div>
+                <div class="flex gap-2">
+                    <button onclick="switchTab('history')" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--bg)] text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors">→ 檢查消耗紀錄</button>
+                    <button data-admin-only onclick="clearStockShortfalls()" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">✓ 已確認，清除警示</button>
+                </div>
             </div>
         </div>
     </div>
@@ -447,6 +504,32 @@
                     <tbody id="stock-table-body" class="divide-y divide-gray-100"></tbody>
                 </table>
             </div>
+
+            <!-- 耗材庫存區塊（機台配件，如 Mixer/Resin Tank，非樹脂材料，獨立管理、不比對 Formlabs API）-->
+            <details class="mt-6 border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span class="font-semibold text-[var(--ink)]">耗材庫存</span>
+                    <span class="text-xs text-[var(--ink-5)] ml-2">機台配件（Mixer / Resin Tank 等），非樹脂材料，純手動管理</span>
+                    <span class="ml-auto text-xs text-[var(--ink-5)] mr-2" id="consumables-count"></span>
+                </summary>
+                <div class="p-4 border-t border-[var(--line-soft)] overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
+                                <th class="p-3 border-b font-medium">名稱</th>
+                                <th class="p-3 border-b font-medium text-right">庫存</th>
+                                <th class="p-3 border-b font-medium text-right w-28">安全庫存</th>
+                                <th class="p-3 border-b font-medium">狀態</th>
+                                <th class="p-3 border-b font-medium w-40">備註</th>
+                                <th class="p-3 border-b font-medium">最後更新</th>
+                                <th class="p-3 border-b font-medium text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="consumables-table-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </details>
         </div>
 
         <!-- 消耗記錄 -->
@@ -938,26 +1021,28 @@ function subscribeAll() {
                 inv.disabled_materials    = d.disabled_materials    || [];
                 inv.disabled_overrides    = d.disabled_overrides    || [];
                 inv.family_latest_version = d.family_latest_version || {};
+                inv.stock_shortfalls      = d.stock_shortfalls      || {};
                 invLoadedFromFirestore = true;
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
-                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = []; inv.family_latest_version = {};
+                inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = []; inv.family_latest_version = {}; inv.stock_shortfalls = {};
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
             const merged = mergeMaterialAliases();
+            const consumablesTagged = tagLegacyConsumables();
             // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
             autoSyncCartridges().catch(e => console.warn('autoSyncCartridges 失敗:', e.message));
             setSyncStatus('ok');
             console.log('[inventory snapshot] 呼叫 renderAll()');
             renderAll();
             console.log('[inventory snapshot] renderAll 完成');
-            // 若合併過材料別名（如 FLRG1011→FLRG1002），把結果存回 Firestore 永久清除殘留
+            // 若合併過材料別名（如 FLRG1011→FLRG1002）或標記過既有耗材，把結果存回 Firestore 永久清除殘留
             // ★ 每個 session 只存一次，避免「寫入→snapshot→再 merge→再寫入」無限迴圈
-            if (merged && isEditor && invLoadedFromFirestore && !mergeSavedThisSession) {
+            if ((merged || consumablesTagged) && isEditor && invLoadedFromFirestore && !mergeSavedThisSession) {
                 mergeSavedThisSession = true;
-                console.log('[merge] 偵測到材料別名，存回 Firestore 清除殘留（本 session 僅一次）');
-                saveAll('合併材料別名').catch(e=>console.warn('合併存回失敗:', e.message));
+                console.log('[merge] 偵測到材料別名或既有耗材，存回 Firestore 清除殘留（本 session 僅一次）');
+                saveAll(merged && consumablesTagged ? '合併材料別名／標記既有耗材' : merged ? '合併材料別名' : '標記既有耗材').catch(e=>console.warn('合併存回失敗:', e.message));
             }
         } catch (err) {
             console.error('[inventory snapshot] 渲染錯誤:', err);
@@ -1147,6 +1232,20 @@ function mergeMaterialAliases() {
     return changed;
 }
 
+// ══ 既有耗材資料一次性遷移 ══
+// 「材料/耗材」入庫類型是後來才加的欄位；在此之前用「新增入庫」建立的 Formlabs Mixer/Resin Tank
+// 等機台配件，是以一般材料的方式存進 inv.stock（見畫面上混在材料庫存裡的舊資料）。
+// 比對 NON_MATERIAL_ITEMS 名單，把還沒標記 kind 的既有項目補標成 'consumable'，讓它們自動搬到
+// 「耗材庫存」區塊。只補未標記過的（kind 已存在代表是新流程建立或已遷移過，不重複處理）。
+function tagLegacyConsumables() {
+    let changed = false;
+    Object.keys(inv.stock).forEach(k => {
+        if (inv.stock[k].kind) return;
+        if (isNonMaterialItem(k)) { inv.stock[k].kind = 'consumable'; changed = true; }
+    });
+    return changed;
+}
+
 // ══ 寫入：inventory/main ══
 let isSaving = false;
 let mergeSavedThisSession = false;  // 防止 merge 自動存回造成無限迴圈：每 session 僅存一次
@@ -1172,6 +1271,7 @@ async function saveAll(reason) {
             last_processed_prints: inv.last_processed_prints || [],
             disabled_materials: inv.disabled_materials || [],
             disabled_overrides: inv.disabled_overrides || [],
+            stock_shortfalls:   inv.stock_shortfalls   || {},   // 清除警示要能真的寫回空值
             updatedAt:      serverTimestamp(),
             updatedBy:      currentUser.uid,
             updatedByEmail: currentUser.email,
@@ -1331,10 +1431,20 @@ function getAllMaterials() {
     const mats=new Set();
     // 全部正規化成家族代碼後去重（FLRG1002/FLRG1011/'Rigid 10K V1.1' → FLRG10）
     Object.values(inv.cartridges).forEach(slots=>(slots||[]).forEach(s=>{ if(s.material) mats.add(matCode(s.material)); }));
-    Object.keys(inv.stock).forEach(m=>mats.add(matCode(m)));
+    Object.keys(inv.stock).forEach(m=>{ if(!isConsumableStock(m)) mats.add(matCode(m)); });
     inv.history.forEach(h=>{ if(h.material) mats.add(matCode(h.material)); });
-    // 過濾掉停用的材料
-    return [...mats].filter(m => !isDisabled(m)).sort();
+    // 過濾掉停用的材料；耗材（機台配件）永遠不算材料，即使不小心從 cartridges/history 混進來也擋掉
+    return [...mats].filter(m => !isDisabled(m) && !isNonMaterialItem(m)).sort();
+}
+
+// ══ 耗材：機台配件（Mixer/Resin Tank 等），不是樹脂材料，獨立於材料庫存清單之外、不比對 Formlabs 家族代碼 ══
+function isConsumableStock(key) {
+    return !!(inv.stock && inv.stock[key] && inv.stock[key].kind === 'consumable');
+}
+function getAllConsumables() {
+    const items = new Set();
+    Object.keys(inv.stock).forEach(k => { if (isConsumableStock(k)) items.add(k); });
+    return [...items].filter(m => !isDisabled(m)).sort();
 }
 
 function getCartridgeTotal(material) {
@@ -1389,8 +1499,9 @@ function isLowStock(material) {
 }
 
 // ══ 叫料提醒 ══
+// 叫料提醒：材料（L）＋耗材（個）合併顯示，耗材庫存不足時比照材料一樣浮在頂部橫幅
 function renderAlerts() {
-    const mats=getAllMaterials().filter(m=>isLowStock(m));
+    const mats=[...getAllMaterials(), ...getAllConsumables()].filter(m=>isLowStock(m));
     const banner=document.getElementById('alert-banner');
     const items=document.getElementById('alert-items');
     if(!mats.length){ banner.classList.add('hidden'); return; }
@@ -1400,20 +1511,22 @@ function renderAlerts() {
         const total=getTotalInventory(m);
         const safety=getSafetyStock(m);
         const partno=getPartNo(m);
-        const gap=Math.max(0,(safety-total)/1000);
+        const unit = isConsumableStock(m) ? '個' : 'L';
+        const fmt = v => isConsumableStock(m) ? Math.max(0,v/1000).toFixed(0) : Math.max(0,v/1000).toFixed(1);
+        const gap = Math.max(0,(safety-total)/1000);
         return `
         <div class="flex items-center gap-2 bg-[var(--bg)]/70 border border-[var(--danger-border)] rounded-lg px-3 py-2">
             ${partno?`<span class="font-mono text-[11px] bg-[var(--danger-soft)] text-[var(--danger)] px-1.5 py-0.5 rounded whitespace-nowrap" title="品號">${partno}</span>`:'<span class="text-[11px] text-[var(--ink-6)] whitespace-nowrap">無品號</span>'}
             <span class="font-semibold text-[var(--ink)] text-sm truncate">${matName(m)}</span>
-            <span class="text-xs text-[var(--ink-4)] ml-auto whitespace-nowrap">庫存 <b class="text-[var(--danger)]">${(total/1000).toFixed(1)}</b> / 安全 ${(safety/1000).toFixed(1)} L</span>
-            <span class="text-xs font-semibold text-[var(--danger)] whitespace-nowrap">缺 ${gap.toFixed(1)} L</span>
+            <span class="text-xs text-[var(--ink-4)] ml-auto whitespace-nowrap">庫存 <b class="text-[var(--danger)]">${fmt(total)}</b> / 安全 ${fmt(safety)} ${unit}</span>
+            <span class="text-xs font-semibold text-[var(--danger)] whitespace-nowrap">缺 ${gap.toFixed(unit==='個'?0:1)} ${unit}</span>
         </div>`;
     }).join('');
 }
 
 // ══ 總覽 ══
-// 非材料品項：機台配件（攪拌器／樹脂槽），不是樹脂耗材，不該被當成「待命名的新材料」提示
-// 只影響下方的命名提示橫幅；其餘（總覽卡片、庫存加總）維持現狀
+// 非材料品項：機台配件（攪拌器／樹脂槽），不是樹脂材料。用於 getAllMaterials() 的最終過濾
+// （防止從 cartridges/history 混入材料清單），以及既有舊資料一次性遷移為耗材（見 tagLegacyConsumables）
 const NON_MATERIAL_ITEMS = new Set([
     'formlabs form 4 mixer',
     'formlabs form 4 resin tank',
@@ -1421,8 +1534,50 @@ const NON_MATERIAL_ITEMS = new Set([
     'formlabs form 4l resin tank',
 ]);
 // 比對用正規化：忽略大小寫與多餘空白
+const normItemKey = m => String(m || '').trim().replace(/\s+/g, ' ').toLowerCase();
 function isNonMaterialItem(m) {
-    return NON_MATERIAL_ITEMS.has(String(m || '').trim().replace(/\s+/g, ' ').toLowerCase());
+    return NON_MATERIAL_ITEMS.has(normItemKey(m));
+}
+
+// 樹脂槽換一個要耗掉的樹脂量（ml）：換槽時槽內殘留的樹脂等同報廢，要從該材料備料庫存扣掉。
+// Form 4 槽較小 0.4 L、Form 4L 槽較大 1 L。只有「樹脂槽」有這個行為，攪拌器(Mixer)沒有。
+const RESIN_TANK_DEDUCT_ML = {
+    'formlabs form 4 resin tank':  400,
+    'formlabs form 4l resin tank': 1000,
+};
+function resinTankDeductMl(name) {
+    return RESIN_TANK_DEDUCT_ML[normItemKey(name)] || null;
+}
+
+// ══ 消耗紀錄異常提示 ══
+// Cloud Function 扣庫存時是「扣到 0 為止不到負」，扣不完的差額以前會被靜默丟棄，
+// 前端只看得到庫存卡在 0、看不出有一筆消耗沒被反映。改由 CF 累計寫入 stock_shortfalls，
+// 這裡把它顯示出來提醒使用者檢查消耗紀錄（重複、材料歸屬錯誤、漏入庫…）。
+function renderShortfallBanner() {
+    const banner = document.getElementById('shortfall-banner');
+    if (!banner) return;
+    const sf = inv.stock_shortfalls || {};
+    const entries = Object.entries(sf).filter(([, v]) => (v && v.ml > 0));
+    if (!entries.length) { banner.classList.add('hidden'); return; }
+    document.getElementById('shortfall-count').textContent = `${entries.length} 項`;
+    document.getElementById('shortfall-items').innerHTML = entries.map(([fam, v]) => {
+        const when = v.last_at ? new Date(v.last_at).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'}) : '';
+        return `<span class="text-xs px-2 py-1 rounded-md bg-[var(--bg)] border border-[var(--danger-border)] text-[var(--ink-2)]">`
+             + `${escHtml(matName(fam))} <b class="text-[var(--danger)]">超出 ${(v.ml/1000).toFixed(1)} L</b>`
+             + (when ? ` <span class="text-[var(--ink-5)]">(${when})</span>` : '')
+             + `</span>`;
+    }).join('');
+    banner.classList.remove('hidden');
+    lucide.createIcons();
+}
+
+// 使用者查明原因後清除警示（下次同步若又扣不完會重新累計）
+async function clearStockShortfalls() {
+    if (!confirm('清除「消耗紀錄可能有誤」警示？\n\n請先確認已查明原因（重複紀錄、材料歸屬錯誤或漏入庫）。\n清除後若下次同步仍扣不完，警示會再次出現。')) return;
+    inv.stock_shortfalls = {};
+    renderShortfallBanner();
+    await saveAll('清除消耗超出庫存警示');
+    showToast('已清除警示', 'success');
 }
 
 // 新材料未命名提示：Formlabs 自動抓到的代碼，尚未有內建名稱也未手動命名者
@@ -1856,11 +2011,68 @@ function renderStockTable() {
     lucide.createIcons();
 }
 
-// ══ 備料庫存「整頁編輯」模式 ══
+// ══ 耗材庫存表格（機台配件，獨立於材料庫存之外）══
+// 與材料庫存共用同一個「編輯模式」開關，數量以「個」為單位、step=1
+function renderConsumablesTable() {
+    const tbody = document.getElementById('consumables-table-body');
+    if (!tbody) return;
+    const items = getAllConsumables();
+    const cnt = document.getElementById('consumables-count');
+    if (cnt) cnt.textContent = items.length ? `${items.length} 項` : '';
+    if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-[var(--ink-5)]">尚無耗材庫存，可從「新增入庫」選擇「耗材」新增</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    const inputDisabled = !isEditor || !isStockEditMode;
+    items.forEach(m => {
+        const s = inv.stock[m] || {bottles:0,total_ml:0};
+        const safety = getSafetyStock(m);
+        const low = isLowStock(m);
+        const qty = getStockTotal(m) / 1000;
+        const me = m.replace(/'/g,"\\'");
+        const tr = document.createElement('tr');
+        tr.className = isStockEditMode ? 'bg-[var(--accent-soft)]/30 hover:bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-soft)]';
+        tr.setAttribute('data-consumable', m);
+        tr.innerHTML = `
+            <td class="p-3 font-medium text-[var(--ink)]">${escHtml(m)}</td>
+            <td class="p-3 text-right">
+                <input type="number" min="0" step="1" value="${qty}" ${inputDisabled?'disabled':''}
+                    data-original-qty="${qty}" onchange="onConsumableQtyChange(this,'${me}')"
+                    class="consumable-qty-input w-20 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)] ${low&&!isStockEditMode?'text-[var(--danger)] font-medium':''}">
+                <span class="text-xs text-[var(--ink-5)] ml-1">個</span>
+            </td>
+            <td class="p-3 text-right text-[var(--ink-2)]">${(safety/1000).toFixed(1)} <span class="text-xs text-[var(--ink-5)]">個</span></td>
+            <td class="p-3">${low?'<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium">需叫料</span>':'<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
+            <td class="p-3">
+                <input type="text" value="${(s.note||'').replace(/"/g,'&quot;')}" placeholder="備註" ${inputDisabled?'disabled':''}
+                    class="consumable-note-input w-full px-2 py-1 rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)]">
+            </td>
+            <td class="p-3 text-xs text-[var(--ink-5)]">
+                ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+                ${s.updated_by ? `<div class="text-[var(--ink-5)]">by ${escHtml(s.updated_by)}</div>` : ''}
+            </td>
+            <td class="p-3 text-center">
+                ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
+                    : `<button onclick="deleteStock('${me}')" title="刪除此耗材"
+                        class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        ${isStockEditMode?'disabled':''}>
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                       </button>`}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    lucide.createIcons();
+}
+
+// ══ 備料庫存「整頁編輯」模式（同時涵蓋耗材庫存表格）══
 function startStockEdit() {
     if (!isEditor) return;
     isStockEditMode = true;
+    consumableTankAnswers = {};   // 開新一輪編輯，清掉上一輪殘留的答案
     renderStockTable();
+    renderConsumablesTable();
     updateStockEditButtons();
 }
 
@@ -1869,7 +2081,9 @@ function cancelStockEdit() {
     // 若有可能改動，提示確認
     if (!confirm('取消編輯？未儲存的修改會遺失。')) return;
     isStockEditMode = false;
+    consumableTankAnswers = {};
     renderStockTable();
+    renderConsumablesTable();
     updateStockEditButtons();
 }
 
@@ -1877,11 +2091,65 @@ async function saveStockEdits() {
     if (!isStockEditMode) return;
     if (!isEditor) return;
 
-    // 收集所有 row 的 input 值
-    const rows = document.querySelectorAll('#stock-table-body tr[data-material]');
     let changedCount = 0;
     const historyEntries = [];
     const summaryLines = [];
+
+    // ══ 先處理耗材列 ══
+    // 樹脂槽減少時的用途通常在輸入當下（onConsumableQtyChange）就已經問完並記在
+    // consumableTankAnswers 裡；這裡只在「還沒問過」時才補問（例如打完字直接點儲存、
+    // change 事件還沒來得及觸發）。一定要在「套用任何變更之前」跑完整個迴圈 ——
+    // 使用者中途取消時才能整批放棄，不會發生材料已寫入、耗材卻沒寫入的半套狀態。
+    const consumableChanges = [];   // {key, newQty, diffQty, newNote}
+    const tankDeductions   = [];    // {material, ml, tankName, count}
+    for (const row of document.querySelectorAll('#consumables-table-body tr[data-consumable]')) {
+        const key = row.getAttribute('data-consumable');
+        const qtyInput  = row.querySelector('.consumable-qty-input');
+        const noteInput = row.querySelector('.consumable-note-input');
+        if (!qtyInput || !noteInput) continue;
+
+        const newQty = parseFloat(qtyInput.value);
+        if (isNaN(newQty) || newQty < 0) { showToast(`「${key}」數量無效，已跳過`, 'error'); continue; }
+
+        const oldQty  = getStockTotal(key) / 1000;
+        const diffQty = Math.round((newQty - oldQty) * 10) / 10;
+        const newNote = noteInput.value.trim();
+        const oldNote = inv.stock[key]?.note || '';
+        if (diffQty === 0 && newNote === oldNote) continue;
+
+        consumableChanges.push({ key, newQty, diffQty, newNote });
+
+        // 樹脂槽數量「減少」＝換槽，需扣掉對應材料的殘留樹脂
+        const perMl = resinTankDeductMl(key);
+        const count = Math.round(-diffQty);
+        if (perMl && diffQty < 0 && count > 0) {
+            // 優先用已經問過的答案（count 要對得上，避免用到舊一輪、數量已經不一樣的答案）
+            let ans = null;
+            const recorded = consumableTankAnswers[key];
+            if (recorded && recorded.count === count) {
+                ans = recorded;
+            } else {
+                ans = await askResinTankUsage(key, count, perMl);
+                if (!ans) {          // 使用者取消 → 整批放棄，保持編輯模式讓他改
+                    showToast('已取消，未儲存任何變更', 'error');
+                    return;
+                }
+            }
+            if (ans.material) {
+                tankDeductions.push({ material: ans.material, ml: count * perMl, tankName: key, count, note: ans.note });
+            } else {
+                // 選「其他」→ 不扣任何材料，只留一筆備註紀錄供稽核
+                historyEntries.push({
+                    type:'manual', material:key, printer:'耗材庫存', ml:0,
+                    note:`${key} 減少 ${count} 個（其他用途）：${ans.note}`
+                });
+            }
+        }
+    }
+    consumableTankAnswers = {};   // 這一輪已套用完畢，清空避免帶到下一輪編輯
+
+    // ══ 再處理材料列（原有邏輯）══
+    const rows = document.querySelectorAll('#stock-table-body tr[data-material]');
 
     rows.forEach(row => {
         const material = row.getAttribute('data-material');
@@ -1924,9 +2192,53 @@ async function saveStockEdits() {
         summaryLines.push(`${matName(material)} → ${liters.toFixed(1)} L`);
     });
 
+    // ══ 套用耗材變更（樹脂槽用途已在最前面問完，這裡只負責寫入）══
+    consumableChanges.forEach(({ key, newQty, diffQty, newNote }) => {
+        if (!inv.stock[key]) inv.stock[key] = { bottles:0, total_ml:0 };
+        inv.stock[key].kind       = 'consumable';
+        inv.stock[key].bottles    = newQty;
+        inv.stock[key].total_ml   = Math.round(newQty * 1000 * 10) / 10;
+        inv.stock[key].note       = newNote;
+        inv.stock[key].updated_at = new Date().toISOString();
+        inv.stock[key].updated_by = currentUser.displayName;
+        if (diffQty !== 0) {
+            historyEntries.push({
+                type:'manual', material:key, printer:'耗材庫存',
+                ml: Math.round(diffQty * 1000 * 10) / 10, note:`批次調整為 ${newQty.toFixed(0)} 個`
+            });
+        }
+        changedCount++;
+        summaryLines.push(`${key} → ${newQty.toFixed(0)} 個`);
+    });
+
+    // ══ 套用樹脂槽換槽造成的材料扣減 ══
+    tankDeductions.forEach(({ material, ml, tankName, count, note }) => {
+        const fam = matCode(material);
+        if (!inv.stock[fam]) inv.stock[fam] = { bottles:0, total_ml:0 };
+        const cur = getStockTotal(material);
+        const next = Math.round((cur - ml) * 10) / 10;
+        // 不扣成負數（與 Cloud Function 的扣減行為一致）；扣不完的部分明講，不要靜默吞掉
+        if (next < 0) {
+            showToast(`${matName(material)} 庫存不足，僅扣至 0（差 ${((ml-cur)/1000).toFixed(1)} L）`, 'error');
+        }
+        Object.keys(inv.stock).forEach(k=>{ if(matCode(k)===fam && k!==fam) delete inv.stock[k]; });
+        inv.stock[fam].total_ml   = Math.max(0, next);
+        inv.stock[fam].bottles    = Math.round(Math.max(0, next) / 1000 * 10) / 10;
+        inv.stock[fam].updated_at = new Date().toISOString();
+        inv.stock[fam].updated_by = currentUser.displayName;
+        historyEntries.push({
+            type:'manual', material:fam, printer:'備料庫存',
+            ml: -Math.min(ml, cur),
+            note:`更換 ${tankName} ${count} 個（每個 ${(resinTankDeductMl(tankName)/1000).toFixed(1)} L）${note?`：${note}`:''}`
+        });
+        changedCount++;
+        summaryLines.push(`${matName(material)} −${(ml/1000).toFixed(1)} L（換槽）`);
+    });
+
     if (changedCount === 0) {
         isStockEditMode = false;
         renderStockTable();
+        renderConsumablesTable();
         updateStockEditButtons();
         showToast('沒有任何變更', 'success');
         return;
@@ -1935,7 +2247,7 @@ async function saveStockEdits() {
     isStockEditMode = false;
     renderAll();
     // 一次性寫入 stock + safety（saveAll），歷史紀錄分別 addDoc
-    await saveAll(`批次調整備料 ${changedCount} 項：${summaryLines.slice(0,3).join('、')}${summaryLines.length>3?` 等`:''}`);
+    await saveAll(`批次調整庫存 ${changedCount} 項：${summaryLines.slice(0,3).join('、')}${summaryLines.length>3?` 等`:''}`);
     for (const entry of historyEntries) {
         addHistory(entry);
     }
@@ -1985,22 +2297,131 @@ async function deleteStock(material) {
 
 
 // ══ 備料入庫 Modal ══
-function showStockModal() {
-    // 填充 datalist 既有材料供選擇
+let stockKind = 'material';   // 'material'(材料，比對 Formlabs 家族代碼) | 'consumable'(耗材，純手動、不比對)
+
+function setStockKind(kind) {
+    stockKind = kind;
+    const btnMat = document.getElementById('stock-kind-material');
+    const btnCon = document.getElementById('stock-kind-consumable');
+    const onCls  = 'flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors bg-[var(--bg)] text-[var(--ink)] shadow-sm';
+    const offCls = 'flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors text-[var(--ink-4)]';
+    btnMat.className = kind==='material'    ? onCls : offCls;
+    btnCon.className = kind==='consumable'  ? onCls : offCls;
+
+    document.getElementById('stock-kind-hint').textContent = kind==='consumable'
+        ? '耗材：機台配件（如 Mixer、Resin Tank），純手動管理，不比對 Formlabs 家族代碼、不會被 API 同步覆蓋。'
+        : '材料：Formlabs 樹脂，以公升計算，會比對 Formlabs 家族代碼。';
+    document.getElementById('stock-material-label').textContent = kind==='consumable' ? '耗材名稱' : '材料種類';
+    document.getElementById('stock-material').placeholder = kind==='consumable' ? '選擇或直接輸入耗材名稱' : '選擇或直接輸入新材料名稱';
+    document.getElementById('stock-qty-label').textContent = kind==='consumable' ? '數量（個）' : '數量 (L)';
+    document.getElementById('stock-qty-hint').textContent = kind==='consumable' ? '耗材以「個」計算' : '可輸入小數（如 1.5 L = 1500 ml）';
+
+    // 依類型重新填充 datalist：材料給材料清單，耗材給既有耗材清單（不混在一起，避免誤選）
     const dl = document.getElementById('material-options');
     dl.innerHTML = '';
-    getAllMaterials().forEach(m => {
-        const o = document.createElement('option');
-        o.value = matName(m);
-        dl.appendChild(o);
-    });
-    // 也補上所有已知材料名稱供選擇
-    Object.values(CODE_TO_NAME).forEach(n => {
+    const addOptions = list => list.forEach(n => {
         const o = document.createElement('option');
         o.value = n;
         dl.appendChild(o);
     });
-    // 清空輸入
+    if (kind === 'consumable') {
+        addOptions(getAllConsumables());
+    } else {
+        addOptions([...new Set(getAllMaterials().map(matName))]);
+        addOptions(Object.values(CODE_TO_NAME));   // 也補上所有已知材料名稱供選擇（含尚未入庫的）
+    }
+}
+
+// ══ 樹脂槽用途 Modal ══
+// 編輯模式減少樹脂槽數量時呼叫；回傳 Promise：
+//   { material:'FLTO20', note:'' } → 從該材料扣庫存
+//   { material:null,     note:'…' } → 選「其他」，不扣庫存只留備註
+//   null                            → 使用者取消（呼叫端整批放棄，不寫入任何變更）
+const TANK_OTHER = '__other__';
+let _tankResolve = null;
+function askResinTankUsage(tankName, count, perMl) {
+    return new Promise(resolve => {
+        _tankResolve = resolve;
+        document.getElementById('tank-modal-desc').innerHTML =
+            `「${escHtml(tankName)}」減少 <b>${count}</b> 個。<br>` +
+            `請選擇這批樹脂槽用在哪個材料上，系統會從該材料的備料庫存扣除 ` +
+            `<b>${(count * perMl / 1000).toFixed(1)} L</b>（每個 ${(perMl / 1000).toFixed(1)} L 殘留樹脂）。`;
+        const sel = document.getElementById('tank-material');
+        sel.innerHTML = '';
+        const mats = getAllMaterials();
+        mats.forEach(m => {
+            const o = document.createElement('option');
+            o.value = m; o.textContent = matName(m);
+            sel.appendChild(o);
+        });
+        const other = document.createElement('option');
+        other.value = TANK_OTHER; other.textContent = '其他（不扣庫存，僅記錄備註）';
+        sel.appendChild(other);
+        sel.value = mats.length ? mats[0] : TANK_OTHER;
+        document.getElementById('tank-note').value = '';
+        onTankMaterialChange();
+        document.getElementById('tank-modal').classList.remove('hidden');
+        lucide.createIcons();
+        setTimeout(() => sel.focus(), 100);
+    });
+}
+// 選「其他」時備註改為必填（否則這筆扣減沒有任何可稽核的說明）
+function onTankMaterialChange() {
+    const isOther = document.getElementById('tank-material').value === TANK_OTHER;
+    document.getElementById('tank-note-req').classList.toggle('hidden', !isOther);
+    document.getElementById('tank-note').placeholder = isOther ? '請說明用途（必填）' : '選填';
+}
+function submitTankModal() {
+    const val  = document.getElementById('tank-material').value;
+    const note = document.getElementById('tank-note').value.trim();
+    if (val === TANK_OTHER) {
+        if (!note) { showToast('選「其他」時請輸入備註', 'error'); return; }
+        resolveTankModal({ material: null, note });
+    } else {
+        resolveTankModal({ material: val, note });
+    }
+}
+function resolveTankModal(result) {
+    document.getElementById('tank-modal').classList.add('hidden');
+    const r = _tankResolve; _tankResolve = null;
+    if (r) r(result);
+}
+
+// 耗材編輯模式中，樹脂槽數量的輸入框已確認的用途答案：key(耗材名稱) → {material, note, count}
+// count 是「相對於這一輪編輯開始時的原始數量」減少了幾個，不是相對上一次 change 事件——
+// 每次 change 都用原始值重算總減少量、覆蓋掉舊答案，避免同一列被問兩次卻各自扣一半、對不起來。
+let consumableTankAnswers = {};
+
+// 樹脂槽數量一減少就立刻問用途（不用等按「儲存全部」）。只有樹脂槽會問，Mixer 等一律直接放行。
+async function onConsumableQtyChange(inputEl, key) {
+    const perMl = resinTankDeductMl(key);
+    if (!perMl) return;
+    const original = parseFloat(inputEl.dataset.originalQty);
+    const newQty = parseFloat(inputEl.value);
+    if (isNaN(newQty) || newQty < 0 || isNaN(original)) return;
+
+    if (newQty >= original) {
+        // 回到原始值以上（含打消念頭改回去）→ 先前記錄的用途answer 不再需要
+        delete consumableTankAnswers[key];
+        return;
+    }
+
+    const count = Math.round(original - newQty);
+    if (count <= 0) { delete consumableTankAnswers[key]; return; }
+
+    const ans = await askResinTankUsage(key, count, perMl);
+    if (!ans) {
+        // 取消：退回「目前已確認」的狀態——若之前這列已經問過一次且確認過，退回那個數量；
+        // 否則（第一次問就取消）退回原始值，不留下半確認的變更。
+        const prev = consumableTankAnswers[key];
+        inputEl.value = prev ? (original - prev.count) : original;
+        return;
+    }
+    consumableTankAnswers[key] = { material: ans.material, note: ans.note, count };
+}
+
+function showStockModal() {
+    setStockKind('material');   // 每次開啟預設回材料，維持既有習慣操作
     document.getElementById('stock-material').value = '';
     document.getElementById('stock-qty').value = '1';
     document.getElementById('stock-note').value = '';
@@ -2011,49 +2432,68 @@ function closeStockModal() { document.getElementById('stock-modal').classList.ad
 
 async function saveStockIn() {
     const matInput = document.getElementById('stock-material').value.trim();
-    if(!matInput){ showToast('請輸入材料種類','error'); return; }
-    const mat = matCode(matInput);  // 名稱→代碼
+    if(!matInput){ showToast(stockKind==='consumable' ? '請輸入耗材名稱' : '請輸入材料種類','error'); return; }
 
-    // 防呆：輸入無法對應到 Formlabs 家族代碼時（打錯字／自創名稱），會以「自訂名稱」
-    // 另開一筆獨立庫存，日後 Formlabs 同步進來的正式代碼不會自動併入 → 庫存被拆成兩份。
-    // 這是材料家族正規化最容易踩的坑，先攔一次讓使用者確認。
-    const isKnownFamily = /^FL[A-Z0-9]{4,6}$/i.test(mat) && /\d/.test(mat);
-    if(!isKnownFamily){
-        const near = Object.values(CODE_TO_NAME).filter(n =>
-            n.toLowerCase().includes(matInput.toLowerCase()) ||
-            matInput.toLowerCase().includes(n.toLowerCase().split(' ')[0]));
-        const hint = near.length ? `\n\n您是不是要選：${[...new Set(near)].slice(0,5).join('、')}` : '';
-        if(!confirm(
-            `「${matInput}」不是內建材料名稱或 Formlabs 代碼。\n\n` +
-            `將以自訂名稱建立獨立庫存；日後 Formlabs 同步到的正式代碼不會自動併入，` +
-            `庫存可能被拆成兩筆。\n\n建議改用清單中的正式名稱，或直接輸入 Formlabs 代碼（如 FLTO2002）。${hint}\n\n` +
-            `仍要以「${matInput}」建立嗎？`)) return;
+    let mat;
+    if (stockKind === 'consumable') {
+        // 耗材：直接用輸入的名稱當 key，不做 Formlabs 家族代碼正規化／比對，也不觸發下方的材料防呆提示
+        mat = matInput;
+    } else {
+        mat = matCode(matInput);  // 名稱→代碼
+
+        // 防呆：輸入無法對應到 Formlabs 家族代碼時（打錯字／自創名稱），會以「自訂名稱」
+        // 另開一筆獨立庫存，日後 Formlabs 同步進來的正式代碼不會自動併入 → 庫存被拆成兩份。
+        // 這是材料家族正規化最容易踩的坑，先攔一次讓使用者確認。此檢查只對「材料」類型生效。
+        const isKnownFamily = /^FL[A-Z0-9]{4,6}$/i.test(mat) && /\d/.test(mat);
+        if(!isKnownFamily){
+            const near = Object.values(CODE_TO_NAME).filter(n =>
+                n.toLowerCase().includes(matInput.toLowerCase()) ||
+                matInput.toLowerCase().includes(n.toLowerCase().split(' ')[0]));
+            const hint = near.length ? `\n\n您是不是要選：${[...new Set(near)].slice(0,5).join('、')}` : '';
+            if(!confirm(
+                `「${matInput}」不是內建材料名稱或 Formlabs 代碼。\n\n` +
+                `將以自訂名稱建立獨立庫存；日後 Formlabs 同步到的正式代碼不會自動併入，` +
+                `庫存可能被拆成兩筆。\n\n建議改用清單中的正式名稱，或直接輸入 Formlabs 代碼（如 FLTO2002）。` +
+                `若這其實是機台配件（Mixer、Resin Tank 等），請改選上方的「耗材」類型。${hint}\n\n` +
+                `仍要以「${matInput}」建立嗎？`)) return;
+        }
     }
 
-    const liters = parseFloat(document.getElementById('stock-qty').value);
-    if(isNaN(liters) || liters <= 0){ showToast('請輸入有效的數量 (L)','error'); return; }
+    // 防呆：這個名稱已經存在、但類型跟現有資料不一致（例如既有耗材被選成材料頁籤重複入庫）——
+    // 不要靜默改變既有分類（會讓耗材悄悄跑回材料清單，或反過來），直接擋下請使用者切到正確頁籤。
+    const existingKind = inv.stock[mat] ? (inv.stock[mat].kind==='consumable' ? 'consumable' : 'material') : null;
+    if (existingKind && existingKind !== stockKind) {
+        showToast(`「${mat}」已存在，且分類是「${existingKind==='consumable'?'耗材':'材料'}」，請切到該頁籤再入庫`, 'error');
+        return;
+    }
 
-    const note = document.getElementById('stock-note').value.trim() || '備料入庫';
-    const totalMl = Math.round(liters * 1000 * 10) / 10;  // L → ml
-    const bottles = liters;  // 罐數欄位仍以「相同數字」存（1 罐 = 1 L），方便回算
+    const qty = parseFloat(document.getElementById('stock-qty').value);
+    if(isNaN(qty) || qty <= 0){ showToast(stockKind==='consumable' ? '請輸入有效的數量（個）' : '請輸入有效的數量 (L)','error'); return; }
+
+    const unit = stockKind==='consumable' ? '個' : 'L';
+    const note = document.getElementById('stock-note').value.trim() || (stockKind==='consumable' ? '耗材入庫' : '備料入庫');
+    const totalMl = Math.round(qty * 1000 * 10) / 10;  // 內部仍統一以「千分之一」為單位儲存（1 個/1 L = 1000）
+    const bottles = qty;
 
     if(!inv.stock[mat]) inv.stock[mat] = { bottles:0, total_ml:0 };
     inv.stock[mat].bottles  = Math.round(((inv.stock[mat].bottles||0) + bottles) * 10) / 10;
     inv.stock[mat].total_ml = Math.round(((inv.stock[mat].total_ml||0) + totalMl) * 10) / 10;
     inv.stock[mat].updated_at = new Date().toISOString();
     inv.stock[mat].updated_by = currentUser.displayName;
+    if (stockKind === 'consumable') inv.stock[mat].kind = 'consumable';   // 新建項目才會走到這裡設定；已存在的分類已由上面的防呆保證一致，不需再 delete
 
-    addHistory({ type:'stockin', material:mat, printer:'備料庫存', ml:totalMl, note:`${note}（${liters.toFixed(1)} L）` });
+    const displayName = stockKind==='consumable' ? mat : matName(mat);
+    addHistory({ type:'stockin', material:mat, printer: stockKind==='consumable' ? '耗材庫存' : '備料庫存', ml:totalMl, note:`${note}（${qty.toFixed(1)} ${unit}）` });
     closeStockModal();
     renderAll();
-    await saveAll(`備料入庫：${matName(mat)} ${liters.toFixed(1)} L`);
+    await saveAll(`${stockKind==='consumable'?'耗材':'備料'}入庫：${displayName} ${qty.toFixed(1)} ${unit}`);
 }
 
 // ══ 安全庫存設定 ══
 function showSafetyModal() {
     const body=document.getElementById('safety-modal-body');
     body.innerHTML='';
-    const mats=getAllMaterials();
+    const mats=[...getAllMaterials(), ...getAllConsumables()];   // 材料＋耗材合併一份清單，安全庫存共用同一個設定介面
     if(!mats.length){ body.innerHTML='<p class="text-[var(--ink-5)] text-sm">尚無材料，請先設定樹脂罐。</p>'; }
     else {
         const hdr=document.createElement('div');
@@ -2951,9 +3391,11 @@ function exportInventoryExcel() {
 // ══ 統一渲染 ══
 function renderAll() {
     renderAlerts();
+    renderShortfallBanner();
     renderOverview();
     renderCartridges();
     renderStockTable();
+    renderConsumablesTable();
     if(currentTab==='history') renderHistory();
     if(currentTab==='monthly') renderMonthly();
     // 更新「已停用材料」按鈕計數
@@ -3247,6 +3689,13 @@ window.setWorkcatMatChartType = setWorkcatMatChartType;
 window.onMonthlySelChange = onMonthlySelChange;
 window.purgeAndRebuildHistory = purgeAndRebuildHistory;   // 既有的「清空並重新匯入」按鈕先前漏了曝露到window，一直是壞的
 window.renderWorkcatMaterialChart = renderWorkcatMaterialChart;
+// 入庫類型切換 + 樹脂槽用途 Modal（HTML inline onclick/onchange 需要，module 作用域一定要顯式曝露）
+window.setStockKind = setStockKind;
+window.submitTankModal = submitTankModal;
+window.resolveTankModal = resolveTankModal;
+window.onTankMaterialChange = onTankMaterialChange;
+window.clearStockShortfalls = clearStockShortfalls;
+window.onConsumableQtyChange = onConsumableQtyChange;
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
