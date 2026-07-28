@@ -98,6 +98,7 @@ FAMILY_TO_NAME = {
 FAMILY_REMAP = {
     "FLEXIB": "FLFL80",   # "Flexible 80A" 被誤截
     "FLAMER": "FLFRGR",   # "Flame Retardant" 被誤截
+    "FLRGWH": "FLRG40",   # FLRGWH 併入 Rigid 4000（使用者確認為同一材料）
 }
 
 
@@ -110,7 +111,8 @@ def family_code(code: Optional[str]) -> Optional[str]:
         return FAMILY_REMAP[c]
     # 真正的 Formlabs 代碼：FL + 6 英數字（共 8 碼）、且含數字（名稱如 FLEXIBLE 不含數字會被排除）
     if re.fullmatch(r"FL[A-Z0-9]{6}", c) and any(ch.isdigit() for ch in c):
-        return c[:6]
+        fam = c[:6]
+        return FAMILY_REMAP.get(fam, fam)   # 完整代碼的前 6 碼也要查一次 remap（FLRGWH01 → FLRGWH → FLRG40）
     return code
 
 

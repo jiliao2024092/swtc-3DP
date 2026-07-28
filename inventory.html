@@ -1137,10 +1137,11 @@ const FAMILY_TO_NAME = {
 };
 // 家族名稱 → 家族代碼（讓 'Tough 1000' 這類家族名也能解析、合併）
 Object.entries(FAMILY_TO_NAME).forEach(([fam,name])=>{ if(!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name]=fam; });
-// 已被舊版 familyCode 誤截的殘留 key → 正確家族代碼
+// 已被舊版 familyCode 誤截的殘留 key，或使用者確認「其實是同一個材料家族」的代碼 → 正確家族代碼
 const FAMILY_REMAP = {
     'FLEXIB': 'FLFL80',   // "Flexible 80A" 被誤截成 FLEXIB
     'FLAMER': 'FLFRGR',   // "Flame Retardant" 被誤截成 FLAMER
+    'FLRGWH': 'FLRG40',   // FLRGWH 併入 Rigid 4000（使用者確認為同一材料）
 };
 // 取家族代碼（前 6 碼），統一版本
 function familyCode(code) {
@@ -1149,7 +1150,10 @@ function familyCode(code) {
     if(FAMILY_REMAP[c]) return FAMILY_REMAP[c];
     // 真正的 Formlabs 代碼：FL + 6 英數字（共 8 碼）、且含數字、無空格
     //   （名稱如 "FLEXIBLE"、"Flame" 不含數字，不會被誤判成代碼）
-    if(/^FL[A-Z0-9]{6}$/.test(c) && /\d/.test(c)) return c.slice(0,6);
+    if(/^FL[A-Z0-9]{6}$/.test(c) && /\d/.test(c)){
+        const fam = c.slice(0,6);
+        return FAMILY_REMAP[fam] || fam;   // 完整代碼的前 6 碼也要查一次 remap（FLRGWH01 → FLRGWH → FLRG40）
+    }
     return code;  // 名稱等原樣回傳
 }
 // 名稱或代碼 → 統一的家族代碼（canon）
@@ -1557,7 +1561,8 @@ function resinTankDeductMl(name) {
 
 // ══ 「L 樹脂槽」標記 ══
 // 記錄哪些材料目前有搭配 Form 4L 的樹脂槽。減少 Form 4L Resin Tank 並指定材料時自動標記，
-// admin 也可在材料庫存表格手動開關（例如換槽前先標、或槽退掉後取消標記）。
+// admin 也可在材料庫存表格手動開關——比照數量/備註欄位，只是勾選框的外觀，要進入編輯模式
+// 打勾、按「儲存全部」才會真的寫入（見 saveStockEdits），不是點一下就存檔。
 // 只認 4L，Form 4（小台）的槽不算。
 const L_TANK_ITEM = 'formlabs form 4l resin tank';
 function isFormLTank(name) {
@@ -1573,15 +1578,6 @@ function setLTank(material, on) {
     // 一律以家族代碼存，並清掉同家族的其他寫法，避免同一材料重複記錄
     inv.l_tank_materials = inv.l_tank_materials.filter(m => matCode(m) !== fam);
     if (on) inv.l_tank_materials.push(fam);
-}
-// admin 手動開關（材料庫存表格的 L 樹脂槽欄位）
-async function toggleLTank(material) {
-    if (!(currentUser && currentUser.role === 'admin')) return;
-    const on = !hasLTank(material);
-    setLTank(material, on);
-    renderAll();
-    await saveAll(`${on?'標記':'取消標記'} L 樹脂槽：${matName(material)}`);
-    showToast(`${matName(material)} ${on?'已標記':'已取消'} L 樹脂槽`, 'success');
 }
 
 // ══ 消耗紀錄異常提示 ══
@@ -2019,12 +2015,12 @@ function renderStockTable() {
             <td class="p-3 font-medium text-[var(--ink)]">${matName(m)}</td>
             <td class="p-3 text-center">
                 ${isAdminUser()
-                    ? `<button onclick="toggleLTank('${me}')" title="${hasLTank(m)?'點擊取消 L 樹脂槽標記':'點擊標記為有 L 樹脂槽'}"
-                        class="text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors ${hasLTank(m)
-                            ? 'bg-[var(--indigo-soft)] text-[var(--indigo)] border-[var(--indigo)]/40 hover:opacity-80'
-                            : 'bg-transparent text-[var(--ink-6)] border-[var(--line)] hover:border-[var(--indigo)]/40 hover:text-[var(--indigo)]'}">
-                        ${hasLTank(m)?'✓ L槽':'＋ 標記'}
-                       </button>`
+                    ? `<label class="inline-flex items-center gap-1.5 cursor-pointer select-none ${inputDisabled?'cursor-not-allowed opacity-60':''}">
+                        <input type="checkbox" class="stock-ltank-input w-4 h-4 accent-[var(--indigo)] cursor-pointer disabled:cursor-not-allowed"
+                            ${hasLTank(m)?'checked':''} ${inputDisabled?'disabled':''}
+                            title="勾選＝配有 Form 4L 樹脂槽（進入編輯模式打勾後按「儲存全部」才會生效）">
+                        <span class="text-[11px] text-[var(--ink-4)]">L槽</span>
+                       </label>`
                     : (hasLTank(m)
                         ? '<span class="text-[11px] px-2 py-0.5 rounded-full font-medium bg-[var(--indigo-soft)] text-[var(--indigo)]">✓ L槽</span>'
                         : '<span class="text-[var(--ink-6)] text-xs">—</span>')}
@@ -2206,7 +2202,24 @@ async function saveStockEdits() {
         const material = row.getAttribute('data-material');
         const litersInput = row.querySelector('.stock-liters-input');
         const noteInput   = row.querySelector('.stock-note-input');
+        const ltankInput  = row.querySelector('.stock-ltank-input');
         if (!litersInput || !noteInput) return;
+
+        const fam = matCode(material);
+
+        // L 樹脂槽標記：獨立於庫存數量/備註是否變動，admin 才有這個 checkbox
+        if (ltankInput) {
+            const wantLTank = ltankInput.checked;
+            if (wantLTank !== hasLTank(fam)) {
+                setLTank(fam, wantLTank);
+                historyEntries.push({
+                    type:'manual', material:fam, printer:'備料庫存', ml:0,
+                    note:`${wantLTank?'標記':'取消標記'} L 樹脂槽`
+                });
+                changedCount++;
+                summaryLines.push(`${matName(fam)} ${wantLTank?'標記':'取消'} L槽`);
+            }
+        }
 
         const liters = parseFloat(litersInput.value);
         if (isNaN(liters) || liters < 0) {
@@ -2214,7 +2227,6 @@ async function saveStockEdits() {
             return;
         }
 
-        const fam = matCode(material);
         const oldMl   = getStockTotal(material);  // 使用者看到的是家族加總值
         const oldNote = inv.stock[fam]?.note || '';
         // 直接用 L 算 ml（不再先用 bottles 中介，避免 0.1L 被四捨五入到整罐）
@@ -2222,7 +2234,7 @@ async function saveStockEdits() {
         const diff    = Math.round((newMl - oldMl) * 10) / 10;
         const newNote = noteInput.value.trim();
 
-        if (diff === 0 && newNote === oldNote) return;  // 此列無變更
+        if (diff === 0 && newNote === oldNote) return;  // 庫存/備註無變更（L槽已在上面處理過）
 
         // 合併：刪掉同家族其他 key，只保留家族代碼 key（避免加總時重複計算）
         Object.keys(inv.stock).forEach(k=>{ if(matCode(k)===fam && k!==fam) delete inv.stock[k]; });
@@ -3752,7 +3764,6 @@ window.resolveTankModal = resolveTankModal;
 window.onTankMaterialChange = onTankMaterialChange;
 window.clearStockShortfalls = clearStockShortfalls;
 window.onConsumableQtyChange = onConsumableQtyChange;
-window.toggleLTank = toggleLTank;
 
 // ══ 初始化 ══
 // Auth 監聽會自動處理顯示登入畫面或主介面，無需 window.onload
