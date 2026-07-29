@@ -1570,8 +1570,12 @@ function isNonMaterialItem(m) {
     return NON_MATERIAL_ITEMS.has(normItemKey(m));
 }
 
-// 樹脂槽換一個要耗掉的樹脂量（ml）：換槽時槽內殘留的樹脂等同報廢，要從該材料備料庫存扣掉。
+// 樹脂槽啟用時必須倒入的「最小列印材料量」（ml）：每次領用新槽都要先注入這個量才能開印，
+// 這筆料進槽後就取不回來，因此在領用當下直接從該材料的備料庫存扣掉。
 // Form 4 槽較小 0.4 L、Form 4L 槽較大 1 L。只有「樹脂槽」有這個行為，攪拌器(Mixer)沒有。
+// ★ 扣減時機是「從庫存領出新槽」（耗材數量減少），不是「丟棄舊槽」——這個時機才對應
+//   物理上的注入動作。舊註解寫成「槽內殘留樹脂報廢」是同一筆量從循環另一端的說法，
+//   穩態下數字相同，但維護時請以「領新槽→扣最小預留量」為準，避免在「退役但不換新」時多扣。
 const RESIN_TANK_DEDUCT_ML = {
     'formlabs form 4 resin tank':  400,
     'formlabs form 4l resin tank': 1000,
@@ -2189,7 +2193,7 @@ async function saveStockEdits() {
 
         consumableChanges.push({ key, newQty, diffQty, newNote });
 
-        // 樹脂槽數量「減少」＝換槽，需扣掉對應材料的殘留樹脂
+        // 樹脂槽數量「減少」＝從庫存領用新槽，需扣掉該槽啟用時必須注入的最小預留量
         const perMl = resinTankDeductMl(key);
         const count = Math.round(-diffQty);
         if (perMl && diffQty < 0 && count > 0) {
@@ -2325,7 +2329,7 @@ async function saveStockEdits() {
         historyEntries.push({
             type:'manual', material:fam, printer:'備料庫存',
             ml: -Math.min(ml, cur),
-            note:`更換 ${tankName} ${count} 個（每個 ${(resinTankDeductMl(tankName)/1000).toFixed(1)} L）${note?`：${note}`:''}`
+            note:`領用 ${tankName} ${count} 個，扣最小預留量（每個 ${(resinTankDeductMl(tankName)/1000).toFixed(1)} L）${note?`：${note}`:''}`
         });
         // 換的是 Form 4L 的槽 → 這個材料現在配著 L 樹脂槽，自動標記（Form 4 的小槽不標）
         if (isFormLTank(tankName) && !hasLTank(fam)) {
@@ -2444,9 +2448,10 @@ function askResinTankUsage(tankName, count, perMl) {
     return new Promise(resolve => {
         _tankResolve = resolve;
         document.getElementById('tank-modal-desc').innerHTML =
-            `「${escHtml(tankName)}」減少 <b>${count}</b> 個。<br>` +
-            `請選擇這批樹脂槽用在哪個材料上，系統會從該材料的備料庫存扣除 ` +
-            `<b>${(count * perMl / 1000).toFixed(1)} L</b>（每個 ${(perMl / 1000).toFixed(1)} L 殘留樹脂）。`;
+            `領用「${escHtml(tankName)}」<b>${count}</b> 個。<br>` +
+            `新槽啟用前必須先注入最小列印材料量，這筆料進槽後即無法取回，因此在領用當下扣除。<br>` +
+            `請選擇這批樹脂槽要裝哪種材料，系統會從該材料的備料庫存扣除 ` +
+            `<b>${(count * perMl / 1000).toFixed(1)} L</b>（每個 ${(perMl / 1000).toFixed(1)} L 最小預留量）。`;
         const sel = document.getElementById('tank-material');
         sel.innerHTML = '';
         const mats = getAllMaterials();
