@@ -91,7 +91,7 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .ver-x{width:20px;height:20px;padding:0;border:none;background:none;cursor:pointer;
   color:var(--ink-4);font-size:15px;line-height:1;border-radius:4px;font-family:inherit}
 .ver-x:hover{background:var(--line);color:var(--ink)}
-.ver-list{max-height:min(60vh,380px);overflow-y:auto;padding:4px 0}
+.ver-list{max-height:min(72vh,460px);overflow-y:auto;padding:4px 0}
 .ver-item{padding:8px 12px;border-bottom:1px solid var(--line)}
 .ver-item:last-child{border-bottom:none}
 .ver-top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
@@ -2187,10 +2187,14 @@ function AdminPanel({ user, isAdmin }) {
   );
 }
 
-/* 版本更新說明 —— 最近 5 次上線的更新內容。
-   新增一筆時放在陣列最前面並移除最後一筆（維持 5 筆）。
+/* 版本更新說明 —— 最近 10 次上線的更新內容。
+   新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'b9bf4ee', date:'2026-07-30', type:'feat',
+    text:'標題欄新增「版本更新說明」：點右下角的 ? 圓鈕即可查看最近的系統更新內容。' },
+  { hash:'a44569a', date:'2026-07-30', type:'feat',
+    text:'3D列印估價支援多個模型同時擺放與估價，合併成一張報價單；可指定份數自動複製並排列到平台空位；剖層預覽的斷面改為實體填色，不再看穿內部。' },
   { hash:'961c260', date:'2026-07-29', type:'docs',
     text:'換樹脂槽的扣料說明改為「最小預留量」，更清楚說明為什麼領用新槽要扣材料；新增分角色的操作說明文件。' },
   { hash:'20823f1', date:'2026-07-28', type:'docs',
@@ -2201,6 +2205,12 @@ const CHANGELOG = [
     text:'修正刪除消耗紀錄時的錯誤回補：先前未扣過庫存的紀錄被刪除時會憑空加回材料，現已修正，並補上「未扣庫存」標籤顯示。' },
   { hash:'76d86fb', date:'2026-07-28', type:'feat',
     text:'後台管理開放給主管角色：可管理使用者並套用角色，但不可調整個別權限或異動管理員帳號。' },
+  { hash:'3f7d48c', date:'2026-07-28', type:'fix',
+    text:'修正材料庫存中機台樹脂罐的 +1／−1 L 步進鈕沒有反應的問題。' },
+  { hash:'a0a3b9f', date:'2026-07-28', type:'feat',
+    text:'L樹脂槽標記改為進入編輯模式勾選後再儲存，與庫存數量、備註的操作方式一致；新增材料庫存設定的個別權限。' },
+  { hash:'a7ce4ed', date:'2026-07-28', type:'fix',
+    text:'材料代碼 FLRGWH 併入 Rigid 4000，兩者的庫存與消耗不再被分成兩筆計算。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },
@@ -2238,7 +2248,7 @@ function VersionPop({ onClose }) {
             );
           })}
         </div>
-        <div className="ver-foot">僅顯示最近 5 次更新</div>
+        <div className="ver-foot">僅顯示最近 10 次更新</div>
       </div>
     </>
   );
