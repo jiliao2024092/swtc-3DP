@@ -74,7 +74,33 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 
 /* Sidebar */
 .shell-sidebar{width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--bg-soft);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
-.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px 16px;border-bottom:1px solid var(--line)}
+.sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px 16px;border-bottom:1px solid var(--line);position:relative}
+/* 版本更新說明：標題欄右下角的小圓圈 ? 鈕 + 小彈出視窗 */
+.ver-btn{position:absolute;right:13px;bottom:11px;width:17px;height:17px;padding:0;border-radius:50%;
+  border:1px solid var(--line-strong);background:var(--bg);color:var(--ink-4);cursor:pointer;
+  font-size:10.5px;font-weight:700;line-height:1;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;transition:border-color .15s,color .15s}
+.ver-btn:hover{border-color:var(--accent);color:var(--accent)}
+.ver-back{position:fixed;inset:0;z-index:5100}
+.ver-pop{position:fixed;left:calc(var(--sidebar-w) + 8px);top:14px;width:330px;max-width:calc(100vw - 32px);
+  background:var(--bg);border:1px solid var(--line);border-radius:10px;z-index:5101;
+  box-shadow:0 12px 34px rgba(0,0,0,.24);overflow:hidden}
+.ver-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:9px 10px 9px 12px;border-bottom:1px solid var(--line);background:var(--bg-soft)}
+.ver-hd b{font-size:12.5px;color:var(--ink)}
+.ver-x{width:20px;height:20px;padding:0;border:none;background:none;cursor:pointer;
+  color:var(--ink-4);font-size:15px;line-height:1;border-radius:4px;font-family:inherit}
+.ver-x:hover{background:var(--line);color:var(--ink)}
+.ver-list{max-height:min(60vh,380px);overflow-y:auto;padding:4px 0}
+.ver-item{padding:8px 12px;border-bottom:1px solid var(--line)}
+.ver-item:last-child{border-bottom:none}
+.ver-top{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.ver-tag{font-size:9px;font-weight:700;border-radius:999px;padding:1px 6px;white-space:nowrap}
+.ver-date{font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono)}
+.ver-hash{font-size:9px;color:var(--ink-4);font-family:var(--font-mono);margin-left:auto}
+.ver-txt{font-size:11.5px;color:var(--ink-2);line-height:1.55}
+.ver-foot{padding:7px 12px;border-top:1px solid var(--line);background:var(--bg-soft);
+  font-size:9.5px;color:var(--ink-4)}
 .shell-brand-mark{width:28px;height:28px;background:#0a0e14;border-radius:7px;position:relative;flex-shrink:0}
 .shell-brand-mark::before{content:'';position:absolute;top:6px;left:6px;width:6px;height:6px;background:var(--accent);border-radius:1px}
 .shell-brand-mark::after{content:'';position:absolute;bottom:6px;right:6px;width:10px;height:2px;background:var(--accent);border-radius:1px}
@@ -2161,6 +2187,63 @@ function AdminPanel({ user, isAdmin }) {
   );
 }
 
+/* 版本更新說明 —— 最近 5 次上線的更新內容。
+   新增一筆時放在陣列最前面並移除最後一筆（維持 5 筆）。
+   type: feat=新功能 / fix=問題修正 / docs=文件 */
+const CHANGELOG = [
+  { hash:'961c260', date:'2026-07-29', type:'docs',
+    text:'換樹脂槽的扣料說明改為「最小預留量」，更清楚說明為什麼領用新槽要扣材料；新增分角色的操作說明文件。' },
+  { hash:'20823f1', date:'2026-07-28', type:'docs',
+    text:'系統文件更新至 v2.4，補齊材料／耗材分離、換槽扣料、後台管理下放主管、庫存稽核修正等說明。' },
+  { hash:'c66fd30', date:'2026-07-28', type:'docs',
+    text:'重整庫存演算法文件結構，補上換槽扣料模型的驗證與定期盤點建議。' },
+  { hash:'3000e9a', date:'2026-07-28', type:'fix',
+    text:'修正刪除消耗紀錄時的錯誤回補：先前未扣過庫存的紀錄被刪除時會憑空加回材料，現已修正，並補上「未扣庫存」標籤顯示。' },
+  { hash:'76d86fb', date:'2026-07-28', type:'feat',
+    text:'後台管理開放給主管角色：可管理使用者並套用角色，但不可調整個別權限或異動管理員帳號。' },
+];
+const VER_TAG = {
+  feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },
+  fix:  { label:'修正',   color:'var(--danger)', bg:'var(--danger-soft)' },
+  docs: { label:'文件',   color:'var(--accent)', bg:'var(--accent-soft)' },
+};
+function VersionPop({ onClose }) {
+  // Esc 也能關閉（與點 × / 點視窗外一致）
+  React.useEffect(() => {
+    const h = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+  return (
+    <>
+      {/* 透明遮罩：點視窗外的空白處關閉 */}
+      <div className="ver-back" onClick={onClose}/>
+      <div className="ver-pop" role="dialog" aria-label="版本更新說明">
+        <div className="ver-hd">
+          <b>版本更新說明</b>
+          <button className="ver-x" onClick={onClose} title="關閉">×</button>
+        </div>
+        <div className="ver-list">
+          {CHANGELOG.map(c => {
+            const t = VER_TAG[c.type] || VER_TAG.docs;
+            return (
+              <div className="ver-item" key={c.hash}>
+                <div className="ver-top">
+                  <span className="ver-tag" style={{color:t.color,background:t.bg}}>{t.label}</span>
+                  <span className="ver-date">{c.date}</span>
+                  <span className="ver-hash">{c.hash}</span>
+                </div>
+                <div className="ver-txt">{c.text}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="ver-foot">僅顯示最近 5 次更新</div>
+      </div>
+    </>
+  );
+}
+
 /* Shell (主框架) */
 function ChangePasswordModal({ onClose }) {
   const [cur, setCur] = React.useState('');
@@ -2210,6 +2293,7 @@ function Shell({ user, onLogout }) {
   const K = window.K;
   const [page, setPage] = useStateApp('workboard');
   const [showPwModal, setShowPwModal] = React.useState(false);
+  const [showVer, setShowVer] = React.useState(false);
   const [darkMode, setDarkMode] = React.useState(()=>{
     try { return localStorage.getItem('swtc_darkMode') === '1'; } catch(e){ return false; }
   });
@@ -2286,6 +2370,8 @@ function Shell({ user, onLogout }) {
             </div>
             <div className="shell-brand-sub">SWTC · PORTAL</div>
           </div>
+          <button className="ver-btn" title="版本更新說明"
+            onClick={()=>setShowVer(v=>!v)}>?</button>
         </div>
         <nav className="sidebar-nav">
           {NAV.map(n=>(
@@ -2327,6 +2413,10 @@ function Shell({ user, onLogout }) {
         </div>
       </aside>
       {showPwModal && <ChangePasswordModal onClose={()=>setShowPwModal(false)}/>}
+      {/* 版本更新說明必須放在 sidebar 外面：.shell-sidebar 是 position:sticky，
+          sticky 一定會建立堆疊脈絡，放在裡面的話 z-index 再高也只在 sidebar 層級內，
+          會被 <main> 的 shell-top(z-20) 與 sticky 表頭蓋掉。 */}
+      {showVer && <VersionPop onClose={()=>setShowVer(false)}/>}
       <main className="shell-main">
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}
