@@ -2496,6 +2496,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'30173f3', date:'2026-07-30', type:'feat',
+    text:'後台管理新增「公告欄」：可用類似 Word 的編輯器撰寫公告（字級、顏色、縮排、插入圖片），指定要公告給哪些角色，並選擇每次開啟系統都彈出、可勾選「以後不顯示」或只跳顯一次。' },
   { hash:'b9bf4ee', date:'2026-07-30', type:'feat',
     text:'標題欄新增「版本更新說明」：點右下角的 ? 圓鈕即可查看最近的系統更新內容。' },
   { hash:'a44569a', date:'2026-07-30', type:'feat',
@@ -2514,8 +2516,6 @@ const CHANGELOG = [
     text:'修正材料庫存中機台樹脂罐的 +1／−1 L 步進鈕沒有反應的問題。' },
   { hash:'a0a3b9f', date:'2026-07-28', type:'feat',
     text:'L樹脂槽標記改為進入編輯模式勾選後再儲存，與庫存數量、備註的操作方式一致；新增材料庫存設定的個別權限。' },
-  { hash:'a7ce4ed', date:'2026-07-28', type:'fix',
-    text:'材料代碼 FLRGWH 併入 Rigid 4000，兩者的庫存與消耗不再被分成兩筆計算。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },
