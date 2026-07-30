@@ -108,6 +108,10 @@ button{font-family:inherit}
 .fileRow .fmeta{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono)}
 .fileRow .fx{font-size:calc(10px * var(--fs));color:var(--ink4);cursor:pointer;padding:2px 4px}
 .fileRow .fx:hover{color:var(--err)}
+.fileRow .fx[data-dup]:hover{color:var(--accent)}
+.fileRow .dupN{width:38px;font-size:calc(9.5px * var(--fs));font-family:var(--mono);text-align:center;
+  border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);padding:2px 0}
+.fileRow.ovl{border-color:var(--err)}
 #dropZone{border:1.5px dashed var(--accent);border-radius:7px;padding:12px 6px;text-align:center;background:var(--accentBg);display:block;margin-top:6px;cursor:pointer}
 #dropZone .ic{font-size:calc(16px * var(--fs))}
 #dropZone .t1{font-size:calc(10px * var(--fs));color:var(--ink3);margin-top:2px}
@@ -459,6 +463,8 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
     <button class="abtn" id="btnFs" title="字級切換：小字 / 大字"><span style="font-size:9px;font-weight:700">A</span><span style="font-size:13px;font-weight:700">A</span></button>
     <button class="abtn" id="btnFullscreen" title="全螢幕檢視（填滿瀏覽器視窗，保留書籤列與工作列）">⛶ 全螢幕</button>
   </div>
+  <!-- 與 brand 後面那個對稱的彈性空白：讓 viewbar 居中，而不是被推到貼著視角方塊 -->
+  <div style="flex:1"></div>
   <div id="cubeWrap">
     <div id="cube"><div id="cubeInner">
       <div class="cface" style="transform:translateZ(26px)" data-cam="front">前</div>
@@ -780,7 +786,8 @@ const S = {
   machine: 'form4',
   materialId: 'grey',
   layerH: 0.05,
-  orient: { tiltX: -35, yaw: 15, tiltZ: 0 },     // 度 (skill 預設 35°+側轉15°)
+  // orient/results/supportStat 改放在每個模型物件上（見 addModelFromPos），不是全域共用——
+  // 多模型時每個模型自己的旋轉角度、分析快取、支撐生成結果互不影響
   sup: cloneSup(),      // PreForm 3.51+ 支撐材參數（見 SUP_DEFAULTS）
   supTab: 'pil',        // 支撐材結構分頁：tp | pil | raft
   forceSupports: false, // 於步驟1、2 由面板明確按「自動生成所有」時強制生成
@@ -802,7 +809,6 @@ const S = {
   workType: '代工',        // 計費倍率模式：代工 | 評估
   multipliers: { '代工':1, '評估':1 },   // 由 admin 於「材料與價格設定」設定，Firestore settings/quote_studio_pricing
   isAdmin: false,
-  results: {},          // 各分析結果快取（依 active model + orientation）
   orders: [], history: [],
   cloudStatus: 'connecting',   // connecting | online | offline
 };
@@ -852,9 +858,12 @@ function restore(){
 const V = {};   // viewer namespace
 function initViewer(){
   const canvas = $('#c3d');
-  V.renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  V.renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true, stencil:true });
   V.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   V.renderer.localClippingEnabled = true;
+  // 部分行動裝置/舊 GPU 即使要求 stencil 也可能實際拿不到；拿不到就跳過剖層實體斷面，
+  // 退回原本的中空斷面（不拋錯，純視覺降級）
+  V.hasStencil = !!V.renderer.getContext().getContextAttributes().stencil;
   V.scene = new THREE.Scene();
   V.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 4000);
   V.scene.add(new THREE.AmbientLight(0xffffff, .65));
@@ -877,6 +886,33 @@ function initViewer(){
   V.matMark  = new THREE.MeshStandardMaterial({ color:0xc0392b, roughness:.4, emissive:0x400000 });
   V.matDrain = new THREE.MeshStandardMaterial({ color:0xd97706, roughness:.4, emissive:0x402000 });
 
+  /* 剖層預覽「實體斷面」：three.js 標準 stencil 斷面填色手法
+     （webgl_clipping_stencil）。只套用在主模型本體，支撐維持現狀中空——
+     支撐是暫時性結構，視覺重點在模型本體，範圍先不擴大到支撐。
+     三種材質分工：matCapBack/matCapFront 各畫背/正面、只寫 stencil 不畫顏色
+     （colorWrite:false），matCap 是斷面本身的實色平板，靠 stencil 比對只在
+     被背面覆蓋、正面沒覆蓋的區域（也就是模型內部）畫出來。 */
+  if (V.hasStencil){
+    // ★ depthTest:false 是必要的（官方範例也是）：這兩趟只是為了在 stencil buffer 上
+    //   數「進入/離開實體的次數」，一旦讓它跟已畫好的模型做深度測試，被遮住的背面就不會
+    //   進入計數流程，斷面內部的計數會湊不出非零值 → 斷面整片畫不出來。
+    V.matCapBack = new THREE.MeshBasicMaterial({
+      colorWrite:false, depthWrite:false, depthTest:false, side:THREE.BackSide, clippingPlanes:[V.clipPlane],
+      stencilWrite:true, stencilFunc:THREE.AlwaysStencilFunc,
+      stencilFail:THREE.IncrementWrapStencilOp, stencilZFail:THREE.IncrementWrapStencilOp, stencilZPass:THREE.IncrementWrapStencilOp,
+    });
+    V.matCapFront = new THREE.MeshBasicMaterial({
+      colorWrite:false, depthWrite:false, depthTest:false, side:THREE.FrontSide, clippingPlanes:[V.clipPlane],
+      stencilWrite:true, stencilFunc:THREE.AlwaysStencilFunc,
+      stencilFail:THREE.DecrementWrapStencilOp, stencilZFail:THREE.DecrementWrapStencilOp, stencilZPass:THREE.DecrementWrapStencilOp,
+    });
+    V.matCap = new THREE.MeshStandardMaterial({
+      color:0xcfd6dd, roughness:.6, metalness:0, side:THREE.DoubleSide,
+      stencilWrite:true, stencilRef:0, stencilFunc:THREE.NotEqualStencilFunc,
+      stencilFail:THREE.ZeroStencilOp, stencilZFail:THREE.ZeroStencilOp, stencilZPass:THREE.ZeroStencilOp,
+    });
+  }
+
   V.modelGroup = new THREE.Group();   // 旋轉+定位後的模型
   V.supGroup = new THREE.Group();     // 支撐
   V.markGroup = new THREE.Group();    // 孤島/風險/排液孔標記
@@ -896,10 +932,12 @@ function initViewer(){
     ndc.y = -((e.clientY-r.top)/r.height)*2+1;
     V.ray.setFromCamera(ndc, V.camera);
   };
+  // 射線打「所有」模型（不只焦點模型）；命中物件的 userData.modelId 可反查是哪一個
   const pickModel = e => {
-    const m = activeModel(); if (!m || !m.mesh) return null;
+    const meshes = S.models.map(m=>m.mesh).filter(Boolean);
+    if (!meshes.length) return null;
     setRay(e);
-    const hits = V.ray.intersectObject(m.mesh, false);
+    const hits = V.ray.intersectObjects(meshes, false);
     return hits[0] || null;
   };
   const pickRing = e => {
@@ -934,22 +972,37 @@ function initViewer(){
     selBoxEl.style.width  = Math.abs(b.x-a.x)+'px';
     selBoxEl.style.height = Math.abs(b.y-a.y)+'px';
   };
-  const finishBoxSelect = (a,b,didMove) => {
-    const m = activeModel();
-    // 沒真的拖出矩形（只是點一下）或沒有模型可選 → 視為點空白：取消選取（沿用舊行為）
-    if (!didMove || !m || !m.mesh || Math.hypot(b.x-a.x,b.y-a.y) < 3){ deselectModel(); return; }
-    const x0=Math.min(a.x,b.x), x1=Math.max(a.x,b.x), y0=Math.min(a.y,b.y), y1=Math.max(a.y,b.y);
-    const box = m.worldBB;
-    const r = canvas.getBoundingClientRect();
-    const v = new THREE.Vector3();
+  // 把模型世界包圍盒的 8 個角投影到螢幕座標，回傳其外接矩形
+  const screenRectOf = (m, r) => {
+    const box = m.worldBB, v = new THREE.Vector3();
     let sx0=Infinity, sx1=-Infinity, sy0=Infinity, sy1=-Infinity;
     for (let i=0;i<8;i++){
       v.set(i&1?box.max[0]:box.min[0], i&2?box.max[1]:box.min[1], i&4?box.max[2]:box.min[2]).project(V.camera);
       const sx = r.left + (v.x*0.5+0.5)*r.width, sy = r.top + (1-(v.y*0.5+0.5))*r.height;
       sx0=Math.min(sx0,sx); sx1=Math.max(sx1,sx); sy0=Math.min(sy0,sy); sy1=Math.max(sy1,sy);
     }
-    const overlap = sx1>=x0 && sx0<=x1 && sy1>=y0 && sy0<=y1;
-    if (overlap) selectModel(); else deselectModel();
+    return {x0:sx0, x1:sx1, y0:sy0, y1:sy1};
+  };
+  const finishBoxSelect = (a,b,didMove) => {
+    // 沒真的拖出矩形（只是點一下）或沒有模型可選 → 視為點空白：取消選取（沿用舊行為）
+    if (!didMove || !S.models.length || Math.hypot(b.x-a.x,b.y-a.y) < 3){ deselectModel(); return; }
+    const x0=Math.min(a.x,b.x), x1=Math.max(a.x,b.x), y0=Math.min(a.y,b.y), y1=Math.max(a.y,b.y);
+    const r = canvas.getBoundingClientRect();
+    // 掃過所有模型，取「螢幕投影面積與框最接近」的那個當選取對象；
+    // 維持單選（不做多選同時搬移），框到多個時挑框中面積最大的最符合直覺。
+    let best = null, bestArea = -1;
+    for (const m of S.models){
+      if (!m.mesh || !m.worldBB) continue;
+      const s = screenRectOf(m, r);
+      if (!(s.x1>=x0 && s.x0<=x1 && s.y1>=y0 && s.y0<=y1)) continue;   // 沒重疊
+      const w = Math.min(s.x1,x1) - Math.max(s.x0,x0);
+      const h = Math.min(s.y1,y1) - Math.max(s.y0,y0);
+      const area = Math.max(0,w) * Math.max(0,h);
+      if (area > bestArea){ bestArea = area; best = m; }
+    }
+    if (!best){ deselectModel(); return; }
+    if (setActiveModel(best.id)) renderStep();
+    selectModel();
   };
   const updateCam = () => {
     V.camera.position.set(
@@ -973,6 +1026,8 @@ function initViewer(){
       if (a0!==null){ ringAxis=axis; ringStart=a0; ringDelta=0; gizmoDragBegin(); return; }
     }
     const hit = pickModel(e);
+    // 點到的若不是目前焦點模型 → 先切焦點，後續的貼面/選取/拖移才會作用在正確的模型上
+    if (hit && setActiveModel(hit.object.userData.modelId)) renderStep();
     if (hit && S.faceDownMode){ applyFaceDown(hit); return; }
     if (hit){                                   // 左鍵點到模型 → 選取並準備拖移（保留原行為，與框選不衝突）
       selectModel();
@@ -1128,6 +1183,18 @@ function deselectModel(){
   if (V.selHelper){ V.modelGroup.remove(V.selHelper); V.selHelper.geometry.dispose(); V.selHelper=null; }
   removeGizmo();
   $('#placePanel').classList.remove('open');
+}
+// 切換「焦點模型」。多模型架構下所有模型都已經在場景裡，切焦點不需要重建幾何，
+// 只要把鏡頭對準、剖層基準對齊、面板重繪即可（重建整個場景會連帶重生所有支撐，很浪費）。
+function setActiveModel(id){
+  if (!id || id === S.activeId) return false;
+  if (!S.models.some(m=>m.id===id)) return false;
+  S.activeId = id;
+  deselectModel();
+  const m = activeModel();
+  if (m && m.worldBB){ V.target.set(0, m.worldBB.size[1]/2 + 10, 0); V.updateCam(); }
+  if (S.clipOn) applyClip();   // 剖層滑桿的 cutY 是依焦點模型高度換算
+  return true;
 }
 function setCam(v){
   if (v==='front'){ V.theta=Math.PI/2; V.phi=Math.PI/2-0.02; }
@@ -1557,7 +1624,11 @@ class GridRay {
 let _mid = 0;
 async function addModelFromPos(pos, name, sizeBytes){
   const id = 'm' + (++_mid);
-  const model = { id, name, size: sizeBytes||0, display: pos, pos:{x:0, z:0} };
+  // orient/results/supportStat 是每個模型自己的（旋轉、分析快取、支撐生成結果都不共用）；
+  // 材料/機台/層厚/支撐參數這些整個列印工作共用的設定仍在全域 S 上，不搬過來
+  const model = { id, name, size: sizeBytes||0, display: pos, pos:{x:0, z:0},
+    orient: { tiltX: -35, yaw: 15, tiltZ: 0 },   // 度 (skill 預設 35°+側轉15°)
+    results: {}, supportStat: null };
   await busy('建立網格索引…', async ()=>{
     const bb0 = bboxOf(pos);
     const eps = Math.max(1e-4, Math.max(...bb0.size)*1e-6);
@@ -1584,18 +1655,18 @@ async function addModelFromPos(pos, name, sizeBytes){
       : `✕ ${name}：發現 ${fc.counts.fail} 項嚴重問題，建議修復`, fc.verdict==='pass'?'ok':fc.verdict==='warn'?'warn':'err');
 }
 
-/* 世界座標頂點（套用目前擺放角度並落在平台上） */
-function worldMatrix(){
+/* 世界座標頂點（套用該模型目前擺放角度並落在平台上）；旋轉是每個模型自己的，不是全域共用 */
+function worldMatrix(m){
   const e = new THREE.Euler(
-    THREE.MathUtils.degToRad(S.orient.tiltX),
-    THREE.MathUtils.degToRad(S.orient.yaw),
-    THREE.MathUtils.degToRad(S.orient.tiltZ), 'XYZ');
+    THREE.MathUtils.degToRad(m.orient.tiltX),
+    THREE.MathUtils.degToRad(m.orient.yaw),
+    THREE.MathUtils.degToRad(m.orient.tiltZ), 'XYZ');
   return new THREE.Matrix4().makeRotationFromEuler(e);
 }
 function supportsActive(){ return S.supportsOn && (S.step >= 2 || S.forceSupports); }   // 步驟1、2 不生成（面板明確按生成除外）
 function supportLift(){ return S.sup.raft.heightAbove + (S.sup.raft.type!=='none' ? S.sup.raft.thickness : 0); }
 function computeWorld(m){
-  const rot = worldMatrix().elements;
+  const rot = worldMatrix(m).elements;
   const src = m.raw.verts, n = src.length;
   const out = new Float32Array(n);
   for (let i=0;i<n;i+=3){
@@ -1618,39 +1689,98 @@ function gridOf(m){ if (!m.grid) m.grid = new GridRay(m.world, m.raw.tris, 64); 
 
 /* 重建 Three.js 場景中的模型 + 支撐 */
 async function rebuildScene(regenSupports){
-  const m = activeModel();
   while (V.modelGroup.children.length) disposeChild(V.modelGroup);
   while (V.markGroup.children.length) disposeChild(V.markGroup);
-  const sameModel = S.results._mid === (S.activeId||null);
-  S.results = sameModel
-    ? { _mid:S.activeId, thickness:S.results.thickness, curv:S.results.curv }   // 厚度/曲率與擺放無關 → 保留
-    : { _mid:S.activeId };
-  if (!m){ clearSupports(); updateAllUI(); return; }
-  computeWorld(m);
-  clampModelPos(m);   // 硬性邊界：所有提交路徑(拖曳/數值輸入/方向鍵)一律夾回列印範圍內
-  const geo = new THREE.BufferGeometry();
-  // 展開為非索引（利於每面著色）
-  const tris = m.raw.tris, w = m.world;
-  const flat = new Float32Array(tris.length*3);
-  for (let i=0;i<tris.length;i++){ const p=tris[i]*3; flat[i*3]=w[p]; flat[i*3+1]=w[p+1]; flat[i*3+2]=w[p+2]; }
-  geo.setAttribute('position', new THREE.BufferAttribute(flat,3));
-  const colors = new Float32Array(tris.length*3).fill(1);
-  geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
-  geo.computeVertexNormals();
-  m.mesh = new THREE.Mesh(geo, V.matModel);
-  V.modelGroup.add(m.mesh);
-  V.target.set(0, m.worldBB.size[1]/2 + 10, 0);
-  V.updateCam();
-  applyColorMode();
+  if (!S.models.length){ clearSupports(); updateAllUI(); return; }
+
+  const mode = S.colorMode;
+  V.matModel.color.set(mode==='normal' ? 0x5bb8d4 : 0xffffff);
+
+  for (const m of S.models){
+    computeWorld(m);
+    clampModelPos(m);   // 硬性邊界：所有提交路徑(拖曳/數值輸入/方向鍵)一律夾回列印範圍內
+    const geo = new THREE.BufferGeometry();
+    // 展開為非索引（利於每面著色）
+    const tris = m.raw.tris, w = m.world;
+    const flat = new Float32Array(tris.length*3);
+    for (let i=0;i<tris.length;i++){ const p=tris[i]*3; flat[i*3]=w[p]; flat[i*3+1]=w[p+1]; flat[i*3+2]=w[p+2]; }
+    geo.setAttribute('position', new THREE.BufferAttribute(flat,3));
+    const colors = new Float32Array(tris.length*3).fill(1);
+    geo.setAttribute('color', new THREE.BufferAttribute(colors,3));
+    geo.computeVertexNormals();
+    m.mesh = new THREE.Mesh(geo, V.matModel);
+    m.mesh.userData.modelId = m.id;   // 供 pickModel/box-select 反查是哪個模型
+    V.modelGroup.add(m.mesh);
+    if (V.hasStencil){
+      // 同一份 geo：背/正面各畫一次只寫 stencil（不寫顏色），renderOrder 確保比斷面平板先畫
+      m.stencilBack  = new THREE.Mesh(geo, V.matCapBack);  m.stencilBack.renderOrder  = 1;
+      m.stencilFront = new THREE.Mesh(geo, V.matCapFront); m.stencilFront.renderOrder = 1;
+      // 斷面平板：夠大蓋過模型足跡即可，尺寸不需要精確跟著機台換算，固定給一個寬裕值
+      const capGeo = new THREE.PlaneGeometry(500, 500);
+      capGeo.rotateX(-Math.PI/2);
+      m.capMesh = new THREE.Mesh(capGeo, V.matCap);
+      m.capMesh.renderOrder = 2;
+      m.stencilBack.visible = m.stencilFront.visible = m.capMesh.visible = S.clipOn;
+      V.modelGroup.add(m.stencilBack, m.stencilFront, m.capMesh);
+    }
+    applyColorModeTo(m, mode);
+    refreshRangeCheck(m);                                // 機台/擺放變更 → 範圍檢查即時同步
+  }
+
+  const active = activeModel();
+  if (active){
+    V.target.set(0, active.worldBB.size[1]/2 + 10, 0);
+    V.updateCam();
+    if (S.clipOn) applyClip();   // 剖層滑桿位置(cutY)是依目前焦點模型高度算的，切模型/重建後要重新對齊
+  }
   deselectModel();                                       // 幾何重建後外框失效
-  if (regenSupports && supportsActive()) await generateSupports();
-  else if (!supportsActive()) clearSupports();
-  refreshRangeCheck(m);                                  // 機台/擺放變更 → 範圍檢查即時同步
+  if (regenSupports && supportsActive()){
+    clearSupportsVisual();   // 視覺清空一次就好；每個模型自己的 supportStat 由下面迴圈逐一覆蓋，不用先歸零
+    for (const m of S.models) await generateSupportsFor(m);
+  } else if (!supportsActive()) clearSupports();
+  checkModelOverlaps();
   updateRangeBoxColor();
   updateAllUI();
 }
 function disposeChild(g){ const c=g.children[0]; g.remove(c); if(c.geometry)c.geometry.dispose(); }
-function clearSupports(){ while (V.supGroup.children.length) disposeChild(V.supGroup); S.supportStat=null; }
+function clearSupportsVisual(){ while (V.supGroup.children.length) disposeChild(V.supGroup); }
+function clearSupports(){ clearSupportsVisual(); for (const m of S.models) m.supportStat=null; }
+/* 多模型碰撞偵測（AABB 兩兩比對）。
+   用包圍盒而非精確網格：擺放階段只要提醒「這兩個會撞到」就夠，精確布林運算成本高又沒必要。
+   XZ 方向留一點容差（模型緊貼排列是正常的，差幾條邊不該報警），Y 方向不留（疊在一起一定有問題）。*/
+const OVERLAP_EPS = 0.5;   // mm
+function aabbOverlap(a, b, eps = OVERLAP_EPS){
+  return a.min[0] < b.max[0]-eps && a.max[0] > b.min[0]+eps
+      && a.min[1] < b.max[1]        && a.max[1] > b.min[1]
+      && a.min[2] < b.max[2]-eps && a.max[2] > b.min[2]+eps;
+}
+function checkModelOverlaps(){
+  S.models.forEach(m => m.overlapWarn = false);
+  const pairs = [];
+  for (let i=0;i<S.models.length;i++){
+    for (let j=i+1;j<S.models.length;j++){
+      const a = S.models[i], b = S.models[j];
+      if (!a.worldBB || !b.worldBB) continue;
+      if (aabbOverlap(a.worldBB, b.worldBB)){
+        a.overlapWarn = b.overlapWarn = true;
+        pairs.push([a,b]);
+      }
+    }
+  }
+  // 重疊的模型加紅色外框（畫在 markGroup，rebuildScene 會連同其他標記一起清掉）
+  for (const m of S.models){
+    if (!m.overlapWarn || !m.worldBB) continue;
+    const box = new THREE.Box3(new THREE.Vector3(...m.worldBB.min), new THREE.Vector3(...m.worldBB.max));
+    V.markGroup.add(new THREE.Box3Helper(box, 0xe0574f));
+  }
+  // 只在「從沒重疊變成有重疊」那一刻提示一次，拖曳過程中不洗版
+  const now = pairs.length > 0;
+  if (now && !S._overlapWarned){
+    toast(`偵測到 ${pairs.length} 組模型互相重疊，請拉開後再估價`, 'warn');
+  }
+  S._overlapWarned = now;
+  return pairs.length;
+}
 
 /* ============================== 9. STL 分析 ============================== */
 async function runMeshRepair(){
@@ -1672,7 +1802,7 @@ async function runMeshRepair(){
     va = volumeArea(m.raw.verts, m.raw.tris);
     m.volMM3 = va.vol; m.areaMM2 = va.area;
   });
-  S.results = {};   // 拓撲已變 → 全部快取失效
+  m.results = {};   // 拓撲已變 → 全部快取失效
   await rebuildScene(false);
   logHist('網格修復', `翻正 ${m.repair.flipsFixed} 面 · 退化面移除 ${m.repair.degenerate} · 開放邊 ${m.topo.boundary}`);
   toast(m.topo.watertight ? '✓ 修復完成，網格已水密' : `修復完成，仍有 ${m.topo.boundary} 條開放邊（孔洞需於 CAD 補面）`, m.topo.watertight?'ok':'warn');
@@ -1682,7 +1812,7 @@ async function runMeshRepair(){
 /* 厚度分析：面心沿 -法線 射線取樣（模型座標，與擺放無關） */
 async function runThickness(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.thickness) return S.results.thickness;
+  if (m.results.thickness) return m.results.thickness;
   return busy('厚度分析中（取樣 + 射線量測）…', async ()=>{
     const grid = new GridRay(m.raw.verts, m.raw.tris, 64);
     const t = m.raw.tris, v = m.raw.verts, nf = t.length/3;
@@ -1705,7 +1835,7 @@ async function runThickness(){
       if ((f/stride) % 500 === 0) await frame();
     }
     const res = { faceTh, stride, minTh: samples?minTh:0, avgTh: samples?sum/samples:0, thinArea, samples };
-    S.results.thickness = res;
+    m.results.thickness = res;
     logHist('厚度分析', `最薄 ${F(res.minTh)}mm · 平均 ${F(res.avgTh,1)}mm · 取樣 ${samples}`);
     return res;
   });
@@ -1713,7 +1843,7 @@ async function runThickness(){
 /* 曲率分析：邊二面角 → 頂點平均（離散近似） */
 async function runCurvature(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.curv) return S.results.curv;
+  if (m.results.curv) return m.results.curv;
   return busy('曲率分析中（二面角統計）…', async ()=>{
     const v=m.raw.verts, t=m.raw.tris, nf=t.length/3, nv=v.length/3;
     const fN = new Float32Array(nf*3);
@@ -1749,7 +1879,7 @@ async function runCurvature(){
     let maxC=0;
     for (let i=0;i<nv;i++){ if (vCnt[i]) vCurv[i]/=vCnt[i]; if(vCurv[i]>maxC)maxC=vCurv[i]; }
     const res = { vCurv, maxC, sharpEdges, sharpPct: edge.size?sharpEdges/edge.size*100:0 };
-    S.results.curv = res;
+    m.results.curv = res;
     logHist('曲率分析', `銳邊比例 ${F(res.sharpPct,1)}% · 最大平均二面角 ${F(maxC*57.3,0)}°`);
     return res;
   });
@@ -1759,7 +1889,7 @@ async function runCurvature(){
 /* 懸垂分析（世界座標）：γ = 面與平台夾角 */
 function runOverhang(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.overhang) return S.results.overhang;
+  if (m.results.overhang) return m.results.overhang;
   const t = m.raw.tris, w = m.world, nf = t.length/3;
   const faceGamma = new Float32Array(nf).fill(999);
   let supArea=0, dangerArea=0, flatArea=0, total=0, minGamma=999, minGammaPos=null;
@@ -1787,13 +1917,13 @@ function runOverhang(){
     }
   }
   const res = { faceGamma, supArea, dangerArea, flatArea, total, minGamma: minGamma===999?null:minGamma, minGammaPos, dangerFaces };
-  S.results.overhang = res;
+  m.results.overhang = res;
   return res;
 }
 /* 柱狀取樣：XZ 格網垂直射線全命中 → 剖面/孤島/吸盤/翹曲共用 */
 async function runColumns(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.cols) return S.results.cols;
+  if (m.results.cols) return m.results.cols;
   return busy('剖面掃描中（柱狀取樣）…', async ()=>{
     const grid = gridOf(m);
     const bb = m.worldBB;
@@ -1834,14 +1964,14 @@ async function runColumns(){
     }
     const maxArea = Math.max(...areaProf);
     const res = { cols, NX, NZ, dx, dz, layerA, NL, areaProf, maxArea, maxJump, jumpAt, cellA, bb };
-    S.results.cols = res;
+    m.results.cols = res;
     return res;
   });
 }
 /* 孤島分析：柱狀資料 — 區段底部若下方鄰域無實體 → 孤島起點（近似） */
 async function runIslands(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.islands) return S.results.islands;
+  if (m.results.islands) return m.results.islands;
   const C = await runColumns();
   const pts = [];
   const solidBelow = (ix,iz,y)=>{
@@ -1869,7 +1999,7 @@ async function runIslands(){
     else clusters.push({x:p[0],y:p[1],z:p[2],n:1});
   }
   const res = { clusters, raw:pts.length };
-  S.results.islands = res;
+  m.results.islands = res;
   // 註：原本這裡會自動在3D視圖畫紅球標記孤島位置(drawIslandMarkers)，
   // 依使用者回饋「顯示錯誤處」類功能實際效果不佳，已移除；孤島「數據」仍保留供評分/報告使用
   logHist('孤島分析', clusters.length ? `偵測 ${clusters.length} 處孤島起點（近似）` : '未偵測到孤島');
@@ -1878,14 +2008,14 @@ async function runIslands(){
 /* 吸盤效應（近似）：實體區段的「底面」大面積且位於平台上方 → 每層新增封閉腔提示 */
 async function runCupping(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.cupping) return S.results.cupping;
+  if (m.results.cupping) return m.results.cupping;
   const C = await runColumns();
   const O = runOverhang();
   // 近似：大面積近水平向下的面（非底座接觸層）視為吸盤風險
-  const risk = O.flatArea > 150 || (O.flatArea > 60 && S.orient.tiltX===0 && S.orient.tiltZ===0);
-  const hollow = m.shells > 1 || (S.results.thickness && S.results.thickness.avgTh < Math.min(m.bbox.size[0],m.bbox.size[1],m.bbox.size[2])*0.18);
+  const risk = O.flatArea > 150 || (O.flatArea > 60 && m.orient.tiltX===0 && m.orient.tiltZ===0);
+  const hollow = m.shells > 1 || (m.results.thickness && m.results.thickness.avgTh < Math.min(m.bbox.size[0],m.bbox.size[1],m.bbox.size[2])*0.18);
   const res = { risk, hollow, flatArea: O.flatArea };
-  S.results.cupping = res;
+  m.results.cupping = res;
   return res;
 }
 /* 註：原本這裡有 markDrainHoles()（排液孔位置3D標記），
@@ -1893,10 +2023,10 @@ async function runCupping(){
 /* 翹曲預測（啟發式評分） */
 async function runWarp(){
   const m = activeModel(); if(!m) return null;
-  if (S.results.warp) return S.results.warp;
+  if (m.results.warp) return m.results.warp;
   const C = await runColumns();
   const O = runOverhang();
-  const TH = S.results.thickness || await runThickness();
+  const TH = m.results.thickness || await runThickness();
   const bb = m.worldBB;
   let score = 0; const reasons=[];
   const peel = C.maxArea / Math.max(1, mach().size[0]*mach().size[1]) * 100;
@@ -1909,7 +2039,7 @@ async function runWarp(){
   if (C.maxJump > 3){ score+=12; reasons.push(`截面突變 ×${F(C.maxJump,1)} @ Z=${F(C.jumpAt,0)}mm`); }
   const level = score>=50 ? '高' : score>=25 ? '中' : '低';
   const res = { score:Math.min(99,score), level, reasons, peel };
-  S.results.warp = res;
+  m.results.warp = res;
   logHist('翹曲預測', `風險 ${level}（${res.score} 分）`);
   return res;
 }
@@ -1926,7 +2056,7 @@ function applyShrinkComp(){
   for (let i=0;i<v.length;i+=3){ v[i]*=c.scaleXY; v[i+1]*=c.scaleZ; v[i+2]*=c.scaleXY; }
   const va = volumeArea(m.raw.verts, m.raw.tris);
   m.volMM3=va.vol; m.areaMM2=va.area; m.bbox=bboxOf(v); m.grid=null;
-  S.results = {};   // 幾何已縮放 → 全部快取失效
+  m.results = {};   // 幾何已縮放 → 全部快取失效
   rebuildScene(true);
   toast(`✓ 已套用收縮補償 XY ×${F(c.scaleXY,4)} / Z ×${F(c.scaleZ,4)}（${mat().name} ${c.shrink}%，參考值）`, 'ok');
   logHist('收縮補償', `XY ×${F(c.scaleXY,4)} · Z ×${F(c.scaleZ,4)}`);
@@ -1934,9 +2064,10 @@ function applyShrinkComp(){
 /* ============================== 11. 支撐生成（內建近似） ==============================
    格網取樣 + 由下往上射線，僅接觸向下面（法線 ny<-0.15）；
    非 PreForm 重現 — 精確結果請於雲端管理 → API 切換 PFS 模式。 */
-async function generateSupports(){
-  const m = activeModel(); if(!m){ clearSupports(); return; }
-  clearSupports();
+async function generateSupportsFor(m){
+  // 不呼叫 clearSupports()：那會連帶清掉其他模型剛生成好的支撐與 supportStat。
+  // V.supGroup 的視覺清空由呼叫端（rebuildScene）在迴圈開始前做一次就好，這裡只負責新增。
+  if (!m) return;
   const P = S.sup;
   await busy('支撐材生成中（內建近似 · PreForm 參數）…', async ()=>{
     const grid = gridOf(m);
@@ -2110,7 +2241,7 @@ async function generateSupports(){
       const g = mergeSafe(geoms.tpBy[k]);
       if (g){ const mm=new THREE.Mesh(g, V.matTpType[k]); mm.userData.supPart='point'; V.supGroup.add(mm); }
     }
-    S.supportStat = { points: kept.length, byType, volSupMM3: volSup, volRaftMM3: volRaft,
+    m.supportStat = { points: kept.length, byType, volSupMM3: volSup, volRaftMM3: volRaft,
                       volMM3: volSup + volRaft, braces,
                       pts: kept.map(p=>[p.x, p.z, p.top]) };   // 接觸點世界座標 [x,z,y]，供驗證判定支撐涵蓋
   });
@@ -2137,7 +2268,7 @@ function addRaftLabel(m, cx, topY, cz, R){
 }
 
 /* 支撐顯示方式：實體／半透明／只顯示支撐點（純視覺切換，不重新生成幾何）。
-   材料是共用單例(V.matSup/V.matTpType)，故切換立即生效、跨次 generateSupports() 持續有效。 */
+   材料是共用單例(V.matSup/V.matTpType)，故切換立即生效、跨次 generateSupportsFor() 持續有效。 */
 const SUP_DISPLAY_OPACITY = { solid:1, transparent:.35, points:1 };
 function applySupDisplay(){
   const mode = S.supDisplay || 'solid';
@@ -2164,7 +2295,7 @@ const ORIENT_GOALS = {
 };
 async function autoOrient(){
   const m = activeModel(); if(!m) return;
-  const G = ORIENT_GOALS[S.orientGoal] || ORIENT_GOALS.balance;
+  const G = ORIENT_GOALS[m.orientGoal] || ORIENT_GOALS.balance;
   const tilts = S.autoOrientAngles.split(/[,，\s]+/).map(Number).filter(n=>isFinite(n)&&n>=0&&n<=85);
   if (!tilts.length){ toast('候選角度清單無效', 'err'); return; }
   const cands = [];
@@ -2212,10 +2343,10 @@ async function autoOrient(){
   });
   const best = results[0];
   pushUndo();
-  S.orient = { tiltX: best.tx, yaw: best.yaw, tiltZ: best.tz };
+  m.orient = { tiltX: best.tx, yaw: best.yaw, tiltZ: best.tz };
   computeWorld(m); clampModelPos(m);   // 自動擺放後夾回列印範圍
   await rebuildScene(true);
-  S.results.autoOrient = { goal:S.orientGoal, list:results.slice(0,3) };
+  m.results.autoOrient = { goal:m.orientGoal, list:results.slice(0,3) };
   const desc = o => `${Math.max(Math.abs(o.tx),Math.abs(o.tz))}°${o.tz? '(Z)':'(X)'} +Y${o.yaw}°`;
   const th = Math.floor(best.estSec/3600), tm = Math.round((best.estSec%3600)/60);
   toast(`✓ 自動擺放（${G.label}）：${desc(best)} · 高 ${F(best.h,0)}mm · ≈${th}h ${String(tm).padStart(2,'0')}m · 已置於範圍內`, 'ok');
@@ -2225,7 +2356,7 @@ async function autoOrient(){
 /* 材料推薦：幾何特性規則 */
 async function recommendMaterial(){
   const m = activeModel(); if(!m) return null;
-  const TH = S.results.thickness || await runThickness();
+  const TH = m.results.thickness || await runThickness();
   const list = MATERIALS.map(mt=>{
     let s = 0; const why=[];
     if (TH.minTh<1.0 && mt.id==='rigid'){ s+=15; why.push('高剛性抗薄壁翹曲'); }
@@ -2233,21 +2364,21 @@ async function recommendMaterial(){
     s -= mt.priceL/1000;   // 價格微調
     return { mt, s, why };
   }).sort((a,b)=>b.s-a.s);
-  S.results.matRec = list.slice(0,3);
-  return S.results.matRec;
+  m.results.matRec = list.slice(0,3);
+  return m.results.matRec;
 }
 /* 層厚推薦：細節（曲率/薄壁）vs 時間 */
 async function recommendLayer(){
   const m = activeModel(); if(!m) return null;
-  const TH = S.results.thickness || await runThickness();
-  const CV = S.results.curv || await runCurvature();
+  const TH = m.results.thickness || await runThickness();
+  const CV = m.results.curv || await runCurvature();
   let rec, why;
   if (TH.minTh < 0.5 || CV.sharpPct > 12){ rec=0.025; why='薄壁/高細節密度 → 25µm 保留特徵'; }
   else if (CV.sharpPct > 4){ rec=0.05; why='中等細節 → 50µm 品質/時間均衡'; }
   else { rec=0.1; why='幾何單純 → 100µm 快速列印'; }
   if (!mat().layers.includes(rec)) rec = mat().layers[0];
-  S.results.layerRec = { rec, why };
-  return S.results.layerRec;
+  m.results.layerRec = { rec, why };
+  return m.results.layerRec;
 }
 
 /* ============================== 13. 時間與成本引擎 ============================== */
@@ -2282,64 +2413,100 @@ function matTimeFactor(){
   return 1.0;   // 未知材料 → Tough 2000 基準
 }
 function calcTime(){
-  const m = activeModel(); if(!m) return null;
+  if (!S.models.length) return null;
   const lt = S.layerH, M = TIME_MODEL;
-  const printH = m.worldBB.max[1];                        // 含底座+抬升 → 決定層數
-  const layers = Math.ceil(printH / lt);
-  // 固化總截面積 = 體積 ÷ 層厚（與擺放無關）；有支撐時併入支撐+底座體積
-  const supVol = (S.supportsOn && S.supportStat) ? ((S.supportStat.volSupMM3||0) + (S.supportStat.volRaftMM3||0)) : 0;
-  const curedVol = m.volMM3 + supVol;
+  // ★ 一批同時印：層數由「最高」的模型決定，不是各模型相加——這是物理事實，
+  //   平台上所有件共用同一組層。固化體積則可以加總（每層要固化的截面積是各件相加）。
+  let layers = 0, curedVol = 0;
+  for (const m of S.models){
+    if (!m.worldBB) continue;
+    layers = Math.max(layers, Math.ceil(m.worldBB.max[1] / lt));   // 含底座+抬升
+    const supVol = (S.supportsOn && m.supportStat)
+      ? ((m.supportStat.volSupMM3||0) + (m.supportStat.volRaftMM3||0)) : 0;
+    curedVol += (m.volMM3||0) + supVol;
+  }
+  if (!layers) return null;
   const startup  = M.startup * (M.refLayerH / lt);        // 早期層開銷 ∝ 1/層厚
   const layerSec = M.basePerLayer * layers;
-  const areaSec  = M.areaCoef * (curedVol / lt);
+  const areaSec  = M.areaCoef * (curedVol / lt);          // 固化總截面積 = 體積 ÷ 層厚（與擺放無關）
   const factor   = matTimeFactor();                       // 材料速度係數（實印校準）
   const sec = Math.round((startup + layerSec + areaSec) * factor);
   return { layers, sec, factor, h:Math.floor(sec/3600), min:Math.round((sec%3600)/60),
-           startup:Math.round(startup), layerSec:Math.round(layerSec), areaSec:Math.round(areaSec) };
+           startup:Math.round(startup), layerSec:Math.round(layerSec), areaSec:Math.round(areaSec),
+           modelCount: S.models.length };
 }
 function calcCost(){
-  // 舊版計費模型（與 quote.html 相同）：本體材料×單價 + 支撐材料×單價 + 固定後處理費
-  // 單價 = 材料設定的 NT$/L（Firestore settings/quote_materials）；無電費/工時/利潤等營運項
-  const m = activeModel(); if(!m) return null;
+  // 計費模型：本體材料×單價 + 支撐材料×單價 + 固定後處理費，再乘工作類型倍率。
+  // 單價 = 材料設定的 NT$/L（Firestore settings/quote_materials）；無電費/工時/利潤等營運項。
+  if (!S.models.length) return null;
   const T = calcTime();
-  const modelML = m.volMM3/1000;
-  const raftML = (S.supportStat?.volRaftMM3 || 0)/1000;
-  // 支撐量：使用者選「無支撐」→0；已生成支撐→內建近似的實際體積(含基底)；尚未生成→舊版固定 15% 比例粗估
-  const supML = !S.supportsOn ? 0 : S.supportStat ? ((S.supportStat.volSupMM3||0)/1000 + raftML) : modelML*0.15;
   const ppc = mat().priceL/1000;                 // NT$/mL
-  const matCost  = Math.round(modelML*ppc);
-  const supCost  = Math.round(supML*ppc);
-  const postCost = S.cost.postCost ?? 90;
+  // 逐模型算，且「先四捨五入再加總」——這樣報價單上每一行的金額相加會剛好等於小計，
+  // 不會出現明細加起來跟總價差 1 元的情況。
+  const perModel = [];
+  let modelML = 0, supML = 0, raftML = 0, matCost = 0, supCost = 0;
+  for (const m of S.models){
+    const mML = (m.volMM3||0)/1000;
+    const rML = (m.supportStat?.volRaftMM3 || 0)/1000;
+    // 支撐量：選「無支撐」→0；已生成→實際體積(含基底)；尚未生成→固定 15% 比例粗估
+    const sML = !S.supportsOn ? 0 : m.supportStat ? ((m.supportStat.volSupMM3||0)/1000 + rML) : mML*0.15;
+    const mc = Math.round(mML*ppc), sc = Math.round(sML*ppc);
+    modelML += mML; supML += sML; raftML += rML; matCost += mc; supCost += sc;
+    perModel.push({ id:m.id, name:m.name, modelML:mML, supML:sML, matCost:mc, supCost:sc,
+                    supEstimated: S.supportsOn && !m.supportStat });
+  }
+  const postCost = S.cost.postCost ?? 90;        // 後處理是「一批一次」，不隨模型數增加
   const subtotal = matCost + supCost + postCost;
   const multiplier = (S.multipliers && S.multipliers[S.workType]) || 1;
   const total = Math.round(subtotal * multiplier);
-  return { modelML, supML, raftML, resinML: modelML+supML, matCost, supCost, postCost, subtotal, multiplier, workType:S.workType, total, time:T };
+  return { modelML, supML, raftML, resinML: modelML+supML, matCost, supCost, postCost,
+           subtotal, multiplier, workType:S.workType, total, time:T, perModel };
 }
 function timeStr(T){ return T ? `${T.h}h ${String(T.min).padStart(2,'0')}m` : '—'; }
+/* 多模型的可行性驗證摘要。
+   成功率取「所有模型中最差」的那個——一批印件只要有一件會失敗，整批就得重印，
+   取平均會把風險稀釋掉、給出過度樂觀的數字。問題數則是各模型相加。*/
+function validationSummary(){
+  const rs = S.models.map(m => m.results && m.results.validation).filter(Boolean);
+  if (!rs.length) return null;
+  const worst = rs.reduce((a,b) => (b.rate < a.rate ? b : a));
+  return {
+    rate:   worst.rate,
+    fail:   rs.reduce((s,r)=>s+(r.fail||0),0),
+    warn:   rs.reduce((s,r)=>s+(r.warn||0),0),
+    manual: rs.reduce((s,r)=>s+(r.manual||0),0),
+    checked: rs.length,
+    total:   S.models.length,
+  };
+}
 /* ============================== 14. 著色模式 ============================== */
 async function setColorMode(mode){
   S.colorMode = mode;
   if (mode==='thickness') await runThickness();
   if (mode==='curvature') await runCurvature();
   if (mode==='overhang') runOverhang();
-  if (mode==='suprisk') runOverhang();   // 需 faceGamma；支撐涵蓋由 S.supportStat.pts 提供
+  if (mode==='suprisk') runOverhang();   // 需 faceGamma；支撐涵蓋由 m.supportStat.pts 提供
   applyColorMode();
   const lsr = $('#legSupRisk'); if (lsr) lsr.style.display = mode==='suprisk' ? '' : 'none';
   $$('#viewbar .abtn[data-mode]').forEach(b=>b.classList.toggle('on', b.dataset.mode===mode));
 }
 function applyColorMode(){
-  const m = activeModel(); if(!m || !m.mesh) return;
+  // 色彩模式是整個工作共用設定（V.matModel.color 只需設一次），但每個模型的頂點色要分別重算
+  const mode = S.colorMode;
+  V.matModel.color.set(mode==='normal' ? 0x5bb8d4 : 0xffffff);
+  for (const m of S.models) applyColorModeTo(m, mode);
+}
+function applyColorModeTo(m, mode){
+  if (!m || !m.mesh) return;
   const colAttr = m.mesh.geometry.attributes.color;
   const col = colAttr.array;
   const tris = m.raw.tris, n = tris.length;
-  const mode = S.colorMode;
-  V.matModel.color.set(mode==='normal' ? 0x5bb8d4 : 0xffffff);
   const base = mode==='normal' ? [1,1,1] : [0.36,0.72,0.83];   // 非一般模式以白材質×基色重現模型色
   const set = (i,r,g,b)=>{ col[i*3]=r; col[i*3+1]=g; col[i*3+2]=b; };
   if (mode==='normal'){
     col.fill(1);
   } else if (mode==='overhang'){
-    const O = S.results.overhang;
+    const O = m.results.overhang;
     for (let i=0;i<n;i++){
       const g = O ? O.faceGamma[(i/3)|0] : 999;
       if (g < SPEC.overhangAngle.v) set(i, .78,.16,.13);
@@ -2348,8 +2515,8 @@ function applyColorMode(){
     }
   } else if (mode==='suprisk'){
     // 支撐風險：危險懸垂面依「是否已被支撐涵蓋」分色（把耦合修復視覺化）
-    const O = S.results.overhang;
-    const cov = supportCoverageReady();
+    const O = m.results.overhang;
+    const cov = supportCoverageReady(m);
     const w = m.world, t = tris;
     for (let i=0;i<n;i++){
       const f = (i/3)|0;
@@ -2358,7 +2525,7 @@ function applyColorMode(){
         if (cov){
           const a=t[f*3]*3, b=t[f*3+1]*3, c=t[f*3+2]*3;
           const cx=(w[a]+w[b]+w[c])/3, cy=(w[a+1]+w[b+1]+w[c+1])/3, cz=(w[a+2]+w[b+2]+w[c+2])/3;
-          if (nearSupport(cx, cz, cy, 7, 5)) set(i, .13,.60,.55);   // 青綠：已被支撐涵蓋
+          if (nearSupport(m, cx, cz, cy, 7, 5)) set(i, .13,.60,.55);   // 青綠：已被支撐涵蓋
           else set(i, .82,.14,.12);                                 // 紅：未被涵蓋（真正要處理）
         } else set(i, .82,.14,.12);                                 // 紅：危險（尚未生成支撐）
       } else if (g < 50){                                   // 需注意（淡橘、不強調）
@@ -2367,7 +2534,7 @@ function applyColorMode(){
       } else set(i, base[0],base[1],base[2]);
     }
   } else if (mode==='thickness'){
-    const TH = S.results.thickness || (activeModel().cacheTh);
+    const TH = m.results.thickness || m.cacheTh;
     for (let i=0;i<n;i++){
       const f = (i/3)|0;
       let th = TH ? TH.faceTh[f] : -1;
@@ -2382,7 +2549,7 @@ function applyColorMode(){
       else set(i, base[0],base[1],base[2]);
     }
   } else if (mode==='curvature'){
-    const CV = S.results.curv;
+    const CV = m.results.curv;
     for (let i=0;i<n;i++){
       const c = CV ? CV.vCurv[tris[i]] / Math.max(1e-6, CV.maxC) : 0;
       if (c > .12){ const t=Math.min(1,(c-.12)/.55); set(i, .35+.55*t, .7-.5*t, .85-.7*t); }
@@ -2394,33 +2561,50 @@ function applyColorMode(){
 
 /* 支撐涵蓋判定：讓「可行性驗證」知道支撐生成在哪，不再對「裸模型」評分——
    這是「支撐已生成卻仍報孤島／懸垂」矛盾的根因修正（支撐生成與孤島/懸垂偵測原本各跑一套、互不知情）。
-   接觸點世界座標存於 S.supportStat.pts（[x,z,y]），與偵測結果同一擺放（rebuildScene 會一起清快取+重生成）。 */
-function supportCoverageReady(){ return !!(S.supportsOn && S.supportStat && S.supportStat.pts && S.supportStat.pts.length); }
-function nearSupport(x, z, y, rXZ, rY){
-  const P = S.supportStat && S.supportStat.pts; if (!P) return false;
+   接觸點世界座標存於 m.supportStat.pts（[x,z,y]），與偵測結果同一擺放（rebuildScene 會一起清快取+重生成）。 */
+function supportCoverageReady(m){ return !!(S.supportsOn && m.supportStat && m.supportStat.pts && m.supportStat.pts.length); }
+function nearSupport(m, x, z, y, rXZ, rY){
+  const P = m.supportStat && m.supportStat.pts; if (!P) return false;
   for (let i=0;i<P.length;i++){ const p=P[i]; if (Math.hypot(p[0]-x, p[1]-z) <= rXZ && Math.abs(p[2]-y) <= rY) return true; }
   return false;
 }
 /* 第一個「未被支撐涵蓋」的危險懸垂面中心 [x,y,z]（供「點我查看」把視角轉到真正還要處理的位置） */
-function firstUncoveredDanger(O){
+function firstUncoveredDanger(m, O){
   if (!O || !O.dangerFaces) return null;
-  for (const df of O.dangerFaces){ if (!nearSupport(df[0], df[2], df[1], 7, 5)) return [df[0], df[1], df[2]]; }
+  for (const df of O.dangerFaces){ if (!nearSupport(m, df[0], df[2], df[1], 7, 5)) return [df[0], df[1], df[2]]; }
   return null;
 }
 /* ============================== 15. 可行性驗證（Form 4 設計規範） ============================== */
+/* 逐一驗證所有模型。
+   runValidation 與其底下的 runThickness/runOverhang/runIslands/… 都是對「目前焦點模型」作用，
+   與其把這八支全部參數化（改動面大、容易漏一處），這裡改用「暫時切換焦點」的做法：
+   直接改 S.activeId（不走 setActiveModel，免得鏡頭在批次過程中跳來跳去），跑完必定還原。*/
+async function runValidationAll(){
+  if (!S.models.length) return null;
+  const keep = S.activeId;
+  try {
+    for (const m of S.models){
+      S.activeId = m.id;
+      await runValidation();
+    }
+  } finally {
+    S.activeId = keep;
+  }
+  return validationSummary();
+}
 async function runValidation(){
   const m = activeModel(); if(!m) return null;
-  const TH = S.results.thickness || await runThickness();
-  const CV = S.results.curv || await runCurvature();
+  const TH = m.results.thickness || await runThickness();
+  const CV = m.results.curv || await runCurvature();
   const O  = runOverhang();
   const C  = await runColumns();
-  const IS = S.results.islands || await runIslands();
-  const CU = S.results.cupping || await runCupping();
-  const W  = S.results.warp || await runWarp();
+  const IS = m.results.islands || await runIslands();
+  const CU = m.results.cupping || await runCupping();
+  const W  = m.results.warp || await runWarp();
   const checks = [];
   const add = (label, status, detail, kind)=>checks.push({label, status, detail, kind});
   const ms = mach().size;
-  const covReady = supportCoverageReady();   // 已生成支撐 → 孤島/懸垂改判「未被支撐涵蓋」的部分
+  const covReady = supportCoverageReady(m);   // 已生成支撐 → 孤島/懸垂改判「未被支撐涵蓋」的部分
 
   // 幾何可自動量測
   const fits = modelFits(m);
@@ -2433,7 +2617,7 @@ async function runValidation(){
   let uncoveredDanger = O.dangerArea;
   if (covReady && O.dangerFaces && O.dangerFaces.length){
     uncoveredDanger = 0;
-    for (const df of O.dangerFaces){ if (!nearSupport(df[0], df[2], df[1], 7, 5)) uncoveredDanger += df[3]; }
+    for (const df of O.dangerFaces){ if (!nearSupport(m, df[0], df[2], df[1], 7, 5)) uncoveredDanger += df[3]; }
   }
   add('懸垂角度',
       uncoveredDanger > 2 ? (covReady ? 'warn' : 'fail') : (O.supArea > 0 && !S.supportsOn ? 'warn' : 'pass'),
@@ -2453,7 +2637,7 @@ async function runValidation(){
       TH.minTh<SPEC.wireDia.v ? `偵測 <${SPEC.wireDia.v}mm 細部（${F(TH.minTh)}mm），若為獨立細柱請加粗或多點支撐` : `未偵測獨立細柱風險`, '近似');
   add('零件間隙', m.shells>1 ? 'warn' : 'pass',
       m.shells>1 ? `偵測 ${m.shells} 個殼體，請確認間隙 ≥${SPEC.clearance.v}mm` : '單一殼體，不適用', '近似');
-  const uncoveredIslands = covReady ? IS.clusters.filter(c=>!nearSupport(c.x, c.z, c.y, 7, 4)).length : IS.clusters.length;
+  const uncoveredIslands = covReady ? IS.clusters.filter(c=>!nearSupport(m, c.x, c.z, c.y, 7, 4)).length : IS.clusters.length;
   add('孤島',
       IS.clusters.length===0 ? 'pass' : uncoveredIslands===0 ? 'pass' : covReady ? 'warn' : S.supportsOn ? 'warn' : 'fail',
       IS.clusters.length===0 ? '未偵測孤島'
@@ -2485,7 +2669,7 @@ async function runValidation(){
     pass: checks.filter(c=>c.status==='pass').length,
   };
   res.rate = Math.max(5, Math.round(100 - res.fail*22 - res.warn*6 - (W.score*0.15)));
-  S.results.validation = res;
+  m.results.validation = res;
   logHist('可行性驗證', `通過 ${res.pass} · 警告 ${res.warn} · 失敗 ${res.fail} · 成功率 ${res.rate}%`);
   updateAllUI();
   return res;
@@ -2494,19 +2678,22 @@ async function runValidation(){
 function validationFixFor(label){
   const map = {
     '懸垂角度': ()=>{
-      const O = S.results.overhang; const cov = supportCoverageReady();
+      const m = activeModel(); if (!m) return;
+      const O = m.results.overhang; const cov = supportCoverageReady(m);
       setColorMode(cov ? 'suprisk' : 'overhang');
-      const pos = (cov && firstUncoveredDanger(O)) || (O && O.minGammaPos);
+      const pos = (cov && firstUncoveredDanger(m, O)) || (O && O.minGammaPos);
       if (pos) focusCameraOn(new THREE.Vector3(...pos));
     },
     '懸垂長度': ()=>{
-      const O = S.results.overhang; const cov = supportCoverageReady();
+      const m = activeModel(); if (!m) return;
+      const O = m.results.overhang; const cov = supportCoverageReady(m);
       setColorMode(cov ? 'suprisk' : 'overhang');
-      const pos = (cov && firstUncoveredDanger(O)) || (O && O.minGammaPos);
+      const pos = (cov && firstUncoveredDanger(m, O)) || (O && O.minGammaPos);
       if (pos) focusCameraOn(new THREE.Vector3(...pos));
     },
     '孤島': async ()=>{
-      if (!S.results.islands) await runIslands();
+      const m = activeModel(); if (!m) return;
+      if (!m.results.islands) await runIslands();
       drawIslandMarkers();
     },
     '底部抬升': ()=>{
@@ -2545,17 +2732,26 @@ function renderStep(){
     if (!S.models.length) B.appendChild(el('div','mnote','尚無模型 — 拖曳檔案至視窗任意處，或點下方上傳。'));
     for (const md of S.models){
       const fcIc = md.fcheck ? (md.fcheck.verdict==='pass'?'<span style="color:var(--ok)">✓</span>':md.fcheck.verdict==='warn'?'<span style="color:var(--warn)">⚠</span>':'<span style="color:var(--err)">✕</span>') : '…';
-      const r = el('div','fileRow'+(md.id===S.activeId?' on':''),
-        `<span>📦</span><div style="flex:1;min-width:0"><div class="fname">${md.name}</div>
+      const r = el('div','fileRow'+(md.id===S.activeId?' on':'')+(md.overlapWarn?' ovl':''),
+        `<span>📦</span><div style="flex:1;min-width:0"><div class="fname">${md.name}${md.overlapWarn?' <span style="color:var(--err);font-size:.85em">⚠ 重疊</span>':''}</div>
          <div class="fmeta">${md.faces.toLocaleString()} 面 · ${F(md.volMM3/1000,1)} mL · 檢查 ${fcIc}</div></div>
+         <input class="dupN" type="number" min="1" max="50" value="1" title="要複製的份數" data-n="${md.id}">
+         <span class="fx" data-dup="${md.id}" title="複製指定份數並自動排列到平台空位">⧉</span>
          <span class="fx" data-del="${md.id}">✕</span>`);
       r.addEventListener('click', async e=>{
+        if (e.target.dataset.n) return;                 // 點在數量輸入框上不要觸發切換焦點
+        if (e.target.dataset.dup){
+          const n = r.querySelector(`.dupN[data-n="${e.target.dataset.dup}"]`);
+          await duplicateModel(e.target.dataset.dup, n ? n.value : 1);
+          return;
+        }
         if (e.target.dataset.del){
           S.models = S.models.filter(x=>x.id!==e.target.dataset.del);
           if (S.activeId===e.target.dataset.del) S.activeId = S.models[0]?.id || null;
           await rebuildScene(true); renderStep(); return;
         }
-        if (md.id!==S.activeId){ S.activeId=md.id; await rebuildScene(true); renderStep(); }
+        // 多模型下所有模型都已在場景中，切焦點不需重建幾何（重建會連帶重生所有支撐）
+        if (setActiveModel(md.id)){ renderStep(); updateAllUI(); }
       });
       B.appendChild(r);
     }
@@ -2671,7 +2867,7 @@ function renderStep(){
     sb.appendChild(el('div','mrow',`<span>接觸點尺寸</span><b>${F(S.sup.tpSize)} mm</b>`));
     sb.appendChild(el('div','mrow',`<span>懸空密度 / 角度</span><b>${F(S.sup.over.density)} · ${F(S.sup.over.angle,0)}°</b>`));
     sb.appendChild(el('div','mrow',`<span>底座</span><b>${({full:'完整',mini:'迷你',none:'無'})[S.sup.raft.type]}</b>`));
-    if (S.supportStat) sb.appendChild(el('div','mrow',`<span>接觸點</span><b>${S.supportStat.points} 點 · ${F((S.supportStat.volSupMM3+S.supportStat.volRaftMM3)/1000,1)} mL</b>`));
+    if (m.supportStat) sb.appendChild(el('div','mrow',`<span>接觸點</span><b>${m.supportStat.points} 點 · ${F((m.supportStat.volSupMM3+m.supportStat.volRaftMM3)/1000,1)} mL</b>`));
     B.appendChild(sb);
     const quick = el('div','segRow');
     for (const [lab, fn] of [['預設', ()=>{ S.sup = cloneSup(); }],
@@ -2698,17 +2894,38 @@ function renderStep(){
     opt.disabled = !m;
     opt.addEventListener('click', async ()=>{
       await autoOrient();            // 內含支撐重生成
-      await runValidation();
+      await runValidationAll();      // 平台上每一件都要驗，不只焦點那件
       renderStep();
     });
     B.appendChild(opt);
-    const only = el('button','ghostBtn','僅執行驗證（不變更擺放）');
+    const only = el('button','ghostBtn', S.models.length>1 ? `僅執行驗證（${S.models.length} 件，不變更擺放）` : '僅執行驗證（不變更擺放）');
     only.style.marginTop='6px'; only.disabled = !m;
-    only.addEventListener('click', async ()=>{ await runValidation(); renderStep(); });
+    only.addEventListener('click', async ()=>{ await runValidationAll(); renderStep(); });
     B.appendChild(only);
     B.appendChild(el('div','mnote','驗證依 Formlabs Form 4 設計指南；「近似」項由內建演算法估計，「人工」項無法由網格自動判定。'));
 
-    const R = S.results.validation;
+    // 多模型：先給整批摘要（成功率以最差件為準），再列出目前焦點模型的細項
+    if (S.models.length > 1){
+      const SM = validationSummary();
+      if (SM){
+        B.appendChild(el('div','lbl',`整批摘要 · 成功率 ${SM.rate}%（以最差件計）`));
+        B.appendChild(el('div','mnote',
+          `${SM.total} 件中 ${SM.checked} 件已驗證 · 失敗 ${SM.fail} / 警告 ${SM.warn} / 人工確認 ${SM.manual}`
+          + `${SM.checked<SM.total ? ' — 尚有未驗證的件，請按上方按鈕補驗' : ''}`));
+        // 各件成功率一覽，點選可切換到該件看細項
+        for (const md of S.models){
+          const rv = md.results && md.results.validation;
+          const row = el('div','fileRow'+(md.id===S.activeId?' on':''),
+            `<div style="flex:1;min-width:0"><div class="fname">${md.name}</div></div>
+             <span class="fmeta">${rv ? rv.rate+'%' : '未驗證'}</span>`);
+          row.addEventListener('click', ()=>{ if (setActiveModel(md.id)){ renderStep(); updateAllUI(); } });
+          B.appendChild(row);
+        }
+        B.appendChild(el('div','lbl',`${m ? m.name : ''} 細項`));
+      }
+    }
+
+    const R = m.results.validation;
     if (R){
       B.appendChild(el('div','lbl',`驗證結果 · 成功率 ${R.rate}%`));
       const order = { fail:0, warn:1, manual:2 };
@@ -2755,7 +2972,7 @@ function renderStep(){
     const box = el('div','mbox');
     const row = (l,v)=>box.appendChild(el('div','costRow',`<span>${l}</span><b>${v}</b>`));
     row(`本體材料 ${F(C.modelML,1)} mL`, NTD(C.matCost));
-    row(`支撐材料 ${F(C.supML,1)} mL${S.supportStat?'':'（未生成，以 15% 粗估）'}`, NTD(C.supCost));
+    row(`支撐材料 ${F(C.supML,1)} mL${m.supportStat?'':'（未生成，以 15% 粗估）'}`, NTD(C.supCost));
     row('後處理（清洗 / 固化）', NTD(C.postCost));
     box.appendChild(el('div','costTotal',`<span>總計</span><b>${NTD(C.total)}</b>`));
     B.appendChild(box);
@@ -2774,7 +2991,7 @@ function renderDock(){
     if (i===0) return S.models.length>0;
     if (i===1) return S.models.length>0;
     if (i===2) return S.models.length>0;
-    if (i===3) return !!S.results.validation;
+    if (i===3) return !!(activeModel() && activeModel().results.validation);
     return false;
   };
   STEPS.forEach((s,i)=>{
@@ -2820,7 +3037,7 @@ function openModule(mod){
     B.appendChild(el('div','mnote',`載入時已焊接 ${m.repair.welded.toLocaleString()} 重複頂點、移除 ${m.repair.degenerate} 退化面${m.repair.holesFilled?`；前次修復補洞 ${m.repair.holesFilled}、去重複面 ${m.repair.dupRemoved||0}`:''}。自動修復＝重複面清除＋破洞補面(近似)＋法線統一；複雜孔洞請回 CAD。`));
     B.appendChild(btn('🔧 一鍵自動修復（含補洞）', runAutoRepair, false));
     B.appendChild(el('div','lbl','厚度分析'));
-    const TH = S.results.thickness;
+    const TH = m.results.thickness;
     if (TH){
       const tb = el('div','mbox');
       tb.appendChild(mrow('最薄取樣', F(TH.minTh)+' mm', TH.minTh<SPEC.wallSupported.v?'errc':TH.minTh<0.6?'warnc':'okc'));
@@ -2828,9 +3045,9 @@ function openModule(mod){
       tb.appendChild(mrow('薄壁面積', F(TH.thinArea,0)+' mm²'));
       B.appendChild(tb);
     }
-    B.appendChild(btn(TH?'▤ 重新分析並顯示熱圖':'▤ 執行厚度分析（熱圖）', async ()=>{ delete S.results.thickness; await setColorMode('thickness'); openModule('stl'); }));
+    B.appendChild(btn(TH?'▤ 重新分析並顯示熱圖':'▤ 執行厚度分析（熱圖）', async ()=>{ delete m.results.thickness; await setColorMode('thickness'); openModule('stl'); }));
     B.appendChild(el('div','lbl','曲率分析'));
-    const CV = S.results.curv;
+    const CV = m.results.curv;
     if (CV){
       const cb = el('div','mbox');
       cb.appendChild(mrow('銳邊比例', F(CV.sharpPct,1)+' %', CV.sharpPct>12?'warnc':''));
@@ -2853,15 +3070,15 @@ function openModule(mod){
     B.appendChild(btn('⚠ 檢視懸垂標色', ()=>setColorMode('overhang')));
 
     B.appendChild(el('div','lbl','孤島分析（近似）'));
-    const IS = S.results.islands;
+    const IS = m.results.islands;
     if (IS){
       B.appendChild(el('div','mbox').appendChild(mrow('孤島起點', IS.clusters.length+' 處', IS.clusters.length?'errc':'okc')).parentNode);
       if (IS.clusters.length) B.appendChild(btn('📍 標示孤島位置', ()=>{ drawIslandMarkers(); toast(`已標示 ${IS.clusters.length} 處孤島位置`,'warn'); }));
     }
 
     B.appendChild(el('div','lbl','支撐材（PreForm 參數 · 內建近似）'));
-    if (S.supportStat){
-      const st = S.supportStat, bt = st.byType||{};
+    if (m.supportStat){
+      const st = m.supportStat, bt = st.byType||{};
       const sb = el('div','mbox');
       sb.appendChild(mrow('接觸點', st.points+' 點'));
       sb.appendChild(el('div','mnote',
@@ -2875,7 +3092,7 @@ function openModule(mod){
     B.appendChild(btn('🖊 開啟支撐材面板', ()=>toggleSupPanel(true)));
 
     B.appendChild(el('div','lbl','翹曲預測（啟發式）'));
-    const W = S.results.warp;
+    const W = m.results.warp;
     if (W){
       const wb = el('div','mbox');
       wb.appendChild(mrow('風險等級', `${W.level}（${W.score}分）`, W.level==='高'?'errc':W.level==='中'?'warnc':'okc'));
@@ -2905,9 +3122,9 @@ function openModule(mod){
     const gr = el('div','segRow');
     for (const [k,g] of Object.entries(ORIENT_GOALS)){
       const parts = g.label.split(' ');
-      const b = el('button','goalSeg'+(S.orientGoal===k?' on':''),
+      const b = el('button','goalSeg'+(m.orientGoal===k?' on':''),
         `${g.label}<small>${k==='time'?'高度優先·近PreForm取向':k==='balance'?'品質/時間折衷':'保護表面'}</small>`);
-      b.addEventListener('click', ()=>{ S.orientGoal=k; openModule('ai'); });
+      b.addEventListener('click', ()=>{ m.orientGoal=k; openModule('ai'); });
       gr.appendChild(b);
     }
     B.appendChild(gr);
@@ -2919,8 +3136,8 @@ function openModule(mod){
     const inp = el('div','inRow',`<input type="text" style="width:100%" value="${S.autoOrientAngles}">`);
     inp.querySelector('input').addEventListener('change', e=>{ S.autoOrientAngles=e.target.value; });
     B.appendChild(inp);
-    B.appendChild(btn(`⚡ 執行自動擺放（${(ORIENT_GOALS[S.orientGoal]||{}).label||''}）`, autoOrient, false));
-    const AO = S.results.autoOrient;
+    B.appendChild(btn(`⚡ 執行自動擺放（${(ORIENT_GOALS[m.orientGoal]||{}).label||''}）`, autoOrient, false));
+    const AO = m.results.autoOrient;
     if (AO && AO.list){
       B.appendChild(el('div','lbl',`前 3 名候選（${(ORIENT_GOALS[AO.goal]||{}).label||''} · 依目標排序）`));
       AO.list.forEach((o,ix)=>{
@@ -2931,7 +3148,7 @@ function openModule(mod){
         r.style.cursor='pointer';
         r.addEventListener('click', async ()=>{
           pushUndo();
-          S.orient={tiltX:o.tx,yaw:o.yaw,tiltZ:o.tz};
+          m.orient={tiltX:o.tx,yaw:o.yaw,tiltZ:o.tz};
           computeWorld(m); clampModelPos(m);
           await rebuildScene(true);
           toast('已套用候選 #'+(ix+1)+'（已置於範圍內）','ok');
@@ -2941,13 +3158,13 @@ function openModule(mod){
     }
     B.appendChild(el('div','lbl','手動擺放（度）— 可捲動滾輪微調'));
     const or = el('div','',
-      `<div class="inRow"><label>傾斜 X</label><input type="number" step="1" value="${S.orient.tiltX}" data-o="tiltX"><span class="un">°</span></div>
-       <div class="inRow"><label>側轉 Y</label><input type="number" step="1" value="${S.orient.yaw}" data-o="yaw"><span class="un">°</span></div>
-       <div class="inRow"><label>傾斜 Z</label><input type="number" step="1" value="${S.orient.tiltZ}" data-o="tiltZ"><span class="un">°</span></div>`);
+      `<div class="inRow"><label>傾斜 X</label><input type="number" step="1" value="${m.orient.tiltX}" data-o="tiltX"><span class="un">°</span></div>
+       <div class="inRow"><label>側轉 Y</label><input type="number" step="1" value="${m.orient.yaw}" data-o="yaw"><span class="un">°</span></div>
+       <div class="inRow"><label>傾斜 Z</label><input type="number" step="1" value="${m.orient.tiltZ}" data-o="tiltZ"><span class="un">°</span></div>`);
     or.querySelectorAll('input').forEach(x=>{
       x.addEventListener('change', async ()=>{
         pushUndo();
-        S.orient[x.dataset.o] = +x.value || 0;
+        m.orient[x.dataset.o] = +x.value || 0;
         const mm = activeModel();
         computeWorld(mm); clampModelPos(mm);
         await rebuildScene(true);
@@ -2960,7 +3177,7 @@ function openModule(mod){
     B.appendChild(btn('🖊 生成支撐（目前參數）', async ()=>{ S.supportsOn=true; if(S.step<2) S.forceSupports=true; const mm=activeModel(); if(mm) computeWorld(mm); await rebuildScene(true); openModule('ai'); }));
 
     B.appendChild(el('div','lbl','最佳材料推薦'));
-    const MR = S.results.matRec;
+    const MR = m.results.matRec;
     if (MR) MR.forEach((r,ix)=>{
       const b = el('div','mbox',
         `<div class="mrow"><span>#${ix+1} ${r.mt.name}</span><b>NT$${r.mt.priceL.toLocaleString()}/L</b></div><div class="mnote">${r.why.join('、')||'通用'}</div>`);
@@ -2971,7 +3188,7 @@ function openModule(mod){
     B.appendChild(btn('✨ 依幾何特性推薦', async ()=>{ await recommendMaterial(); openModule('ai'); }));
 
     B.appendChild(el('div','lbl','最佳層厚推薦'));
-    const LR = S.results.layerRec;
+    const LR = m.results.layerRec;
     if (LR) B.appendChild(el('div','mbox',`<div class="mrow"><span>建議 ${LR.rec*1000}µm</span><b>${S.layerH===LR.rec?'已套用':''}</b></div><div class="mnote">${LR.why}</div>`));
     B.appendChild(btn('✨ 推薦並套用層厚', async ()=>{
       const r = await recommendLayer();
@@ -3003,7 +3220,7 @@ function openModule(mod){
       B.appendChild(el('div','lbl','即時明細'));
       const box = el('div','mbox');
       box.appendChild(mrow(`本體材料（${F(C.modelML,1)} mL）`, NTD(C.matCost)));
-      box.appendChild(mrow(`支撐材料（${F(C.supML,1)} mL${S.supportStat?'':'，未生成以15%粗估'}）`, NTD(C.supCost)));
+      box.appendChild(mrow(`支撐材料（${F(C.supML,1)} mL${m.supportStat?'':'，未生成以15%粗估'}）`, NTD(C.supCost)));
       box.appendChild(mrow('後處理（清洗 / 固化）', NTD(C.postCost)));
       box.appendChild(mrow('小計', NTD(C.subtotal)));
       if (C.multiplier!==1) box.appendChild(mrow(`${C.workType}倍率`, `×${C.multiplier}`));
@@ -3083,10 +3300,10 @@ function openModule(mod){
       }));
     }
     B.appendChild(el('div','lbl','AI 分析報告'));
-    if (S.results.report) {
-      const rb = el('div','', `<div id="reportBox">${S.results.report.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`);
+    if (m.results.report) {
+      const rb = el('div','', `<div id="reportBox">${m.results.report.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div>`);
       B.appendChild(rb);
-      B.appendChild(btn('⧉ 複製報告', ()=>{ navigator.clipboard?.writeText(S.results.report).then(()=>toast('已複製','ok')).catch(()=>toast('複製失敗','err')); }));
+      B.appendChild(btn('⧉ 複製報告', ()=>{ navigator.clipboard?.writeText(m.results.report).then(()=>toast('已複製','ok')).catch(()=>toast('複製失敗','err')); }));
     }
     B.appendChild(btn('📝 產生 AI 報告', async ()=>{ await genReport(); openModule('cloud'); }, false));
 
@@ -3121,28 +3338,44 @@ function toggleClip(){
   S.clipOn = !S.clipOn;
   $('#clipWrap').classList.toggle('show', S.clipOn);
   $('#btnClip').classList.toggle('on', S.clipOn);
-  if (!S.clipOn) V.clipPlane.constant = 1e6;
+  if (!S.clipOn){
+    V.clipPlane.constant = 1e6;
+    setCapVisible(false);   // 關閉剖層時斷面/stencil 網格不用時零成本
+  }
   else applyClip();
 }
+// 斷面/stencil 網格是「每個模型各一組」，要全部一起開關，不能只動焦點模型
+function setCapVisible(v){
+  for (const m of S.models){
+    if (!m.capMesh) continue;
+    m.stencilBack.visible = m.stencilFront.visible = m.capMesh.visible = v;
+  }
+}
 function applyClip(){
-  const m = activeModel(); if(!m) return;
+  if (!S.models.length) return;
   const pct = S.clipPct;
-  const top = m.worldBB.max[1] + 1;
+  // 剖切高度以「平台上最高件」為基準，這樣滑桿 100% 時所有模型都完整露出；
+  // 若只用焦點模型的高度，比它高的模型會被永久切掉一截。
+  let top = 0;
+  for (const m of S.models) if (m.worldBB) top = Math.max(top, m.worldBB.max[1]);
+  top += 1;
   V.clipPlane.constant = pct>=100 ? 1e6 : (pct/100)*top;
   const cutY = (pct/100)*top;
   $('#clipVal').textContent = pct>=100 ? '100%' : `L${Math.max(0,Math.floor(cutY/S.layerH)).toLocaleString()}`;
+  for (const m of S.models) if (m.capMesh) m.capMesh.position.y = cutY;
+  setCapVisible(pct < 100);   // 100% = 不剖層，斷面平板也跟著隱藏
 }
 /* ============================== 18. AI 報告（依 3D 列印估價 skill 格式） ============================== */
 async function genReport(){
   const m = activeModel(); if(!m){ toast('請先載入模型','err'); return; }
-  const TH = S.results.thickness || await runThickness();
+  const TH = m.results.thickness || await runThickness();
   const O  = runOverhang();
-  const W  = S.results.warp || await runWarp();
-  const IS = S.results.islands || await runIslands();
-  const CU = S.results.cupping || await runCupping();
+  const W  = m.results.warp || await runWarp();
+  const IS = m.results.islands || await runIslands();
+  const CU = m.results.cupping || await runCupping();
   const C  = calcCost();
-  const tilt = Math.max(Math.abs(S.orient.tiltX), Math.abs(S.orient.tiltZ));
-  const axis = S.orient.tiltZ ? 'Z' : 'X';
+  const tilt = Math.max(Math.abs(m.orient.tiltX), Math.abs(m.orient.tiltZ));
+  const axis = m.orient.tiltZ ? 'Z' : 'X';
   const L = [];
   L.push(`📋 AI 列印分析報告 — ${m.name}`);
   L.push(`機台 ${mach().name} · ${mat().name} · 層厚 ${S.layerH*1000}µm`);
@@ -3152,13 +3385,13 @@ async function genReport(){
   L.push(`   傾斜 ${tilt}°（${axis} 軸）` + (tilt>=30&&tilt<=45 ? ' — 位於建議區間 30–45°' : tilt===0 ? ' — ⚠ 平放不建議（剝離力大、吸盤風險）' : ''));
   L.push(`   平放向下大面 ${F(O.flatArea,0)} mm² · 需支撐面 ${F(O.supArea,0)} mm²`);
   L.push(`2. 旋轉建議`);
-  L.push(`   側轉 ${S.orient.yaw}° 分散層線與剝離力` + (S.orient.yaw===15?'（建議值）':''));
-  L.push(`   ${S.results.autoOrient ? '已執行自動擺放評分（前 3 候選見 AI 面板）' : '可於 ✨ AI 面板執行自動擺放評分'}`);
+  L.push(`   側轉 ${m.orient.yaw}° 分散層線與剝離力` + (m.orient.yaw===15?'（建議值）':''));
+  L.push(`   ${m.results.autoOrient ? '已執行自動擺放評分（前 3 候選見 AI 面板）' : '可於 ✨ AI 面板執行自動擺放評分'}`);
   L.push(`3. 支撐策略（PreForm 參數 · 內建近似）`);
-  if (S.supportStat){
-    const bt = S.supportStat.byType||{};
-    L.push(`   接觸點 ${S.sup.tpSize}mm × ${S.supportStat.points} 點（懸空點 ${bt.minima||0}／懸空 ${bt.over||0}／穩定化 ${bt.stab||0}／強化 ${bt.rein||0}）`);
-    L.push(`   支撐材 ${F(S.supportStat.volSupMM3/1000,1)} mL · 基底(${({full:'完整',mini:'迷你',none:'無'})[S.sup.raft.type]}) ${F(S.supportStat.volRaftMM3/1000,1)} mL`);
+  if (m.supportStat){
+    const bt = m.supportStat.byType||{};
+    L.push(`   接觸點 ${S.sup.tpSize}mm × ${m.supportStat.points} 點（懸空點 ${bt.minima||0}／懸空 ${bt.over||0}／穩定化 ${bt.stab||0}／強化 ${bt.rein||0}）`);
+    L.push(`   支撐材 ${F(m.supportStat.volSupMM3/1000,1)} mL · 基底(${({full:'完整',mini:'迷你',none:'無'})[S.sup.raft.type]}) ${F(m.supportStat.volRaftMM3/1000,1)} mL`);
   }
   else L.push(`   尚未生成支撐（支撐目前關閉）`);
   L.push(`   支撐接觸建議避開外觀關鍵面；細節面朝上。`);
@@ -3176,17 +3409,18 @@ async function genReport(){
   L.push('────────────────────');
   L.push(`※ 本報告由內建近似演算法（取樣＋射線）產生，非 PreForm 運算結果；`);
   L.push(`   精確支撐/擺放請切換 PFS 模式（PreForm Server @ ${S.pfsUrl}）。`);
-  S.results.report = L.join('\n');
+  m.results.report = L.join('\n');
   logHist('AI 報告', `${m.name} · 翹曲 ${W.level} · ${NTD(C?C.total:0)}`);
-  return S.results.report;
+  return m.results.report;
 }
 
 /* ============================== 19. 報價單與工單 ============================== */
 function openQuote(){
   const m = activeModel(); const C = calcCost();
   if (!m || !C){ toast('請先載入模型','err'); return; }
+  if (S.models.some(x=>x.overlapWarn)){ toast('有模型互相重疊，請先拉開再報價','err'); return; }
   const no = genNo('Q');
-  const R = S.results.validation;
+  const R = validationSummary();
   const sheet = $('#quoteSheet');
   sheet.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -3195,16 +3429,18 @@ function openQuote(){
     </div>
     <table>
       <tr><th>項目</th><th>規格</th><th class="r">金額</th></tr>
-      <tr><td>3D 列印 — ${m.name}</td><td>${mach().name} · ${mat().name} · ${S.layerH*1000}µm</td><td class="r"></td></tr>
-      <tr><td>本體材料</td><td>${F(C.modelML,1)} mL × NT$${mat().priceL.toLocaleString()}/L</td><td class="r">${NTD(C.matCost)}</td></tr>
-      <tr><td>支撐材料</td><td>${F(C.supML,1)} mL${S.supportStat?'':'（未生成，以 15% 粗估）'}</td><td class="r">${NTD(C.supCost)}</td></tr>
+      <tr><td>3D 列印${C.perModel.length>1?` — 共 ${C.perModel.length} 件`:''}</td><td>${mach().name} · ${mat().name} · ${S.layerH*1000}µm</td><td class="r"></td></tr>
+      ${C.perModel.map(p=>`
+      <tr><td style="padding-left:14px">${p.name}</td><td>本體 ${F(p.modelML,1)} mL${p.supML>0?` ＋ 支撐 ${F(p.supML,1)} mL${p.supEstimated?'（粗估）':''}`:''}</td><td class="r">${NTD(p.matCost+p.supCost)}</td></tr>`).join('')}
+      <tr><td>材料小計</td><td>${F(C.resinML,1)} mL × NT$${mat().priceL.toLocaleString()}/L</td><td class="r">${NTD(C.matCost+C.supCost)}</td></tr>
       <tr><td>後處理</td><td>IPA 清洗 + UV 固化</td><td class="r">${NTD(C.postCost)}</td></tr>
       ${C.multiplier!==1 ? `<tr><td>${C.workType}倍率</td><td>小計 ${NTD(C.subtotal)}</td><td class="r">×${C.multiplier}</td></tr>` : ''}
     </table>
     <div class="qtotal"><span>總計（新台幣）</span><b>${NTD(C.total)}</b></div>
     <div class="qnote">
-      工作類型：${C.workType} · 列印時間估算 ${timeStr(C.time)}（${C.time.layers.toLocaleString()} 層）· 擺放 傾${Math.max(Math.abs(S.orient.tiltX),Math.abs(S.orient.tiltZ))}°+側轉${S.orient.yaw}°
-      ${R ? ` · 可行性成功率 ${R.rate}%（失敗 ${R.fail} / 警告 ${R.warn} / 人工確認 ${R.manual}）` : ' · 未執行可行性驗證'}<br>
+      工作類型：${C.workType} · 列印時間估算 ${timeStr(C.time)}（${C.time.layers.toLocaleString()} 層${C.perModel.length>1?'，層數依最高件計算':''}）${
+        C.perModel.length===1 ? ` · 擺放 傾${Math.max(Math.abs(m.orient.tiltX),Math.abs(m.orient.tiltZ))}°+側轉${m.orient.yaw}°` : ''}
+      ${R ? ` · 可行性成功率 ${R.rate}%${C.perModel.length>1?'（以最差件計）':''}（失敗 ${R.fail} / 警告 ${R.warn} / 人工確認 ${R.manual}）${R.checked<R.total?`　※ ${R.total} 件中僅 ${R.checked} 件已驗證`:''}` : ' · 未執行可行性驗證'}<br>
       本報價由內建近似演算法估算，材料與時間以實際切層為準；報價有效期 14 天。
     </div>
     <div class="qbtns">
@@ -3220,11 +3456,15 @@ function saveOrder(customer){
   const m = activeModel(); const C = calcCost();
   if (!m || !C){ toast('請先載入模型','err'); return; }
   const no = genNo('WO');
-  const order = { no, customer, item:m.name, machine:mach().name, material:mat().name,
+  // items[] 是多模型後的正式欄位；item 仍保留一個彙總字串，讓既有的雲端清單顯示不用改就相容
+  const items = C.perModel.map(p => ({ name:p.name, modelML:+p.modelML.toFixed(2),
+                                       supML:+p.supML.toFixed(2), matCost:p.matCost, supCost:p.supCost }));
+  const itemLabel = items.length === 1 ? items[0].name : `${items[0].name} 等 ${items.length} 件`;
+  const order = { no, customer, item:itemLabel, items, machine:mach().name, material:mat().name,
     resinML:C.resinML, timeS:timeStr(C.time), total:C.total, workType:C.workType, status:'pend',
     t:new Date().toLocaleString('zh-TW',{hour12:false}) };
   cloudAddOrder(order);
-  logHist('建立工單', `${no} · ${m.name} · ${NTD(C.total)}`);
+  logHist('建立工單', `${no} · ${itemLabel} · ${NTD(C.total)}`);
   toast(`✓ 已建立工單 ${no}${FB.ready?'（已同步雲端）':'（本機暫存,雲端離線）'}`,'ok');
   if (S.openMod==='cloud') openModule('cloud');
 }
@@ -3236,11 +3476,11 @@ function updateAllUI(){
   if (m && C){
     const fits = modelFits(m);
     const supTxt = !supportsActive() ? '<span style="color:var(--ink4)">支撐 —（步驟3 生成）</span>'
-                            : `支撐材 ${F(C.supML,1)} · 基底 ${F(C.raftML,1)} mL · ${S.supportStat?S.supportStat.points:0} 點`;
+                            : `支撐材 ${F(C.supML,1)} · 基底 ${F(C.raftML,1)} mL · ${m.supportStat?m.supportStat.points:0} 點`;
     $('#statsPill').innerHTML =
       `模型 ${F(C.modelML,1)} mL · ${supTxt} · ${timeStr(C.time)} · ` +
       (fits ? `<span class="okc">✓ 在列印範圍內</span>` : `<span class="errc">✕ 超出列印範圍</span>`) +
-      (S.results.validation ? ` · 成功率 <span class="${S.results.validation.rate>=80?'okc':'errc'}">${S.results.validation.rate}%</span>` : '');
+      (m.results.validation ? ` · 成功率 <span class="${m.results.validation.rate>=80?'okc':'errc'}">${m.results.validation.rate}%</span>` : '');
   } else $('#statsPill').textContent = '尚未載入模型 · 請先上傳 STL / OBJ / 3MF / STEP';
   // 價格卡
   if (C){
@@ -3538,12 +3778,12 @@ async function runFileCheck(m){
       if (seen.has(s)) dupCount++; else seen.add(s);
     } }
   const SI = await busy('自相交偵測中（取樣）…', async ()=>selfIntersections(m));
-  const TH = S.results.thickness || await runThickness();
-  const CV = S.results.curv || await runCurvature();
+  const TH = m.results.thickness || await runThickness();
+  const CV = m.results.curv || await runCurvature();
   const O  = runOverhang();
   const C  = await runColumns();
-  const IS = S.step>=2 ? (S.results.islands || await runIslands()) : null;   // 步驟1、2 不計算孤島
-  const CU = S.results.cupping || await runCupping();
+  const IS = S.step>=2 ? (m.results.islands || await runIslands()) : null;   // 步驟1、2 不計算孤島
+  const CU = m.results.cupping || await runCupping();
   const SH = shellInfo(m.raw.verts, m.raw.tris);
 
   /* 一、模型完整性 */
@@ -3611,14 +3851,14 @@ async function runFileCheck(m){
   /* 五、配置 · 材料 · 網格 */
   add('五、配置與網格','零件間距', SH.count>1 ? (SH.minGap!==null && SH.minGap<0.4 ? 'warn':'manual') : 'pass', '近似',
     SH.count>1 ? `偵測 <b>${SH.count} 個殼體</b>，最小 AABB 間隙 ${SH.minGap===null?'—':(SH.minGap<0?'<b>重疊</b>':F(SH.minGap,2)+'mm')} — 間距 <0.4mm 易黏合` : '單一殼體，不適用', null);
-  const tilt = Math.max(Math.abs(S.orient.tiltX), Math.abs(S.orient.tiltZ));
+  const tilt = Math.max(Math.abs(m.orient.tiltX), Math.abs(m.orient.tiltZ));
   add('五、配置與網格','方向檢查', (tilt>=20&&tilt<=50)?'pass':'warn', '近似',
-    tilt===0 ? '目前<b>平放</b> — 剝離力大、吸盤風險高，建議傾斜 30–45°' : `目前傾斜 ${tilt}° + 側轉 ${S.orient.yaw}°${(tilt>=20&&tilt<=50)?' — 位於合理區間':' — 建議 30–45°'}`, (tilt>=20&&tilt<=50)?null:'orient');
+    tilt===0 ? '目前<b>平放</b> — 剝離力大、吸盤風險高，建議傾斜 30–45°' : `目前傾斜 ${tilt}° + 側轉 ${m.orient.yaw}°${(tilt>=20&&tilt<=50)?' — 位於合理區間':' — 建議 30–45°'}`, (tilt>=20&&tilt<=50)?null:'orient');
   add('五、配置與網格','支撐合理性',
-    S.step<2 ? 'defer' : S.supportStat ? 'pass' : 'warn', S.step<2 ? '步驟3' : '近似',
+    S.step<2 ? 'defer' : m.supportStat ? 'pass' : 'warn', S.step<2 ? '步驟3' : '近似',
     S.step<2 ? '步驟 1、2 不計算 — 進入步驟 3 生成支撐後自動執行並更新報告'
-      : S.supportStat ? `${S.supportStat.points} 接觸點 · Ø${S.support.tp}mm · 密度 ${S.support.density} — 接觸面請人工確認未遮外觀面` : '尚未生成支撐',
-    S.step>=2 && !S.supportStat ? 'supports' : null);
+      : m.supportStat ? `${m.supportStat.points} 接觸點 · Ø${S.support.tp}mm · 密度 ${S.support.density} — 接觸面請人工確認未遮外觀面` : '尚未生成支撐',
+    S.step>=2 && !m.supportStat ? 'supports' : null);
   add('五、配置與網格','材料限制', 'manual', '人工',
     `目前 ${mat().name}（最小壁厚依材料異：Rigid/Tough/Flexible/Dental 各不同）— 換料後請重新驗證`, null);
   add('五、配置與網格','公差 / 配合件', 'manual', '人工',
@@ -3669,7 +3909,7 @@ async function runAutoRepair(){
     m.shells = shellCount(m.raw.verts, m.raw.tris);
     m.faces = m.raw.tris.length/3;
   });
-  S.results = {}; m.fcheck = null;
+  m.results = {}; m.fcheck = null;
   await rebuildScene(true);
   logHist('自動修復', `補洞 ${m.repair.holesFilled||0} · 重複面 ${m.repair.dupRemoved||0} · 翻正 ${m.repair.flipsFixed}`);
   toast(m.topo.watertight ? '✓ 修復完成，網格已水密 — 重新檢查中' : `修復後仍有 ${m.topo.boundary} 開放邊（複雜孔請回 CAD）— 重新檢查中`, m.topo.watertight?'ok':'warn');
@@ -3684,7 +3924,7 @@ async function applyUnitScale(k){
   for (let i=0;i<v.length;i++) v[i]*=k;
   const va = volumeArea(m.raw.verts, m.raw.tris);
   m.volMM3=va.vol; m.areaMM2=va.area; m.bbox=bboxOf(v); m.grid=null;
-  S.results = {}; m.fcheck = null;
+  m.results = {}; m.fcheck = null;
   computeWorld(m); clampModelPos(m);
   await rebuildScene(true);
   toast(`✓ 已縮放 ×${k}（${k>1?'inch→mm':'mm←inch 修正'}）— 重新檢查中`,'ok');
@@ -3704,7 +3944,7 @@ function focusCameraOn(point, opts={}){
 }
 function drawIslandMarkers(){
   while (V.markGroup.children.length) disposeChild(V.markGroup);
-  const IS = S.results.islands;
+  const IS = m.results.islands;
   if (!IS || !IS.clusters.length) return;
   const m = activeModel();
   const rad = m ? Math.max(1.4, Math.max(m.worldBB.size[0], m.worldBB.size[1], m.worldBB.size[2])*0.012) : 2;
@@ -3727,12 +3967,13 @@ function fcFixLink(fix){
     heatmap:  ['▤ 厚度熱圖', ()=>setColorMode('thickness')],
     overhang: ['⚠ 懸垂標色', ()=>{
       setColorMode('overhang');
-      const O = S.results.overhang;
+      const m = activeModel(); if (!m) return;
+      const O = m.results.overhang;
       if (O && O.minGammaPos) focusCameraOn(new THREE.Vector3(...O.minGammaPos));
     }],
     orient:   ['⚡ 自動擺放', ()=>autoOrient()],
     supports: ['🖊 生成支撐', async ()=>{ S.supportsOn=true; await rebuildScene(true); renderStep(); }],
-    islands:  ['📍 標示孤島位置', async ()=>{ await runIslands(); drawIslandMarkers(); toast(`已標示 ${S.results.islands.clusters.length} 處孤島位置`,'warn'); }],
+    islands:  ['📍 標示孤島位置', async ()=>{ await runIslands(); drawIslandMarkers(); const m = activeModel(); toast(`已標示 ${m.results.islands.clusters.length} 處孤島位置`,'warn'); }],
   };
   return map[fix] || null;
 }
@@ -3918,7 +4159,7 @@ function applyGizmoLive(axis, delta, e){
   tip.style.left = (e.clientX+14)+'px'; tip.style.top = (e.clientY-12)+'px';
   tip.innerHTML = `${axis.toUpperCase()} ${delta>=0?'+':''}${(delta*57.2958).toFixed(1)}° <small>${e.shiftKey?'自由角度':'15° 吸附（Shift 自由）'}</small>`;
 }
-/* 放開提交：合成至 S.orient，夾回範圍並重建 */
+/* 放開提交：合成至 m.orient，夾回範圍並重建 */
 async function commitGizmo(axis, delta){
   const m = activeModel();
   $('#gizmoTip').style.display = 'none';
@@ -3932,18 +4173,18 @@ async function commitGizmo(axis, delta){
   pushUndo();
   const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
   const eCur = new THREE.Euler(
-    THREE.MathUtils.degToRad(S.orient.tiltX),
-    THREE.MathUtils.degToRad(S.orient.yaw),
-    THREE.MathUtils.degToRad(S.orient.tiltZ), 'XYZ');
+    THREE.MathUtils.degToRad(m.orient.tiltX),
+    THREE.MathUtils.degToRad(m.orient.yaw),
+    THREE.MathUtils.degToRad(m.orient.tiltZ), 'XYZ');
   const qTot = q.multiply(new THREE.Quaternion().setFromEuler(eCur));
   const eNew = new THREE.Euler().setFromQuaternion(qTot, 'XYZ');
   const r1 = v => Math.round(THREE.MathUtils.radToDeg(v)*10)/10;
-  S.orient = { tiltX:r1(eNew.x), yaw:r1(eNew.y), tiltZ:r1(eNew.z) };
+  m.orient = { tiltX:r1(eNew.x), yaw:r1(eNew.y), tiltZ:r1(eNew.z) };
   computeWorld(m); clampModelPos(m);
   // 硬性邊界（舊版行為）：旋轉後若超出列印高度上限，整個動作強制還原
   if (m.worldBB.max[1] > mach().size[2] + 0.01){
     const prev = S.undoStack.pop();   // 取回 pushUndo 存的變更前快照
-    S.orient = prev.orient; m.pos = prev.pos;
+    m.orient = prev.orient; m.pos = prev.pos;
     computeWorld(m);
     await rebuildScene(true); selectModel();
     toast('✕ 旋轉後超出列印高度上限，動作已強制還原','err');
@@ -3952,7 +4193,7 @@ async function commitGizmo(axis, delta){
   await rebuildScene(true);
   selectModel();
   toast(`↻ 繞 ${axis.toUpperCase()} 軸旋轉 ${(delta*57.2958).toFixed(1)}°（Ctrl+Z 可復原）`,'ok');
-  logHist('旋轉', `${axis.toUpperCase()} ${(delta*57.2958).toFixed(1)}° → 傾X ${S.orient.tiltX}/側Y ${S.orient.yaw}/傾Z ${S.orient.tiltZ}`);
+  logHist('旋轉', `${axis.toUpperCase()} ${(delta*57.2958).toFixed(1)}° → 傾X ${m.orient.tiltX}/側Y ${m.orient.yaw}/傾Z ${m.orient.tiltZ}`);
 }
 /* ---------- 自動夾回列印範圍 ---------- */
 function clampModelPos(m){
@@ -3970,17 +4211,101 @@ function clampModelPos(m){
   if (changed) computeWorld(m);
   return changed;
 }
+/* ---------- 模型複製（數量） ---------- */
+const DUP_GAP = 3;   // 件與件之間要保留的間距 (mm)
+/* 在平台上找一個放得下的空位。
+   複製體與來源同旋轉 ⇒ 形狀完全相同，只差平移，所以直接把來源的世界包圍盒平移去試，
+   不必重算幾何。以「件寬＋間距」為格距由左後往右前掃，找到第一個不撞人的格就用。
+   放不下回傳 null（呼叫端據此告知使用者只放了幾份）。*/
+function findOpenSlot(src, extra){
+  const ms = mach().size, halfX = ms[0]/2, halfZ = ms[1]/2;
+  const bb = src.worldBB; if (!bb) return null;
+  const w = bb.size[0], d = bb.size[2];
+  if (w > ms[0] || d > ms[1]) return null;              // 單件本身就超出範圍
+  const occupied = S.models.concat(extra||[]).map(m=>m.worldBB).filter(Boolean);
+  const cx0 = (bb.min[0]+bb.max[0])/2, cz0 = (bb.min[2]+bb.max[2])/2;
+  // 用「細網格」而不是以件寬對齊床角的粗格：現有模型不會剛好落在粗格線上
+  // （例如首件通常在正中央），對齊床角的粗格會讓它跨在兩格上、把兩格都判成佔用，
+  // 於是明明側邊還有空位卻找不到。掃描步距取件短邊的 1/4（下限 2mm、上限 10mm）。
+  const step = Math.max(2, Math.min(10, Math.min(w, d) / 4));
+  // 可放置的中心點範圍（讓包圍盒完整落在床內）
+  const xLo = -halfX + w/2, xHi = halfX - w/2;
+  const zLo = -halfZ + d/2, zHi = halfZ - d/2;
+  if (xHi < xLo - 0.01 || zHi < zLo - 0.01) return null;
+  for (let cz = zLo; cz <= zHi + 1e-6; cz += step){
+    for (let cx = xLo; cx <= xHi + 1e-6; cx += step){
+      const dx = cx - cx0, dz = cz - cz0;
+      const cand = { min:[bb.min[0]+dx, bb.min[1], bb.min[2]+dz],
+                     max:[bb.max[0]+dx, bb.max[1], bb.max[2]+dz] };
+      // 負 eps＝要求彼此至少隔開 DUP_GAP，不只是「不重疊」
+      if (occupied.some(o => aabbOverlap(cand, o, -DUP_GAP))) continue;
+      return { x: src.pos.x + dx, z: src.pos.z + dz };
+    }
+  }
+  return null;
+}
+function nextCopyName(base){
+  const stem = base.replace(/\s*\((\d+)\)$/, '');
+  let n = 2;
+  while (S.models.some(m => m.name === `${stem} (${n})`)) n++;
+  return `${stem} (${n})`;
+}
+// 純資料深拷貝（TypedArray / 巢狀物件都要能複製）
+function cloneData(o){
+  if (o == null) return o;
+  try { return structuredClone(o); } catch(e){ return JSON.parse(JSON.stringify(o)); }
+}
+async function duplicateModel(sourceId, count){
+  const src = S.models.find(m=>m.id===sourceId);
+  if (!src || !src.raw){ toast('找不到要複製的模型','err'); return; }
+  count = Math.max(1, Math.min(50, Math.round(Number(count)||1)));
+  const made = [];
+  let placedCount = 0;
+  await busy(`複製 ${src.name} ×${count}…`, async ()=>{
+    for (let i=0;i<count;i++){
+      const slot = findOpenSlot(src, made);
+      if (!slot) break;                                  // 平台滿了
+      const id = 'm' + (++_mid);
+      const copy = {
+        id, name: nextCopyName(src.name), size: src.size,
+        display: src.display,                            // 死欄位、沒人讀也沒人改 → 可共用參照
+        pos: { x: slot.x, z: slot.z },
+        orient: { ...src.orient },
+        results: {}, supportStat: null,                   // 分析快取與支撐不繼承，各自重算
+        // ★ 一定要結構複製：unifyOrientation() 會就地翻轉 tris，
+        //   共用參照的話對其中一份跑網格修復會污染所有複製體
+        raw: { verts: src.raw.verts.slice(), tris: src.raw.tris.slice() },
+        repair: { ...src.repair },
+        topo: cloneData(src.topo),
+        bbox: cloneData(src.bbox),
+        volMM3: src.volMM3, areaMM2: src.areaMM2, shells: src.shells, faces: src.faces,
+        fcheck: cloneData(src.fcheck),                    // 幾何相同 → 檢查結果直接沿用
+      };
+      S.models.push(copy);
+      made.push(copy);
+      placedCount++;
+      computeWorld(copy);                                 // 讓下一輪 findOpenSlot 看得到它佔的位置
+      await frame();
+    }
+  });
+  if (!placedCount){ toast('列印範圍已滿，放不下任何複製件','err'); return; }
+  await rebuildScene(true);
+  renderStep();
+  logHist('複製模型', `${src.name} ×${placedCount}`);
+  if (placedCount < count) toast(`僅能放入 ${placedCount}/${count} 份，列印範圍已滿`,'warn');
+  else toast(`✓ 已複製 ${placedCount} 份`,'ok');
+}
 /* ---------- 擺放操作復原（Ctrl+Z，同 PreForm） ---------- */
 function pushUndo(){
   const m = activeModel(); if (!m) return;
-  S.undoStack.push({ orient:{...S.orient}, pos:{...m.pos} });
+  S.undoStack.push({ orient:{...m.orient}, pos:{...m.pos} });
   if (S.undoStack.length > 30) S.undoStack.shift();
 }
 async function undoOp(){
   const m = activeModel();
   if (!m || !S.undoStack.length){ toast('沒有可復原的擺放操作','warn'); return; }
   const s = S.undoStack.pop();
-  S.orient = s.orient; m.pos = s.pos;
+  m.orient = s.orient; m.pos = s.pos;
   await rebuildScene(true);
   if (S.selected) selectModel();
   toast('↩ 已復原擺放（Ctrl+Z）','ok');
@@ -4039,7 +4364,7 @@ async function commitModelDrag(){
   // 移動使孤島/排液等標記位置失效 → 清除
   while (V.markGroup.children.length) disposeChild(V.markGroup);
   $('#legExtra').style.display='none';
-  delete S.results.islands; delete S.results.cols; delete S.results.cupping;
+  delete m.results.islands; delete m.results.cols; delete m.results.cupping;
   await rebuildScene(true);
   selectModel();
   logHist('手動擺放', `X ${F(m.pos.x,1)} / Y ${F(m.pos.z,1)} mm`);
@@ -4052,12 +4377,12 @@ async function applyFaceDown(hit){
   const n = hit.face.normal.clone().normalize();
   const q2 = new THREE.Quaternion().setFromUnitVectors(n, new THREE.Vector3(0,-1,0));
   const eCur = new THREE.Euler(
-    THREE.MathUtils.degToRad(S.orient.tiltX),
-    THREE.MathUtils.degToRad(S.orient.yaw),
-    THREE.MathUtils.degToRad(S.orient.tiltZ), 'XYZ');
+    THREE.MathUtils.degToRad(m.orient.tiltX),
+    THREE.MathUtils.degToRad(m.orient.yaw),
+    THREE.MathUtils.degToRad(m.orient.tiltZ), 'XYZ');
   const qTot = q2.multiply(new THREE.Quaternion().setFromEuler(eCur));
   const eNew = new THREE.Euler().setFromQuaternion(qTot, 'XYZ');
-  S.orient = {
+  m.orient = {
     tiltX: Math.round(THREE.MathUtils.radToDeg(eNew.x)*10)/10,
     yaw:   Math.round(THREE.MathUtils.radToDeg(eNew.y)*10)/10,
     tiltZ: Math.round(THREE.MathUtils.radToDeg(eNew.z)*10)/10,
@@ -4066,7 +4391,7 @@ async function applyFaceDown(hit){
   // 硬性邊界（舊版行為）：轉正後若超出列印高度上限，整個動作強制還原
   if (m.worldBB.max[1] > mach().size[2] + 0.01){
     const prev = S.undoStack.pop();
-    S.orient = prev.orient; m.pos = prev.pos;
+    m.orient = prev.orient; m.pos = prev.pos;
     computeWorld(m);
     await rebuildScene(true); selectModel();
     toast('✕ 以此面為底後超出列印高度上限，動作已強制還原','err');
@@ -4075,7 +4400,7 @@ async function applyFaceDown(hit){
   await rebuildScene(true);
   selectModel();
   toast('✓ 已將選取面轉向平台（以此面為底）','ok');
-  logHist('以此面為底', `→ 傾X ${S.orient.tiltX}° / 側Y ${S.orient.yaw}° / 傾Z ${S.orient.tiltZ}°`);
+  logHist('以此面為底', `→ 傾X ${m.orient.tiltX}° / 側Y ${m.orient.yaw}° / 傾Z ${m.orient.tiltZ}°`);
 }
 /* 範圍框顏色與拖曳即時回饋 */
 function modelFits(m, offX=0, offZ=0){
@@ -4122,7 +4447,7 @@ async function updateDeferredChecks(m){
   if (!m || !m.fcheck) return;
   const hasDefer = m.fcheck.items.some(i=>i.status==='defer');
   if (!hasDefer) return;
-  const IS = S.results.islands || await runIslands();
+  const IS = m.results.islands || await runIslands();
   const isl = m.fcheck.items.find(i=>i.label.includes('孤島'));
   if (isl){
     isl.status = IS.clusters.length ? 'warn' : 'pass';
@@ -4132,13 +4457,13 @@ async function updateDeferredChecks(m){
   }
   const sup = m.fcheck.items.find(i=>i.label.includes('支撐合理性'));
   if (sup){
-    sup.status = S.supportStat ? 'pass' : 'warn';
+    sup.status = m.supportStat ? 'pass' : 'warn';
     sup.kind = '近似';
-    sup.detail = S.supportStat ? `${S.supportStat.points} 接觸點 · Ø${S.support.tp}mm · 密度 ${S.support.density} — 接觸面請人工確認未遮外觀面` : '支撐尚未生成';
-    sup.fix = S.supportStat ? null : 'supports';
+    sup.detail = m.supportStat ? `${m.supportStat.points} 接觸點 · Ø${S.support.tp}mm · 密度 ${S.support.density} — 接觸面請人工確認未遮外觀面` : '支撐尚未生成';
+    sup.fix = m.supportStat ? null : 'supports';
   }
   recountFcheck(m);
-  toast(`✓ 已補算步驟3檢查：孤島 ${IS.clusters.length} 處 · 支撐 ${S.supportStat?S.supportStat.points+' 點':'未生成'}`, IS.clusters.length?'warn':'ok');
+  toast(`✓ 已補算步驟3檢查：孤島 ${IS.clusters.length} 處 · 支撐 ${m.supportStat?m.supportStat.points+' 點':'未生成'}`, IS.clusters.length?'warn':'ok');
 }
 /* ============================== 25. 支撐材面板（對齊 PreForm 3.51+） ============================== */
 function toggleSupPanel(open){
@@ -4289,8 +4614,8 @@ function renderSupPanel(){
   B.appendChild(body2);
 
   /* ── 統計摘要（同 PreForm 總結分計）── */
-  if (S.supportStat){
-    const st = S.supportStat, bt = st.byType||{};
+  if (m.supportStat){
+    const st = m.supportStat, bt = st.byType||{};
     const body3 = el('div','smBody');
     body3.appendChild(el('div','mnote',
       `接觸點 <b>${st.points}</b>（<span style="color:#e8930c">懸空點 ${bt.minima||0}</span> · <span style="color:#0d9488">懸空 ${bt.over||0}</span> · <span style="color:#d6409f">穩定化 ${bt.stab||0}</span> · <span style="color:#46a758">強化 ${bt.rein||0}</span>）<br>支撐材 <b>${F(st.volSupMM3/1000,2)} mL</b> · 基底 <b>${F(st.volRaftMM3/1000,2)} mL</b> · 桁架 ${st.braces}`));
