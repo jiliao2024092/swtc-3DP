@@ -14,6 +14,7 @@ rules_version = '2';
 //   issues_ipa          - IPA 採購
 //   issues_equipment    - 設備清單
 //   settings/workspace  - 平台共用設定（工程師/機台/業務/借用人清單）
+//   announcements       - 公告欄（開啟系統時依角色跳顯）
 //
 // 權限模型（7 種細權限，存在 users/{uid}.permissions array）：
 //   view_board edit_board delete_board
@@ -135,6 +136,12 @@ service cloud.firestore {
       allow read: if hasPerm('view_issues');
       allow create, update: if hasPerm('view_issues');
       allow delete: if hasPerm('edit_issues');
+    }
+
+    // 公告欄：所有登入者可讀（開啟系統時跳顯），admin 或有 manage_announcements 的主管可發布/編輯/刪除
+    match /announcements/{id} {
+      allow read: if isLoggedIn();
+      allow create, update, delete: if isAdmin() || hasPerm('manage_announcements');
     }
 
     // quote-studio.html 材料/價格設定：admin 或有 manage_quote_pricing 權限的主管都可寫入

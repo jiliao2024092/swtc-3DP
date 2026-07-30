@@ -392,6 +392,26 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .btn-edit-mode:hover{background:#eff6ff;border-color:#60a5fa;color:#1d4ed8}
 .btn-edit-mode.active{background:#eff6ff;border-color:#2563eb;color:#1d4ed8}
 
+/* 公告欄（後台編輯 + 開啟系統跳顯） */
+.ann-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:var(--bg)}
+.ann-row.off{opacity:.55}
+.ann-row-main{flex:1;min-width:0;display:flex;align-items:center;gap:8px;cursor:pointer;background:none;border:none;padding:0;font-family:inherit;text-align:left}
+.ann-title{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ann-chip{flex-shrink:0;font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px;background:var(--bg-soft);color:var(--ink-3);border:1px solid var(--line);white-space:nowrap}
+.ann-card{border:1.5px solid var(--accent-border);border-radius:10px;padding:16px;margin-bottom:12px;background:var(--bg)}
+.ann-tb{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:6px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;background:var(--bg-soft)}
+.ann-tb button{height:26px;min-width:28px;padding:0 7px;border:1px solid transparent;background:transparent;border-radius:4px;cursor:pointer;font-size:12px;color:var(--ink-2);font-family:inherit}
+.ann-tb button:hover{background:var(--bg);border-color:var(--line)}
+.ann-tb select{height:26px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);font-size:12px;font-family:inherit;padding:0 4px}
+.ann-tb input[type=color]{width:32px;height:26px;padding:2px;border:1px solid var(--line);border-radius:4px;background:var(--bg);cursor:pointer}
+.ann-tb .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 3px}
+.ann-ed{min-height:180px;max-height:420px;overflow-y:auto;padding:12px 14px;border:1px solid var(--line);border-radius:0 0 6px 6px;background:var(--bg);color:var(--ink);font-size:13px;line-height:1.7;outline:none}
+.ann-ed:focus{border-color:var(--accent)}
+.ann-ed img,.ann-view img{max-width:100%;height:auto;border-radius:4px}
+.ann-view{font-size:14px;line-height:1.8;color:var(--ink);word-break:break-word}
+.ann-opt{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;cursor:pointer;background:var(--bg)}
+.ann-opt.on{border-color:var(--accent);background:var(--accent-soft)}
+
 /* Login */
 .login-page{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,var(--ink),#131c2e,#0c2340);display:flex;align-items:center;justify-content:center}
 .login-card{background:var(--bg);border-radius:16px;padding:40px 48px;width:420px;max-width:95vw;box-shadow:0 24px 48px rgba(0,0,0,.3)}
@@ -481,7 +501,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-config.js?v=20260708f"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260708i"></script>
+<script src="firebase-service.js?v=20260708j"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1766,10 +1786,289 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }
 }
 
 /* 管理員後台 */
+/* ══ 公告欄 ═══════════════════════════════════════════════
+   內容為 HTML；插入的圖片會壓縮後以 base64 內嵌在同一筆 Firestore 文件，
+   刪除公告即一併刪掉圖片（刻意不放 Storage，避免孤兒檔案累積）。
+   Firestore 單筆文件上限 1MB，故存檔前擋掉過大的內容。 */
+const ANN_ROLES = [
+  {key:'admin',    label:'管理員'},
+  {key:'manager',  label:'主管'},
+  {key:'operator', label:'工程師'},
+  {key:'viewer',   label:'查閱'},
+];
+const ANN_MODES = [
+  {key:'always',      label:'每次開啟系統都彈出',                 hint:'不提供關閉選項，使用者每次開啟系統都會看到'},
+  {key:'dismissible', label:'每次開啟系統彈出，但可勾選「以後不顯示」', hint:'由使用者自行決定是否不再顯示'},
+  {key:'once',        label:'開啟系統後只跳顯一次',               hint:'使用者看過一次後就不再自動彈出'},
+];
+const ANN_MAX_LEN = 800000;   // 預留空間給標題/角色等欄位，避免逼近 Firestore 1MB 上限
+const annModeLabel = m => (ANN_MODES.find(x=>x.key===m)||ANN_MODES[1]).label;
+const annRoleText  = rs => (!Array.isArray(rs)||rs.length===0||rs.length===ANN_ROLES.length)
+  ? '全部角色'
+  : ANN_ROLES.filter(r=>rs.includes(r.key)).map(r=>r.label).join('、');
+// 已看過／已關閉狀態存 localStorage（帳號 + 公告 id）：一般使用者無權寫自己的 users 文件
+// （見 firestore.rules），且這樣可省下大量 Firestore 寫入配額
+const annSeenKey = (uid, id) => `swtc_ann_${uid}_${id}`;
+
+function AnnouncementEditor({ init, saving, onCancel, onSave }) {
+  const edRef   = React.useRef(null);
+  const fileRef = React.useRef(null);
+  const [title, setTitle] = React.useState(init.title || '');
+  const [roles, setRoles] = React.useState(
+    Array.isArray(init.roles) && init.roles.length ? init.roles : ANN_ROLES.map(r=>r.key));
+  const [mode,  setMode]  = React.useState(init.mode || 'dismissible');
+
+  // contenteditable 走非受控：只在切換編輯對象時灌入內容，否則每次 render 都會把游標打回開頭
+  React.useEffect(()=>{ if(edRef.current) edRef.current.innerHTML = init.content || ''; }, [init._id]);
+
+  const exec = (cmd, val) => { if(edRef.current) edRef.current.focus(); document.execCommand(cmd, false, val==null?null:val); };
+
+  const insertImage = (file) => {
+    if(!/^image\//.test(file.type)) { showToast('請選擇圖片檔','err'); return; }
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1000/Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width  = Math.max(1, Math.round(img.width  * scale));
+        cv.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,cv.width,cv.height);  // JPEG 沒有透明色，先鋪白避免透明區變黑
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        exec('insertImage', cv.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = ()=>showToast('圖片讀取失敗','err');
+      img.src = rd.result;
+    };
+    rd.onerror = ()=>showToast('圖片讀取失敗','err');
+    rd.readAsDataURL(file);
+  };
+
+  const toggleRole = k => setRoles(rs => rs.includes(k) ? rs.filter(x=>x!==k) : [...rs, k]);
+
+  const submit = () => {
+    const content = edRef.current ? edRef.current.innerHTML : '';
+    const text    = edRef.current ? edRef.current.textContent.trim() : '';
+    if(!title.trim())                      { showToast('請填寫公告標題','err'); return; }
+    if(!text && !/<img/i.test(content))    { showToast('公告內容不可空白','err'); return; }
+    if(!roles.length)                      { showToast('請至少勾選一個公告對象','err'); return; }
+    if(content.length > ANN_MAX_LEN)       { showToast('公告內容過大（圖片太多或太大），請刪減後再儲存','err'); return; }
+    onSave({ title:title.trim(), content, roles, mode });
+  };
+
+  const TBTN = (label, cmd, style) => (
+    <button type="button" title={label} style={style} onMouseDown={e=>e.preventDefault()} onClick={()=>exec(cmd)}>{label}</button>
+  );
+
+  return (
+    <div className="ann-card">
+      <input style={{width:'100%',padding:'9px 12px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:14,fontWeight:600,fontFamily:'inherit',outline:'none',background:'var(--bg)',color:'var(--ink)',marginBottom:12}}
+        placeholder="公告標題" value={title} onChange={e=>setTitle(e.target.value)}/>
+
+      <div className="ann-tb">
+        <select defaultValue="" title="文字大小" onChange={e=>{ if(e.target.value) exec('fontSize', e.target.value); e.target.value=''; }}>
+          <option value="" disabled>字級</option>
+          <option value="2">小</option>
+          <option value="3">一般</option>
+          <option value="5">大</option>
+          <option value="6">特大</option>
+        </select>
+        <span className="sep"/>
+        {TBTN('B','bold',{fontWeight:800})}
+        {TBTN('I','italic',{fontStyle:'italic'})}
+        {TBTN('U','underline',{textDecoration:'underline'})}
+        <span className="sep"/>
+        <input type="color" defaultValue="#d92b2b" title="文字顏色" onChange={e=>exec('foreColor', e.target.value)}/>
+        <span className="sep"/>
+        <button type="button" title="項目符號" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('insertUnorderedList')}>• 清單</button>
+        <button type="button" title="編號清單" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('insertOrderedList')}>1. 清單</button>
+        <button type="button" title="減少縮排" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('outdent')}>⇤</button>
+        <button type="button" title="增加縮排" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('indent')}>⇥</button>
+        <span className="sep"/>
+        <button type="button" title="靠左對齊" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('justifyLeft')}>左</button>
+        <button type="button" title="置中對齊" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('justifyCenter')}>中</button>
+        <button type="button" title="靠右對齊" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('justifyRight')}>右</button>
+        <span className="sep"/>
+        <button type="button" title="插入圖片" onMouseDown={e=>e.preventDefault()} onClick={()=>fileRef.current&&fileRef.current.click()}>插入圖片</button>
+        <button type="button" title="清除選取文字的格式" onMouseDown={e=>e.preventDefault()} onClick={()=>exec('removeFormat')}>清除格式</button>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}}
+        onChange={e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f) insertImage(f); }}/>
+      <div ref={edRef} className="ann-ed" contentEditable suppressContentEditableWarning/>
+      <div style={{fontSize:11,color:'var(--ink-4)',marginTop:6}}>圖片會自動縮到長邊 1000px 並壓縮後內嵌於公告中；刪除公告時圖片一併移除。</div>
+
+      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',margin:'18px 0 8px'}}>公告對象</div>
+      <div style={{display:'flex',flexWrap:'wrap',gap:14,marginBottom:4}}>
+        {ANN_ROLES.map(r=>(
+          <label key={r.key} style={{display:'flex',alignItems:'center',gap:6,fontSize:13,color:'var(--ink-2)',cursor:'pointer'}}>
+            <input type="checkbox" checked={roles.includes(r.key)} onChange={()=>toggleRole(r.key)} style={{width:15,height:15,cursor:'pointer'}}/>
+            {r.label}
+          </label>
+        ))}
+      </div>
+
+      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',margin:'18px 0 8px'}}>跳顯方式</div>
+      {ANN_MODES.map(m=>(
+        <label key={m.key} className={'ann-opt'+(mode===m.key?' on':'')}>
+          <input type="radio" name="ann-mode" checked={mode===m.key} onChange={()=>setMode(m.key)} style={{marginTop:2,cursor:'pointer'}}/>
+          <span>
+            <span style={{display:'block',fontSize:13,fontWeight:600,color:'var(--ink)'}}>{m.label}</span>
+            <span style={{display:'block',fontSize:11,color:'var(--ink-4)',marginTop:2}}>{m.hint}</span>
+          </span>
+        </label>
+      ))}
+
+      <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginTop:16}}>
+        <button className="btn-cancel" onClick={onCancel}>取消</button>
+        <button className="btn-save" onClick={submit} disabled={saving}>{saving?'儲存中…':'💾 儲存公告'}</button>
+      </div>
+    </div>
+  );
+}
+
+function AnnouncementAdmin({ user }) {
+  const [list, setList]       = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [editing, setEditing] = React.useState(null);   // 正在編輯的公告（新增時為沒有 _id 的空物件）
+  const [saving, setSaving]   = React.useState(false);
+
+  React.useEffect(()=>{
+    const un = FBAnnouncements.onSnapshot(rows => { setList(rows); setLoading(false); });
+    return ()=>{ if(un) un(); };
+  },[]);
+
+  const save = async (data) => {
+    setSaving(true);
+    try {
+      if(editing && editing._id) await FBAnnouncements.update(editing._id, data);
+      else await FBAnnouncements.add({ ...data, enabled:true, author:user.displayName||user.email||'' });
+      setEditing(null);
+      showToast('公告已儲存 ✓');
+    } catch(e){ showToast('儲存失敗：'+(e.message||e),'err'); }
+    setSaving(false);
+  };
+
+  const toggleEnabled = async (a) => {
+    try { await FBAnnouncements.update(a._id, { enabled: a.enabled === false }); }
+    catch(e){ showToast('更新失敗：'+(e.message||e),'err'); }
+  };
+
+  const del = async (a) => {
+    if(!confirm(`確定刪除公告「${a.title||'未命名'}」？內含圖片也會一併刪除。`)) return;
+    try { await FBAnnouncements.del(a._id); if(editing&&editing._id===a._id) setEditing(null); showToast('已刪除','inf'); }
+    catch(e){ showToast('刪除失敗：'+(e.message||e),'err'); }
+  };
+
+  if(loading) return <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:200,color:'var(--ink-4)',fontSize:14}}>⏳ 載入中...</div>;
+
+  return (
+    <div style={{maxWidth:760}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+        <h2 style={{fontSize:16,fontWeight:700}}>公告欄</h2>
+        <button className="btn-add" onClick={()=>setEditing({title:'',content:'',roles:ANN_ROLES.map(r=>r.key),mode:'dismissible'})}>+ 新增公告</button>
+      </div>
+      <div style={{fontSize:12,color:'var(--ink-4)',marginBottom:16,lineHeight:1.7}}>
+        左側勾選＝正在公告中，取消勾選即停止公告（內容保留）。點公告標題可展開編輯。
+      </div>
+
+      {editing && !editing._id &&
+        <AnnouncementEditor key="new" init={editing} saving={saving} onCancel={()=>setEditing(null)} onSave={save}/>}
+
+      {list.length===0 && !editing &&
+        <div style={{padding:'28px 16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center'}}>
+          尚無公告，點右上角「+ 新增公告」建立第一則。
+        </div>}
+
+      {list.map(a=>{
+        if(editing && editing._id===a._id)
+          return <AnnouncementEditor key={a._id} init={editing} saving={saving} onCancel={()=>setEditing(null)} onSave={save}/>;
+        const on = a.enabled !== false;
+        return (
+          <div key={a._id} className={'ann-row'+(on?'':' off')}>
+            <input type="checkbox" checked={on} onChange={()=>toggleEnabled(a)}
+              title={on?'公告中（取消勾選即停止公告）':'未公告（勾選即開始公告）'}
+              style={{width:16,height:16,cursor:'pointer',flexShrink:0}}/>
+            <button className="ann-row-main" onClick={()=>setEditing(a)} title="點擊展開編輯">
+              <span className="ann-title">{a.title||'(未命名公告)'}</span>
+              <span className="ann-chip">{annModeLabel(a.mode)}</span>
+              <span className="ann-chip">{annRoleText(a.roles)}</span>
+            </button>
+            <button className="kt-actbtn danger" title="刪除公告" onClick={()=>del(a)}>✕</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* 開啟系統時的公告跳顯：依角色分級過濾，多則時依序顯示 */
+function AnnouncementPopup({ user }) {
+  const [queue, setQueue] = React.useState([]);
+  const [idx, setIdx]     = React.useState(0);
+  const [dismiss, setDismiss] = React.useState(false);
+  const uid = user._id || user.email || 'anon';
+
+  React.useEffect(()=>{
+    let alive = true;
+    (async()=>{
+      let rows;
+      try { rows = await FBAnnouncements.list(); }
+      catch(e){ console.error('[announcements] 讀取失敗:', e); return; }
+      if(!alive) return;
+      const tier = window.roleTierOf(user);
+      setQueue(rows.filter(a=>{
+        if(a.enabled === false) return false;
+        if(Array.isArray(a.roles) && a.roles.length && !a.roles.includes(tier)) return false;
+        if(a.mode === 'always') return true;   // 每次都彈：不看已讀紀錄
+        let seen = null;
+        try { seen = localStorage.getItem(annSeenKey(uid, a._id)); } catch(e){}
+        return !seen;
+      }));
+    })();
+    return ()=>{ alive = false; };
+  },[]);
+
+  if(idx >= queue.length) return null;
+  const a = queue[idx];
+  const next = () => {
+    try {
+      if(a.mode === 'once') localStorage.setItem(annSeenKey(uid, a._id), 'seen');
+      else if(a.mode === 'dismissible' && dismiss) localStorage.setItem(annSeenKey(uid, a._id), 'dismissed');
+    } catch(e){}
+    setDismiss(false);
+    setIdx(i=>i+1);
+  };
+
+  return (
+    <div className="m-overlay" style={{zIndex:6000}}>
+      <div className="m-box" style={{width:600}}>
+        <div className="m-hd">
+          <h3>📢 {a.title||'公告'}</h3>
+          {queue.length>1 && <span style={{fontSize:11,color:'var(--ink-4)'}}>{idx+1} / {queue.length}</span>}
+        </div>
+        <div className="m-body">
+          <div className="ann-view" dangerouslySetInnerHTML={{__html:a.content||''}}/>
+        </div>
+        <div className="m-foot" style={{justifyContent:'space-between',alignItems:'center'}}>
+          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--ink-3)',cursor:'pointer',visibility:a.mode==='dismissible'?'visible':'hidden'}}>
+            <input type="checkbox" checked={dismiss} onChange={e=>setDismiss(e.target.checked)} style={{width:15,height:15,cursor:'pointer'}}/>
+            以後不顯示
+          </label>
+          <button className="btn-save" onClick={next}>{idx+1<queue.length?'下一則 →':'我知道了'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel({ user, isAdmin }) {
   const K = window.K;
   const {useState: useSt, useEffect: useEff} = React;
-  const [sub, setSub]           = useSt('users');
+  // 兩種後台權限可各自獨立：只有 manage_announcements 的人進得來，但只看得到「公告欄」
+  const canUsers    = isAdmin || window.hasPerm(user, 'manage_users');
+  const canAnnounce = isAdmin || window.hasPerm(user, 'manage_announcements');
+  const [sub, setSub]           = useSt(canUsers ? 'users' : 'announce');
   const [settingTab, setSettingTab] = useSt('workboard'); // workboard | issues | samples
   const [users, setUsers]       = useSt([]);
   const [loading, setLoading]   = useSt(true);
@@ -1999,7 +2298,10 @@ function AdminPanel({ user, isAdmin }) {
     <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
       <div className="shell-top">
         <nav className="shell-tabs" role="tablist">
-          {[['users','👥 使用者'],['settings','⚙️ 設定']].map(([k,l])=>(
+          {[
+            ...(canUsers    ? [['users','👥 使用者'],['settings','⚙️ 設定']] : []),
+            ...(canAnnounce ? [['announce','📢 公告欄']] : []),
+          ].map(([k,l])=>(
             <button key={k} role="tab" aria-selected={sub===k} className="shell-tab" onClick={()=>setSub(k)}>{l}</button>
           ))}
         </nav>
@@ -2180,6 +2482,9 @@ function AdminPanel({ user, isAdmin }) {
             )}
           </div>
         )}
+
+        {/* ── 公告欄 ── */}
+        {sub==='announce' && canAnnounce && <AnnouncementAdmin user={user}/>}
       </div>
       {userModal&&<UserModal item={editUser} onClose={()=>setUserModal(false)} onSaved={refreshUsers} callerIsAdmin={isAdmin}
         otherAdmins={users.filter(x=>x._id!==(editUser&&editUser._id) && (x.permissions||[]).includes('admin')).length}/>}
@@ -2331,6 +2636,8 @@ function Shell({ user, onLogout }) {
 
   const isAdmin = window.hasPerm(user, 'admin');
   const canManageUsers = isAdmin || window.hasPerm(user, 'manage_users');
+  const canAnnounce = isAdmin || window.hasPerm(user, 'manage_announcements');
+  const canAdminPage = canManageUsers || canAnnounce;
   const canBoard = window.hasPerm(user, 'view_board');
   const canIssues = window.hasPerm(user, 'view_issues');
   const canQuote = window.hasPerm(user, 'view_quote');
@@ -2358,7 +2665,7 @@ function Shell({ user, onLogout }) {
       show: canIssues },
     { key:'admin', label:'後台管理', sub:'ADMIN',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="6" r="3" stroke="currentColor" strokeWidth="1.4"/><path d="M3 15c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
-      show: canManageUsers },
+      show: canAdminPage },
   ].filter(n => n.show);
 
   // 若目前頁面不在可見清單（例如非 admin 卻停在 admin），自動導到第一個可見頁
@@ -2427,10 +2734,11 @@ function Shell({ user, onLogout }) {
           sticky 一定會建立堆疊脈絡，放在裡面的話 z-index 再高也只在 sidebar 層級內，
           會被 <main> 的 shell-top(z-20) 與 sticky 表頭蓋掉。 */}
       {showVer && <VersionPop onClose={()=>setShowVer(false)}/>}
+      <AnnouncementPopup user={user}/>
       <main className="shell-main">
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}
-        {page==='admin'     && canManageUsers && <AdminPanel    user={user} isAdmin={isAdmin}/>}
+        {page==='admin'     && canAdminPage && <AdminPanel    user={user} isAdmin={isAdmin}/>}
         {page==='booking'   && canBooking && <iframe ref={bookingIframeRef} onLoad={applyThemeToBookingIframe} src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="機台預約"/>}
         {page==='inventory' && canInventory && <iframe ref={inventoryIframeRef} onLoad={applyThemeToInventoryIframe} src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
         {page==='quote'     && canQuote && <iframe ref={quoteIframeRef} onLoad={applyThemeToQuoteIframe} src="../quote-studio.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價（Beta）"/>}

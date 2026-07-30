@@ -41,6 +41,7 @@
     manage_quote_pricing: '設定 3D列印估價 材料與價格',
     manage_inventory: '設定材料庫存（安全庫存／L樹脂槽標記）',
     manage_users: '後台管理：使用者管理（僅可套用角色，不可個別授權、不可異動管理員）',
+    manage_announcements: '後台管理：公告欄（發布／編輯公告）',
     admin:         '管理員（所有權限）',
   };
 
@@ -55,9 +56,9 @@
 
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','admin'],
-    // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權、「後台使用者管理」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
-    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users'],
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','manage_announcements','admin'],
+    // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權、「後台使用者管理」權、「公告欄」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','manage_announcements'],
     operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
     viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote'],
   };
@@ -163,6 +164,30 @@
   // ════════════════════════════════════════════════
   window.FBSampleItems = makeCollectionService('sample_items', 'seq', 'asc');
   window.FBSampleLoans = makeCollectionService('sample_loans', 'loanDate', 'desc');
+
+  // ════════════════════════════════════════════════
+  // 公告欄 → collection: announcements
+  //   內容為 HTML（圖片以 base64 內嵌，刪除公告即一併移除，不另存 Storage）
+  //   Firestore 單筆文件上限 1MB，編輯器會壓縮圖片並在超量時擋下
+  // ════════════════════════════════════════════════
+  window.FBAnnouncements = Object.assign(
+    makeCollectionService('announcements', 'createdAt', 'desc'),
+    {
+      async list() {
+        const snap = await db.collection('announcements').orderBy('createdAt', 'desc').get();
+        return snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+      },
+    }
+  );
+
+  // 角色分級（與後台使用者清單的「權限」欄一致）：公告跳顯的對象就用這四級
+  window.roleTierOf = function (u) {
+    const p = (u && u.permissions) || [];
+    if (p.includes('admin')) return 'admin';
+    if (p.includes('delete_board') || p.includes('delete_issues')) return 'manager';
+    if (p.includes('edit_board')) return 'operator';
+    return 'viewer';
+  };
 
   // ════════════════════════════════════════════════
   // 平台設定 → settings/workspace
