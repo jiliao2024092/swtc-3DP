@@ -441,7 +441,7 @@
             <details class="mb-6 border border-[var(--line)] rounded-xl overflow-hidden">
                 <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
                     <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
-                    <span class="font-semibold text-[var(--ink)]">機台樹脂罐</span>
+                    <span class="font-semibold text-[var(--ink)]">機台狀態</span>
                     <span class="text-xs text-[var(--ink-5)] ml-2">自動從 Formlabs API 抓取；點此展開查看 / 編輯</span>
                 </summary>
                 <div class="p-4 border-t border-[var(--line-soft)]">
@@ -760,15 +760,17 @@
                 </div>
             </div>
 
-            <!-- 機台掛載狀況（接上 API 後由 printer_status.mf_printers 填入）-->
-            <div class="mb-6">
-                <div class="flex items-center gap-2 mb-3">
-                    <i data-lucide="printer" class="w-4 h-4 text-[var(--ink-4)]"></i>
-                    <h3 class="text-base font-semibold text-[var(--ink)]">機台掛載材料</h3>
-                    <span class="text-xs text-[var(--ink-5)]">Markforged 機台目前裝載的線材與餘量</span>
+            <!-- 機台狀態（可摺疊，比照 Formlabs「機台狀態」；接上 Eiger API 後由 printer_status.mf_printers 填入）-->
+            <details class="mb-6 border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span class="font-semibold text-[var(--ink)]">機台狀態</span>
+                    <span class="text-xs text-[var(--ink-5)] ml-2">欄位已保留；接上 Eiger API 後自動同步機台即時狀態與材料餘量</span>
+                </summary>
+                <div class="p-4 border-t border-[var(--line-soft)]">
+                    <div id="mf-loaded-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
-                <div id="mf-loaded-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-            </div>
+            </details>
 
             <!-- 庫存表格 -->
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -2659,17 +2661,30 @@ function renderMfPanel() {
     // 編輯權限的顯示/隱藏由 applyRoleUI() 在登入時統一處理（本頁按鈕帶 data-editor-only）
 }
 
+// 保留欄位用：Eiger API 尚未接上，先固定顯示這幾台機台的卡片（無資料也顯示，讓版面提前到位）。
+// key 之後接上 API 時要改成 Eiger 回傳的實際 device name，此處 display 僅供人看。
+const MF_MACHINES = [
+    { key: 'Mark2', display: 'Mark2' },
+];
+// 機台圖片（比照 PRINTER_IMG 的作法：原圖 docs/images/mkf2.png 縮圖至寬 240px、轉 JPEG q80 壓到 ~6KB 後內嵌）
+const MF_MACHINE_IMG = {
+    'Mark2': 'data:image/jpeg;base64,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',
+};
+
 function renderMfLoaded() {
     const grid = document.getElementById('mf-loaded-grid');
     if (!grid) return;
-    const machines = Object.keys(mfInv.loaded || {});
-    if (!machines.length) {
-        grid.innerHTML = '<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-6 border border-dashed border-[var(--line)] rounded-xl">'
-            + '尚無機台掛載資料（接上 Eiger API 後自動顯示）</div>';
-        return;
-    }
-    grid.innerHTML = machines.map(m => {
-        const slots = mfInv.loaded[m] || [];
+    // 固定機台清單 ∪ 實際回傳的機台 key（API 接上後即使 key 對不上舊清單也不會被吃掉）
+    const knownKeys = new Set(MF_MACHINES.map(m => m.key));
+    const extraKeys = Object.keys(mfInv.loaded || {}).filter(k => !knownKeys.has(k));
+    const machines = [...MF_MACHINES, ...extraKeys.map(k => ({ key: k, display: k }))];
+
+    grid.innerHTML = machines.map(({ key, display }) => {
+        const slots = mfInv.loaded[key] || [];
+        const hasData = slots.length > 0;
+        const badge = hasData
+            ? '<span class="text-xs bg-[var(--accent-soft)] text-[var(--accent)] px-2 py-0.5 rounded-full font-medium">已連接</span>'
+            : '<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">尚未連接 API</span>';
         const rows = slots.map(s => {
             const remain = Number(s.remaining_cc) || 0;
             const per    = Number(mfInv.stock[s.material]?.cc_per_spool) || 0;
@@ -2685,11 +2700,22 @@ function renderMfLoaded() {
                     <span class="font-medium text-[var(--ink)]">${remain.toFixed(0)} cc</span>
                 </div>${bar}
             </div>`;
-        }).join('') || '<div class="text-xs text-[var(--ink-5)]">無掛載資料</div>';
-        return `<div class="border border-[var(--line)] rounded-xl p-4">
-            <div class="font-semibold text-[var(--ink)] mb-3">${escHtml(m)}</div>${rows}
+        }).join('') || '<div class="text-xs text-[var(--ink-5)] py-2">串接 Eiger API 後，這裡會自動顯示掛載的材料與餘量</div>';
+        const img = MF_MACHINE_IMG[key];
+        return `<div class="border border-[var(--line)] rounded-xl overflow-hidden">
+            <div class="bg-[var(--bg-soft)] px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    ${img
+                        ? `<img src="${img}" alt="${escHtml(display)}" loading="lazy" class="w-10 h-10 object-contain flex-shrink-0 rounded-md bg-[var(--bg)]">`
+                        : '<i data-lucide="printer" class="w-4 h-4 text-[var(--accent2)]"></i>'}
+                    <span class="font-semibold text-[var(--ink)]">${escHtml(display)}</span>
+                    ${badge}
+                </div>
+            </div>
+            <div class="p-4">${rows}</div>
         </div>`;
     }).join('');
+    lucide.createIcons();
 }
 
 function renderMfTable() {
