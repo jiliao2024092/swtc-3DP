@@ -2496,6 +2496,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'3a13f43', date:'2026-07-31', type:'feat',
+    text:'Markforged 材料分頁加入「耗材庫存」，功能與 Formlabs 相同：可設定安全庫存、庫存不足時一併顯示在叫料提醒，新增時可選擇線材或耗材。' },
   { hash:'8110236', date:'2026-07-31', type:'feat',
     text:'材料庫存的「機台樹脂罐／機台掛載材料」統一更名為「機台狀態」；Markforged 分頁的機台狀態改成可摺疊，並加入 Mark2 機台圖示（尚未接上 API 前顯示為保留欄位）。' },
   { hash:'34f3bd9', date:'2026-07-31', type:'feat',
@@ -2514,8 +2516,6 @@ const CHANGELOG = [
     text:'重整庫存演算法文件結構，補上換槽扣料模型的驗證與定期盤點建議。' },
   { hash:'3000e9a', date:'2026-07-28', type:'fix',
     text:'修正刪除消耗紀錄時的錯誤回補：先前未扣過庫存的紀錄被刪除時會憑空加回材料，現已修正，並補上「未扣庫存」標籤顯示。' },
-  { hash:'76d86fb', date:'2026-07-28', type:'feat',
-    text:'後台管理開放給主管角色：可管理使用者並套用角色，但不可調整個別權限或異動管理員帳號。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },
