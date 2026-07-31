@@ -828,6 +828,32 @@
                     <tbody id="mf-table-body" class="divide-y divide-gray-100"></tbody>
                 </table>
             </div>
+
+            <!-- 耗材庫存區塊（機台配件，如噴嘴／列印底板，非線材，純手動管理、不比對 Eiger API）-->
+            <details class="mt-6 border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span class="font-semibold text-[var(--ink)]">耗材庫存</span>
+                    <span class="text-xs text-[var(--ink-5)] ml-2">機台配件（噴嘴 / 列印底板等），非線材，純手動管理</span>
+                    <span class="ml-auto text-xs text-[var(--ink-5)] mr-2" id="mf-consumables-count"></span>
+                </summary>
+                <div class="p-4 border-t border-[var(--line-soft)] overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
+                                <th class="p-3 border-b font-medium">名稱</th>
+                                <th class="p-3 border-b font-medium text-right">庫存</th>
+                                <th class="p-3 border-b font-medium text-right w-28">安全庫存</th>
+                                <th class="p-3 border-b font-medium">狀態</th>
+                                <th class="p-3 border-b font-medium w-40">備註</th>
+                                <th class="p-3 border-b font-medium">最後更新</th>
+                                <th class="p-3 border-b font-medium text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mf-consumables-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </details>
         </div>
 
         <!-- Markforged 消耗記錄（來源 inventory_history 中 source=markforged 的紀錄）-->
@@ -907,15 +933,25 @@
 <!-- ══ Markforged 新增材料 Modal ══════════════════ -->
 <div id="mf-add-modal" class="modal-overlay hidden">
     <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-6 w-full max-w-md">
-        <h2 class="text-lg font-bold text-[var(--ink)] mb-4">新增 Markforged 材料</h2>
+        <h2 id="mf-add-title" class="text-lg font-bold text-[var(--ink)] mb-4">新增 Markforged 線材</h2>
         <div class="space-y-3">
             <div>
-                <label class="text-sm font-medium text-[var(--ink-2)]">材料名稱</label>
-                <input id="mf-add-name" type="text" placeholder="例：Onyx、Carbon Fiber"
-                    class="w-full mt-1 px-3 py-2 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink)] outline-none focus:ring-1 focus:ring-blue-500">
-                <p class="text-xs text-[var(--ink-5)] mt-1">名稱須與 Eiger 上的材料名稱一致，之後自動同步才對得起來</p>
+                <label class="text-sm font-medium text-[var(--ink-2)]">類型</label>
+                <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5 mt-1">
+                    <button type="button" id="mf-add-kind-material" onclick="setMfAddKind('material')"
+                        class="flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors">線材</button>
+                    <button type="button" id="mf-add-kind-consumable" onclick="setMfAddKind('consumable')"
+                        class="flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors">耗材</button>
+                </div>
+                <p class="text-xs text-[var(--ink-5)] mt-1" id="mf-add-kind-hint"></p>
             </div>
             <div>
+                <label class="text-sm font-medium text-[var(--ink-2)]" id="mf-add-name-label">材料名稱</label>
+                <input id="mf-add-name" type="text" placeholder="例：Onyx、Carbon Fiber"
+                    class="w-full mt-1 px-3 py-2 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink)] outline-none focus:ring-1 focus:ring-blue-500">
+                <p class="text-xs text-[var(--ink-5)] mt-1" id="mf-add-name-hint">名稱須與 Eiger 上的材料名稱一致，之後自動同步才對得起來</p>
+            </div>
+            <div id="mf-add-category-row">
                 <label class="text-sm font-medium text-[var(--ink-2)]">類別</label>
                 <select id="mf-add-category" class="w-full mt-1 px-3 py-2 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink)] outline-none focus:ring-1 focus:ring-blue-500">
                     <option value="plastic">塑料 (primary)</option>
@@ -923,11 +959,11 @@
                 </select>
             </div>
             <div>
-                <label class="text-sm font-medium text-[var(--ink-2)]">總庫存 (cc)</label>
+                <label class="text-sm font-medium text-[var(--ink-2)]" id="mf-add-total-label">總庫存 (cc)</label>
                 <input id="mf-add-total" type="number" min="0" step="1" value="0"
                     class="w-full mt-1 px-3 py-2 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink)] outline-none focus:ring-1 focus:ring-blue-500">
             </div>
-            <p class="text-xs text-[var(--ink-5)] leading-relaxed border-t border-[var(--line-soft)] pt-3">
+            <p class="text-xs text-[var(--ink-5)] leading-relaxed border-t border-[var(--line-soft)] pt-3" id="mf-add-footnote">
                 「每捲 cc」與「安全庫存」請由主管或管理員到
                 <span class="font-medium text-[var(--ink-3)]">安全庫存設定</span> 設定；
                 設定每捲容量後才能用「入庫」以捲為單位增減。
@@ -2519,30 +2555,48 @@ const MF_CATEGORY_LABEL = { plastic:'塑料', fiber:'纖維' };
 
 function mfSafety(name)  { return Number(mfInv.safety[name]) || 0; }
 function mfTotal(name)   { return Number(mfInv.stock[name]?.total_cc) || 0; }
-function mfIsLow(name)   { const s = mfSafety(name); return s > 0 && mfTotal(name) < s; }
+
+// ── 線材 / 耗材的區分 ──
+// 比照 Formlabs 的作法：兩者共用同一個 stock map，靠 kind 欄位區分（耗材 kind='consumable'）。
+// 耗材以「個」計，數量存 qty，不像線材要換算 cc；安全庫存共用 mfInv.safety。
+function mfIsConsumable(name) { return mfInv.stock?.[name]?.kind === 'consumable'; }
+function mfQty(name)          { return Number(mfInv.stock[name]?.qty) || 0; }
+function mfMaterialNames()    { return Object.keys(mfInv.stock || {}).filter(n => !mfIsConsumable(n)).sort((a,b)=>a.localeCompare(b)); }
+function mfConsumableNames()  { return Object.keys(mfInv.stock || {}).filter(n =>  mfIsConsumable(n)).sort((a,b)=>a.localeCompare(b)); }
+// 目前存量：耗材看 qty（個）、線材看 total_cc
+function mfCurrent(name)      { return mfIsConsumable(name) ? mfQty(name) : mfTotal(name); }
+function mfUnit(name)         { return mfIsConsumable(name) ? '個' : 'cc'; }
+function mfIsLow(name)        { const s = mfSafety(name); return s > 0 && mfCurrent(name) < s; }
 
 // 叫料提醒（Markforged 版）：線材、單位 cc，直接比對 total_cc 與 safety
 function renderMfAlerts() {
     const banner = document.getElementById('alert-banner');
     const items  = document.getElementById('alert-items');
     const title  = document.getElementById('alert-title');
-    if (title) title.textContent = '線材庫存不足，請安排叫料';
-    const lows = Object.keys(mfInv.stock || {}).filter(mfIsLow).sort((a,b)=>a.localeCompare(b));
+    if (title) title.textContent = '庫存不足，請安排叫料（線材／耗材）';
+    // 線材（cc）＋耗材（個）合併顯示，比照 Formlabs 的叫料橫幅
+    const lows = [...mfMaterialNames(), ...mfConsumableNames()].filter(mfIsLow);
     if (!lows.length) { banner.classList.add('hidden'); return; }
     banner.classList.remove('hidden');
     const cnt = document.getElementById('alert-count');
     if (cnt) cnt.textContent = `${lows.length} 項`;
     items.innerHTML = lows.map(m => {
-        const total = mfTotal(m), safety = mfSafety(m);
-        const per   = Number(mfInv.stock[m]?.cc_per_spool) || 0;
-        const gap   = Math.max(0, safety - total);
-        const spoolHint = per > 0 ? `（約 ${Math.ceil(gap / per)} 捲）` : '';
+        const isCon  = mfIsConsumable(m);
+        const cur    = mfCurrent(m), safety = mfSafety(m);
+        const unit   = mfUnit(m);
+        const gap    = Math.max(0, safety - cur);
+        const per    = Number(mfInv.stock[m]?.cc_per_spool) || 0;
+        // 線材才換算「還缺幾捲」；耗材本身就是以個計，不需換算
+        const spoolHint = (!isCon && per > 0) ? `（約 ${Math.ceil(gap / per)} 捲）` : '';
+        const tag = isCon
+            ? '<span class="text-[11px] px-1.5 py-0.5 rounded whitespace-nowrap bg-[var(--warn-soft)] text-[var(--warn)]">耗材</span>'
+            : `<span class="text-[11px] px-1.5 py-0.5 rounded whitespace-nowrap ${mfInv.stock[m]?.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-3)]'}">${MF_CATEGORY_LABEL[mfInv.stock[m]?.category]||'—'}</span>`;
         return `
         <div class="flex items-center gap-2 bg-[var(--bg)]/70 border border-[var(--danger-border)] rounded-lg px-3 py-2">
-            <span class="text-[11px] px-1.5 py-0.5 rounded whitespace-nowrap ${mfInv.stock[m]?.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-3)]'}">${MF_CATEGORY_LABEL[mfInv.stock[m]?.category]||'—'}</span>
+            ${tag}
             <span class="font-semibold text-[var(--ink)] text-sm truncate">${escHtml(m)}</span>
-            <span class="text-xs text-[var(--ink-4)] ml-auto whitespace-nowrap">庫存 <b class="text-[var(--danger)]">${total.toFixed(0)}</b> / 安全 ${safety.toFixed(0)} cc</span>
-            <span class="text-xs font-semibold text-[var(--danger)] whitespace-nowrap">缺 ${gap.toFixed(0)} cc${spoolHint}</span>
+            <span class="text-xs text-[var(--ink-4)] ml-auto whitespace-nowrap">庫存 <b class="text-[var(--danger)]">${cur.toFixed(0)}</b> / 安全 ${safety.toFixed(0)} ${unit}</span>
+            <span class="text-xs font-semibold text-[var(--danger)] whitespace-nowrap">缺 ${gap.toFixed(0)} ${unit}${spoolHint}</span>
         </div>`;
     }).join('');
 }
@@ -2654,6 +2708,7 @@ function renderMfMonthly() {
 function renderMfPanel() {
     renderMfLoaded();
     renderMfTable();
+    renderMfConsumables();
     updateMfEditButtons();
     // 尚未有任何機台掛載資料 = Cloud Function 還沒寫過 → 維持「未連接 API」提示
     const notice = document.getElementById('mf-api-notice');
@@ -2721,7 +2776,7 @@ function renderMfLoaded() {
 function renderMfTable() {
     const tbody = document.getElementById('mf-table-body');
     if (!tbody) return;
-    const names = Object.keys(mfInv.stock || {}).sort((a, b) => a.localeCompare(b));
+    const names = mfMaterialNames();   // 耗材另外由 renderMfConsumables() 呈現
     if (!names.length) {
         tbody.innerHTML = '<tr><td colspan="10" class="p-6 text-center text-[var(--ink-5)]">'
             + '尚無 Markforged 材料，請點右上「新增材料」建立</td></tr>';
@@ -2780,6 +2835,61 @@ function renderMfTable() {
     lucide.createIcons();
 }
 
+// ══ Markforged 耗材庫存表格（機台配件，獨立於線材之外）══
+// 與線材共用同一個「編輯模式」開關，數量以「個」為單位、step=1（比照 Formlabs 耗材）
+function renderMfConsumables() {
+    const tbody = document.getElementById('mf-consumables-body');
+    if (!tbody) return;
+    const items = mfConsumableNames();
+    const cnt = document.getElementById('mf-consumables-count');
+    if (cnt) cnt.textContent = items.length ? `${items.length} 項` : '';
+    if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-[var(--ink-5)]">'
+            + '尚無耗材，可從「新增材料」選擇「耗材」新增</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    const disabled = !isEditor || !isMfEditMode;
+    const inputCls = `w-20 px-2 py-1 text-right rounded-md border ${isMfEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)]`;
+    items.forEach(name => {
+        const s = mfInv.stock[name] || {};
+        const low = mfIsLow(name);
+        const tr = document.createElement('tr');
+        tr.className = isMfEditMode ? 'bg-[var(--accent-soft)]/30 hover:bg-[var(--accent-soft)]' : 'hover:bg-[var(--bg-soft)]';
+        tr.setAttribute('data-mfconsumable', name);
+        tr.innerHTML = `
+            <td class="p-3 font-medium text-[var(--ink)]">${escHtml(name)}</td>
+            <td class="p-3 text-right">
+                <input type="number" min="0" step="1" value="${mfQty(name)}" ${disabled?'disabled':''}
+                    class="mfc-qty-input ${inputCls} ${low&&!isMfEditMode?'text-[var(--danger)] font-medium':''}">
+                <span class="text-xs text-[var(--ink-5)] ml-1">個</span>
+            </td>
+            <td class="p-3 text-right text-[var(--ink-2)]">${mfSafety(name).toFixed(0)} <span class="text-xs text-[var(--ink-5)]">個</span></td>
+            <td class="p-3">${low
+                ? '<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium">需叫料</span>'
+                : '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">充足</span>'}</td>
+            <td class="p-3">
+                <input type="text" value="${(s.note||'').replace(/"/g,'&quot;')}" placeholder="備註" ${disabled?'disabled':''}
+                    class="mfc-note-input w-full px-2 py-1 rounded-md border ${isMfEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)]">
+            </td>
+            <td class="p-3 text-xs text-[var(--ink-5)]">
+                ${s.updated_at?new Date(s.updated_at).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}
+                ${s.updated_by?`<div>by ${escHtml(s.updated_by)}</div>`:''}
+            </td>
+            <td class="p-3 text-center">
+                ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
+                    : `<button onclick="deleteMfMaterial('${name.replace(/'/g,"\\'")}')" title="刪除此耗材"
+                        class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        ${isMfEditMode?'disabled':''}>
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                       </button>`}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+    lucide.createIcons();
+}
+
 function updateMfEditButtons() {
     const e = document.getElementById('mf-edit-btn');
     const s = document.getElementById('mf-save-btn');
@@ -2793,20 +2903,20 @@ function updateMfEditButtons() {
 function startMfEdit() {
     if (!isEditor) return;
     isMfEditMode = true;
-    renderMfTable(); updateMfEditButtons();
+    renderMfTable(); renderMfConsumables(); updateMfEditButtons();
 }
 
 function cancelMfEdit() {
     if (!isMfEditMode) return;
     if (!confirm('取消編輯？未儲存的修改會遺失。')) return;
     isMfEditMode = false;
-    renderMfTable(); updateMfEditButtons();
+    renderMfTable(); renderMfConsumables(); updateMfEditButtons();
 }
 
 async function saveMfEdits() {
     if (!isMfEditMode || !isEditor) return;
-    // 先把整張表讀完並驗證，全部通過才套用 —— 避免中途失敗留下半套資料
-    // 編輯模式只開放「總庫存」與「備註」；每捲容量與安全庫存屬主管／admin 權限，走安全庫存設定 modal
+    // 先把兩張表都讀完並驗證，全部通過才套用 —— 避免中途失敗留下「線材已寫入、耗材沒寫入」的半套狀態
+    // 編輯模式只開放「總庫存／數量」與「備註」；每捲容量與安全庫存屬主管／admin 權限，走安全庫存設定 modal
     const changes = [];
     for (const row of document.querySelectorAll('#mf-table-body tr[data-mf]')) {
         const name  = row.getAttribute('data-mf');
@@ -2815,9 +2925,18 @@ async function saveMfEdits() {
         if (isNaN(total) || total < 0) { showToast(`「${name}」總庫存無效`, 'error'); return; }
         changes.push({ name, total, note });
     }
+    const cChanges = [];
+    for (const row of document.querySelectorAll('#mf-consumables-body tr[data-mfconsumable]')) {
+        const name = row.getAttribute('data-mfconsumable');
+        const qty  = parseFloat(row.querySelector('.mfc-qty-input')?.value);
+        const note = row.querySelector('.mfc-note-input')?.value.trim() || '';
+        if (isNaN(qty) || qty < 0) { showToast(`「${name}」數量無效`, 'error'); return; }
+        cChanges.push({ name, qty, note });
+    }
 
     let changed = 0;
     const nowIso = new Date().toISOString();
+    const stampBy = currentUser?.displayName || currentUser?.email || '';
     changes.forEach(c => {
         const cur = mfInv.stock[c.name] || {};
         const dirty = (Number(cur.total_cc)||0) !== c.total || (cur.note||'') !== c.note;
@@ -2828,12 +2947,26 @@ async function saveMfEdits() {
             total_cc:   c.total,
             note:       c.note,
             updated_at: nowIso,
-            updated_by: currentUser?.displayName || currentUser?.email || '',
+            updated_by: stampBy,
+        };
+    });
+    cChanges.forEach(c => {
+        const cur = mfInv.stock[c.name] || {};
+        const dirty = (Number(cur.qty)||0) !== c.qty || (cur.note||'') !== c.note;
+        if (!dirty) return;
+        changed++;
+        mfInv.stock[c.name] = {
+            ...cur,
+            kind:       'consumable',
+            qty:        c.qty,
+            note:       c.note,
+            updated_at: nowIso,
+            updated_by: stampBy,
         };
     });
 
     if (!changed) { showToast('沒有變更', 'info'); isMfEditMode = false; renderMfPanel(); return; }
-    await saveMfDoc(`手動調整 ${changed} 項 Markforged 材料`);
+    await saveMfDoc(`手動調整 ${changed} 項 Markforged 線材／耗材`);
     isMfEditMode = false;
     renderMfPanel();
 }
@@ -2865,13 +2998,39 @@ async function saveMfDoc(reason) {
     }
 }
 
+// 線材與耗材共用同一支刪除流程（都存在 mfInv.stock），只有提示文字依類型不同
 async function deleteMfMaterial(name) {
     if (!isEditor) return;
-    if (!confirm(`確定刪除材料「${name}」？此操作不影響已產生的消耗紀錄。`)) return;
+    const label = mfIsConsumable(name) ? '耗材' : '材料';
+    if (!confirm(`確定刪除${label}「${name}」？此操作不影響已產生的消耗紀錄。`)) return;
     delete mfInv.stock[name];
     delete mfInv.safety[name];
-    await saveMfDoc(`刪除 Markforged 材料 ${name}`);
+    await saveMfDoc(`刪除 Markforged ${label} ${name}`);
     renderMfPanel();
+}
+
+// 新增 modal 目前選的類型：'material'(線材，cc/捲) | 'consumable'(耗材，個)
+let mfAddKind = 'material';
+function setMfAddKind(kind) {
+    mfAddKind = kind;
+    const onCls  = 'flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors bg-[var(--bg)] text-[var(--accent)] shadow-sm';
+    const offCls = 'flex-1 text-sm px-3 py-1.5 rounded-md font-medium transition-colors text-[var(--ink-4)]';
+    document.getElementById('mf-add-kind-material').className   = kind === 'material'   ? onCls : offCls;
+    document.getElementById('mf-add-kind-consumable').className = kind === 'consumable' ? onCls : offCls;
+
+    const isCon = kind === 'consumable';
+    document.getElementById('mf-add-title').textContent      = isCon ? '新增 Markforged 耗材' : '新增 Markforged 線材';
+    document.getElementById('mf-add-kind-hint').textContent  = isCon
+        ? '耗材：機台配件（噴嘴／列印底板等），以「個」計，純手動管理。'
+        : '線材：Markforged 線材，以 cc 計算，入庫以整捲為單位。';
+    document.getElementById('mf-add-name-label').textContent = isCon ? '耗材名稱' : '材料名稱';
+    document.getElementById('mf-add-name').placeholder       = isCon ? '例：噴嘴、列印底板' : '例：Onyx、Carbon Fiber';
+    document.getElementById('mf-add-name-hint').textContent  = isCon
+        ? '耗材不比對 Eiger API，名稱可自訂。'
+        : '名稱須與 Eiger 上的材料名稱一致，之後自動同步才對得起來';
+    document.getElementById('mf-add-total-label').textContent = isCon ? '庫存數量（個）' : '總庫存 (cc)';
+    document.getElementById('mf-add-category-row').style.display = isCon ? 'none' : '';
+    document.getElementById('mf-add-footnote').style.display     = isCon ? 'none' : '';
 }
 
 function showMfAddModal() {
@@ -2879,26 +3038,33 @@ function showMfAddModal() {
     document.getElementById('mf-add-name').value = '';
     document.getElementById('mf-add-category').value = 'plastic';
     document.getElementById('mf-add-total').value = 0;
+    setMfAddKind('material');
     document.getElementById('mf-add-modal').classList.remove('hidden');
 }
 function closeMfAddModal() { document.getElementById('mf-add-modal').classList.add('hidden'); }
 
 async function submitMfAdd() {
+    const isCon = mfAddKind === 'consumable';
     const name = document.getElementById('mf-add-name').value.trim();
-    if (!name) { showToast('請輸入材料名稱', 'error'); return; }
+    if (!name) { showToast(isCon ? '請輸入耗材名稱' : '請輸入材料名稱', 'error'); return; }
     if (mfInv.stock[name]) { showToast(`「${name}」已存在`, 'error'); return; }
-    const total = parseFloat(document.getElementById('mf-add-total').value);
-    if (isNaN(total) || total < 0) { showToast('總庫存數值無效', 'error'); return; }
-    mfInv.stock[name] = {
-        total_cc:     total,
-        cc_per_spool: 0,     // 由主管／admin 在安全庫存設定填
-        category:     document.getElementById('mf-add-category').value,
-        note:         '',
-        updated_at:   new Date().toISOString(),
-        updated_by:   currentUser?.displayName || currentUser?.email || '',
+    const qty = parseFloat(document.getElementById('mf-add-total').value);
+    if (isNaN(qty) || qty < 0) { showToast('數量無效', 'error'); return; }
+    const stamp = {
+        note:       '',
+        updated_at: new Date().toISOString(),
+        updated_by: currentUser?.displayName || currentUser?.email || '',
     };
+    mfInv.stock[name] = isCon
+        ? { kind: 'consumable', qty, ...stamp }
+        : {
+            total_cc:     qty,
+            cc_per_spool: 0,     // 由主管／admin 在安全庫存設定填
+            category:     document.getElementById('mf-add-category').value,
+            ...stamp,
+          };
     mfInv.safety[name] = 0;
-    await saveMfDoc(`新增 Markforged 材料 ${name}`);
+    await saveMfDoc(`新增 Markforged ${isCon ? '耗材' : '線材'} ${name}`);
     closeMfAddModal();
     renderMfPanel();
 }
@@ -2908,24 +3074,33 @@ async function submitMfAdd() {
 function showMfSafetyModal() {
     if (!canManageInventorySettings()) { showToast('需要材料庫存設定權限', 'error'); return; }
     const body = document.getElementById('mf-safety-body');
-    const names = Object.keys(mfInv.stock || {}).sort((a,b)=>a.localeCompare(b));
+    // 線材與耗材共用同一個設定介面（比照 Formlabs）；耗材沒有「每捲容量」概念，該欄停用
+    const names = [...mfMaterialNames(), ...mfConsumableNames()];
     if (!names.length) {
         body.innerHTML = '<p class="text-sm text-[var(--ink-5)] text-center py-6">尚無材料，請先於列表新增</p>';
     } else {
         body.innerHTML = `
             <div class="grid grid-cols-[1fr_7rem_7rem] gap-2 text-xs font-medium text-[var(--ink-4)] px-1">
-                <div>材料</div><div class="text-right">安全庫存 (cc)</div><div class="text-right">每捲 (cc)</div>
-            </div>` + names.map(n => `
+                <div>材料</div><div class="text-right">安全庫存</div><div class="text-right">每捲 (cc)</div>
+            </div>` + names.map(n => {
+            const isCon = mfIsConsumable(n);
+            const tag = isCon
+                ? '<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)]">耗材</span>'
+                : `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${mfInv.stock[n]?.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-4)]'}">${MF_CATEGORY_LABEL[mfInv.stock[n]?.category]||'—'}</span>`;
+            return `
             <div class="grid grid-cols-[1fr_7rem_7rem] gap-2 items-center" data-mfsafety="${escHtml(n)}">
-                <div class="text-sm text-[var(--ink)] truncate">
-                    ${escHtml(n)}
-                    <span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${mfInv.stock[n]?.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-4)]'}">${MF_CATEGORY_LABEL[mfInv.stock[n]?.category]||'—'}</span>
+                <div class="text-sm text-[var(--ink)] truncate">${escHtml(n)}${tag}</div>
+                <div class="relative">
+                    <input type="number" min="0" step="1" value="${mfSafety(n)}"
+                        class="mfsafety-safety w-full p-2 pr-8 text-right border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">
+                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[var(--ink-5)] pointer-events-none">${mfUnit(n)}</span>
                 </div>
-                <input type="number" min="0" step="1" value="${mfSafety(n)}"
-                    class="mfsafety-safety p-2 text-right border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">
-                <input type="number" min="0" step="1" value="${Number(mfInv.stock[n]?.cc_per_spool)||''}" placeholder="未設定"
-                    class="mfsafety-perspool p-2 text-right border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">
-            </div>`).join('');
+                ${isCon
+                    ? '<input type="text" value="—" disabled title="耗材以「個」計，無每捲容量" class="mfsafety-perspool p-2 text-right border border-[var(--line)] rounded-md text-sm bg-[var(--bg-soft)] text-[var(--ink-5)]">'
+                    : `<input type="number" min="0" step="1" value="${Number(mfInv.stock[n]?.cc_per_spool)||''}" placeholder="未設定"
+                        class="mfsafety-perspool p-2 text-right border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">`}
+            </div>`;
+        }).join('');
     }
     document.getElementById('mf-safety-modal').classList.remove('hidden');
 }
@@ -2938,15 +3113,20 @@ async function saveMfSafety() {
     for (const el of document.querySelectorAll('#mf-safety-body [data-mfsafety]')) {
         const name = el.getAttribute('data-mfsafety');
         const safe = parseFloat(el.querySelector('.mfsafety-safety').value);
-        const perRaw = el.querySelector('.mfsafety-perspool').value.trim();
-        const per  = perRaw === '' ? 0 : parseFloat(perRaw);
         if (isNaN(safe) || safe < 0) { showToast(`「${name}」安全庫存無效`, 'error'); return; }
-        if (isNaN(per)  || per  < 0) { showToast(`「${name}」每捲容量無效`, 'error'); return; }
+        // 耗材那格是停用的佔位符「—」，不可拿去 parseFloat（會得到 NaN 而誤判無效）
+        const isCon = mfIsConsumable(name);
+        let per = null;
+        if (!isCon) {
+            const perRaw = el.querySelector('.mfsafety-perspool').value.trim();
+            per = perRaw === '' ? 0 : parseFloat(perRaw);
+            if (isNaN(per) || per < 0) { showToast(`「${name}」每捲容量無效`, 'error'); return; }
+        }
         rows.push({ name, safe, per });
     }
     rows.forEach(r => {
         mfInv.safety[r.name] = r.safe;
-        mfInv.stock[r.name] = { ...(mfInv.stock[r.name] || {}), cc_per_spool: r.per };
+        if (r.per !== null) mfInv.stock[r.name] = { ...(mfInv.stock[r.name] || {}), cc_per_spool: r.per };
     });
     await saveMfDoc('調整 Markforged 安全庫存與每捲容量');
     closeMfSafetyModal();
@@ -2956,8 +3136,9 @@ async function saveMfSafety() {
 // ══ Markforged 入庫 / 退料（以「捲」為單位）══
 function showMfStockInModal() {
     if (!isEditor) return;
-    const names = Object.keys(mfInv.stock || {}).sort((a,b)=>a.localeCompare(b));
-    if (!names.length) { showToast('尚無材料，請先新增材料', 'error'); return; }
+    // 只列線材：入庫以「捲」為單位換算 cc，耗材（以個計）不適用此流程，改在表格內直接編輯數量
+    const names = mfMaterialNames();
+    if (!names.length) { showToast('尚無線材，請先新增線材', 'error'); return; }
     const sel = document.getElementById('mf-si-material');
     sel.innerHTML = names.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
     document.getElementById('mf-si-spools').value = 1;
@@ -4592,6 +4773,7 @@ window.deleteMfMaterial = deleteMfMaterial;
 window.showMfAddModal = showMfAddModal;
 window.closeMfAddModal = closeMfAddModal;
 window.submitMfAdd = submitMfAdd;
+window.setMfAddKind = setMfAddKind;
 window.showMfSafetyModal = showMfSafetyModal;
 window.closeMfSafetyModal = closeMfSafetyModal;
 window.saveMfSafety = saveMfSafety;
