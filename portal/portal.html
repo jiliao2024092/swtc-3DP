@@ -599,6 +599,21 @@ window.showToast = window.showToast || function (msg, type) {
         if (!K.ENG_INIT[e.key]) K.ENG_INIT[e.key] = e.key.slice(0,2).toUpperCase();
       });
     }
+    // ★ 「異常與資源」的獨立工程師清單：這裡漏讀 is_engineers 的話，issues.js 的下拉
+    //   永遠只會拿到工作看板那份，後台「工程師清單（獨立）」設定形同虛設。
+    //   is_engineers 未設定時退回 engineers（沿用同步模式的既有行為）。
+    const isEng = settings.is_engineers;
+    if (Array.isArray(isEng) && isEng.length) {
+      window._settings_is_engineers = isEng.map(e => e.key);
+      isEng.forEach(e => {
+        K.ENG_LABEL[e.key]     = K.ENG_LABEL[e.key]     || e.label;
+        K.ENG_FULLLABEL[e.key] = K.ENG_FULLLABEL[e.key] || (e.label + ' (' + e.key + ')');
+        if (!K.ENG_TONE[e.key]) K.ENG_TONE[e.key] = { fg:'var(--ink-3)', bg:'var(--line-soft)' };
+        if (!K.ENG_INIT[e.key]) K.ENG_INIT[e.key] = e.key.slice(0,2).toUpperCase();
+      });
+    } else {
+      window._settings_is_engineers = window._settings_engineers;
+    }
     if (mch && Array.isArray(mch)) {
       window._settings_machines = mch.map(m => m.name);
     }
@@ -1639,7 +1654,7 @@ window.DashboardView = DashboardView;
 
 <!-- ⑥ workboard.js + issues.js -->
 <script type="text/babel" data-presets="react" src="workboard.js?v=20260708j"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260708k"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260803a"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -2210,15 +2225,24 @@ function AdminPanel({ user, isAdmin }) {
       bk_categories: bkCategories,
       role_presets: rolePresets,
     };
-    await FBSettings.save(s);
-    window.applySettings(s);
-    // 通知樣品模組更新借用人清單
+    // ★ 這裡原本沒有 try/catch：主管進得了這個分頁、按鈕也沒被 disabled，但 firestore.rules
+    //   對 settings/{docId} 的 catch-all 規則只允許 isAdmin() 寫入。主管按下儲存會在
+    //   FBSettings.save 拋出 permission-denied，之後所有程式碼（含 setSaving(false)）
+    //   都不會執行，按鈕卡在「儲存中…」且沒有任何錯誤提示。
     try {
-      if(window.smSetBorrowers)
-        window.smSetBorrowers(borrowers.map(b=>typeof b==='string'?b:(b.label||b.key||b)));
-    } catch(e){}
-    setSaving(false);
-    showToast('設定已儲存 ✓');
+      await FBSettings.save(s);
+      window.applySettings(s);
+      // 通知樣品模組更新借用人清單
+      try {
+        if(window.smSetBorrowers)
+          window.smSetBorrowers(borrowers.map(b=>typeof b==='string'?b:(b.label||b.key||b)));
+      } catch(e){}
+      showToast('設定已儲存 ✓');
+    } catch(e) {
+      showToast('儲存失敗：' + (e.message || e), 'err');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const ListEditor = ({label, list, setList, keyField=false}) => (
@@ -2753,23 +2777,33 @@ function App() {
   const [checking, setChecking] = useStateApp(true);
 
   useEffectApp(() => {
-    // 監聽設定
-    const unsubSettings = FBSettings.onSnapshot(s => {
-      if (s) window.applySettings(s);
-    });
-    // 監聽材料庫存 → 工作看板「樹脂材料」下拉用（與材料庫存頁一致）
-    const unsubInv = FBInventory.onSnapshot(names => {
-      window._inventory_materials = names;
-      if (window._onSettingsUpdated) window._onSettingsUpdated();
-    });
-    let unsubUserDoc = null;
+    let unsubUserDoc  = null;
+    let unsubSettings = null;
+    let unsubInv      = null;
+    const teardownSession = () => {
+      if (unsubUserDoc)  { unsubUserDoc();  unsubUserDoc  = null; }
+      if (unsubSettings) { unsubSettings(); unsubSettings = null; }
+      if (unsubInv)      { unsubInv();      unsubInv      = null; }
+    };
     // 監聽登入狀態
     const unsubAuth = FBAuth.onStateChanged(async fbUser => {
-      if (unsubUserDoc) { unsubUserDoc(); unsubUserDoc = null; }
+      teardownSession();
       if (fbUser) {
         const u = await FBAuth.getUser(fbUser.uid);
         if (u && u.active) {
           setUser(u);
+          // ★ settings/inventory 訂閱必須等確認登入成功才建立，不能在 App 掛載時就註冊：
+          //   未登入時訂閱會被 Firestore rules 擋下 permission-denied，而 onSnapshot
+          //   收到 permission-denied 後不會自動重試/重新訂閱——即使之後登入成功，這個
+          //   監聽器也已經死了。結果整個 session 都讀不到即時工程師/機台清單，下拉選單
+          //   全部掉回寫死的 K.ENG_ORDER。只有 admin 因為進後台按過「儲存」，靠本機立即
+          //   套用（saveSettings 內的 window.applySettings）才看起來正常，其餘角色都受影響。
+          unsubSettings = FBSettings.onSnapshot(s => { if (s) window.applySettings(s); });
+          // 監聽材料庫存 → 工作看板「樹脂材料」下拉用（與材料庫存頁一致）
+          unsubInv = FBInventory.onSnapshot(names => {
+            window._inventory_materials = names;
+            if (window._onSettingsUpdated) window._onSettingsUpdated();
+          });
           // 即時訂閱自己的使用者文件：權限被改時左下角會即時更新，停用時自動登出
           unsubUserDoc = FBAuth.onUserSnapshot(fbUser.uid, async (fresh) => {
             if (!fresh || !fresh.active) {
@@ -2784,7 +2818,7 @@ function App() {
       } else { setUser(null); }
       setChecking(false);
     });
-    return () => { unsubAuth(); unsubSettings(); unsubInv(); if (unsubUserDoc) unsubUserDoc(); };
+    return () => { unsubAuth(); teardownSession(); };
   }, []);
 
   if (checking) return (

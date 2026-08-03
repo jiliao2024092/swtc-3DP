@@ -10,7 +10,7 @@
 
   // ── 異常 Modal ──
   function AnomalyModal({ item, onClose, onSave }) {
-    const engineers = window._settings_engineers || K.ENG_ORDER;
+    const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
     const empty = { customer:'', date:'', product:'', engineer: engineers[0]||K.ENG_ORDER[0], status:'處理中', warranty:'', cause:'', progresses:[] };
     const [form, setForm] = useState(item ? { ...item, progresses:[...(item.progresses||[])].map(p=>({...p})) } : empty);
     const [busy, setBusy] = useState(false);
@@ -92,7 +92,7 @@
 
   // ── IPA Modal ──
   function IPAModal({ item, onClose, onSave }) {
-    const engineers = window._settings_engineers || K.ENG_ORDER;
+    const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
     const empty = { purchaseDate:'', useStart:'', useEnd:'', useDate:'', product:'20L-IPA 異丙醇', quantity:1, person:engineers[0]||K.ENG_ORDER[0], remark:'' };
     const [form, setForm] = useState(item?{...item}:empty);
     const [busy, setBusy] = useState(false);
@@ -799,7 +799,7 @@
     ];
 
     function buildSlices(dim) {
-      const engineers = window._settings_engineers||K.ENG_ORDER;
+      const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
       switch(dim) {
         case 'status':
           return Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'var(--ink-4)' }));
@@ -856,7 +856,7 @@
     }
 
     // ── 預設圖表資料 ──
-    const engineers = window._settings_engineers||K.ENG_ORDER;
+    const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
     const statusSlices = Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'var(--ink-4)' }));
     const engItems     = engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
     const monthItems   = Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v],i)=>({ label:k.slice(5), value:v, color:MACH_COLORS[i%MACH_COLORS.length] }));
@@ -980,7 +980,7 @@
       return () => { window._onSettingsUpdated = prev; };
     }, []);
 
-    const engineers = window._settings_engineers || K.ENG_ORDER;
+    const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
 
     useEffect(() => {
       let n=0;

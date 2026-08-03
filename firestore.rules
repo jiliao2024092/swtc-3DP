@@ -156,6 +156,16 @@ service cloud.firestore {
       allow write: if isAdmin() || hasPerm('manage_quote_pricing');
     }
 
+    // settings/workspace（工程師/機台/業務/借用人清單，AdminPanel「工作看板設定」等分頁）：
+    // admin 或主管都可寫入。前端 UI 本來就把這個分頁開放給主管看到並編輯、儲存按鈕沒有
+    // admin-only 限制，「主管」的定義沿用前端 roleTierOf() 同一套判斷（持有 delete_board
+    // 或 delete_issues）。改前只放行 isAdmin()，主管按儲存會卡在 permission-denied 且沒有
+    // 任何錯誤提示（saveSettings 原本沒包 try/catch）。
+    match /settings/workspace {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin() || hasPerm('delete_board') || hasPerm('delete_issues');
+    }
+
     match /settings/{docId} {
       allow read: if isLoggedIn();
       allow write: if isAdmin();
