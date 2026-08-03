@@ -2895,6 +2895,10 @@ function updateMfEditButtons() {
     const s = document.getElementById('mf-save-btn');
     const c = document.getElementById('mf-cancel-btn');
     if (!e || !s || !c) return;
+    // ★ 唯讀角色一律隱藏這三顆。不可無條件寫 display=''：
+    //   applyRoleUI() 依 data-editor-only 把按鈕藏起來後，本函式每次 renderMfPanel() 都會再把它顯示回來，
+    //   造成 viewer 也看得到「編輯模式」。
+    if (!isEditor) { e.style.display = 'none'; s.style.display = 'none'; c.style.display = 'none'; return; }
     e.style.display = isMfEditMode ? 'none' : '';
     s.style.display = isMfEditMode ? 'flex' : 'none';
     c.style.display = isMfEditMode ? 'flex' : 'none';
@@ -3434,6 +3438,12 @@ function updateStockEditButtons() {
     const saveBtn   = document.getElementById('stock-save-btn');
     const cancelBtn = document.getElementById('stock-cancel-btn');
     if (!editBtn || !saveBtn || !cancelBtn) return;
+    // ★ 唯讀角色一律隱藏。與 updateMfEditButtons() 同一個坑：若無條件寫 display=''，
+    //   會蓋掉 applyRoleUI() 依 data-editor-only 做的隱藏，讓 viewer 看得到「編輯模式」。
+    if (!isEditor) {
+        editBtn.style.display = 'none'; saveBtn.style.display = 'none'; cancelBtn.style.display = 'none';
+        return;
+    }
     if (isStockEditMode) {
         editBtn.style.display   = 'none';
         saveBtn.style.display   = 'flex';

@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markforged 估價（Beta）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* 色票與 quote-studio.html 一致，切換深色模式時兩頁外觀同步 */
+:root{
+  --fs:1;
+  --bg1:#ffffff; --bg2:#f6f8fa;
+  --glass:rgba(255,255,255,.9); --glass2:rgba(255,255,255,.85);
+  --line:#e6e8ec; --lineGlass:rgba(230,232,236,.95);
+  --ink:#0a0e14; --ink2:#3b4250; --ink3:#5a6270; --ink4:#8a93a3;
+  --accent:#0c7a99; --accentBg:#e6f1f6;
+  --ok:#1d6f43; --okBg:#e6f1ea; --okLine:#b6d9c4;
+  --warn:#c79b2a; --warnBg:#fbf3dc; --warnLine:#ecdcae; --warnText:#8b6b13;
+  --err:#c0392b; --errBg:#fbe7e3; --errLine:#ecc9c9;
+  --purple:#7b5ec7; --purpleBg:#efeafb;
+  --mono:'JetBrains Mono',monospace;
+  --shadow:0 10px 32px rgba(10,14,20,.12);
+  --shadowSm:0 4px 16px rgba(10,14,20,.08);
+  --panelBg:#ffffff;
+}
+:root[data-theme="dark"]{
+  --bg1:#12151b; --bg2:#0a0d12;
+  --glass:rgba(24,28,36,.9); --glass2:rgba(24,28,36,.85);
+  --line:#2a2f3a; --lineGlass:rgba(42,47,58,.95);
+  --ink:#eef1f5; --ink2:#c3c9d4; --ink3:#9aa2b0; --ink4:#6b7280;
+  --accent:#3fb6d8; --accentBg:#173540;
+  --ok:#4bcf8b; --okBg:#123a29; --okLine:#1f5c40;
+  --warn:#e0b64a; --warnBg:#3a331c; --warnLine:#5a4a26; --warnText:#e0b64a;
+  --err:#e0605a; --errBg:#3a2422; --errLine:#5a3330;
+  --purple:#a68af0; --purpleBg:#251c40;
+  --shadow:0 10px 32px rgba(0,0,0,.4);
+  --shadowSm:0 4px 16px rgba(0,0,0,.3);
+  --panelBg:#1b1f27;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{overflow:hidden;background:linear-gradient(180deg,var(--bg1),var(--bg2));
+  font-family:'Noto Sans TC',system-ui,sans-serif;color:var(--ink);font-size:calc(14px * var(--fs))}
+button{font-family:inherit}
+#c3d{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.glass{background:var(--glass);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--lineGlass);border-radius:12px;box-shadow:var(--shadow)}
+.glass-sm{background:var(--glass2);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border:1px solid var(--lineGlass);box-shadow:var(--shadowSm)}
+.mono{font-family:var(--mono)}
+.lbl{font-size:calc(9.5px * var(--fs));font-weight:600;font-family:var(--mono);color:var(--ink4);
+  text-transform:uppercase;letter-spacing:.07em;margin:10px 0 5px}
+.lbl:first-child{margin-top:0}
+
+#topbar{position:absolute;top:14px;left:14px;right:14px;display:flex;align-items:flex-start;gap:8px;pointer-events:none;z-index:20}
+/* 只讓實際的控制項吃指標事件；置中用的 flex 空白 div 不可設 auto，否則會擋掉整條頂部的拖曳 */
+#brand,#viewbar,#cubeWrap{pointer-events:auto}
+
+/* 視角方塊（右上角） */
+#cubeWrap{display:flex;flex-direction:column;gap:5px;align-items:center}
+#cube{width:52px;height:52px;perspective:200px}
+#cubeInner{transform-style:preserve-3d;transform:rotateX(-22deg) rotateY(-38deg);
+  width:52px;height:52px;position:relative;transition:transform .18s}
+.cface{position:absolute;width:52px;height:52px;display:flex;align-items:center;justify-content:center;
+  font-size:calc(11px * var(--fs));font-weight:600;color:var(--ink3);background:var(--glass2);
+  border:1px solid var(--line);cursor:pointer;user-select:none;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.cface:hover{background:var(--accentBg);color:var(--accent)}
+#cubeHome{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--glass2);
+  font-size:calc(11px * var(--fs));cursor:pointer;color:var(--ink3)}
+/* 擺放面板（PreForm 式）。top 對齊 modPanel，一起讓開視角方塊 */
+#placePanel{position:absolute;top:112px;right:72px;width:calc(218px * var(--fs));padding:12px;z-index:17;display:none}
+#placePanel.open{display:block}
+#placePanel h4{font-size:calc(12px * var(--fs));display:flex;justify-content:space-between;align-items:center}
+#placePanel h4 .x{color:var(--ink4);cursor:pointer;font-weight:400}
+.ppHint{font-size:calc(9px * var(--fs));color:var(--ink4);line-height:1.6;margin-top:5px}
+.ppHint b{color:var(--ink2)}
+.inRow{display:flex;align-items:center;gap:6px;margin-bottom:5px;margin-top:8px}
+.inRow label{font-size:calc(11px * var(--fs));color:var(--ink3);flex:1}
+.inRow input[type=number]{width:86px;height:24px;border:1px solid var(--line);border-radius:5px;
+  background:var(--panelBg);color:var(--ink);font-family:var(--mono);font-size:calc(11px * var(--fs));
+  text-align:right;padding:0 6px;outline:none}
+.inRow .un{font-size:calc(9px * var(--fs));color:var(--ink4);font-family:var(--mono);width:38px}
+#placePanel .inRow input.outR{border-color:var(--err);color:var(--err)}
+.arrowPad{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-top:8px}
+.arrowPad button{padding:6px 0;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);
+  color:var(--ink3);font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer;font-family:inherit}
+.arrowPad button:hover{border-color:var(--accent);color:var(--accent)}
+.arrowPad button.c{background:var(--accent);color:#fff;border-color:var(--accent)}
+.arrowPad .empty{visibility:hidden}
+.ppFace{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;padding:7px;margin-top:8px;
+  border-radius:6px;border:1.5px solid var(--accent);background:var(--panelBg);color:var(--accent);
+  font:inherit;font-size:calc(11px * var(--fs));font-weight:700;cursor:pointer}
+.ppFace.on{background:var(--accent);color:#fff}
+/* 框選矩形 */
+#selBox{position:absolute;border:1px dashed var(--accent);background:rgba(12,122,153,.10);
+  z-index:10;display:none;pointer-events:none}
+/* 操作提示（不可吃指標事件，否則會擋住底部的拖曳） */
+#opHint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:12;
+  padding:6px 14px;border-radius:999px;font-size:calc(10.5px * var(--fs));color:var(--ink3);
+  white-space:nowrap;pointer-events:none}
+#opHint b{color:var(--ink2)}
+#brand{display:flex;align-items:center;gap:8px;border-radius:8px;padding:7px 12px}
+#brand b{font-size:calc(13.5px * var(--fs))}
+#brand .tag{height:17px;padding:0 8px;font-size:calc(10px * var(--fs));border-radius:999px;font-family:var(--mono);
+  font-weight:600;background:var(--accentBg);color:var(--accent);display:inline-flex;align-items:center}
+#viewbar{display:flex;gap:5px;border-radius:8px;padding:5px;align-items:center}
+.vtab{padding:4px 10px;border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs));font-weight:600;
+  cursor:pointer;background:transparent;color:var(--ink3)}
+.vtab.on{border-color:var(--line);color:var(--ink);background:var(--panelBg)}
+.vsep{width:1px;height:16px;background:var(--line)}
+.abtn{padding:4px 9px;border-radius:5px;border:1px solid var(--line);font-size:calc(11px * var(--fs));
+  cursor:pointer;background:var(--panelBg);color:var(--ink3)}
+.abtn.on{border-color:var(--accent);color:var(--accent)}
+
+#stepCard{position:absolute;top:64px;left:14px;width:calc(318px * var(--fs));max-height:calc(100vh - 92px);
+  display:flex;flex-direction:column;z-index:15;overflow:hidden}
+#stepHead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);flex-shrink:0}
+#stepHead b{flex:1;font-size:calc(12.5px * var(--fs))}
+#stepCount{font-family:var(--mono);font-size:calc(10px * var(--fs));color:var(--ink4)}
+#stepHide{border:1px solid var(--line);background:var(--panelBg);border-radius:5px;width:22px;height:22px;
+  cursor:pointer;color:var(--ink3);font-size:calc(10px * var(--fs));flex-shrink:0}
+#stepBody{padding:12px;overflow-y:auto}
+#stepShow{position:absolute;top:64px;left:14px;z-index:15;border-radius:8px;padding:7px 11px;
+  font-size:calc(11px * var(--fs));font-weight:600;color:var(--ink3);cursor:pointer}
+.dock{display:flex;gap:3px;margin-bottom:10px;flex-wrap:wrap}
+.dockBtn{flex:1;min-width:52px;padding:5px 2px;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);
+  color:var(--ink4);font:inherit;font-size:calc(9.5px * var(--fs));font-weight:600;cursor:pointer}
+.dockBtn.cur{border-color:var(--accent);color:var(--accent);background:var(--accentBg)}
+.dockBtn.done{color:var(--ok);border-color:var(--okLine)}
+
+.fileRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:6px 9px;
+  background:var(--panelBg);margin-bottom:5px}
+.machRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;
+  background:var(--panelBg);cursor:pointer;margin-bottom:4px}
+.machRow.on{border-color:var(--accent);background:var(--accentBg)}
+.machRow b{font-size:calc(11.5px * var(--fs))}
+.machRow small{font-size:calc(9.5px * var(--fs));color:var(--ink4);font-family:var(--mono)}
+.sel{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--panelBg);
+  color:var(--ink2);font:inherit;font-size:calc(12px * var(--fs))}
+.num{width:100%;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--panelBg);
+  color:var(--ink);font-family:var(--mono);font-size:calc(11.5px * var(--fs));text-align:right}
+.seg{flex:1;padding:6px 3px;border-radius:5px;border:1px solid var(--line);background:var(--panelBg);color:var(--ink3);
+  font-size:calc(10.5px * var(--fs));font-weight:600;cursor:pointer}
+.seg.on{border-color:var(--accent);background:var(--accent);color:#fff}
+.pbtn{width:100%;padding:8px;border-radius:6px;border:1.5px solid var(--accent);background:var(--accent);color:#fff;
+  font:inherit;font-size:calc(11.5px * var(--fs));font-weight:700;cursor:pointer;margin-top:8px}
+.ghostBtn{width:100%;padding:7px;border-radius:6px;background:var(--panelBg);color:var(--ink3);border:1px solid var(--line);
+  font:inherit;font-size:calc(11.5px * var(--fs));font-weight:600;cursor:pointer;margin-top:6px}
+.mnote{font-size:calc(10px * var(--fs));color:var(--ink4);line-height:1.6;margin-top:6px}
+.kv{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:calc(11px * var(--fs))}
+.kv span:first-child{color:var(--ink4)}
+.kv span:last-child{font-family:var(--mono);color:var(--ink2)}
+
+/* 右側工具列必須讓開視角方塊：方塊自 top:14px 起、含 Home 鈕約 81px 高，
+   若沿用 top:64px 會直接壓在方塊上，兩邊互相擋住點不到。 */
+#rail{position:absolute;top:112px;right:14px;display:flex;flex-direction:column;gap:4px;padding:6px;z-index:15}
+.railBtn{width:42px;height:42px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--ink3);
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:15px}
+.railBtn small{font-size:calc(8px * var(--fs));font-weight:600;transform:scale(.92)}
+.railBtn:hover{background:var(--panelBg);border-color:var(--line)}
+.railBtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#modPanel{position:absolute;top:112px;right:70px;width:calc(340px * var(--fs));max-height:calc(100vh - 140px);
+  display:none;flex-direction:column;z-index:15;overflow:hidden}
+#modPanel.open{display:flex}
+#modHead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+#modHead b{flex:1;font-size:calc(12.5px * var(--fs))}
+#modClose{border:0;background:transparent;color:var(--ink4);cursor:pointer;font-size:14px}
+#modBody{padding:12px;overflow-y:auto}
+
+.chk{border:1px solid var(--line);border-left:3px solid var(--ink4);background:var(--panelBg);border-radius:4px;
+  padding:6px 9px;margin-bottom:5px}
+.chk .th{display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--fs));font-weight:600}
+.chk .td{font-size:calc(10px * var(--fs));color:var(--ink3);line-height:1.55;margin-top:3px}
+.chk.pass{border-left-color:var(--ok)}   .chk.pass .th{color:var(--ok)}
+.chk.warn{border-left-color:var(--warn)} .chk.warn .th{color:var(--warnText)}
+.chk.fail{border-left-color:var(--err)}  .chk.fail .th{color:var(--err)}
+.chk.manual{border-left-color:var(--purple)} .chk.manual .th{color:var(--purple)}
+.chk .way{margin-left:auto;font-family:var(--mono);font-size:calc(8.5px * var(--fs));color:var(--ink4);
+  border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.catHead{font-size:calc(10.5px * var(--fs));font-weight:700;color:var(--ink2);margin:12px 0 5px}
+.catHead:first-child{margin-top:0}
+.fcCnt{display:flex;gap:5px;margin-bottom:9px}
+.fcCnt div{flex:1;text-align:center;padding:5px 2px;border-radius:6px;border:1px solid var(--line);background:var(--panelBg)}
+.fcCnt b{display:block;font-family:var(--mono);font-size:calc(14px * var(--fs))}
+.fcCnt small{font-size:calc(8.5px * var(--fs));color:var(--ink4)}
+
+/* 忙碌遮罩（STEP 載入 CAD 核心／鑲嵌時） */
+#busy{position:absolute;inset:0;z-index:70;display:none;align-items:center;justify-content:center;
+  background:rgba(10,14,20,.45);backdrop-filter:blur(3px)}
+#busy .box{display:flex;align-items:center;gap:12px;padding:16px 22px;border-radius:10px;
+  background:var(--panelBg);border:1px solid var(--line);box-shadow:var(--shadow);
+  font-size:calc(12px * var(--fs));color:var(--ink2)}
+#busy .spin{width:18px;height:18px;border:2px solid var(--line);border-top-color:var(--accent);
+  border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#toast{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:60;padding:9px 16px;border-radius:8px;
+  font-size:calc(11.5px * var(--fs));font-weight:600;display:none;box-shadow:var(--shadow)}
+#toast.ok{background:var(--okBg);color:var(--ok);border:1px solid var(--okLine)}
+#toast.err{background:var(--errBg);color:var(--err);border:1px solid var(--errLine)}
+#toast.inf{background:var(--accentBg);color:var(--accent);border:1px solid var(--line)}
+/* 未登入提示：刻意「不」做成全螢幕遮罩 —— STL 載入與幾何分析全在本機執行、不碰後端，
+   擋住只會讓人連模型都轉不動。只有讀價格/儲存需要登入，那些操作各自另有把關。 */
+#gate{position:absolute;left:50%;bottom:56px;transform:translateX(-50%);z-index:40;display:none;
+  pointer-events:none}
+#gate .box{pointer-events:auto;padding:10px 16px;border-radius:10px;background:var(--warnBg);
+  border:1px solid var(--warnLine);color:var(--warnText);box-shadow:var(--shadowSm);
+  display:flex;align-items:center;gap:10px;font-size:calc(11px * var(--fs))}
+#gate .box b{font-size:calc(11.5px * var(--fs))}
+#gate .box .sub{color:var(--ink3);font-size:calc(10px * var(--fs))}
+#gateClose{border:0;background:transparent;color:var(--ink4);cursor:pointer;font-size:13px;padding:0 2px}
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<div id="topbar">
+  <div id="brand" class="glass-sm">
+    <b>Markforged 估價</b><span class="tag">Beta</span>
+  </div>
+  <div style="flex:1"></div>
+  <div id="viewbar" class="glass-sm">
+    <button class="vtab on" data-view="persp">透視</button>
+    <button class="vtab" data-view="top">頂視</button>
+    <button class="vtab" data-view="front">前視</button>
+    <button class="vtab" data-view="side">側視</button>
+    <div class="vsep"></div>
+    <button class="abtn" id="btnFaceDown" title="以此面為底：點擊後再點模型上任一面，該面會轉向平台朝下">▼ 此面為底</button>
+    <button class="abtn" id="btnOverhang" title="懸垂區域標色（依材料門檻）">⚠ 懸垂</button>
+    <button class="abtn on" id="btnRange" title="顯示/隱藏成形範圍框">▦ 範圍框</button>
+    <div class="vsep"></div>
+    <button class="abtn" id="btnTheme" title="切換深色/淺色">◐</button>
+  </div>
+  <div style="flex:1"></div>
+  <div id="cubeWrap">
+    <div id="cube"><div id="cubeInner">
+      <div class="cface" style="transform:translateZ(26px)" data-cam="front">前</div>
+      <div class="cface" style="transform:rotateY(180deg) translateZ(26px)" data-cam="back">後</div>
+      <div class="cface" style="transform:rotateY(90deg) translateZ(26px)" data-cam="right">右</div>
+      <div class="cface" style="transform:rotateY(-90deg) translateZ(26px)" data-cam="left">左</div>
+      <div class="cface" style="transform:rotateX(90deg) translateZ(26px)" data-cam="top">頂</div>
+      <div class="cface" style="transform:rotateX(-90deg) translateZ(26px)" data-cam="bottom">底</div>
+    </div></div>
+    <button id="cubeHome" data-cam="home" title="回復視角">⌂</button>
+  </div>
+</div>
+<div id="selBox"></div>
+<div id="placePanel" class="glass"><div id="ppBody"></div></div>
+
+<button id="stepShow" class="glass-sm" style="display:none">▶ 步驟面板</button>
+<div id="stepCard" class="glass">
+  <div id="stepHead"><b id="stepTitle">步驟 1 · 上傳檔案</b><span id="stepCount">1/5</span>
+    <button id="stepHide">◀</button></div>
+  <div id="stepBody"></div>
+</div>
+
+<div id="rail" class="glass">
+  <button class="railBtn" data-mod="geo" title="幾何分析">🧩<small>幾何</small></button>
+  <button class="railBtn" data-mod="fiber" title="纖維策略參考">🧵<small>纖維</small></button>
+  <button class="railBtn" data-mod="cost" title="成本分析">💰<small>成本</small></button>
+  <button class="railBtn" data-mod="admin" id="railAdmin" title="價格設定（限管理員／主管）" style="display:none">⚙<small>設定</small></button>
+</div>
+<div id="modPanel" class="glass">
+  <div id="modHead"><b id="modTitle"></b><button id="modClose">✕</button></div>
+  <div id="modBody"></div>
+</div>
+
+<div id="opHint" class="glass-sm">
+  <b>左鍵</b> 選取／拖曳模型・拖旋轉環　·　<b>右鍵</b> 旋轉視角　·　<b>中鍵</b> 平移視角　·　<b>滾輪</b> 縮放
+  <span id="selInfo" style="display:none;color:var(--accent);font-weight:700">　· 已選取模型</span>
+</div>
+<div id="busy"><div class="box">
+  <div class="spin"></div><span id="busyMsg">處理中…</span>
+</div></div>
+<div id="toast"></div>
+<div id="gate"><div class="box">
+  <span style="font-size:15px">🔒</span>
+  <div>
+    <b>未登入</b>
+    <div class="sub">可正常載入 STL 與檢視分析；讀取單價與儲存設定需回 portal 登入。</div>
+  </div>
+  <button id="gateClose" title="關閉提示">✕</button>
+</div></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+/* ============================================================================
+   Markforged 估價（Beta）
+   與 quote-studio.html（Formlabs SLA）刻意分離的獨立頁面。
+
+   為什麼不共用 quote-studio：
+     - 成形工藝不同（FDM+連續纖維 vs SLA），設計規範門檻完全不同
+     - 成本是「塑料 cc + 纖維 cc」雙材料，非單一樹脂 ml
+     - SLA 專用的支撐生成/剝離力/排液孔等分析套到 FDM 上會給出誤導建議
+
+   設計規範來源：《Markforged 複合材料 3D 列印設計指南 11.6 版》
+   規則整理見 docs/markforged-integration-plan.md 附錄 B。
+
+   材料用量目前為「手動輸入」（階段 2）。接上 Eiger API 後改自動帶入（階段 3/4），
+   API 必須經 Cloud Function 代理 —— Secret Key 不可落到前端，詳見附錄 A.1。
+   ============================================================================ */
+
+/* ============ 0. 常數：機台 / 材料 / 纖維 / 設計規範 ============ */
+
+/* 成形範圍（mm）。工業型「含纖維」時 Y 會縮到 250 —— 依實際纖維設定取值。 */
+const MACHINES = {
+  desktop:    { name:'桌上型系列', hint:'Mark Two / Onyx One / Onyx Pro',
+                size:[320,132,154], sizeFiber:[320,132,154], series:'desktop' },
+  industrial: { name:'工業型系列', hint:'X7 等',
+                size:[330,270,200], sizeFiber:[330,250,200], series:'industrial' },
+  fx20:       { name:'FX20',      hint:'大尺寸工業機',
+                size:[525,400,400], sizeFiber:[525,400,400], series:'fx20' },
+};
+
+/* 基底材料。fiberOK=false 者不支援連續纖維（指南第 7、8 章明載）。
+   spec 覆寫值只寫「與預設不同」的項目。 */
+const MATERIALS = {
+  onyx:      { name:'Onyx',            fiberOK:true,  desc:'兼具硬度與挺度，耐熱、尺寸穩定' },
+  onyxfr:    { name:'Onyx FR',         fiberOK:true,  desc:'阻燃版 Onyx，UL94 V-0（最小 3mm 厚）',
+               minFlameTh:3.0 },
+  onyxesd:   { name:'Onyx ESD',        fiberOK:true,  desc:'防靜電等級，強度與挺度較高' },
+  nylonwhite:{ name:'白色尼龍',        fiberOK:true,  desc:'表面平滑，適合接觸皮膚／工件夾具' },
+  ppla:      { name:'精準 PLA',        fiberOK:false, desc:'視覺原型用；不支援連續纖維',
+               spec:{ avoidTallNarrow:true, fineFeatDia:6.0 } },
+  stpu:      { name:'Smooth TPU 95A',  fiberOK:false, desc:'彈性材料；不支援連續纖維',
+               spec:{ overhangAngle:55, pinDiaXY:2.5, pinDiaZ:2.5, fineFeatDia:2.5 } },
+};
+
+/* 連續纖維。minFeatH = 可增強形體的最小高度（碳纖維層厚較大故值不同）。 */
+const FIBERS = {
+  none:       { name:'不使用纖維', minFeatH:0 },
+  carbon:     { name:'碳纖維',      minFeatH:1.125, desc:'高強度重量比、高挺度；持續施力' },
+  fiberglass: { name:'玻璃纖維',    minFeatH:0.9,   desc:'耐用且符合成本效益；間歇施力' },
+  kevlar:     { name:'Kevlar',      minFeatH:0.9,   desc:'堅固耐撞擊；撞擊受力' },
+  hsht:       { name:'HSHT 玻纖',   minFeatH:0.9,   desc:'耐用、熱變形溫度高；高溫持續施力' },
+};
+
+/* 依「機台系列」而異的纖維規範（桌上型/工業型 vs FX20，指南快速參考表）。 */
+const FIBER_SPEC_BY_SERIES = {
+  desktop:    { minLen:45, minArea:90,  minBossDia:9.6,  wOpen:3.6,  wRing:2.8,  hole:[12.16,3.85,0.5] },
+  industrial: { minLen:45, minArea:90,  minBossDia:9.6,  wOpen:3.6,  wRing:2.8,  hole:[12.16,3.85,0.5] },
+  fx20:       { minLen:58, minArea:138, minBossDia:12.6, wOpen:3.85, wRing:2.9,  hole:[17,6.1,2.9] },
+};
+
+/* 塑膠件通用規範預設值（可被 MATERIALS[x].spec 覆寫）。 */
+const SPEC_BASE = {
+  minPartX:1.6, minPartY:1.6, minPartZ:0.8,
+  overhangAngle:40,        // 免支撐最小懸空角；Eiger 於 <45° 就會生支撐
+  eigerSupportAngle:45,
+  holeDiaXY:1.5, holeDiaZ:1.0,
+  pinDiaXY:1.6, pinDiaZ:2.0, pinHD:5,   // 支撐體 H 不宜 > 5D
+  engraveZH:0.10, engraveZW:0.50, embossZH:0.10, embossZW:0.80,
+  extrusionW:0.4,          // 塑膠出料層寬：浮雕高度需為其雙數倍數
+  fineFeatDia:0,           // 0 = 不檢查
+  avoidTallNarrow:false,
+  minFlameTh:0,
+};
+
+/* 依目前材料/纖維/機台組出實際生效的門檻 —— Markforged 的規範是「隨材料變動」的，
+   不能像 Formlabs 版那樣寫死一組常數。 */
+function activeSpec(){
+  const m = MATERIALS[S.material] || MATERIALS.onyx;
+  return Object.assign({}, SPEC_BASE, m.spec || {}, m.minFlameTh?{minFlameTh:m.minFlameTh}:{});
+}
+function fiberSpec(){ return FIBER_SPEC_BY_SERIES[mach().series] || FIBER_SPEC_BY_SERIES.desktop; }
+function mach(){ return MACHINES[S.machine] || MACHINES.desktop; }
+function matr(){ return MATERIALS[S.material] || MATERIALS.onyx; }
+function fibr(){ return FIBERS[S.fiber] || FIBERS.none; }
+function fiberOn(){ return matr().fiberOK && S.fiber !== 'none'; }
+/* 成形範圍：工業型用纖維時 Y 縮水，故依 fiberOn() 取值 */
+function machSize(){ const mc = mach(); return fiberOn() ? mc.sizeFiber : mc.size; }
+
+const STEPS = ['上傳檔案','選擇機台','材料與纖維','可行性檢查','報價'];
+const WORK_TYPES = ['代工','評估'];
+const NTD = n => 'NT$ ' + Math.round(n).toLocaleString('zh-TW');
+const F = (n,d=2) => (typeof n==='number' && isFinite(n)) ? n.toFixed(d) : '—';
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+
+/* ============ 1. 狀態 ============ */
+const S = {
+  step:0, openMod:null,
+  model:null,                 // 目前載入的模型（本版單模型）
+  machine:'desktop', material:'onyx', fiber:'none',
+  fiberRings:2,               // 同心纖維圈數（僅供纖維檢查參考）
+  workType:'代工',
+  showRange:true, colorOverhang:false, selected:false, faceDownMode:false,
+  // 材料用量：階段 2 手動輸入；階段 3/4 由 Eiger API 帶入後改為預設值、手動僅覆寫
+  usage:{ source:'manual', plasticCC:null, fiberCC:null, printSec:null },
+  price:{ plastic:{}, fiber:{}, postCost:150, multipliers:{ '代工':1,'評估':1 } },
+  user:null, isAdmin:false,
+};
+
+/* ============ 2. Firebase（沿用 portal 登入狀態） ============ */
+const FIREBASE_CONFIG = {
+  apiKey:"AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
+  authDomain:"swtc-3dp-poc.firebaseapp.com",
+  projectId:"swtc-3dp-poc",
+  storageBucket:"swtc-3dp-poc.firebasestorage.app",
+  messagingSenderId:"1074210451221",
+  appId:"1:1074210451221:web:quotemf"
+};
+const FB = { ready:false, db:null };
+
+async function initFirebase(){
+  try{
+    if (!window.firebase || !firebase.initializeApp) return;
+    firebase.initializeApp(FIREBASE_CONFIG);
+    FB.db = firebase.firestore();
+    FB.ready = true;
+    firebase.auth().onAuthStateChanged(async u => {
+      S.user = u || null;
+      // 提示列只是告知，不阻擋操作（見 #gate 的 CSS 註解）
+      if (!S.gateDismissed) $('#gate').style.display = u ? 'none' : 'block';
+      if (!u) return;
+      try{
+        const snap = await FB.db.collection('users').doc(u.uid).get();
+        const d = snap.exists ? snap.data() : {};
+        const perms = d.permissions || [];
+        // 與 inventory / portal 同一套判斷：admin 或具 manage_quote_pricing 的主管
+        S.isAdmin = perms.includes('admin') || perms.includes('manage_quote_pricing');
+        $('#railAdmin').style.display = S.isAdmin ? '' : 'none';
+      }catch(e){ console.warn('[mfquote] 讀取使用者失敗', e); }
+      await loadPricing();
+      renderStep();
+    });
+  }catch(e){ console.warn('[mfquote] Firebase 初始化失敗', e); }
+}
+
+/* 價格獨立於 quote_studio_pricing —— 欄位語意不同（NT$/cc 雙材料 vs NT$/L 樹脂），
+   混用會被對方的整份覆寫沖掉。 */
+async function loadPricing(){
+  if (!FB.ready) return;
+  try{
+    const doc = await FB.db.collection('settings').doc('quote_markforged_pricing').get();
+    if (doc.exists){
+      const d = doc.data() || {};
+      S.price.plastic     = d.plastic     || {};
+      S.price.fiber       = d.fiber       || {};
+      S.price.postCost    = (d.postCost != null) ? d.postCost : 150;
+      // 只採用目前開放的工作類型，避免舊資料把已移除的類型帶回來
+      const mul = { '代工':1, '評估':1 };
+      WORK_TYPES.forEach(w => { if (d.multipliers && d.multipliers[w] != null) mul[w] = d.multipliers[w]; });
+      S.price.multipliers = mul;
+    }
+  }catch(e){ console.warn('[mfquote] 讀取價格失敗', e); }
+}
+async function savePricing(){
+  if (!FB.ready || !S.isAdmin) { toast('需要價格設定權限','err'); return; }
+  try{
+    await FB.db.collection('settings').doc('quote_markforged_pricing').set({
+      plastic:S.price.plastic, fiber:S.price.fiber,
+      postCost:S.price.postCost, multipliers:S.price.multipliers,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedByEmail: S.user ? S.user.email : '',
+    }, { merge:true });
+    toast('價格已儲存','ok');
+  }catch(e){ toast('儲存失敗：'+e.message,'err'); }
+}
+
+/* ============ 3. 3D 檢視 ============ */
+const V = {};
+function initViewer(){
+  const canvas = $('#c3d');
+  V.renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+  V.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  V.scene  = new THREE.Scene();
+  V.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 6000);
+  V.scene.add(new THREE.AmbientLight(0xffffff, .68));
+  const dl = new THREE.DirectionalLight(0xffffff, .72); dl.position.set(80,160,120); V.scene.add(dl);
+  const dl2= new THREE.DirectionalLight(0xcfe8f2, .32); dl2.position.set(-120,60,-80); V.scene.add(dl2);
+  V.platGroup = new THREE.Group(); V.scene.add(V.platGroup);
+  V.modelGroup= new THREE.Group(); V.scene.add(V.modelGroup);
+  // 中性灰；DoubleSide 讓萬一有繞序不一致的 STL 也不會出現破面
+  V.matModel = new THREE.MeshStandardMaterial({ color:0xb4b7ba, metalness:.04, roughness:.68,
+                                                vertexColors:true, side:THREE.DoubleSide });
+
+  V.theta = Math.PI*0.25; V.phi = Math.PI*0.34; V.radius = 520;
+  V.target = new THREE.Vector3(0,40,0);
+  V.updateCam = () => {
+    V.camera.position.set(
+      V.target.x + V.radius*Math.sin(V.phi)*Math.cos(V.theta),
+      V.target.y + V.radius*Math.cos(V.phi),
+      V.target.z + V.radius*Math.sin(V.phi)*Math.sin(V.theta));
+    V.camera.lookAt(V.target);
+    syncCube();
+  };
+  V.updateCam();
+
+  /* ── 滑鼠操作規則（與 quote-studio 一致）──
+     左鍵：點模型＝選取、拖模型＝在平台上移動、拖空白＝框選
+     右鍵：旋轉視角
+     中鍵：平移視角                                          */
+  V.ray = new THREE.Raycaster();
+  let px=0, py=0, rot=false, pan=false, dragModel=false, boxSel=false;
+  let moved=false, boxStart=null, grabPlane=null, grabMeshPos=null, dragClampNotified=false;
+  let ringAxis=null, ringStart=0, ringDelta=0;
+  const selBoxEl = $('#selBox');
+
+  const ndc = e => new THREE.Vector2(
+    (e.clientX/innerWidth)*2 - 1, -(e.clientY/innerHeight)*2 + 1);
+  const pickModel = e => {
+    if (!V.modelGroup.children.length) return null;
+    V.ray.setFromCamera(ndc(e), V.camera);
+    const hit = V.ray.intersectObjects(V.modelGroup.children, false);
+    return hit.length ? hit[0] : null;
+  };
+  // 指標在成形平台平面(y=0)上的位置，用於拖曳移動
+  const planeHit = e => {
+    V.ray.setFromCamera(ndc(e), V.camera);
+    const o = V.ray.ray.origin, d = V.ray.ray.direction;
+    if (Math.abs(d.y) < 1e-6) return null;
+    const t = -o.y / d.y;
+    return t>0 ? new THREE.Vector3(o.x+d.x*t, 0, o.z+d.z*t) : null;
+  };
+  // 旋轉環拾取；環永遠畫在最上層（depthTest:false），不會被模型擋住而抓不到
+  const pickRing = e => {
+    if (!V.gizmoPicks || !V.gizmoPicks.length) return null;
+    V.ray.setFromCamera(ndc(e), V.camera);
+    const hits = V.ray.intersectObjects(V.gizmoPicks, false);
+    return hits[0] ? hits[0].object.userData.axis : null;
+  };
+  // 指標射線與該環所在平面交點的極角
+  const ringAngleAt = (axis, e) => {
+    V.ray.setFromCamera(ndc(e), V.camera);
+    const B = V.gizmoBasis[axis], P = V.gizmoCenter;
+    if (!B || !P) return null;
+    const o = V.ray.ray.origin, d = V.ray.ray.direction;
+    const dn = d.dot(B.axis);
+    if (Math.abs(dn) < 1e-5) return null;
+    const t = P.clone().sub(o).dot(B.axis) / dn;
+    if (t <= 0) return null;
+    const v = o.clone().addScaledVector(d, t).sub(P);
+    return Math.atan2(v.dot(B.w), v.dot(B.u));
+  };
+  V.pickModel = pickModel;
+
+  canvas.addEventListener('contextmenu', e=>e.preventDefault());
+  canvas.addEventListener('pointerdown', e=>{
+    px=e.clientX; py=e.clientY; moved=false;
+    // setPointerCapture 對非真實指標會丟 NotFoundError；必須包 try，
+    // 否則例外會中斷整個 handler，狀態旗標設不到，操作全部失效。
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+    if (e.button===2){ rot=true; return; }                 // 右鍵：旋轉視角
+    if (e.button===1){ pan=true; return; }                 // 中鍵：平移視角
+    if (e.button!==0) return;
+    const axis = pickRing(e);                              // 旋轉環優先於模型
+    if (axis){
+      const a0 = ringAngleAt(axis, e);
+      if (a0 !== null){ ringAxis=axis; ringStart=a0; ringDelta=0; gizmoDragBegin(); return; }
+    }
+    const hit = pickModel(e);
+    if (hit && S.faceDownMode){ applyFaceDown(hit); return; }   // 以此面為底：優先於拖曳
+    if (hit){                                              // 左鍵點到模型：選取並準備拖曳
+      selectModel(true);
+      dragModel = true;
+      dragClampNotified = false;
+      const mesh = V.modelGroup.children[0];
+      grabPlane   = planeHit(e) || new THREE.Vector3();
+      grabMeshPos = mesh.position.clone();
+      canvas.style.cursor='grabbing';
+    } else {                                               // 左鍵點空白：開始框選
+      boxSel = true; boxStart = {x:e.clientX, y:e.clientY};
+      updateSelBox(boxStart, boxStart);
+      selBoxEl.style.display='block';
+    }
+  });
+  const endDrag = () => {
+    if (ringAxis){ const ax=ringAxis, d=ringDelta; ringAxis=null; commitGizmo(ax, d); }
+    if (dragModel){ dragModel=false; canvas.style.cursor=''; renderPlacePanel(); }
+    if (boxSel){
+      boxSel=false; selBoxEl.style.display='none';
+      // 框選：框內若含模型則選取，否則取消選取；單純點一下空白也視為取消
+      if (moved && S.model) selectModel(boxIntersectsModel(boxStart, {x:px,y:py}));
+      else selectModel(false);
+    }
+    rot=false; pan=false;
+  };
+  addEventListener('pointerup', endDrag);
+  addEventListener('pointercancel', endDrag);
+  // move/up 掛在 window：拖曳中指標滑過左右面板時操作不會中斷
+  addEventListener('pointermove', e=>{
+    if (!rot && !pan && !dragModel && !boxSel && !ringAxis) return;
+    const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
+    if (Math.abs(dx)+Math.abs(dy) > 1) moved=true;
+    if (ringAxis){                                   // 拖曳旋轉環：1° 吸附，Shift 自由角度
+      const a = ringAngleAt(ringAxis, e);
+      if (a !== null){
+        let d = a - ringStart;
+        while (d >  Math.PI) d -= 2*Math.PI;
+        while (d < -Math.PI) d += 2*Math.PI;
+        if (!e.shiftKey){ const st = Math.PI/180; d = Math.round(d/st)*st; }
+        ringDelta = d;
+        applyGizmoLive(ringAxis, d);
+      }
+      return;
+    }
+    // ★ 旋轉/平移的方向與係數完全比照 quote-studio，先前自己寫成反向（theta -= dx、pan -dx）
+    if (rot){
+      V.theta += dx*0.008;
+      V.phi = Math.min(Math.PI-0.01, Math.max(0.01, V.phi - dy*0.006));
+      V.updateCam();
+    } else if (pan){
+      const s = V.radius*0.0016;
+      const right = new THREE.Vector3().subVectors(V.camera.position, V.target).cross(V.camera.up).normalize();
+      V.target.addScaledVector(right, dx*s);
+      V.target.y += dy*s;
+      V.updateCam();
+    } else if (dragModel){
+      const p = planeHit(e);
+      const mesh = V.modelGroup.children[0];
+      if (p && mesh && grabPlane){
+        // 比照 quote-studio：拖曳中即時夾限，頂到成形範圍邊界就停住
+        const ox = grabMeshPos.x + (p.x - grabPlane.x), oz = grabMeshPos.z + (p.z - grabPlane.z);
+        const ms = machSize(), hx = S.model.size[0]/2, hz = S.model.size[1]/2;
+        const clampAxis = (half, hw, off) => (hw*2 > half*2) ? off : Math.min(half-hw, Math.max(-half+hw, off));
+        const nx = clampAxis(ms[0]/2, hx, ox), nz = clampAxis(ms[1]/2, hz, oz);
+        if ((nx!==ox || nz!==oz) && !dragClampNotified){
+          dragClampNotified = true;     // 同一次拖曳只提醒一次，不洗版
+          toast('已達最大列印範圍邊界，動作已強制停止','inf');
+        }
+        mesh.position.set(nx, 0, nz);
+        if (V.gizmo) V.gizmo.position.set(nx, 0, nz);
+      }
+    } else if (boxSel){
+      updateSelBox(boxStart, {x:e.clientX, y:e.clientY});
+    }
+  });
+  // 縮放比照 quote-studio：加法式、隨滾動量線性
+  canvas.addEventListener('wheel', e=>{
+    e.preventDefault();
+    V.radius = Math.min(3000, Math.max(40, V.radius + e.deltaY*0.4));
+    V.updateCam();
+  }, { passive:false });
+
+  const resize = () => {
+    const w = innerWidth, h = innerHeight;
+    V.renderer.setSize(w,h,false);
+    V.camera.aspect = w/h; V.camera.updateProjectionMatrix();
+  };
+  addEventListener('resize', resize); resize();
+  (function loop(){ requestAnimationFrame(loop); updateGizmoScreenScale(); V.renderer.render(V.scene, V.camera); })();
+  buildPlatform();
+}
+
+/* ── 選取 / 框選 / 邊界夾制 ── */
+function selectModel(on){
+  S.selected = !!on && !!S.model;
+  const mesh = V.modelGroup.children[0];
+  if (mesh) mesh.material.emissive.setHex(S.selected ? 0x1d4e5e : 0x000000);
+  const b = $('#selInfo');
+  if (b) b.style.display = S.selected ? '' : 'none';
+  // 選取才顯示旋轉軸與擺放面板，未選取時一起收起，避免擋住檢視
+  if (S.selected) buildGizmo(); else { removeGizmo(); S.faceDownMode = false; }
+  updateFaceDownBtn();
+  renderPlacePanel();
+}
+function updateSelBox(a, b){
+  const el = $('#selBox');
+  el.style.left   = Math.min(a.x,b.x)+'px';
+  el.style.top    = Math.min(a.y,b.y)+'px';
+  el.style.width  = Math.abs(a.x-b.x)+'px';
+  el.style.height = Math.abs(a.y-b.y)+'px';
+}
+/* 框選判定：把模型包圍盒的 8 個角投影到螢幕，任一角落在框內即視為選中 */
+function boxIntersectsModel(a, b){
+  const mesh = V.modelGroup.children[0];
+  if (!mesh) return false;
+  mesh.geometry.computeBoundingBox();
+  const bb = mesh.geometry.boundingBox;
+  const x0=Math.min(a.x,b.x), x1=Math.max(a.x,b.x), y0=Math.min(a.y,b.y), y1=Math.max(a.y,b.y);
+  for (const cx of [bb.min.x,bb.max.x]) for (const cy of [bb.min.y,bb.max.y]) for (const cz of [bb.min.z,bb.max.z]){
+    const p = new THREE.Vector3(cx,cy,cz).applyMatrix4(mesh.matrixWorld).project(V.camera);
+    const sx = (p.x+1)/2*innerWidth, sy = (-p.y+1)/2*innerHeight;
+    if (sx>=x0 && sx<=x1 && sy>=y0 && sy<=y1) return true;
+  }
+  return false;
+}
+/* ── 旋轉軸 Gizmo（比照 quote-studio）──
+   三色弧線＋方向箭頭，恆在最上層（depthTest:false），不會被模型擋住而抓不到。
+   ★ 旋轉會改變哪些面成為懸垂，放開後必須重跑分析，否則檢查結果會停在舊方向。 */
+const GIZMO_AXES = { x:{ v:[1,0,0], c:0xc0392b }, y:{ v:[0,1,0], c:0x1d6f43 }, z:{ v:[0,0,1], c:0x2f6fd6 } };
+function removeGizmo(){
+  if (!V.gizmo) return;
+  V.scene.remove(V.gizmo);
+  V.gizmo.traverse(o=>{ if(o.geometry) o.geometry.dispose(); if(o.material) o.material.dispose(); });
+  V.gizmo = null; V.gizmoPicks = []; V.gizmoBasis = {};
+}
+function buildGizmo(){
+  removeGizmo();
+  const m = S.model, mesh = V.modelGroup.children[0];
+  if (!m || !mesh) return;
+  const P = new THREE.Vector3(mesh.position.x, m.size[2]/2, mesh.position.z);
+  const R = Math.max(12, Math.max(m.size[0], m.size[1], m.size[2])*0.42 + 3) * 0.75;
+  V.gizmo = new THREE.Group(); V.gizmoCenter = P.clone(); V.gizmoR = R;
+  V.gizmoPicks = []; V.gizmoBasis = {};
+  V.gizmoBaseDist = V.camera.position.distanceTo(P);
+  for (const [k,a] of Object.entries(GIZMO_AXES)){
+    const av = new THREE.Vector3(...a.v);
+    const seed = (k==='y') ? new THREE.Vector3(1,0,0) : new THREE.Vector3(0,1,0);
+    const u = seed.sub(av.clone().multiplyScalar(seed.dot(av))).normalize();
+    const w = new THREE.Vector3().crossVectors(av, u);
+    V.gizmoBasis[k] = { axis:av.clone(), u, w };
+    const tubeR = Math.max(0.35, R*0.016);
+    const SPAN = Math.PI*0.8, SEG = 40, pts = [];
+    for (let i=0;i<=SEG;i++){
+      const t = -SPAN/2 + (i/SEG)*SPAN;
+      pts.push(new THREE.Vector3().copy(P).addScaledVector(u, Math.cos(t)*R).addScaledVector(w, Math.sin(t)*R));
+    }
+    const ring = new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, tubeR, 10, false),
+      new THREE.MeshBasicMaterial({ color:a.c, transparent:true, opacity:.92, depthTest:false }));
+    ring.userData.axis = k; ring.renderOrder = 15;
+    V.gizmo.add(ring); V.gizmoPicks.push(ring);
+    const arrow = new THREE.Mesh(
+      new THREE.ConeGeometry(tubeR*1.7, tubeR*4.2, 12),
+      new THREE.MeshBasicMaterial({ color:a.c, depthTest:false }));
+    arrow.position.copy(P).addScaledVector(u, R).addScaledVector(w, tubeR*2.4);
+    arrow.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), w.clone().normalize()));
+    arrow.renderOrder = 15;
+    V.gizmo.add(arrow);
+  }
+  V.scene.add(V.gizmo);
+}
+/* 視野恆定大小：相機拉遠時等比放大，環在畫面上看起來一樣大 */
+function updateGizmoScreenScale(){
+  if (!V.gizmo || !V.gizmoCenter || !V.gizmoBaseDist) return;
+  V.gizmo.scale.setScalar(V.camera.position.distanceTo(V.gizmoCenter) / V.gizmoBaseDist);
+}
+function gizmoDragBegin(){
+  const mesh = V.modelGroup.children[0];
+  if (mesh) V.gizmoQ0 = mesh.quaternion.clone();
+}
+/* 拖曳中即時預覽：只動 mesh 的 quaternion，不重算分析（重算太慢） */
+function applyGizmoLive(axis, delta){
+  const mesh = V.modelGroup.children[0];
+  if (!mesh || !V.gizmoQ0) return;
+  const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
+  mesh.quaternion.copy(q).multiply(V.gizmoQ0);
+}
+/* 把「畫面座標(Y-up)的旋轉」烘焙進幾何並重跑分析。
+   旋轉/翻面都走這一條路徑，避免兩處各寫一份座標換算而漂移。
+   revertIfTooTall：轉完若超出成形高度上限就整個放棄（比照 quote-studio 的以此面為底行為）。 */
+function bakeRotation(qScreen, opt){
+  const mesh = V.modelGroup.children[0];
+  if (!mesh || !S.model) return false;
+  // three.js 場景是 Y-up，分析資料是指南的 Z-up：screen_x=guide_x、screen_y=guide_z、screen_z=-guide_y
+  const e  = new THREE.Euler().setFromQuaternion(qScreen, 'XYZ');
+  const qz = new THREE.Quaternion().setFromEuler(new THREE.Euler(e.x, -e.z, e.y, 'XYZ'));
+  const raw = S.model.raw, n = raw.triCount;
+  const verts = new Float32Array(raw.verts.length);
+  const c = [ (S.model.bbMin[0]+S.model.bbMax[0])/2,
+              (S.model.bbMin[1]+S.model.bbMax[1])/2,
+              (S.model.bbMin[2]+S.model.bbMax[2])/2 ];
+  const v = new THREE.Vector3();
+  for (let i=0;i<n*3;i++){
+    const o=i*3;
+    v.set(raw.verts[o]-c[0], raw.verts[o+1]-c[1], raw.verts[o+2]-c[2]).applyQuaternion(qz);
+    verts[o]=v.x+c[0]; verts[o+1]=v.y+c[1]; verts[o+2]=v.z+c[2];
+  }
+  const next = analyze({ verts, norms:null, triCount:n });
+  if (opt && opt.revertIfTooTall && next.size[2] > machSize()[2] + 0.01){
+    toast(`✕ 轉向後高度 ${F(next.size[2],1)}mm 超出上限 ${machSize()[2]}mm，動作已還原`,'err');
+    return false;
+  }
+  const keepPos = mesh.position.clone();          // 保留使用者拖曳過的平台位置
+  next.name = S.model.name; next.sizeKB = S.model.sizeKB;
+  S.model = next;
+  recomputeOverhang();
+  buildMesh();
+  const nm = V.modelGroup.children[0];
+  if (nm) nm.position.copy(keepPos);
+  if (S.selected) buildGizmo();
+  renderStep();
+  return true;
+}
+/* 放開旋轉環後把旋轉烘焙進幾何 —— 方向改變會改變懸垂判定 */
+function commitGizmo(axis, delta){
+  if (!V.modelGroup.children[0] || !S.model) return;
+  if (Math.abs(delta) < 1e-4){ buildGizmo(); return; }
+  const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
+  if (bakeRotation(q)) toast(`已旋轉 ${(delta*180/Math.PI).toFixed(0)}°，已重新分析懸垂`,'ok');
+  else { buildMesh(); buildGizmo(); }
+}
+/* 以此面為底：把點到的面的法向轉成朝下 (0,-1,0) */
+function applyFaceDown(hit){
+  S.faceDownMode = false;
+  updateFaceDownBtn();
+  if (!hit || !hit.face) return;
+  // 面法向需轉成世界座標；模型可能已被旋轉過
+  const nrm = hit.face.normal.clone()
+    .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize();
+  const q = new THREE.Quaternion().setFromUnitVectors(nrm, new THREE.Vector3(0,-1,0));
+  if (bakeRotation(q, { revertIfTooTall:true })){
+    selectModel(true);
+    toast('✓ 已將選取面轉向平台（以此面為底）','ok');
+  }
+}
+function updateFaceDownBtn(){
+  const b = $('#btnFaceDown');
+  if (b){
+    b.classList.toggle('on', !!S.faceDownMode);
+    b.textContent = S.faceDownMode ? '▼ 請點模型上的面…' : '▼ 此面為底';
+  }
+  const f = $('#ppFaceBtn');
+  if (f){
+    f.classList.toggle('on', !!S.faceDownMode);
+    f.textContent = S.faceDownMode ? '▼ 請點擊模型上的一個面…' : '▼ 以此面為底';
+  }
+}
+
+/* ── 擺放面板（PreForm 式）──
+   選取模型後出現，提供數值定位、方向鍵微調、置中與以此面為底。
+   位置以 mesh.position 為準（x=左右、z=深度），與拖曳共用同一份狀態。 */
+function renderPlacePanel(){
+  const P = $('#ppBody'), panel = $('#placePanel');
+  if (!S.model || !S.selected){ panel.classList.remove('open'); return; }
+  const mesh = V.modelGroup.children[0];
+  if (!mesh){ panel.classList.remove('open'); return; }
+  P.innerHTML = '';
+
+  const head = el('h4','', '✥ 擺放（PreForm 式）<span class="x">✕</span>');
+  head.querySelector('.x').addEventListener('click', ()=>selectModel(false));
+  P.appendChild(head);
+
+  P.appendChild(el('div','ppHint',
+    '<b>拖曳模型</b>＝移動 · <b>拖曳 <span style="color:#c0392b">X</span>/<span style="color:#1d6f43">Y</span>'
+  + '/<span style="color:#2f6fd6">Z</span> 環</b>＝繞該軸旋轉<br>1° 吸附（按住 Shift 自由角度）<br>'
+  + '<b>右鍵</b> 轉視角 · <b>中鍵</b> 平移 · <b>滾輪</b> 縮放'));
+
+  const ms = machSize();
+  // 位置輸入。超出成形範圍時輸入框轉紅（比照 quote-studio 的 outR）
+  const mkIn = (label, axis, limit, half) => {
+    const cur = axis==='x' ? mesh.position.x : mesh.position.z;
+    const r = el('div','inRow',
+      `<label>${label}</label><input type="number" step="1" value="${F(cur,1)}"><span class="un">mm</span>`);
+    const inp = r.querySelector('input');
+    const mark = () => inp.classList.toggle('outR', Math.abs(+inp.value||0) + half > limit/2 + 0.01);
+    mark();
+    const apply = () => {
+      const v = +inp.value || 0;
+      if (axis==='x') mesh.position.x = v; else mesh.position.z = v;
+      if (V.gizmo) V.gizmo.position.set(mesh.position.x, 0, mesh.position.z);
+      mark(); renderPlacePanel();
+    };
+    inp.addEventListener('change', apply);
+    inp.addEventListener('wheel', ev=>{
+      ev.preventDefault();
+      inp.value = (+inp.value||0) + (ev.deltaY<0 ? 1 : -1);
+      apply();
+    }, { passive:false });
+    return r;
+  };
+  P.appendChild(mkIn('位置 X','x', ms[0], S.model.size[0]/2));
+  P.appendChild(mkIn('位置 Y（深）','z', ms[1], S.model.size[1]/2));
+
+  const pad = el('div','arrowPad',
+    `<span class="empty"></span><button data-d="0,-1">▲</button><span class="empty"></span>
+     <button data-d="-1,0">◀</button><button class="c" data-d="c">✥ 置中</button><button data-d="1,0">▶</button>
+     <span class="empty"></span><button data-d="0,1">▼</button><span class="empty"></span>`);
+  pad.querySelectorAll('button').forEach(b => b.addEventListener('click', ()=>{
+    if (b.dataset.d==='c'){ mesh.position.x = 0; mesh.position.z = 0; }
+    else { const [dx,dz] = b.dataset.d.split(',').map(Number); mesh.position.x += dx; mesh.position.z += dz; }
+    if (V.gizmo) V.gizmo.position.set(mesh.position.x, 0, mesh.position.z);
+    renderPlacePanel();
+  }));
+  P.appendChild(pad);
+
+  const fb = el('button','ppFace'+(S.faceDownMode?' on':''), '');
+  fb.id = 'ppFaceBtn';
+  fb.textContent = S.faceDownMode ? '▼ 請點擊模型上的一個面…' : '▼ 以此面為底';
+  fb.addEventListener('click', ()=>{
+    S.faceDownMode = !S.faceDownMode;
+    updateFaceDownBtn();
+    if (S.faceDownMode) toast('請點擊模型上任一面 — 該面將轉向平台朝下','inf');
+  });
+  P.appendChild(fb);
+  P.appendChild(el('div','ppHint','旋轉後會自動重跑懸垂分析；拖出成形範圍時數值轉紅。'));
+  panel.classList.add('open');
+}
+
+/* 視角方塊：把相機的球座標同步成 CSS 3D 轉角 */
+function syncCube(){
+  const inner = $('#cubeInner'); if (!inner) return;
+  const rx = -(Math.PI/2 - V.phi) * 180/Math.PI;
+  const ry = (V.theta*180/Math.PI - 90);
+  inner.style.transform = `rotateX(${rx.toFixed(1)}deg) rotateY(${ry.toFixed(1)}deg)`;
+}
+
+/* 成形範圍框 + platform 網格。尺寸依 machSize()（含纖維時工業型 Y 會縮）。 */
+function buildPlatform(){
+  while (V.platGroup.children.length) V.platGroup.remove(V.platGroup.children[0]);
+  if (!S.showRange) return;
+  const [X,Y,Z] = machSize();          // 指南座標：X寬 Y深 Z高；three.js 用 y 當高
+  const geo = new THREE.BoxGeometry(X, Z, Y);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color:0x7aa7c7, transparent:true, opacity:.75 }));
+  edges.position.set(0, Z/2, 0);
+  V.platGroup.add(edges);
+  const grid = new THREE.GridHelper(Math.max(X,Y), 20, 0x9bb3c4, 0xd8e2ea);
+  grid.material.transparent = true; grid.material.opacity = .5;
+  V.platGroup.add(grid);
+}
+
+/* ============ 4. 檔案解析（STL / OBJ / 3MF / STEP）============
+   ★ 座標系：本頁的分析一律使用「設計指南的 Z-up」（Z=高度），到 buildMesh() 才轉成 three.js 的 Y-up。
+     這與 quote-studio 不同 —— 它在解析階段就轉成 Y-up。因此從 quote-studio 移植解析器時：
+       · STL / 3MF / STEP 原生就是 Z-up → 直接保留，不可套用它的 (x,z,-y) 轉換
+       · OBJ 慣例是 Y-up → 必須轉成 Z-up：(x,y,z)_obj → (x, -z, y)
+     搞錯會讓模型躺平、高度與懸垂判定全錯。
+   所有解析器統一回傳 { verts:Float32Array(非索引三角面), norms:null, triCount:n } */
+async function parseFile(file){
+  const name = file.name.toLowerCase();
+  const buf  = await file.arrayBuffer();
+  if (name.endsWith('.stl')) return parseSTL(buf);
+  if (name.endsWith('.obj')) return parseOBJ(new TextDecoder().decode(buf));
+  if (name.endsWith('.3mf')) return await parse3MF(buf);
+  if (name.endsWith('.step') || name.endsWith('.stp')) return await parseSTEP(buf);
+  throw new Error('不支援的檔案格式（僅支援 STL / OBJ / 3MF / STEP）');
+}
+const wrapVerts = arr => {
+  if (!arr.length || arr.length % 9 !== 0) throw new Error('三角面資料不完整');
+  return { verts:new Float32Array(arr), norms:null, triCount:arr.length/9 };
+};
+
+function parseOBJ(txt){
+  const vs=[], arr=[];
+  for (const ln of txt.split(/\r?\n/)){
+    if (ln[0]==='v' && ln[1]===' '){
+      const p = ln.slice(2).trim().split(/\s+/);
+      vs.push(+p[0], +p[1], +p[2]);
+    } else if (ln[0]==='f'){
+      const p = ln.slice(1).trim().split(/\s+/).map(t=>{
+        let i = parseInt(t.split('/')[0],10);
+        if (i<0) i = vs.length/3 + i + 1;
+        return (i-1)*3;
+      });
+      for (let i=1;i<p.length-1;i++){
+        for (const ix of [p[0],p[i],p[i+1]]){
+          // OBJ 是 Y-up → 轉成本頁使用的 Z-up
+          arr.push(vs[ix], -vs[ix+2], vs[ix+1]);
+        }
+      }
+    }
+  }
+  if (!arr.length) throw new Error('OBJ 無有效面資料');
+  return wrapVerts(arr);
+}
+
+/* 3MF = ZIP，用瀏覽器原生 DecompressionStream 解壓（免外部函式庫） */
+async function parse3MF(buf){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for (let i=buf.byteLength-22; i>=Math.max(0,buf.byteLength-70000); i--){
+    if (dv.getUint32(i,true)===0x06054b50){ eocd=i; break; }
+  }
+  if (eocd<0) throw new Error('3MF(ZIP) 結構錯誤');
+  const cnt = dv.getUint16(eocd+10,true);
+  let off = dv.getUint32(eocd+16,true);
+  const entries = [];
+  for (let i=0;i<cnt;i++){
+    if (dv.getUint32(off,true)!==0x02014b50) break;
+    const method = dv.getUint16(off+10,true);
+    const csize  = dv.getUint32(off+20,true);
+    const nlen = dv.getUint16(off+28,true), elen = dv.getUint16(off+30,true), clen = dv.getUint16(off+32,true);
+    const lho  = dv.getUint32(off+42,true);
+    const name = new TextDecoder().decode(u8.subarray(off+46, off+46+nlen));
+    entries.push({ name, method, csize, lho });
+    off += 46 + nlen + elen + clen;
+  }
+  const ent = entries.find(e=>/3dmodel\.model$/i.test(e.name)) || entries.find(e=>/\.model$/i.test(e.name));
+  if (!ent) throw new Error('3MF 內找不到 3dmodel.model');
+  const nlen2 = dv.getUint16(ent.lho+26,true), elen2 = dv.getUint16(ent.lho+28,true);
+  const dataOff = ent.lho + 30 + nlen2 + elen2;
+  const comp = u8.subarray(dataOff, dataOff+ent.csize);
+  let xmlBytes;
+  if (ent.method===0) xmlBytes = comp;
+  else if (ent.method===8){
+    const ds = new DecompressionStream('deflate-raw');
+    xmlBytes = new Uint8Array(await new Response(new Blob([comp]).stream().pipeThrough(ds)).arrayBuffer());
+  } else throw new Error('3MF 使用不支援的壓縮法');
+  const xml = new DOMParser().parseFromString(new TextDecoder().decode(xmlBytes), 'application/xml');
+  const unit = (xml.querySelector('model')?.getAttribute('unit')||'millimeter').toLowerCase();
+  const scale = { micron:.001, millimeter:1, centimeter:10, inch:25.4, foot:304.8, meter:1000 }[unit] ?? 1;
+  const objects = {};
+  xml.querySelectorAll('object').forEach(ob=>{
+    const meshEl = ob.querySelector('mesh'); if(!meshEl) return;
+    const vs=[];
+    meshEl.querySelectorAll('vertices > vertex').forEach(v=>
+      vs.push(+v.getAttribute('x')*scale, +v.getAttribute('y')*scale, +v.getAttribute('z')*scale));
+    const tris=[];
+    meshEl.querySelectorAll('triangles > triangle').forEach(t=>
+      tris.push(+t.getAttribute('v1'), +t.getAttribute('v2'), +t.getAttribute('v3')));
+    objects[ob.getAttribute('id')] = { vs, tris };
+  });
+  const arr = [];
+  const push = (o, m) => {
+    for (let i=0;i<o.tris.length;i++){
+      const vi = o.tris[i]*3;
+      let x=o.vs[vi], y=o.vs[vi+1], z=o.vs[vi+2];
+      if (m){ const nx=m[0]*x+m[3]*y+m[6]*z+m[9], ny=m[1]*x+m[4]*y+m[7]*z+m[10], nz=m[2]*x+m[5]*y+m[8]*z+m[11];
+              x=nx; y=ny; z=nz; }
+      arr.push(x, y, z);          // 3MF 原生 Z-up，直接沿用
+    }
+  };
+  const items = Array.from(xml.querySelectorAll('build > item'));
+  if (items.length){
+    for (const it of items){
+      const o = objects[it.getAttribute('objectid')]; if(!o) continue;
+      const tr = it.getAttribute('transform');
+      push(o, tr ? tr.trim().split(/\s+/).map(Number) : null);
+    }
+  } else Object.values(objects).forEach(o=>push(o,null));
+  if (!arr.length) throw new Error('3MF 無網格資料');
+  return wrapVerts(arr);
+}
+
+/* STEP/STP 是 CAD B-rep（NURBS 曲面），必須用 CAD 核心鑲嵌成三角面。
+   occt-import-js（OpenCASCADE WASM）在「首次匯入 STEP」才從 CDN 延遲載入，平常不受影響。 */
+let _occtPromise = null;
+const OCCT_BASE = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.23/dist/';
+function loadOcct(){
+  if (_occtPromise) return _occtPromise;
+  _occtPromise = new Promise((resolve, reject)=>{
+    if (window.occtimportjs) return resolve(window.occtimportjs);
+    const s = document.createElement('script');
+    s.src = OCCT_BASE + 'occt-import-js.js';
+    s.onload  = ()=> window.occtimportjs ? resolve(window.occtimportjs)
+                                         : reject(new Error('occt-import-js 載入後找不到入口函式'));
+    s.onerror = ()=> reject(new Error('CAD 核心載入失敗——STEP 需連外下載 occt-import-js，請確認網路'));
+    document.head.appendChild(s);
+  }).then(factory => factory({ locateFile: n => OCCT_BASE + n }))
+    .catch(err => { _occtPromise = null; throw err; });   // 失敗不快取，讓下次可重試
+  return _occtPromise;
+}
+async function parseSTEP(buf){
+  busy('載入 CAD 核心中…（首次匯入 STEP 需連外下載，約數秒）');
+  const occt = await loadOcct();
+  busy('STEP 鑲嵌轉網格中…');
+  // 讓遮罩有機會畫出來再進入同步的鑲嵌運算。
+  // ★ 不可只等 requestAnimationFrame —— 分頁切到背景時 rAF 會被凍結，
+  //   Promise 永遠不 resolve，整個匯入就卡死。故與 setTimeout 競速，先到先算。
+  await new Promise(r => { requestAnimationFrame(()=>requestAnimationFrame(r)); setTimeout(r, 60); });
+  const result = occt.ReadStepFile(new Uint8Array(buf), null);
+  if (!result || !result.success) throw new Error('STEP 解析失敗（檔案可能毀損或非標準 AP203/214/242 STEP）');
+  if (!result.meshes || !result.meshes.length) throw new Error('STEP 內找不到可鑲嵌的實體或曲面');
+  const arr = [];
+  for (const mesh of result.meshes){
+    const pos = mesh.attributes && mesh.attributes.position && mesh.attributes.position.array;
+    const idx = mesh.index && mesh.index.array;
+    if (!pos || !idx) continue;
+    for (let i=0;i<idx.length;i++){
+      const vi = idx[i]*3;
+      arr.push(pos[vi], pos[vi+1], pos[vi+2]);   // STEP 機械 CAD 慣例即 Z-up，直接沿用
+    }
+  }
+  if (!arr.length) throw new Error('STEP 鑲嵌後無三角面資料');
+  return wrapVerts(arr);
+}
+
+function parseSTL(buf){
+  const dv = new DataView(buf);
+  // ASCII 判定：開頭 solid 且檔案沒有二進位的 84+50*n 精確長度
+  let isAscii = false;
+  if (buf.byteLength > 84){
+    const n = dv.getUint32(80, true);
+    if (84 + n*50 !== buf.byteLength) isAscii = true;
+  } else isAscii = true;
+  return isAscii ? parseSTLAscii(new TextDecoder().decode(buf)) : parseSTLBinary(dv);
+}
+function parseSTLBinary(dv){
+  const n = dv.getUint32(80, true);
+  const verts = new Float32Array(n*9), norms = new Float32Array(n*3);
+  let o = 84;
+  for (let i=0;i<n;i++){
+    norms[i*3]   = dv.getFloat32(o,   true);
+    norms[i*3+1] = dv.getFloat32(o+4, true);
+    norms[i*3+2] = dv.getFloat32(o+8, true);
+    o += 12;
+    for (let v=0;v<9;v++){ verts[i*9+v] = dv.getFloat32(o, true); o += 4; }
+    o += 2;
+  }
+  return { verts, norms, triCount:n };
+}
+function parseSTLAscii(txt){
+  const nums = txt.match(/vertex\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)/g) || [];
+  const n = Math.floor(nums.length/3);
+  const verts = new Float32Array(n*9);
+  let k = 0;
+  for (const s of nums){
+    const p = s.trim().split(/\s+/);
+    verts[k++] = +p[1]; verts[k++] = +p[2]; verts[k++] = +p[3];
+    if (k >= n*9) break;
+  }
+  return { verts, norms:null, triCount:n };
+}
+
+/* ============ 5. 幾何分析 ============ */
+/* 說明：本頁只做 Markforged 規範用得到的分析，不做 SLA 專用的支撐生成/孤島/排液孔。 */
+function analyze(raw){
+  const V3 = raw.verts, n = raw.triCount;
+  const bbMin = [ Infinity, Infinity, Infinity], bbMax = [-Infinity,-Infinity,-Infinity];
+  let vol6 = 0, area = 0, footprint = 0;
+  const gamma = new Float32Array(n);      // 每面與水平面的夾角 θ（度）
+  const areaArr = new Float32Array(n);
+  const faceNz  = new Float32Array(n);    // 法向 z 分量（<0 為朝下）
+  const faceCz  = new Float32Array(n);    // 三角形形心高度，用來排除貼平台的底面
+  let downArea = 0, minGamma = 90;
+
+  for (let i=0;i<n;i++){
+    const o = i*9;
+    const ax=V3[o],   ay=V3[o+1], az=V3[o+2];
+    const bx=V3[o+3], by=V3[o+4], bz=V3[o+5];
+    const cx=V3[o+6], cy=V3[o+7], cz=V3[o+8];
+    for (const p of [[ax,ay,az],[bx,by,bz],[cx,cy,cz]]){
+      for (let d=0;d<3;d++){ if(p[d]<bbMin[d]) bbMin[d]=p[d]; if(p[d]>bbMax[d]) bbMax[d]=p[d]; }
+    }
+    // 有號體積（散度定理）→ 封閉網格的體積
+    vol6 += ax*(by*cz - bz*cy) - ay*(bx*cz - bz*cx) + az*(bx*cy - by*cx);
+    // 面積與法向
+    const ux=bx-ax, uy=by-ay, uz=bz-az, vx=cx-ax, vy=cy-ay, vz=cz-az;
+    let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+    const len = Math.hypot(nx,ny,nz) || 1e-9;
+    const a2 = len/2; area += a2; areaArr[i] = a2;
+    nx/=len; ny/=len; nz/=len;
+    footprint += Math.abs(nz) * a2;         // 投影到成形平面的面積（z 為指南的 Z 高度軸）
+    // 指南的 θ：面與「水平方向」的夾角。朝下水平面（天花板）= 0° 最危險，垂直牆 = 90° 安全。
+    // ★ 必須用 acos(|nz|)，不可用 asin(-nz) —— 後者會把最危險的天花板算成 90°（最安全），方向完全相反。
+    gamma[i]  = Math.acos(Math.min(1, Math.abs(nz))) * 180/Math.PI;
+    faceNz[i] = nz;
+    faceCz[i] = (az + bz + cz)/3;
+  }
+  const size = [bbMax[0]-bbMin[0], bbMax[1]-bbMin[1], bbMax[2]-bbMin[2]];
+  // 第二遍：bbox 定了才知道哪些面貼在成形平台上。貼平台的底面是「基座」不是懸垂，須排除，
+  // 否則任何平放零件的底面都會被誤判成 0° 的危險懸垂。
+  const plateEps = Math.max(0.2, size[2]*0.002);
+  const onPlate = new Uint8Array(n);
+  let plateArea = 0;
+  for (let i=0;i<n;i++){
+    if (faceNz[i] < -1e-6){
+      if (faceCz[i] - bbMin[2] <= plateEps){ onPlate[i] = 1; plateArea += areaArr[i]; continue; }
+      downArea += areaArr[i];
+      if (gamma[i] < minGamma) minGamma = gamma[i];
+    }
+  }
+  const topo = topology(raw);
+  return {
+    raw, triCount:n, bbMin, bbMax, size,
+    volumeMM3: Math.abs(vol6)/6, areaMM2: area,
+    footprintMM2: footprint/2,     // 封閉網格上下各算一次，取半
+    gamma, areaArr, faceNz, onPlate, plateArea,
+    downArea, minGamma: (downArea>0 ? minGamma : 90),
+    topo,
+    dangerArea: 0,                  // 由 recomputeOverhang() 依材料門檻填
+  };
+}
+
+/* 焊接頂點後建邊表 → 水密/非流形/殼體數/genus（貫穿孔數） */
+function topology(raw){
+  const V3 = raw.verts, n = raw.triCount;
+  const map = new Map(), idx = new Int32Array(n*3);
+  let vc = 0;
+  const key = (x,y,z) => (Math.round(x*1000)/1000)+','+(Math.round(y*1000)/1000)+','+(Math.round(z*1000)/1000);
+  for (let i=0;i<n*3;i++){
+    const o = i*3;
+    const k = key(V3[o],V3[o+1],V3[o+2]);
+    let id = map.get(k);
+    if (id === undefined){ id = vc++; map.set(k,id); }
+    idx[i] = id;
+  }
+  const edge = new Map();
+  const eKey = (a,b) => a<b ? a+'_'+b : b+'_'+a;
+  for (let t=0;t<n;t++){
+    const a=idx[t*3], b=idx[t*3+1], c=idx[t*3+2];
+    for (const [p,q] of [[a,b],[b,c],[c,a]]){
+      const k = eKey(p,q);
+      edge.set(k, (edge.get(k)||0) + 1);
+    }
+  }
+  let boundary=0, nonManifold=0;
+  edge.forEach(cnt => { if (cnt===1) boundary++; else if (cnt>2) nonManifold++; });
+  // 殼體數：以頂點為節點做 union-find
+  const par = new Int32Array(vc); for (let i=0;i<vc;i++) par[i]=i;
+  const find = x => { while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
+  const uni  = (a,b) => { a=find(a); b=find(b); if(a!==b) par[a]=b; };
+  for (let t=0;t<n;t++){ uni(idx[t*3],idx[t*3+1]); uni(idx[t*3+1],idx[t*3+2]); }
+  const roots = new Set(); for (let i=0;i<vc;i++) roots.add(find(i));
+  const shells = roots.size;
+  const watertight = boundary===0 && nonManifold===0;
+  // 尤拉示性數 → genus（僅在水密且流形時有意義）
+  let genus = null;
+  if (watertight){
+    const chi = vc - edge.size + n;
+    genus = Math.max(0, Math.round((2*shells - chi)/2));
+  }
+  return { vertCount:vc, edgeCount:edge.size, boundary, nonManifold, shells, watertight, genus };
+}
+
+/* 懸垂危險面積：門檻隨材料變（Onyx 40°、Smooth TPU 55°） */
+/* 危險懸垂 = 朝下、非貼平台、且與水平夾角 < 門檻的面。門檻隨材料變（Onyx 40°、Smooth TPU 55°）。 */
+function isDangerFace(m, i, th){
+  return m.faceNz[i] < -1e-6 && !m.onPlate[i] && m.gamma[i] < th;
+}
+function recomputeOverhang(){
+  const m = S.model; if (!m) return;
+  const th = activeSpec().overhangAngle;
+  let danger = 0;
+  for (let i=0;i<m.triCount;i++) if (isDangerFace(m,i,th)) danger += m.areaArr[i];
+  m.dangerArea = danger;
+}
+
+/* ============ 6. 載入模型 ============ */
+/* 忙碌遮罩：STEP 需下載 CAD 核心並鑲嵌，可能數秒，必須讓使用者知道在跑 */
+function busy(msg){
+  const b = $('#busy');
+  if (!b) return;
+  if (msg){ $('#busyMsg').textContent = msg; b.style.display='flex'; }
+  else b.style.display='none';
+}
+
+async function loadFile(file){
+  busy('讀取檔案中…');
+  try{
+    const raw = await parseFile(file);
+    if (!raw.triCount){ toast('檔案無有效三角面','err'); return; }
+    const m = analyze(raw);
+    m.name = file.name;
+    m.sizeKB = Math.round(file.size/1024);
+    S.model = m;
+    selectModel(false);
+    recomputeOverhang();
+    buildMesh();
+    frameCamera();
+    S.step = 1;
+    renderStep();
+    toast(`已載入 ${file.name}（${raw.triCount.toLocaleString()} 面）`,'ok');
+  }catch(e){
+    console.error(e); toast('讀取失敗：'+e.message,'err');
+  }finally{
+    busy(null);
+  }
+}
+
+function buildMesh(){
+  while (V.modelGroup.children.length) V.modelGroup.remove(V.modelGroup.children[0]);
+  const m = S.model; if (!m) return;
+  const g = new THREE.BufferGeometry();
+  // 置中並讓底面貼平台：指南 Z 是高度，three.js 用 y
+  const cx = (m.bbMin[0]+m.bbMax[0])/2, cy = (m.bbMin[1]+m.bbMax[1])/2, z0 = m.bbMin[2];
+  const n = m.triCount, pos = new Float32Array(n*9), col = new Float32Array(n*9);
+  const th = activeSpec().overhangAngle;
+  for (let i=0;i<n;i++){
+    for (let v=0;v<3;v++){
+      const o=i*9+v*3;
+      // 指南座標 Z 是高度，three.js 用 y 當高度 → 繞 X 軸轉 -90°：(x,y,z) → (x, z, -y)
+      // ★ 不可寫成 (x,z,y)：那是「鏡射」（行列式 -1），會翻轉所有三角形繞序 →
+      //   法向朝內 → 背面剔除後模型看起來破面／中空，拖曳旋轉也看不出變化。
+      pos[o]   =  m.raw.verts[o]   - cx;
+      pos[o+1] =  m.raw.verts[o+2] - z0;
+      pos[o+2] = -(m.raw.verts[o+1] - cy);
+    }
+    const danger = S.colorOverhang && isDangerFace(m, i, th);
+    // 一般面用中性灰；危險懸垂維持警示紅
+    const r = danger?0.86:0.62, gg = danger?0.28:0.63, b = danger?0.22:0.65;
+    for (let v=0;v<3;v++){ const o=i*9+v*3; col[o]=r; col[o+1]=gg; col[o+2]=b; }
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  g.setAttribute('color',    new THREE.BufferAttribute(col,3));
+  g.computeVertexNormals();
+  V.modelGroup.add(new THREE.Mesh(g, V.matModel));
+}
+function frameCamera(){
+  const m = S.model; if (!m) return;
+  const r = Math.max(...m.size);
+  V.radius = Math.max(120, r*2.6);
+  V.target.set(0, m.size[2]/2, 0);
+  V.updateCam();
+}
+
+/* ============ 7. 可行性檢查（Markforged 設計指南） ============ */
+function runChecks(){
+  const m = S.model; if (!m) return [];
+  const sp = activeSpec(), fs = fiberSpec(), out = [];
+  const add = (cat, name, status, way, detail) => out.push({cat,name,status,way,detail});
+
+  /* 一、模型完整性 */
+  const t = m.topo;
+  add('一、模型完整性','水密性 Watertight', t.watertight ? 'pass':'fail', '量測',
+    t.watertight ? '網格封閉，可正常切片'
+      : `<b>${t.boundary} 條開放邊</b>${t.nonManifold?`、<b>${t.nonManifold} 條非流形邊</b>`:''} — 請先修復再送 Eiger`);
+  add('一、模型完整性','殼體數', t.shells>1 ? 'warn':'pass', '量測',
+    t.shells>1 ? `偵測 <b>${t.shells} 個獨立殼體</b> — 確認是否為多件組合` : '單一殼體');
+
+  /* 二、尺寸與範圍 */
+  const [MX,MY,MZ] = machSize();
+  const fits = m.size[0]<=MX && m.size[1]<=MY && m.size[2]<=MZ;
+  add('二、尺寸與範圍','成形範圍', fits?'pass':'fail','量測',
+    `${F(m.size[0],1)}×${F(m.size[1],1)}×${F(m.size[2],1)}mm / ${mach().name} ${MX}×${MY}×${MZ}mm`
+    + (fits?'':' — <b>超出範圍</b>')
+    + (fiberOn() && mach().series==='industrial' ? '<br>⚠ 已套用「含纖維」的 Y 軸上限（250mm）' : ''));
+  const tooSmall = m.size[0]<sp.minPartX || m.size[1]<sp.minPartY || m.size[2]<sp.minPartZ;
+  add('二、尺寸與範圍','最小零件尺寸', tooSmall?'fail':'pass','量測',
+    tooSmall ? `低於下限 X≥${sp.minPartX}／Y≥${sp.minPartY}／Z≥${sp.minPartZ}mm — 無法湊足最小頂/底/殼層數`
+             : `X/Y ≥${sp.minPartX}mm、Z ≥${sp.minPartZ}mm，符合`);
+  if (sp.avoidTallNarrow){
+    const foot = Math.min(m.size[0], m.size[1]);
+    const ratio = foot>0 ? m.size[2]/foot : 0;
+    add('二、尺寸與範圍','高窄比（精準 PLA）', ratio>3?'warn':'pass','近似',
+      ratio>3 ? `高/底寬 ≈ <b>${F(ratio,1)}</b> — P-PLA 高窄件易因黏著力不足移位，建議加裙邊`
+              : `高/底寬 ≈ ${F(ratio,1)}，穩定度可接受`);
+  }
+
+  /* 三、列印可行性 */
+  const dangerPct = m.areaMM2>0 ? m.dangerArea/m.areaMM2*100 : 0;
+  add('三、列印可行性','免支撐懸空角', m.dangerArea>2?'warn':'pass','量測',
+    m.dangerArea>2
+      ? `<b>${F(m.dangerArea,0)}mm²</b>（${F(dangerPct,1)}%）面與水平夾角 <${sp.overhangAngle}°，最小 ${F(m.minGamma,0)}° — 需支撐`
+        + `<br>Eiger 於 <${sp.eigerSupportAngle}° 就會自動生支撐`
+      : `目前擺放無 <${sp.overhangAngle}° 危險懸垂（最小夾角 ${F(m.minGamma,0)}°）`);
+  add('三、列印可行性','列印床接觸面', 'manual','人工',
+    `目前投影面積約 <b>${F(m.footprintMM2,0)}mm²</b> — 指南建議「最大的那一面鋪在列印床上」以加強黏著並減少支撐`);
+
+  /* 四、細部特徵（多為人工項：網格量不出雕刻/浮雕尺寸） */
+  const g = t.genus;
+  add('四、細部特徵','孔洞可印性',
+    g===null ? 'manual' : g>0 ? 'manual':'pass', g===null?'人工':'量測',
+    g===null ? '網格非封閉，無法做拓撲孔洞統計'
+      : g>0 ? `拓撲偵測 <b>${g} 個貫穿孔</b> — 孔徑請人工確認：垂直面(XY) ≥${sp.holeDiaXY}mm、水平面(Z) ≥${sp.holeDiaZ}mm`
+            : '無貫穿孔（拓撲）');
+  add('四、細部特徵','雕刻／浮雕形體','manual','人工',
+    `無法由網格自動量測。雕刻：Z層 高≥${sp.engraveZH}／寬≥${sp.engraveZW}mm；浮雕：Z層 高≥${sp.embossZH}／寬≥${sp.embossZW}mm`
+    + `<br>⚠ 浮雕高度需為出料層寬 ${sp.extrusionW}mm 的<b>雙數倍數</b>，否則會產生 <2mm 的縫隙`);
+  add('四、細部特徵','支撐體（柱/銷）','manual','人工',
+    `最小直徑 XY ≥${sp.pinDiaXY}mm、Z ≥${sp.pinDiaZ}mm；<b>高度 H 不宜 > 直徑 D 的 ${sp.pinHD} 倍</b>（易沿層線切變），接合邊建議倒角`);
+  if (sp.fineFeatDia>0){
+    add('四、細部特徵','細緻形體', 'manual','人工',
+      `${matr().name}：避免直徑/寬度 <${sp.fineFeatDia}mm 的細緻形體`
+      + (S.material==='ppla' ? '；單層 >5 個精緻形體或 >5 個 Ø<6mm 圓柱易致出料打結' : '；細緻形體多易拉絲'));
+  }
+  if (sp.minFlameTh>0){
+    const note = `Onyx FR 的 UL94 V-0 需 ≥${sp.minFlameTh}mm 厚 — 關鍵元件厚度應大於此值；加入連續纖維會延長燃燒後時間`;
+    add('四、細部特徵','阻燃厚度（Onyx FR）','manual','人工', note);
+  }
+
+  /* 五、纖維增強 */
+  if (!matr().fiberOK){
+    add('五、纖維增強','纖維相容性','fail','量測',
+      `<b>${matr().name} 不支援連續纖維</b>（設計指南明載）— 纖維相關檢查與計價已停用`);
+  } else if (S.fiber === 'none'){
+    add('五、纖維增強','纖維設定','manual','人工','目前未選用纖維。若零件需承受彎/拉/壓力，建議評估連續纖維增強');
+  } else {
+    const fb = fibr();
+    add('五、纖維增強','可增強面積', m.footprintMM2 >= fs.minArea ? 'pass':'warn','近似',
+      `投影面積 <b>${F(m.footprintMM2,0)}mm²</b> / 最小增強面積 ${fs.minArea}mm²`
+      + (m.footprintMM2 >= fs.minArea ? ' — 面積充足' : ' — <b>可能過小</b>，纖維無法鋪設'));
+    add('五、纖維增強','可增強高度', m.size[2] >= fb.minFeatH ? 'pass':'warn','近似',
+      `零件高度 <b>${F(m.size[2],1)}mm</b> / ${fb.name}最小可增強高度 ${fb.minFeatH}mm`
+      + `<br>纖維集合體上下各需 4 層塑膠頂/底層（最小 9 層厚，含 1 層纖維）`);
+    add('五、纖維增強','增強形體寬度','manual','人工',
+      `開放形體 ≥${fs.wOpen}mm、環狀形體 ≥${fs.wRing}mm；纖維最小長度 ${fs.minLen}mm`);
+    add('五、纖維增強','增強孔洞／支撐體','manual','人工',
+      `可增強支撐體直徑 ≥${fs.minBossDia}mm。同心纖維圈數對應的最小孔徑：`
+      + `1 圈 ≥${fs.hole[0]}mm、2 圈 ≥${fs.hole[1]}mm、3 圈 ≥${fs.hole[2]}mm（目前設定 ${S.fiberRings} 圈）`);
+    add('五、纖維增強','纖維板平衡','manual','人工',
+      '若只增強單側，零件易因夾心板材不平而翹曲 — 請於最遠端 Z 實層對稱補強');
+  }
+  return out;
+}
+function checkStats(list){
+  const s = { pass:0, warn:0, fail:0, manual:0 };
+  list.forEach(c => { if (s[c.status] !== undefined) s[c.status]++; });
+  return s;
+}
+
+/* ============ 8. 成本 ============ */
+function ccPricePlastic(){ return Number(S.price.plastic[S.material]) || 0; }
+function ccPriceFiber(){   return Number(S.price.fiber[S.fiber])     || 0; }
+function calcCost(){
+  const u = S.usage;
+  if (u.plasticCC == null) return null;
+  const pCC = Number(u.plasticCC) || 0;
+  const fCC = fiberOn() ? (Number(u.fiberCC) || 0) : 0;
+  const pCost = Math.round(pCC * ccPricePlastic());
+  const fCost = Math.round(fCC * ccPriceFiber());
+  const post  = Number(S.price.postCost) || 0;
+  const sub   = pCost + fCost + post;
+  const mul   = Number(S.price.multipliers[S.workType]) || 1;
+  return { pCC, fCC, pCost, fCost, post, sub, mul, total: Math.round(sub*mul) };
+}
+
+/* ============ 9. UI ============ */
+function toast(msg, type){
+  const t = $('#toast');
+  t.textContent = msg; t.className = type||'ok'; t.style.display='block';
+  clearTimeout(t._t); t._t = setTimeout(()=>{ t.style.display='none'; }, 2800);
+}
+function el(tag, cls, html){
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+function doneOf(i){
+  if (i===0) return !!S.model;
+  if (i===1) return !!S.model;
+  if (i===2) return !!S.model;
+  if (i===3) return !!S.model;
+  if (i===4) return calcCost() != null;
+  return false;
+}
+
+function renderStep(){
+  $('#stepTitle').textContent = `步驟 ${S.step+1} · ${STEPS[S.step]}`;
+  $('#stepCount').textContent = `${S.step+1}/5`;
+  const B = $('#stepBody'); B.innerHTML = '';
+  const dock = el('div','dock');
+  STEPS.forEach((s,i)=>{
+    const b = el('button','dockBtn'+(S.step===i?' cur':doneOf(i)?' done':''), (doneOf(i)&&S.step!==i?'✓ ':'')+s);
+    b.addEventListener('click', ()=>{ S.step=i; renderStep(); });
+    dock.appendChild(b);
+  });
+  B.appendChild(dock);
+
+  if (S.step===0) stepUpload(B);
+  if (S.step===1) stepMachine(B);
+  if (S.step===2) stepMaterial(B);
+  if (S.step===3) stepCheck(B);
+  if (S.step===4) stepQuote(B);
+}
+
+function stepUpload(B){
+  B.appendChild(el('div','lbl','模型檔案'));
+  const inp = el('input'); inp.type='file'; inp.accept='.stl,.obj,.3mf,.step,.stp'; inp.style.display='none';
+  const btn = el('button','pbtn','＋ 選擇模型檔案');
+  btn.addEventListener('click', ()=>inp.click());
+  inp.addEventListener('change', e=>{ const f=e.target.files[0]; if(f) loadFile(f); });
+  B.appendChild(btn); B.appendChild(inp);
+  if (S.model){
+    const m = S.model;
+    B.appendChild(el('div','lbl','已載入'));
+    B.appendChild(el('div','fileRow',`<b style="flex:1;font-size:11.5px">${m.name}</b>
+      <small class="mono" style="color:var(--ink4)">${m.sizeKB}KB</small>`));
+    B.appendChild(el('div','kv',`<span>三角面</span><span>${m.triCount.toLocaleString()}</span>`));
+    B.appendChild(el('div','kv',`<span>尺寸</span><span>${F(m.size[0],1)}×${F(m.size[1],1)}×${F(m.size[2],1)} mm</span>`));
+    B.appendChild(el('div','kv',`<span>體積</span><span>${F(m.volumeMM3/1000,2)} cc</span>`));
+    const nx = el('button','pbtn','下一步 · 選擇機台 →');
+    nx.addEventListener('click', ()=>{ S.step=1; renderStep(); });
+    B.appendChild(nx);
+  } else {
+    B.appendChild(el('div','mnote',
+      '支援 <b>STL / OBJ / 3MF / STEP</b>（可直接拖放檔案）。<br>'
+    + 'STL 二進位與 ASCII 皆可；3MF 會套用檔內單位與擺放矩陣；<br>'
+    + 'STEP 需線上下載 CAD 核心鑲嵌成網格，首次匯入約數秒。<br>'
+    + '載入後自動做幾何分析，用於後續的設計規範檢查。'));
+  }
+}
+
+function stepMachine(B){
+  B.appendChild(el('div','lbl','機台系列'));
+  Object.keys(MACHINES).forEach(k=>{
+    const mc = MACHINES[k];
+    const sz = (S.fiber!=='none' && matr().fiberOK) ? mc.sizeFiber : mc.size;
+    const r = el('div','machRow'+(S.machine===k?' on':''),
+      `<div style="flex:1"><b>${mc.name}</b><br><small>${sz[0]}×${sz[1]}×${sz[2]} mm · ${mc.hint}</small></div>`);
+    r.addEventListener('click', ()=>{ S.machine=k; buildPlatform(); renderStep(); });
+    B.appendChild(r);
+  });
+  if (mach().series==='industrial'){
+    B.appendChild(el('div','mnote','⚠ 工業型使用連續纖維時，Y 軸可用深度由 270mm 縮為 250mm。範圍檢查會自動依纖維設定取值。'));
+  }
+  if (S.model){
+    const [MX,MY,MZ] = machSize(), m = S.model;
+    const fits = m.size[0]<=MX && m.size[1]<=MY && m.size[2]<=MZ;
+    B.appendChild(el('div','lbl','範圍檢查'));
+    B.appendChild(el('div','chk '+(fits?'pass':'fail'),
+      `<div class="th">${fits?'✓ 在成形範圍內':'✕ 超出成形範圍'}</div>
+       <div class="td">${F(m.size[0],1)}×${F(m.size[1],1)}×${F(m.size[2],1)} / ${MX}×${MY}×${MZ} mm</div>`));
+  }
+  const nx = el('button','pbtn','下一步 · 材料與纖維 →');
+  nx.addEventListener('click', ()=>{ S.step=2; renderStep(); });
+  B.appendChild(nx);
+}
+
+function stepMaterial(B){
+  B.appendChild(el('div','lbl','基底材料'));
+  const ms = el('select','sel');
+  Object.keys(MATERIALS).forEach(k=>{
+    const o = el('option', null, MATERIALS[k].name); o.value=k;
+    if (S.material===k) o.selected=true; ms.appendChild(o);
+  });
+  ms.addEventListener('change', e=>{
+    S.material = e.target.value;
+    if (!matr().fiberOK) S.fiber = 'none';
+    recomputeOverhang(); buildMesh(); buildPlatform(); renderStep();
+  });
+  B.appendChild(ms);
+  B.appendChild(el('div','mnote', matr().desc));
+
+  B.appendChild(el('div','lbl','連續纖維'));
+  if (!matr().fiberOK){
+    B.appendChild(el('div','chk fail',
+      `<div class="th">✕ 不支援連續纖維</div>
+       <div class="td">${matr().name} 依設計指南不符合連續纖維增強規格，纖維檢查與計價已停用。</div>`));
+  } else {
+    const fsel = el('select','sel');
+    Object.keys(FIBERS).forEach(k=>{
+      const o = el('option', null, FIBERS[k].name); o.value=k;
+      if (S.fiber===k) o.selected=true; fsel.appendChild(o);
+    });
+    fsel.addEventListener('change', e=>{ S.fiber=e.target.value; buildPlatform(); renderStep(); });
+    B.appendChild(fsel);
+    if (S.fiber!=='none'){
+      B.appendChild(el('div','mnote', fibr().desc || ''));
+      B.appendChild(el('div','lbl','同心纖維圈數（檢查參考）'));
+      const ri = el('input','num'); ri.type='number'; ri.min=1; ri.max=6; ri.step=1; ri.value=S.fiberRings;
+      ri.addEventListener('change', e=>{ S.fiberRings = Math.max(1, Math.min(6, +e.target.value||2)); renderStep(); });
+      B.appendChild(ri);
+      B.appendChild(el('div','mnote','圈數只用於「最小增強孔徑」的提示比對；實際纖維用量以 Eiger 切片結果為準。'));
+    }
+  }
+
+  B.appendChild(el('div','lbl','懸垂門檻（依材料）'));
+  B.appendChild(el('div','kv',`<span>免支撐最小懸空角</span><span>${activeSpec().overhangAngle}°</span>`));
+  B.appendChild(el('div','mnote','Smooth TPU 95A 為 55°，其餘材料 40°。Eiger 於 <45° 就會自動生支撐。'));
+
+  const nx = el('button','pbtn','下一步 · 可行性檢查 →');
+  nx.addEventListener('click', ()=>{ S.step=3; renderStep(); });
+  B.appendChild(nx);
+}
+
+function stepCheck(B){
+  if (!S.model){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
+  const list = runChecks(), st = checkStats(list);
+  const cnt = el('div','fcCnt');
+  cnt.innerHTML = `<div><b style="color:var(--ok)">${st.pass}</b><small>通過</small></div>
+                   <div><b style="color:var(--warnText)">${st.warn}</b><small>注意</small></div>
+                   <div><b style="color:var(--err)">${st.fail}</b><small>不合格</small></div>
+                   <div><b style="color:var(--purple)">${st.manual}</b><small>人工</small></div>`;
+  B.appendChild(cnt);
+  let cat = null;
+  list.forEach(c=>{
+    if (c.cat !== cat){ cat = c.cat; B.appendChild(el('div','catHead', cat)); }
+    const icon = c.status==='pass'?'✓':c.status==='warn'?'⚠':c.status==='fail'?'✕':'✎';
+    B.appendChild(el('div','chk '+c.status,
+      `<div class="th">${icon} ${c.name}<span class="way">${c.way}</span></div>
+       <div class="td">${c.detail}</div>`));
+  });
+  B.appendChild(el('div','mnote',
+    '依《Markforged 複合材料設計指南 11.6 版》。「近似」項由內建演算法估計，「人工」項無法由網格自動判定。'));
+  const nx = el('button','pbtn','下一步 · 報價 →');
+  nx.addEventListener('click', ()=>{ S.step=4; renderStep(); });
+  B.appendChild(nx);
+}
+
+function stepQuote(B){
+  if (!S.model){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
+
+  B.appendChild(el('div','chk warn',
+    `<div class="th">⚠ 材料用量來源：手動輸入</div>
+     <div class="td">Eiger API 尚未接上。請在 Eiger 切片後，把塑料與纖維的 cc 數填入下方。
+     接上 API 後此處會自動帶入，手動輸入將退為覆寫用。</div>`));
+
+  B.appendChild(el('div','lbl','塑料用量 (cc)'));
+  const pi = el('input','num'); pi.type='number'; pi.min=0; pi.step='0.01';
+  pi.value = S.usage.plasticCC != null ? S.usage.plasticCC : '';
+  pi.placeholder = '由 Eiger 切片結果填入';
+  pi.addEventListener('input', e=>{ S.usage.plasticCC = e.target.value===''?null:+e.target.value; renderQuoteTotals(); });
+  B.appendChild(pi);
+  const est = el('button','ghostBtn',`↧ 以幾何體積帶入（${F(S.model.volumeMM3/1000,2)} cc）`);
+  est.addEventListener('click', ()=>{
+    S.usage.plasticCC = +(S.model.volumeMM3/1000).toFixed(2);
+    renderStep();
+    toast('已帶入幾何體積 — 這是實心體積，未計填充率與支撐，僅供粗估','inf');
+  });
+  B.appendChild(est);
+  B.appendChild(el('div','mnote','⚠ 幾何體積是「實心」體積，未反映 Eiger 的填充率、殼層與支撐，與實際用量會有落差。'));
+
+  if (fiberOn()){
+    B.appendChild(el('div','lbl',`纖維用量 (cc) · ${fibr().name}`));
+    const fi = el('input','num'); fi.type='number'; fi.min=0; fi.step='0.01';
+    fi.value = S.usage.fiberCC != null ? S.usage.fiberCC : '';
+    fi.placeholder = '由 Eiger 切片結果填入';
+    fi.addEventListener('input', e=>{ S.usage.fiberCC = e.target.value===''?null:+e.target.value; renderQuoteTotals(); });
+    B.appendChild(fi);
+    B.appendChild(el('div','mnote','纖維用量取決於切片時的纖維策略（圈數／等向層數／角度），無法由幾何推算。'));
+  }
+
+  B.appendChild(el('div','lbl','工作類型'));
+  const wrap = el('div'); wrap.style.display='flex'; wrap.style.gap='4px';
+  WORK_TYPES.forEach(w=>{
+    const b = el('button','seg'+(S.workType===w?' on':''), w);
+    b.addEventListener('click', ()=>{ S.workType=w; renderStep(); });
+    wrap.appendChild(b);
+  });
+  B.appendChild(wrap);
+
+  B.appendChild(el('div','lbl','報價'));
+  const box = el('div'); box.id='quoteTotals';
+  B.appendChild(box);
+  renderQuoteTotals();
+}
+
+function renderQuoteTotals(){
+  const box = $('#quoteTotals'); if (!box) return;
+  const c = calcCost();
+  if (!c){ box.innerHTML = '<div class="mnote">請先填入塑料用量。</div>'; return; }
+  const noPrice = ccPricePlastic()===0 || (fiberOn() && ccPriceFiber()===0);
+  box.innerHTML =
+    `<div class="kv"><span>塑料 ${F(c.pCC,2)} cc × ${ccPricePlastic()}</span><span>${NTD(c.pCost)}</span></div>`
+  + (fiberOn() ? `<div class="kv"><span>纖維 ${F(c.fCC,2)} cc × ${ccPriceFiber()}</span><span>${NTD(c.fCost)}</span></div>` : '')
+  + `<div class="kv"><span>後處理</span><span>${NTD(c.post)}</span></div>`
+  + `<div class="kv"><span>小計</span><span>${NTD(c.sub)}</span></div>`
+  + `<div class="kv"><span>${S.workType} 倍率</span><span>× ${c.mul}</span></div>`
+  + `<div class="kv" style="border-top:1px solid var(--line);margin-top:5px;padding-top:6px">
+       <span style="font-weight:700;color:var(--ink2)">總計</span>
+       <span style="font-weight:700;font-size:14px;color:var(--accent)">${NTD(c.total)}</span></div>`
+  + (noPrice ? '<div class="mnote" style="color:var(--warnText)">⚠ 尚未設定單價（NT$/cc），金額不正確。請至右側「設定」填寫。</div>' : '');
+}
+
+/* ============ 10. 右側模組 ============ */
+function openModule(mod){
+  if (S.openMod === mod){ closeModule(); return; }
+  S.openMod = mod;
+  $$('#rail .railBtn').forEach(b => b.classList.toggle('on', b.dataset.mod===mod));
+  $('#modPanel').classList.add('open');
+  const T = { geo:'幾何分析', fiber:'纖維策略參考', cost:'成本分析', admin:'價格設定' };
+  $('#modTitle').textContent = T[mod] || '';
+  const B = $('#modBody'); B.innerHTML = '';
+  if (mod==='geo')   modGeo(B);
+  if (mod==='fiber') modFiber(B);
+  if (mod==='cost')  modCost(B);
+  if (mod==='admin') modAdmin(B);
+}
+function closeModule(){
+  S.openMod = null;
+  $$('#rail .railBtn').forEach(b=>b.classList.remove('on'));
+  $('#modPanel').classList.remove('open');
+}
+
+function modGeo(B){
+  const m = S.model;
+  if (!m){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
+  const t = m.topo;
+  B.appendChild(el('div','lbl','基本量測'));
+  [['三角面', m.triCount.toLocaleString()],
+   ['尺寸 X×Y×Z', `${F(m.size[0],1)}×${F(m.size[1],1)}×${F(m.size[2],1)} mm`],
+   ['體積（實心）', `${F(m.volumeMM3/1000,2)} cc`],
+   ['表面積', `${F(m.areaMM2,0)} mm²`],
+   ['投影面積', `${F(m.footprintMM2,0)} mm²`],
+  ].forEach(([k,v]) => B.appendChild(el('div','kv',`<span>${k}</span><span>${v}</span>`)));
+
+  B.appendChild(el('div','lbl','拓撲'));
+  [['頂點（焊接後）', t.vertCount.toLocaleString()],
+   ['邊', t.edgeCount.toLocaleString()],
+   ['殼體', t.shells],
+   ['開放邊', t.boundary],
+   ['非流形邊', t.nonManifold],
+   ['貫穿孔（genus）', t.genus===null ? '—' : t.genus],
+  ].forEach(([k,v]) => B.appendChild(el('div','kv',`<span>${k}</span><span>${v}</span>`)));
+
+  B.appendChild(el('div','lbl','懸垂'));
+  B.appendChild(el('div','kv',`<span>門檻（${matr().name}）</span><span>${activeSpec().overhangAngle}°</span>`));
+  B.appendChild(el('div','kv',`<span>最小夾角</span><span>${F(m.minGamma,1)}°</span>`));
+  B.appendChild(el('div','kv',`<span>朝下面積</span><span>${F(m.downArea,0)} mm²</span>`));
+  B.appendChild(el('div','kv',`<span>危險懸垂面積</span><span>${F(m.dangerArea,0)} mm²</span>`));
+  const b = el('button','ghostBtn', S.colorOverhang?'◻ 關閉懸垂標色':'⚠ 開啟懸垂標色');
+  b.addEventListener('click', ()=>{ toggleOverhangColor(); openModule('geo'); });
+  B.appendChild(b);
+  B.appendChild(el('div','mnote','體積為封閉網格的實心體積，未計 Eiger 的填充率與殼層設定。'));
+}
+
+function modFiber(B){
+  const fs = fiberSpec();
+  B.appendChild(el('div','lbl',`纖維規範（${mach().name}）`));
+  [['纖維最小長度', fs.minLen+' mm'],
+   ['最小增強面積', fs.minArea+' mm²'],
+   ['最小增強支撐體直徑', fs.minBossDia+' mm'],
+   ['最小增強寬度（開放）', fs.wOpen+' mm'],
+   ['最小增強寬度（環狀）', fs.wRing+' mm'],
+   ['最小增強孔徑 1 圈', fs.hole[0]+' mm'],
+   ['最小增強孔徑 2 圈', fs.hole[1]+' mm'],
+   ['最小增強孔徑 3 圈', fs.hole[2]+' mm'],
+  ].forEach(([k,v]) => B.appendChild(el('div','kv',`<span>${k}</span><span>${v}</span>`)));
+
+  B.appendChild(el('div','lbl','纖維類型與適用施力'));
+  Object.keys(FIBERS).filter(k=>k!=='none').forEach(k=>{
+    const f = FIBERS[k];
+    B.appendChild(el('div','chk'+(S.fiber===k?' pass':''),
+      `<div class="th">${f.name}</div><div class="td">${f.desc}<br>最小可增強高度 ${f.minFeatH} mm</div>`));
+  });
+
+  B.appendChild(el('div','lbl','填充類型'));
+  B.appendChild(el('div','chk',`<div class="th">同心填充 Concentric</div>
+    <div class="td">纖維沿牆面環繞，抗 Z 軸彎曲、強化牆面。可選只填外殼／只填內孔／所有牆面。</div>`));
+  B.appendChild(el('div','chk',`<div class="th">等向填充 Isotropic</div>
+    <div class="td">Z 字形來回鋪設，模擬單向層。預設每層旋轉 45°，XY 平面抗彎。</div>`));
+
+  B.appendChild(el('div','lbl','基本增強策略：增厚'));
+  B.appendChild(el('div','mnote',
+    '1. 頂/底板各 2–4 層等向纖維做夾心板<br>'
+  + '2. 幾何大幅變化處上下各加 2–4 層等向纖維<br>'
+  + '3. Z 軸螺絲孔加 2 圈同心纖維（只填內孔）<br>'
+  + '4. 外側牆面加 2 圈同心纖維（只填外殼）<br>'
+  + '※ 纖維集合體上下各需 4 層塑膠層，需增強的面要從最近頂/底面偏移 4 層起算。'));
+
+  B.appendChild(el('div','lbl','公差與間隙建議'));
+  [['壓合','0.00–0.05 mm'],['密合','0.05–0.10 mm'],['活動貼合','0.10–0.20 mm']]
+    .forEach(([k,v]) => B.appendChild(el('div','kv',`<span>${k}</span><span>${v}</span>`)));
+}
+
+function modCost(B){
+  const c = calcCost();
+  if (!c){ B.appendChild(el('div','mnote','請先於步驟 5 填入材料用量。')); return; }
+  B.appendChild(el('div','lbl','用量'));
+  B.appendChild(el('div','kv',`<span>塑料（${matr().name}）</span><span>${F(c.pCC,2)} cc</span>`));
+  if (fiberOn()) B.appendChild(el('div','kv',`<span>纖維（${fibr().name}）</span><span>${F(c.fCC,2)} cc</span>`));
+  B.appendChild(el('div','lbl','金額'));
+  B.appendChild(el('div','kv',`<span>塑料</span><span>${NTD(c.pCost)}</span>`));
+  if (fiberOn()) B.appendChild(el('div','kv',`<span>纖維</span><span>${NTD(c.fCost)}</span>`));
+  B.appendChild(el('div','kv',`<span>後處理</span><span>${NTD(c.post)}</span>`));
+  B.appendChild(el('div','kv',`<span>小計 × ${c.mul}</span><span>${NTD(c.total)}</span>`));
+  B.appendChild(el('div','mnote','計價模型：塑料 cc×單價 + 纖維 cc×單價 + 後處理費，再乘工作類型倍率。無電費/工時/利潤項。'));
+}
+
+function modAdmin(B){
+  if (!S.isAdmin){ B.appendChild(el('div','mnote','需要管理員或「設定估價材料與價格」權限。')); return; }
+  B.appendChild(el('div','lbl','塑料單價 NT$/cc'));
+  Object.keys(MATERIALS).forEach(k=>{
+    const row = el('div'); row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px';
+    row.appendChild(el('span', null, MATERIALS[k].name)).style.cssText='flex:1;font-size:11px;color:var(--ink3)';
+    const i = el('input','num'); i.type='number'; i.min=0; i.step='0.1'; i.style.width='84px';
+    i.value = S.price.plastic[k] != null ? S.price.plastic[k] : '';
+    i.addEventListener('change', e=>{ S.price.plastic[k] = +e.target.value||0; renderQuoteTotals(); });
+    row.appendChild(i); B.appendChild(row);
+  });
+  B.appendChild(el('div','lbl','纖維單價 NT$/cc'));
+  Object.keys(FIBERS).filter(k=>k!=='none').forEach(k=>{
+    const row = el('div'); row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px';
+    row.appendChild(el('span', null, FIBERS[k].name)).style.cssText='flex:1;font-size:11px;color:var(--ink3)';
+    const i = el('input','num'); i.type='number'; i.min=0; i.step='0.1'; i.style.width='84px';
+    i.value = S.price.fiber[k] != null ? S.price.fiber[k] : '';
+    i.addEventListener('change', e=>{ S.price.fiber[k] = +e.target.value||0; renderQuoteTotals(); });
+    row.appendChild(i); B.appendChild(row);
+  });
+  B.appendChild(el('div','lbl','後處理費 NT$'));
+  const pc = el('input','num'); pc.type='number'; pc.min=0; pc.step='10'; pc.value=S.price.postCost;
+  pc.addEventListener('change', e=>{ S.price.postCost = +e.target.value||0; renderQuoteTotals(); });
+  B.appendChild(pc);
+  B.appendChild(el('div','lbl','工作類型倍率'));
+  WORK_TYPES.forEach(w=>{
+    const row = el('div'); row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:4px';
+    row.appendChild(el('span', null, w)).style.cssText='flex:1;font-size:11px;color:var(--ink3)';
+    const i = el('input','num'); i.type='number'; i.min=0; i.step='0.1'; i.style.width='84px';
+    i.value = S.price.multipliers[w] != null ? S.price.multipliers[w] : 1;
+    i.addEventListener('change', e=>{ S.price.multipliers[w] = +e.target.value||1; renderQuoteTotals(); });
+    row.appendChild(i); B.appendChild(row);
+  });
+  const sv = el('button','pbtn','💾 儲存價格設定');
+  sv.addEventListener('click', savePricing);
+  B.appendChild(sv);
+  B.appendChild(el('div','mnote','儲存於 settings/quote_markforged_pricing，與 Formlabs 估價的價格設定完全分離。'));
+}
+
+/* ============ 11. 事件綁定 ============ */
+function toggleOverhangColor(){
+  S.colorOverhang = !S.colorOverhang;
+  $('#btnOverhang').classList.toggle('on', S.colorOverhang);
+  buildMesh();
+}
+/* 視角預設。cube 的六面與 viewbar 共用同一組定義，避免兩邊不同步。 */
+const CAM = {
+  persp:  { phi:Math.PI*0.34, theta:Math.PI*0.25 },
+  home:   { phi:Math.PI*0.34, theta:Math.PI*0.25 },
+  top:    { phi:0.06,         theta:Math.PI*0.25 },
+  bottom: { phi:Math.PI-0.06, theta:Math.PI*0.25 },
+  front:  { phi:Math.PI/2,    theta:Math.PI*1.5  },
+  back:   { phi:Math.PI/2,    theta:Math.PI*0.5  },
+  right:  { phi:Math.PI/2,    theta:0            },
+  left:   { phi:Math.PI/2,    theta:Math.PI      },
+};
+function setView(v){
+  const c = CAM[v]; if (!c) return;
+  $$('#viewbar .vtab').forEach(b=>b.classList.toggle('on', b.dataset.view===v));
+  V.phi = c.phi; V.theta = c.theta;
+  if (v==='home' && S.model) frameCamera();
+  V.updateCam();
+}
+function bindUI(){
+  $$('#viewbar .vtab').forEach(b => b.addEventListener('click', ()=>setView(b.dataset.view)));
+  $$('#cubeWrap [data-cam]').forEach(b => b.addEventListener('click', ()=>setView(b.dataset.cam)));
+  $('#btnOverhang').addEventListener('click', toggleOverhangColor);
+  $('#btnFaceDown').addEventListener('click', ()=>{
+    if (!S.model){ toast('請先載入模型','err'); return; }
+    S.faceDownMode = !S.faceDownMode;
+    updateFaceDownBtn();
+    if (S.faceDownMode) toast('請點擊模型上任一面 — 該面將轉向平台朝下','inf');
+  });
+  $('#btnRange').addEventListener('click', ()=>{
+    S.showRange = !S.showRange;
+    $('#btnRange').classList.toggle('on', S.showRange);
+    buildPlatform();
+  });
+  $('#btnTheme').addEventListener('click', ()=>{
+    const cur = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', cur==='dark' ? 'light' : 'dark');
+  });
+  $('#stepHide').addEventListener('click', ()=>{
+    $('#stepCard').style.display='none'; $('#stepShow').style.display='block';
+  });
+  $('#stepShow').addEventListener('click', ()=>{
+    $('#stepCard').style.display='flex'; $('#stepShow').style.display='none';
+  });
+  $$('#rail .railBtn').forEach(b => b.addEventListener('click', ()=>openModule(b.dataset.mod)));
+  $('#modClose').addEventListener('click', closeModule);
+  $('#gateClose').addEventListener('click', ()=>{ S.gateDismissed = true; $('#gate').style.display='none'; });
+  // 拖放載入
+  addEventListener('dragover', e=>e.preventDefault());
+  addEventListener('drop', e=>{
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (/\.(stl|obj|3mf|step|stp)$/i.test(f.name)) loadFile(f);
+    else toast('不支援的檔案格式（僅支援 STL / OBJ / 3MF / STEP）','err');
+  });
+  // 跟隨 portal 的深色模式（同源 iframe 才讀得到）
+  try{
+    if (window.parent !== window){
+      const t = window.parent.document.documentElement.getAttribute('data-theme');
+      if (t) document.documentElement.setAttribute('data-theme', t);
+    }
+  }catch(e){ /* 跨網域時略過 */ }
+}
+
+/* ============ 12. 啟動 ============ */
+initViewer();
+bindUI();
+renderStep();
+initFirebase();
+</script>
+</body>
+</html>
