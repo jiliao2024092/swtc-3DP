@@ -106,6 +106,11 @@ button{font-family:inherit}
 #brand b{font-size:calc(13.5px * var(--fs))}
 #brand .tag{height:17px;padding:0 8px;font-size:calc(10px * var(--fs));border-radius:999px;font-family:var(--mono);
   font-weight:600;background:var(--accentBg);color:var(--accent);display:inline-flex;align-items:center}
+/* 品牌切換鈕：與 quote-studio.html 對稱，兩支獨立檔案，此鈕只是換頁。 */
+.brandSwitch{display:flex;gap:2px;background:var(--bg2);border-radius:7px;padding:2px;margin-left:2px}
+.brandSwitch button{border:0;background:transparent;border-radius:5px;padding:3px 9px;cursor:pointer;
+  font:inherit;font-size:calc(10.5px * var(--fs));font-weight:600;color:var(--ink4)}
+.brandSwitch button.on{background:var(--panelBg);color:var(--ink);box-shadow:var(--shadowSm)}
 #viewbar{display:flex;gap:5px;border-radius:8px;padding:5px;align-items:center}
 .vtab{padding:4px 10px;border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs));font-weight:600;
   cursor:pointer;background:transparent;color:var(--ink3)}
@@ -219,6 +224,10 @@ button{font-family:inherit}
 <div id="topbar">
   <div id="brand" class="glass-sm">
     <b>Markforged 估價</b><span class="tag">Beta</span>
+    <div class="brandSwitch">
+      <button id="btnGoFl" title="切換到 Formlabs 估價（不同工藝，另一支獨立頁面）">Formlabs</button>
+      <button class="on" disabled title="目前頁面">Markforged</button>
+    </div>
   </div>
   <div style="flex:1"></div>
   <div id="viewbar" class="glass-sm">
@@ -1817,6 +1826,8 @@ function bindUI(){
   $$('#rail .railBtn').forEach(b => b.addEventListener('click', ()=>openModule(b.dataset.mod)));
   $('#modClose').addEventListener('click', closeModule);
   $('#gateClose').addEventListener('click', ()=>{ S.gateDismissed = true; $('#gate').style.display='none'; });
+  // 切回 Formlabs：同一支 iframe 內導覽（相對路徑，同層目錄）；工作中的模型不跨頁保留。
+  $('#btnGoFl').addEventListener('click', ()=>{ location.href = 'quote-studio.html'; });
   // 拖放載入
   addEventListener('dragover', e=>e.preventDefault());
   addEventListener('drop', e=>{

@@ -69,6 +69,13 @@ button{font-family:inherit}
 #brand b{font-size:calc(13.5px * var(--fs))}
 #brand .tag{height:17px;padding:0 8px;font-size:calc(10px * var(--fs));border-radius:999px;font-family:var(--mono);
   font-weight:600;background:var(--accentBg);color:var(--accent);display:inline-flex;align-items:center}
+/* 品牌切換鈕：Formlabs(SLA) / Markforged(FDM+纖維) 是完全不同的成形工藝與規範，
+   分屬 quote-studio.html / quote-markforged.html 兩支獨立檔案；此鈕只是換頁，非切換頁面內狀態。
+   同源 iframe 內導覽，portal 外層的 iframe 不會跳走。 */
+.brandSwitch{display:flex;gap:2px;background:var(--bg2);border-radius:7px;padding:2px;margin-left:2px}
+.brandSwitch button{border:0;background:transparent;border-radius:5px;padding:3px 9px;cursor:pointer;
+  font:inherit;font-size:calc(10.5px * var(--fs));font-weight:600;color:var(--ink4)}
+.brandSwitch button.on{background:var(--panelBg);color:var(--ink);box-shadow:var(--shadowSm)}
 #viewbar{display:flex;gap:5px;border-radius:8px;padding:5px;align-items:center}
 .vtab{padding:4px 10px;border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs));font-weight:600;
   color:var(--ink4);cursor:pointer;background:transparent}
@@ -441,6 +448,10 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
   <div id="brand" class="glass-sm">
     <b>3D列印估價</b>
     <span class="tag">Beta</span>
+    <div class="brandSwitch">
+      <button class="on" disabled title="目前頁面">Formlabs</button>
+      <button id="btnGoMf" title="切換到 Markforged 估價（不同工藝，另一支獨立頁面）">Markforged</button>
+    </div>
   </div>
   <div style="flex:1"></div>
   <div id="viewbar" class="glass-sm">
@@ -3569,6 +3580,9 @@ function bindEvents(){
     $('#btnFullscreen').classList.toggle('on', S.appFullscreen);
     $('#btnFullscreen').innerHTML = S.appFullscreen ? '⤢ 離開全螢幕' : '⛶ 全螢幕';
   });
+  // 切到 Markforged：同一支 iframe 內導覽（相對路徑，quote-markforged.html 同層），
+  // 不透過 portal 選單、不開新分頁；工作中的模型/步驟不跨頁保留（兩邊資料模型不同，無法對應）。
+  $('#btnGoMf').addEventListener('click', ()=>{ location.href = 'quote-markforged.html'; });
   addEventListener('keydown', e=>{
     if (e.key==='Escape' && S.appFullscreen) $('#btnFullscreen').click();
   });
