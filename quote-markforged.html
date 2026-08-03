@@ -137,7 +137,10 @@ button{font-family:inherit}
 .dockBtn.done{color:var(--ok);border-color:var(--okLine)}
 
 .fileRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:6px 9px;
-  background:var(--panelBg);margin-bottom:5px}
+  background:var(--panelBg);margin-bottom:5px;cursor:pointer}
+.fileRow.on{border-color:var(--accent);background:var(--accentBg)}
+.delBtn{border:0;background:transparent;color:var(--ink4);cursor:pointer;font-size:12px;padding:0 2px;flex-shrink:0}
+.delBtn:hover{color:var(--err)}
 .machRow{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;
   background:var(--panelBg);cursor:pointer;margin-bottom:4px}
 .machRow.on{border-color:var(--accent);background:var(--accentBg)}
@@ -391,18 +394,22 @@ const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 
 /* ============ 1. 狀態 ============ */
+// ★ 多模型（PreForm 式排版）：S.models 是陣列，S.activeId 指向「目前選取、可拖曳/旋轉/看檢查結果」
+//   的那一個。material/fiber/machine/workType 維持全域（同一批列印共用同一種材料，比照 quote-studio），
+//   但每個模型有自己的幾何分析結果與材料用量（usage），因為體積/懸垂/成本都是逐件計算。
 const S = {
   step:0, openMod:null,
-  model:null,                 // 目前載入的模型（本版單模型）
+  models:[],                  // [{id,name,sizeKB,raw,pos:{x,z}, ...analyze()結果, usage:{plasticCC,fiberCC}}]
+  activeId:null,
   machine:'desktop', material:'onyx', fiber:'none',
   fiberRings:2,               // 同心纖維圈數（僅供纖維檢查參考）
   workType:'代工',
-  showRange:true, colorOverhang:false, selected:false, faceDownMode:false,
-  // 材料用量：階段 2 手動輸入；階段 3/4 由 Eiger API 帶入後改為預設值、手動僅覆寫
-  usage:{ source:'manual', plasticCC:null, fiberCC:null, printSec:null },
+  showRange:true, colorOverhang:false, faceDownMode:false,
   price:{ plastic:{}, fiber:{}, postCost:150, multipliers:{ '代工':1,'評估':1 } },
   user:null, isAdmin:false,
 };
+let _mid = 0;
+function activeModel(){ return S.models.find(m=>m.id===S.activeId) || null; }
 
 /* ============ 2. Firebase（沿用 portal 登入狀態） ============ */
 const FIREBASE_CONFIG = {
@@ -564,13 +571,12 @@ function initViewer(){
     }
     const hit = pickModel(e);
     if (hit && S.faceDownMode){ applyFaceDown(hit); return; }   // 以此面為底：優先於拖曳
-    if (hit){                                              // 左鍵點到模型：選取並準備拖曳
-      selectModel(true);
+    if (hit){                                              // 左鍵點到模型：選取「那一個」並準備拖曳
+      selectModel(hit.object.userData.modelId);
       dragModel = true;
       dragClampNotified = false;
-      const mesh = V.modelGroup.children[0];
       grabPlane   = planeHit(e) || new THREE.Vector3();
-      grabMeshPos = mesh.position.clone();
+      grabMeshPos = hit.object.position.clone();
       canvas.style.cursor='grabbing';
     } else {                                               // 左鍵點空白：開始框選
       boxSel = true; boxStart = {x:e.clientX, y:e.clientY};
@@ -583,9 +589,9 @@ function initViewer(){
     if (dragModel){ dragModel=false; canvas.style.cursor=''; renderPlacePanel(); }
     if (boxSel){
       boxSel=false; selBoxEl.style.display='none';
-      // 框選：框內若含模型則選取，否則取消選取；單純點一下空白也視為取消
-      if (moved && S.model) selectModel(boxIntersectsModel(boxStart, {x:px,y:py}));
-      else selectModel(false);
+      // 框選：框內若含模型則選取那一個，否則取消選取；單純點一下空白也視為取消
+      if (moved && S.models.length) selectModel(boxIntersectsModel(boxStart, {x:px,y:py}));
+      else selectModel(null);
     }
     rot=false; pan=false;
   };
@@ -621,11 +627,12 @@ function initViewer(){
       V.updateCam();
     } else if (dragModel){
       const p = planeHit(e);
-      const mesh = V.modelGroup.children[0];
-      if (p && mesh && grabPlane){
+      const m = activeModel();
+      const mesh = V.modelGroup.children.find(c=>c.userData.modelId===S.activeId);
+      if (p && mesh && grabPlane && m){
         // 比照 quote-studio：拖曳中即時夾限，頂到成形範圍邊界就停住
         const ox = grabMeshPos.x + (p.x - grabPlane.x), oz = grabMeshPos.z + (p.z - grabPlane.z);
-        const ms = machSize(), hx = S.model.size[0]/2, hz = S.model.size[1]/2;
+        const ms = machSize(), hx = m.size[0]/2, hz = m.size[1]/2;
         const clampAxis = (half, hw, off) => (hw*2 > half*2) ? off : Math.min(half-hw, Math.max(-half+hw, off));
         const nx = clampAxis(ms[0]/2, hx, ox), nz = clampAxis(ms[1]/2, hz, oz);
         if ((nx!==ox || nz!==oz) && !dragClampNotified){
@@ -633,6 +640,9 @@ function initViewer(){
           toast('已達最大列印範圍邊界，動作已強制停止','inf');
         }
         mesh.position.set(nx, 0, nz);
+        // ★ 必須寫回 m.pos，不只是改 mesh：buildMesh() 之後任何全體重繪（旋轉/刪除/複製其他模型）
+        //   都是從 m.pos 重建每個 mesh 的位置，只改 mesh.position 的話下次重繪這個模型會跳回舊位置。
+        m.pos.x = nx; m.pos.z = nz;
         if (V.gizmo) V.gizmo.position.set(nx, 0, nz);
       }
     } else if (boxSel){
@@ -657,14 +667,17 @@ function initViewer(){
 }
 
 /* ── 選取 / 框選 / 邊界夾制 ── */
-function selectModel(on){
-  S.selected = !!on && !!S.model;
-  const mesh = V.modelGroup.children[0];
-  if (mesh) mesh.material.emissive.setHex(S.selected ? 0x1d4e5e : 0x000000);
+/* id=null 取消選取；否則選取該 id 的模型（同時取消其他模型的高亮）。
+   每個 mesh 用獨立材質（buildMesh() 內 clone），emissive 才能各自控制，不會選一個全部一起亮。 */
+function selectModel(id){
+  S.activeId = (id && S.models.some(m=>m.id===id)) ? id : null;
+  V.modelGroup.children.forEach(mesh=>{
+    mesh.material.emissive.setHex(mesh.userData.modelId===S.activeId ? 0x1d4e5e : 0x000000);
+  });
   const b = $('#selInfo');
-  if (b) b.style.display = S.selected ? '' : 'none';
+  if (b) b.style.display = S.activeId ? '' : 'none';
   // 選取才顯示旋轉軸與擺放面板，未選取時一起收起，避免擋住檢視
-  if (S.selected) buildGizmo(); else { removeGizmo(); S.faceDownMode = false; }
+  if (S.activeId) buildGizmo(); else { removeGizmo(); S.faceDownMode = false; }
   updateFaceDownBtn();
   renderPlacePanel();
 }
@@ -675,19 +688,19 @@ function updateSelBox(a, b){
   el.style.width  = Math.abs(a.x-b.x)+'px';
   el.style.height = Math.abs(a.y-b.y)+'px';
 }
-/* 框選判定：把模型包圍盒的 8 個角投影到螢幕，任一角落在框內即視為選中 */
+/* 框選判定：逐一檢查每個模型的包圍盒 8 個角投影到螢幕，回傳第一個框到的 modelId，都沒框到回傳 null。 */
 function boxIntersectsModel(a, b){
-  const mesh = V.modelGroup.children[0];
-  if (!mesh) return false;
-  mesh.geometry.computeBoundingBox();
-  const bb = mesh.geometry.boundingBox;
   const x0=Math.min(a.x,b.x), x1=Math.max(a.x,b.x), y0=Math.min(a.y,b.y), y1=Math.max(a.y,b.y);
-  for (const cx of [bb.min.x,bb.max.x]) for (const cy of [bb.min.y,bb.max.y]) for (const cz of [bb.min.z,bb.max.z]){
-    const p = new THREE.Vector3(cx,cy,cz).applyMatrix4(mesh.matrixWorld).project(V.camera);
-    const sx = (p.x+1)/2*innerWidth, sy = (-p.y+1)/2*innerHeight;
-    if (sx>=x0 && sx<=x1 && sy>=y0 && sy<=y1) return true;
+  for (const mesh of V.modelGroup.children){
+    mesh.geometry.computeBoundingBox();
+    const bb = mesh.geometry.boundingBox;
+    for (const cx of [bb.min.x,bb.max.x]) for (const cy of [bb.min.y,bb.max.y]) for (const cz of [bb.min.z,bb.max.z]){
+      const p = new THREE.Vector3(cx,cy,cz).applyMatrix4(mesh.matrixWorld).project(V.camera);
+      const sx = (p.x+1)/2*innerWidth, sy = (-p.y+1)/2*innerHeight;
+      if (sx>=x0 && sx<=x1 && sy>=y0 && sy<=y1) return mesh.userData.modelId;
+    }
   }
-  return false;
+  return null;
 }
 /* ── 旋轉軸 Gizmo（比照 quote-studio）──
    三色弧線＋方向箭頭，恆在最上層（depthTest:false），不會被模型擋住而抓不到。
@@ -701,7 +714,8 @@ function removeGizmo(){
 }
 function buildGizmo(){
   removeGizmo();
-  const m = S.model, mesh = V.modelGroup.children[0];
+  const m = activeModel();
+  const mesh = m ? V.modelGroup.children.find(c=>c.userData.modelId===m.id) : null;
   if (!m || !mesh) return;
   const P = new THREE.Vector3(mesh.position.x, m.size[2]/2, mesh.position.z);
   const R = Math.max(12, Math.max(m.size[0], m.size[1], m.size[2])*0.42 + 3) * 0.75;
@@ -741,12 +755,12 @@ function updateGizmoScreenScale(){
   V.gizmo.scale.setScalar(V.camera.position.distanceTo(V.gizmoCenter) / V.gizmoBaseDist);
 }
 function gizmoDragBegin(){
-  const mesh = V.modelGroup.children[0];
+  const mesh = V.modelGroup.children.find(c=>c.userData.modelId===S.activeId);
   if (mesh) V.gizmoQ0 = mesh.quaternion.clone();
 }
 /* 拖曳中即時預覽：只動 mesh 的 quaternion，不重算分析（重算太慢） */
 function applyGizmoLive(axis, delta){
-  const mesh = V.modelGroup.children[0];
+  const mesh = V.modelGroup.children.find(c=>c.userData.modelId===S.activeId);
   if (!mesh || !V.gizmoQ0) return;
   const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
   mesh.quaternion.copy(q).multiply(V.gizmoQ0);
@@ -754,17 +768,18 @@ function applyGizmoLive(axis, delta){
 /* 把「畫面座標(Y-up)的旋轉」烘焙進幾何並重跑分析。
    旋轉/翻面都走這一條路徑，避免兩處各寫一份座標換算而漂移。
    revertIfTooTall：轉完若超出成形高度上限就整個放棄（比照 quote-studio 的以此面為底行為）。 */
+/* 烘焙對象一律是「目前選取的模型」，換算出的新分析結果原地取代 S.models 陣列中的那一筆，
+   位置(pos)、用量(usage)、id/name 都要沿用——只有幾何與衍生分析（尺寸/懸垂/拓撲…）是新的。 */
 function bakeRotation(qScreen, opt){
-  const mesh = V.modelGroup.children[0];
-  if (!mesh || !S.model) return false;
+  const m = activeModel();
+  const mesh = m ? V.modelGroup.children.find(c=>c.userData.modelId===m.id) : null;
+  if (!m || !mesh) return false;
   // three.js 場景是 Y-up，分析資料是指南的 Z-up：screen_x=guide_x、screen_y=guide_z、screen_z=-guide_y
   const e  = new THREE.Euler().setFromQuaternion(qScreen, 'XYZ');
   const qz = new THREE.Quaternion().setFromEuler(new THREE.Euler(e.x, -e.z, e.y, 'XYZ'));
-  const raw = S.model.raw, n = raw.triCount;
+  const raw = m.raw, n = raw.triCount;
   const verts = new Float32Array(raw.verts.length);
-  const c = [ (S.model.bbMin[0]+S.model.bbMax[0])/2,
-              (S.model.bbMin[1]+S.model.bbMax[1])/2,
-              (S.model.bbMin[2]+S.model.bbMax[2])/2 ];
+  const c = [ (m.bbMin[0]+m.bbMax[0])/2, (m.bbMin[1]+m.bbMax[1])/2, (m.bbMin[2]+m.bbMax[2])/2 ];
   const v = new THREE.Vector3();
   for (let i=0;i<n*3;i++){
     const o=i*3;
@@ -776,36 +791,40 @@ function bakeRotation(qScreen, opt){
     toast(`✕ 轉向後高度 ${F(next.size[2],1)}mm 超出上限 ${machSize()[2]}mm，動作已還原`,'err');
     return false;
   }
-  const keepPos = mesh.position.clone();          // 保留使用者拖曳過的平台位置
-  next.name = S.model.name; next.sizeKB = S.model.sizeKB;
-  S.model = next;
-  recomputeOverhang();
+  next.id = m.id; next.name = m.name; next.sizeKB = m.sizeKB;
+  next.pos = { ...m.pos };      // 旋轉不影響平台位置
+  next.usage = m.usage;         // 同一個部件，用量沿用
+  const idx = S.models.findIndex(x=>x.id===m.id);
+  S.models[idx] = next;
+  recomputeOverhangFor(next);
   buildMesh();
-  const nm = V.modelGroup.children[0];
-  if (nm) nm.position.copy(keepPos);
-  if (S.selected) buildGizmo();
+  if (S.activeId===next.id) buildGizmo();
   renderStep();
   return true;
 }
 /* 放開旋轉環後把旋轉烘焙進幾何 —— 方向改變會改變懸垂判定 */
 function commitGizmo(axis, delta){
-  if (!V.modelGroup.children[0] || !S.model) return;
+  const mesh = V.modelGroup.children.find(c=>c.userData.modelId===S.activeId);
+  if (!mesh || !activeModel()) return;
   if (Math.abs(delta) < 1e-4){ buildGizmo(); return; }
   const q = new THREE.Quaternion().setFromAxisAngle(V.gizmoBasis[axis].axis, delta);
   if (bakeRotation(q)) toast(`已旋轉 ${(delta*180/Math.PI).toFixed(0)}°，已重新分析懸垂`,'ok');
   else { buildMesh(); buildGizmo(); }
 }
-/* 以此面為底：把點到的面的法向轉成朝下 (0,-1,0) */
+/* 以此面為底：把點到的面的法向轉成朝下 (0,-1,0)。
+   點到的面所屬的模型不一定是目前選取的那個（多模型情境下常見），必須先切成 active，
+   否則 bakeRotation() 會烘焙到「原本選取」的另一個模型，使用者點 A 卻轉到 B。 */
 function applyFaceDown(hit){
   S.faceDownMode = false;
   updateFaceDownBtn();
   if (!hit || !hit.face) return;
-  // 面法向需轉成世界座標；模型可能已被旋轉過
+  const hitId = hit.object.userData.modelId;
+  if (hitId !== S.activeId) selectModel(hitId);
   const nrm = hit.face.normal.clone()
     .applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(hit.object.matrixWorld)).normalize();
   const q = new THREE.Quaternion().setFromUnitVectors(nrm, new THREE.Vector3(0,-1,0));
   if (bakeRotation(q, { revertIfTooTall:true })){
-    selectModel(true);
+    selectModel(hitId);
     toast('✓ 已將選取面轉向平台（以此面為底）','ok');
   }
 }
@@ -824,16 +843,18 @@ function updateFaceDownBtn(){
 
 /* ── 擺放面板（PreForm 式）──
    選取模型後出現，提供數值定位、方向鍵微調、置中與以此面為底。
-   位置以 mesh.position 為準（x=左右、z=深度），與拖曳共用同一份狀態。 */
+   ★ 位置以 m.pos 為準（不是 mesh.position）：buildMesh() 每次重繪都是從 m.pos 重建每個 mesh 的
+   位置，只改 mesh.position 的話，下次任何模型觸發重繪（旋轉/刪除/複製）這個位置就會跳回舊值。 */
 function renderPlacePanel(){
   const P = $('#ppBody'), panel = $('#placePanel');
-  if (!S.model || !S.selected){ panel.classList.remove('open'); return; }
-  const mesh = V.modelGroup.children[0];
+  const m = activeModel();
+  if (!m){ panel.classList.remove('open'); return; }
+  const mesh = V.modelGroup.children.find(c=>c.userData.modelId===m.id);
   if (!mesh){ panel.classList.remove('open'); return; }
   P.innerHTML = '';
 
-  const head = el('h4','', '✥ 擺放（PreForm 式）<span class="x">✕</span>');
-  head.querySelector('.x').addEventListener('click', ()=>selectModel(false));
+  const head = el('h4','', `✥ 擺放（PreForm 式）· ${m.name}<span class="x">✕</span>`);
+  head.querySelector('.x').addEventListener('click', ()=>selectModel(null));
   P.appendChild(head);
 
   P.appendChild(el('div','ppHint',
@@ -842,18 +863,21 @@ function renderPlacePanel(){
   + '<b>右鍵</b> 轉視角 · <b>中鍵</b> 平移 · <b>滾輪</b> 縮放'));
 
   const ms = machSize();
+  const syncMesh = () => {
+    mesh.position.set(m.pos.x, 0, m.pos.z);
+    if (V.gizmo) V.gizmo.position.set(m.pos.x, 0, m.pos.z);
+  };
   // 位置輸入。超出成形範圍時輸入框轉紅（比照 quote-studio 的 outR）
   const mkIn = (label, axis, limit, half) => {
-    const cur = axis==='x' ? mesh.position.x : mesh.position.z;
+    const cur = m.pos[axis];
     const r = el('div','inRow',
       `<label>${label}</label><input type="number" step="1" value="${F(cur,1)}"><span class="un">mm</span>`);
     const inp = r.querySelector('input');
     const mark = () => inp.classList.toggle('outR', Math.abs(+inp.value||0) + half > limit/2 + 0.01);
     mark();
     const apply = () => {
-      const v = +inp.value || 0;
-      if (axis==='x') mesh.position.x = v; else mesh.position.z = v;
-      if (V.gizmo) V.gizmo.position.set(mesh.position.x, 0, mesh.position.z);
+      m.pos[axis] = +inp.value || 0;
+      syncMesh();
       mark(); renderPlacePanel();
     };
     inp.addEventListener('change', apply);
@@ -864,17 +888,17 @@ function renderPlacePanel(){
     }, { passive:false });
     return r;
   };
-  P.appendChild(mkIn('位置 X','x', ms[0], S.model.size[0]/2));
-  P.appendChild(mkIn('位置 Y（深）','z', ms[1], S.model.size[1]/2));
+  P.appendChild(mkIn('位置 X','x', ms[0], m.size[0]/2));
+  P.appendChild(mkIn('位置 Y（深）','z', ms[1], m.size[1]/2));
 
   const pad = el('div','arrowPad',
     `<span class="empty"></span><button data-d="0,-1">▲</button><span class="empty"></span>
      <button data-d="-1,0">◀</button><button class="c" data-d="c">✥ 置中</button><button data-d="1,0">▶</button>
      <span class="empty"></span><button data-d="0,1">▼</button><span class="empty"></span>`);
   pad.querySelectorAll('button').forEach(b => b.addEventListener('click', ()=>{
-    if (b.dataset.d==='c'){ mesh.position.x = 0; mesh.position.z = 0; }
-    else { const [dx,dz] = b.dataset.d.split(',').map(Number); mesh.position.x += dx; mesh.position.z += dz; }
-    if (V.gizmo) V.gizmo.position.set(mesh.position.x, 0, mesh.position.z);
+    if (b.dataset.d==='c'){ m.pos.x = 0; m.pos.z = 0; }
+    else { const [dx,dz] = b.dataset.d.split(',').map(Number); m.pos.x += dx; m.pos.z += dz; }
+    syncMesh();
     renderPlacePanel();
   }));
   P.appendChild(pad);
@@ -1214,13 +1238,15 @@ function topology(raw){
 function isDangerFace(m, i, th){
   return m.faceNz[i] < -1e-6 && !m.onPlate[i] && m.gamma[i] < th;
 }
-function recomputeOverhang(){
-  const m = S.model; if (!m) return;
+function recomputeOverhangFor(m){
+  if (!m) return;
   const th = activeSpec().overhangAngle;
   let danger = 0;
   for (let i=0;i<m.triCount;i++) if (isDangerFace(m,i,th)) danger += m.areaArr[i];
   m.dangerArea = danger;
 }
+// 材料/機台切換時門檻會變，所有已載入模型都要重算，不是只有目前選取的那個
+function recomputeOverhangAll(){ S.models.forEach(recomputeOverhangFor); }
 
 /* ============ 6. 載入模型 ============ */
 /* 忙碌遮罩：STEP 需下載 CAD 核心並鑲嵌，可能數秒，必須讓使用者知道在跑 */
@@ -1231,17 +1257,24 @@ function busy(msg){
   else b.style.display='none';
 }
 
+/* 每次上傳都是「新增一個模型」到平台上，不會取代既有的（比照 quote-studio 可疊多模型批次估價）。
+   新模型自動找一個不與既有模型重疊的空位；第一個模型直接放平台中心。 */
 async function loadFile(file){
   busy('讀取檔案中…');
   try{
     const raw = await parseFile(file);
     if (!raw.triCount){ toast('檔案無有效三角面','err'); return; }
     const m = analyze(raw);
+    m.id = 'm' + (++_mid);
     m.name = file.name;
     m.sizeKB = Math.round(file.size/1024);
-    S.model = m;
-    selectModel(false);
-    recomputeOverhang();
+    m.usage = { plasticCC:null, fiberCC:null };
+    const slot = findOpenSlot(m.size, S.models.map(x=>({pos:x.pos, size:x.size})));
+    m.pos = slot || { x:0, z:0 };
+    if (!slot && S.models.length) toast('列印範圍已滿，新模型與既有模型重疊，請手動調整位置','warn');
+    S.models.push(m);
+    S.activeId = m.id;
+    recomputeOverhangFor(m);
     buildMesh();
     frameCamera();
     S.step = 1;
@@ -1254,45 +1287,137 @@ async function loadFile(file){
   }
 }
 
+/* ── 找平台空位 / 複製模型（PreForm 式排版，比照 quote-studio）──
+   跟 quote-studio 的差異：那邊是「從來源模型的既有位置往外掃」，這裡因為新檔案上傳時
+   來源根本還沒有位置，所以改成「從平台網格直接掃」，對兩種情境（新上傳/複製既有模型）都適用。 */
+const DUP_GAP = 3;   // 件與件之間要保留的間距 (mm)
+function findOpenSlot(size, occupied){
+  const ms = machSize(), halfX = ms[0]/2, halfZ = ms[1]/2;
+  const w = size[0], d = size[1];
+  if (w > ms[0] || d > ms[1]) return null;           // 單件本身就超出範圍
+  if (!occupied.length) return { x:0, z:0 };          // 平台是空的，直接放中心
+  const step = Math.max(2, Math.min(10, Math.min(w,d)/4));
+  const xLo = -halfX + w/2, xHi = halfX - w/2;
+  const zLo = -halfZ + d/2, zHi = halfZ - d/2;
+  if (xHi < xLo - 0.01 || zHi < zLo - 0.01) return null;
+  const overlaps = (cx, cz) => occupied.some(o=>{
+    const ohx = o.size[0]/2, ohz = o.size[1]/2;
+    // 用「至少間隔 DUP_GAP」而不是單純不重疊，件與件才不會緊貼
+    return !(cx+w/2+DUP_GAP <= o.pos.x-ohx || cx-w/2-DUP_GAP >= o.pos.x+ohx ||
+             cz+d/2+DUP_GAP <= o.pos.z-ohz || cz-d/2-DUP_GAP >= o.pos.z+ohz);
+  });
+  for (let cz=zLo; cz<=zHi+1e-6; cz+=step){
+    for (let cx=xLo; cx<=xHi+1e-6; cx+=step){
+      if (!overlaps(cx,cz)) return { x:cx, z:cz };
+    }
+  }
+  return null;
+}
+function nextCopyName(base){
+  const stem = base.replace(/\s*\((\d+)\)$/, '');
+  let n = 2;
+  while (S.models.some(m => m.name === `${stem} (${n})`)) n++;
+  return `${stem} (${n})`;
+}
+// 純資料深拷貝（TypedArray / 巢狀物件都要能複製）
+function cloneData(o){
+  if (o == null) return o;
+  try { return structuredClone(o); } catch(e){ return JSON.parse(JSON.stringify(o)); }
+}
+/* 複製指定模型 count 份，逐一找空位放入；幾何/懸垂/拓撲等分析結果直接沿用來源的深拷貝——
+   純平移不改變任何一個面的角度或面積，重算沒有意義只是浪費算力。用量(usage)也複製一份，
+   讓使用者可以照原本的量再調整，而不用每份都重填一次。 */
+function duplicateModel(sourceId, count){
+  const src = S.models.find(m=>m.id===sourceId);
+  if (!src){ toast('找不到要複製的模型','err'); return; }
+  count = Math.max(1, Math.min(50, Math.round(Number(count)||1)));
+  let placed = 0, lastId = null;
+  for (let i=0;i<count;i++){
+    const slot = findOpenSlot(src.size, S.models.map(m=>({pos:m.pos, size:m.size})));
+    if (!slot) break;
+    const id = 'm' + (++_mid);
+    const copy = {
+      ...cloneData({ ...src, raw:undefined }),   // 除了 raw 以外全部深拷貝（TypedArray 也會被複製）
+      id, name: nextCopyName(src.name), pos: slot,
+      raw: { verts: src.raw.verts.slice(), norms:null, triCount: src.raw.triCount },
+    };
+    S.models.push(copy);
+    placed++; lastId = id;
+  }
+  if (!placed){ toast('列印範圍已滿，放不下任何複製件','err'); return; }
+  S.activeId = lastId;
+  buildMesh();
+  renderStep();
+  if (placed < count) toast(`僅能放入 ${placed}/${count} 份，列印範圍已滿`,'warn');
+  else toast(`✓ 已複製 ${placed} 份`,'ok');
+}
+function deleteModel(id){
+  const idx = S.models.findIndex(m=>m.id===id);
+  if (idx<0) return;
+  const wasActive = S.activeId===id;
+  S.models.splice(idx,1);
+  if (wasActive) selectModel(S.models.length ? S.models[0].id : null);
+  buildMesh();
+  renderStep();
+}
+
+/* 重建平台上所有模型的 mesh。每個 mesh 用獨立 clone 的材質（不是共用 V.matModel）——
+   emissive（選取高亮）是材質屬性，若共用同一個材質實例，選取其中一個會讓全部一起發光。 */
 function buildMesh(){
   while (V.modelGroup.children.length) V.modelGroup.remove(V.modelGroup.children[0]);
-  const m = S.model; if (!m) return;
-  const g = new THREE.BufferGeometry();
-  // 置中並讓底面貼平台：指南 Z 是高度，three.js 用 y
-  const cx = (m.bbMin[0]+m.bbMax[0])/2, cy = (m.bbMin[1]+m.bbMax[1])/2, z0 = m.bbMin[2];
-  const n = m.triCount, pos = new Float32Array(n*9), col = new Float32Array(n*9);
   const th = activeSpec().overhangAngle;
-  for (let i=0;i<n;i++){
-    for (let v=0;v<3;v++){
-      const o=i*9+v*3;
-      // 指南座標 Z 是高度，three.js 用 y 當高度 → 繞 X 軸轉 -90°：(x,y,z) → (x, z, -y)
-      // ★ 不可寫成 (x,z,y)：那是「鏡射」（行列式 -1），會翻轉所有三角形繞序 →
-      //   法向朝內 → 背面剔除後模型看起來破面／中空，拖曳旋轉也看不出變化。
-      pos[o]   =  m.raw.verts[o]   - cx;
-      pos[o+1] =  m.raw.verts[o+2] - z0;
-      pos[o+2] = -(m.raw.verts[o+1] - cy);
+  S.models.forEach(m=>{
+    const g = new THREE.BufferGeometry();
+    // 置中並讓底面貼平台：指南 Z 是高度，three.js 用 y；平台位置(m.pos)另外用 mesh.position 套用
+    const cx = (m.bbMin[0]+m.bbMax[0])/2, cy = (m.bbMin[1]+m.bbMax[1])/2, z0 = m.bbMin[2];
+    const n = m.triCount, pos = new Float32Array(n*9), col = new Float32Array(n*9);
+    for (let i=0;i<n;i++){
+      for (let v=0;v<3;v++){
+        const o=i*9+v*3;
+        // 指南座標 Z 是高度，three.js 用 y 當高度 → 繞 X 軸轉 -90°：(x,y,z) → (x, z, -y)
+        // ★ 不可寫成 (x,z,y)：那是「鏡射」（行列式 -1），會翻轉所有三角形繞序 →
+        //   法向朝內 → 背面剔除後模型看起來破面／中空，拖曳旋轉也看不出變化。
+        pos[o]   =  m.raw.verts[o]   - cx;
+        pos[o+1] =  m.raw.verts[o+2] - z0;
+        pos[o+2] = -(m.raw.verts[o+1] - cy);
+      }
+      const danger = S.colorOverhang && isDangerFace(m, i, th);
+      // 一般面用中性灰；危險懸垂維持警示紅
+      const r = danger?0.86:0.62, gg = danger?0.28:0.63, b = danger?0.22:0.65;
+      for (let v=0;v<3;v++){ const o=i*9+v*3; col[o]=r; col[o+1]=gg; col[o+2]=b; }
     }
-    const danger = S.colorOverhang && isDangerFace(m, i, th);
-    // 一般面用中性灰；危險懸垂維持警示紅
-    const r = danger?0.86:0.62, gg = danger?0.28:0.63, b = danger?0.22:0.65;
-    for (let v=0;v<3;v++){ const o=i*9+v*3; col[o]=r; col[o+1]=gg; col[o+2]=b; }
-  }
-  g.setAttribute('position', new THREE.BufferAttribute(pos,3));
-  g.setAttribute('color',    new THREE.BufferAttribute(col,3));
-  g.computeVertexNormals();
-  V.modelGroup.add(new THREE.Mesh(g, V.matModel));
+    g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    g.setAttribute('color',    new THREE.BufferAttribute(col,3));
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, V.matModel.clone());
+    mesh.userData.modelId = m.id;
+    mesh.position.set(m.pos.x, 0, m.pos.z);
+    if (m.id === S.activeId) mesh.material.emissive.setHex(0x1d4e5e);
+    V.modelGroup.add(mesh);
+  });
 }
+/* 把畫面框到「平台上所有模型」的整體範圍，而不是只框某一個 —— 上傳/複製新模型後
+   應該要看得到全部，不會因為新的那個離中心較遠就被切在畫面外。 */
 function frameCamera(){
-  const m = S.model; if (!m) return;
-  const r = Math.max(...m.size);
-  V.radius = Math.max(120, r*2.6);
-  V.target.set(0, m.size[2]/2, 0);
+  if (!S.models.length) return;
+  let minX=Infinity, maxX=-Infinity, minZ=Infinity, maxZ=-Infinity, maxH=0;
+  S.models.forEach(m=>{
+    const hx=m.size[0]/2, hz=m.size[1]/2;
+    minX=Math.min(minX, m.pos.x-hx); maxX=Math.max(maxX, m.pos.x+hx);
+    minZ=Math.min(minZ, m.pos.z-hz); maxZ=Math.max(maxZ, m.pos.z+hz);
+    maxH=Math.max(maxH, m.size[2]);
+  });
+  const r = Math.max(maxX-minX, maxZ-minZ, maxH);
+  V.radius = Math.max(120, r*2.2);
+  V.target.set((minX+maxX)/2, maxH/2, (minZ+maxZ)/2);
   V.updateCam();
 }
 
 /* ============ 7. 可行性檢查（Markforged 設計指南） ============ */
-function runChecks(){
-  const m = S.model; if (!m) return [];
+/* 檢查一律針對「單一模型」的幾何跑，多模型時由呼叫端（stepCheck）決定要看哪一個。
+   material/fiber/machine 是全域設定（同一批列印共用），只有幾何相關數值(m)逐件不同。 */
+function runChecks(m){
+  if (!m) return [];
   const sp = activeSpec(), fs = fiberSpec(), out = [];
   const add = (cat, name, status, way, detail) => out.push({cat,name,status,way,detail});
 
@@ -1386,19 +1511,30 @@ function checkStats(list){
 }
 
 /* ============ 8. 成本 ============ */
+/* 計費模型：Σ(每個模型 塑料cc×單價 + 纖維cc×單價) + 後處理費（整批一次，不隨模型數增加，
+   比照 quote-studio 的 postCost 語意），再乘工作類型倍率。用量尚未填的模型不計入總計，
+   但仍列出「還有幾個沒填」的提示，避免漏算卻沒發現。 */
 function ccPricePlastic(){ return Number(S.price.plastic[S.material]) || 0; }
 function ccPriceFiber(){   return Number(S.price.fiber[S.fiber])     || 0; }
 function calcCost(){
-  const u = S.usage;
-  if (u.plasticCC == null) return null;
-  const pCC = Number(u.plasticCC) || 0;
-  const fCC = fiberOn() ? (Number(u.fiberCC) || 0) : 0;
-  const pCost = Math.round(pCC * ccPricePlastic());
-  const fCost = Math.round(fCC * ccPriceFiber());
-  const post  = Number(S.price.postCost) || 0;
-  const sub   = pCost + fCost + post;
-  const mul   = Number(S.price.multipliers[S.workType]) || 1;
-  return { pCC, fCC, pCost, fCost, post, sub, mul, total: Math.round(sub*mul) };
+  if (!S.models.length) return null;
+  const rows = [];
+  let missing = 0;
+  S.models.forEach(m=>{
+    const u = m.usage || {};
+    if (u.plasticCC == null){ missing++; return; }
+    const pCC = Number(u.plasticCC) || 0;
+    const fCC = fiberOn() ? (Number(u.fiberCC) || 0) : 0;
+    rows.push({ id:m.id, name:m.name, pCC, fCC,
+                pCost: Math.round(pCC * ccPricePlastic()), fCost: Math.round(fCC * ccPriceFiber()) });
+  });
+  if (!rows.length) return null;
+  const pCC = rows.reduce((s,r)=>s+r.pCC,0), fCC = rows.reduce((s,r)=>s+r.fCC,0);
+  const pCost = rows.reduce((s,r)=>s+r.pCost,0), fCost = rows.reduce((s,r)=>s+r.fCost,0);
+  const post = Number(S.price.postCost) || 0;
+  const sub  = pCost + fCost + post;
+  const mul  = Number(S.price.multipliers[S.workType]) || 1;
+  return { rows, missing, pCC, fCC, pCost, fCost, post, sub, mul, total: Math.round(sub*mul) };
 }
 
 /* ============ 9. UI ============ */
@@ -1414,10 +1550,7 @@ function el(tag, cls, html){
   return e;
 }
 function doneOf(i){
-  if (i===0) return !!S.model;
-  if (i===1) return !!S.model;
-  if (i===2) return !!S.model;
-  if (i===3) return !!S.model;
+  if (i>=0 && i<=3) return S.models.length > 0;
   if (i===4) return calcCost() != null;
   return false;
 }
@@ -1444,27 +1577,53 @@ function renderStep(){
 function stepUpload(B){
   B.appendChild(el('div','lbl','模型檔案'));
   const inp = el('input'); inp.type='file'; inp.accept='.stl,.obj,.3mf,.step,.stp'; inp.style.display='none';
-  const btn = el('button','pbtn','＋ 選擇模型檔案');
+  const btn = el('button','pbtn', S.models.length ? '＋ 新增模型檔案' : '＋ 選擇模型檔案');
   btn.addEventListener('click', ()=>inp.click());
-  inp.addEventListener('change', e=>{ const f=e.target.files[0]; if(f) loadFile(f); });
+  inp.addEventListener('change', e=>{ const f=e.target.files[0]; if(f) loadFile(f); inp.value=''; });
   B.appendChild(btn); B.appendChild(inp);
-  if (S.model){
-    const m = S.model;
-    B.appendChild(el('div','lbl','已載入'));
-    B.appendChild(el('div','fileRow',`<b style="flex:1;font-size:11.5px">${m.name}</b>
-      <small class="mono" style="color:var(--ink4)">${m.sizeKB}KB</small>`));
-    B.appendChild(el('div','kv',`<span>三角面</span><span>${m.triCount.toLocaleString()}</span>`));
-    B.appendChild(el('div','kv',`<span>尺寸</span><span>${F(m.size[0],1)}×${F(m.size[1],1)}×${F(m.size[2],1)} mm</span>`));
-    B.appendChild(el('div','kv',`<span>體積</span><span>${F(m.volumeMM3/1000,2)} cc</span>`));
+
+  if (S.models.length){
+    B.appendChild(el('div','lbl',`已載入的模型（${S.models.length} 個，點選切換）`));
+    S.models.forEach(m=>{
+      const row = el('div','fileRow'+(m.id===S.activeId?' on':''));
+      row.innerHTML = `<div style="flex:1;min-width:0">
+          <b style="font-size:11.5px">${m.name}</b><br>
+          <small class="mono" style="color:var(--ink4)">${F(m.size[0],0)}×${F(m.size[1],0)}×${F(m.size[2],0)}mm</small>
+        </div>`;
+      row.addEventListener('click', ()=>{ selectModel(m.id); renderStep(); });
+      const del = el('button','delBtn','✕');
+      del.title = '刪除此模型';
+      del.addEventListener('click', ev=>{ ev.stopPropagation(); deleteModel(m.id); renderStep(); });
+      row.appendChild(del);
+      B.appendChild(row);
+    });
+
+    const am = activeModel();
+    if (am){
+      B.appendChild(el('div','lbl',`目前選取：${am.name}`));
+      B.appendChild(el('div','kv',`<span>三角面</span><span>${am.triCount.toLocaleString()}</span>`));
+      B.appendChild(el('div','kv',`<span>體積</span><span>${F(am.volumeMM3/1000,2)} cc</span>`));
+
+      B.appendChild(el('div','lbl','複製份數（自動排列到平台空位）'));
+      const dupRow = el('div'); dupRow.style.cssText = 'display:flex;gap:6px;align-items:stretch';
+      const dupN = el('input','num'); dupN.type='number'; dupN.min=1; dupN.max=50; dupN.step=1; dupN.value=1;
+      dupN.style.width = '58px';
+      const dupBtn = el('button','ghostBtn','⧉ 複製');
+      dupBtn.style.cssText = 'flex:1;margin-top:0';
+      dupBtn.addEventListener('click', ()=>{ duplicateModel(am.id, dupN.value); });
+      dupRow.appendChild(dupN); dupRow.appendChild(dupBtn);
+      B.appendChild(dupRow);
+    }
+
     const nx = el('button','pbtn','下一步 · 選擇機台 →');
     nx.addEventListener('click', ()=>{ S.step=1; renderStep(); });
     B.appendChild(nx);
   } else {
     B.appendChild(el('div','mnote',
-      '支援 <b>STL / OBJ / 3MF / STEP</b>（可直接拖放檔案）。<br>'
+      '支援 <b>STL / OBJ / 3MF / STEP</b>（可直接拖放檔案，可上傳多個）。<br>'
     + 'STL 二進位與 ASCII 皆可；3MF 會套用檔內單位與擺放矩陣；<br>'
     + 'STEP 需線上下載 CAD 核心鑲嵌成網格，首次匯入約數秒。<br>'
-    + '載入後自動做幾何分析，用於後續的設計規範檢查。'));
+    + '載入後自動做幾何分析，用於後續的設計規範檢查；可用「複製」在平台上排出多份同款零件。'));
   }
 }
 
@@ -1481,13 +1640,19 @@ function stepMachine(B){
   if (mach().series==='industrial'){
     B.appendChild(el('div','mnote','⚠ 工業型使用連續纖維時，Y 軸可用深度由 270mm 縮為 250mm。範圍檢查會自動依纖維設定取值。'));
   }
-  if (S.model){
-    const [MX,MY,MZ] = machSize(), m = S.model;
-    const fits = m.size[0]<=MX && m.size[1]<=MY && m.size[2]<=MZ;
+  if (S.models.length){
+    const [MX,MY,MZ] = machSize();
+    const bad = S.models.filter(m => !(m.size[0]<=MX && m.size[1]<=MY && m.size[2]<=MZ));
     B.appendChild(el('div','lbl','範圍檢查'));
-    B.appendChild(el('div','chk '+(fits?'pass':'fail'),
-      `<div class="th">${fits?'✓ 在成形範圍內':'✕ 超出成形範圍'}</div>
-       <div class="td">${F(m.size[0],1)}×${F(m.size[1],1)}×${F(m.size[2],1)} / ${MX}×${MY}×${MZ} mm</div>`));
+    if (!bad.length){
+      B.appendChild(el('div','chk pass',
+        `<div class="th">✓ ${S.models.length} 個模型皆在成形範圍內</div>
+         <div class="td">${MX}×${MY}×${MZ} mm</div>`));
+    } else {
+      B.appendChild(el('div','chk fail',
+        `<div class="th">✕ ${bad.length}/${S.models.length} 個模型超出成形範圍</div>
+         <div class="td">${bad.map(m=>`${m.name}（${F(m.size[0],0)}×${F(m.size[1],0)}×${F(m.size[2],0)}mm）`).join('、')}</div>`));
+    }
   }
   const nx = el('button','pbtn','下一步 · 材料與纖維 →');
   nx.addEventListener('click', ()=>{ S.step=2; renderStep(); });
@@ -1504,7 +1669,8 @@ function stepMaterial(B){
   ms.addEventListener('change', e=>{
     S.material = e.target.value;
     if (!matr().fiberOK) S.fiber = 'none';
-    recomputeOverhang(); buildMesh(); buildPlatform(); renderStep();
+    // 門檻是全域的（同一批共用材料），所有已載入模型都要重算，不是只有目前選取的那個
+    recomputeOverhangAll(); buildMesh(); buildPlatform(); renderStep();
   });
   B.appendChild(ms);
   B.appendChild(el('div','mnote', matr().desc));
@@ -1542,8 +1708,26 @@ function stepMaterial(B){
 }
 
 function stepCheck(B){
-  if (!S.model){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
-  const list = runChecks(), st = checkStats(list);
+  if (!S.models.length){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
+  if (!S.activeId) selectModel(S.models[0].id);
+  const am = activeModel();
+
+  if (S.models.length > 1){
+    B.appendChild(el('div','lbl',`共 ${S.models.length} 個模型（點選切換查看個別檢查結果）`));
+    const strip = el('div'); strip.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px';
+    S.models.forEach(m=>{
+      const s = checkStats(runChecks(m));
+      const worst = s.fail ? 'fail' : s.warn ? 'warn' : 'pass';
+      const icon = worst==='fail' ? '✕' : worst==='warn' ? '⚠' : '✓';
+      const b = el('button','dockBtn'+(m.id===S.activeId?' cur':''), `${icon} ${m.name}`);
+      b.style.cssText = 'flex:0 0 auto';
+      b.addEventListener('click', ()=>{ selectModel(m.id); renderStep(); });
+      strip.appendChild(b);
+    });
+    B.appendChild(strip);
+  }
+
+  const list = runChecks(am), st = checkStats(list);
   const cnt = el('div','fcCnt');
   cnt.innerHTML = `<div><b style="color:var(--ok)">${st.pass}</b><small>通過</small></div>
                    <div><b style="color:var(--warnText)">${st.warn}</b><small>注意</small></div>
@@ -1566,37 +1750,40 @@ function stepCheck(B){
 }
 
 function stepQuote(B){
-  if (!S.model){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
+  if (!S.models.length){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
 
   B.appendChild(el('div','chk warn',
     `<div class="th">⚠ 材料用量來源：手動輸入</div>
-     <div class="td">Eiger API 尚未接上。請在 Eiger 切片後，把塑料與纖維的 cc 數填入下方。
+     <div class="td">Eiger API 尚未接上。請在 Eiger 切片後，把每個模型各自的塑料與纖維 cc 數填入下方。
      接上 API 後此處會自動帶入，手動輸入將退為覆寫用。</div>`));
 
-  B.appendChild(el('div','lbl','塑料用量 (cc)'));
-  const pi = el('input','num'); pi.type='number'; pi.min=0; pi.step='0.01';
-  pi.value = S.usage.plasticCC != null ? S.usage.plasticCC : '';
-  pi.placeholder = '由 Eiger 切片結果填入';
-  pi.addEventListener('input', e=>{ S.usage.plasticCC = e.target.value===''?null:+e.target.value; renderQuoteTotals(); });
-  B.appendChild(pi);
-  const est = el('button','ghostBtn',`↧ 以幾何體積帶入（${F(S.model.volumeMM3/1000,2)} cc）`);
-  est.addEventListener('click', ()=>{
-    S.usage.plasticCC = +(S.model.volumeMM3/1000).toFixed(2);
-    renderStep();
-    toast('已帶入幾何體積 — 這是實心體積，未計填充率與支撐，僅供粗估','inf');
-  });
-  B.appendChild(est);
-  B.appendChild(el('div','mnote','⚠ 幾何體積是「實心」體積，未反映 Eiger 的填充率、殼層與支撐，與實際用量會有落差。'));
+  S.models.forEach(m=>{
+    B.appendChild(el('div','lbl', S.models.length>1 ? `${m.name} · 塑料用量 (cc)` : '塑料用量 (cc)'));
+    const pi = el('input','num'); pi.type='number'; pi.min=0; pi.step='0.01';
+    pi.value = m.usage.plasticCC != null ? m.usage.plasticCC : '';
+    pi.placeholder = '由 Eiger 切片結果填入';
+    pi.addEventListener('input', e=>{ m.usage.plasticCC = e.target.value===''?null:+e.target.value; renderQuoteTotals(); });
+    B.appendChild(pi);
+    const est = el('button','ghostBtn',`↧ 以幾何體積帶入（${F(m.volumeMM3/1000,2)} cc）`);
+    est.addEventListener('click', ()=>{
+      m.usage.plasticCC = +(m.volumeMM3/1000).toFixed(2);
+      renderStep();
+      toast('已帶入幾何體積 — 這是實心體積，未計填充率與支撐，僅供粗估','inf');
+    });
+    B.appendChild(est);
 
-  if (fiberOn()){
-    B.appendChild(el('div','lbl',`纖維用量 (cc) · ${fibr().name}`));
-    const fi = el('input','num'); fi.type='number'; fi.min=0; fi.step='0.01';
-    fi.value = S.usage.fiberCC != null ? S.usage.fiberCC : '';
-    fi.placeholder = '由 Eiger 切片結果填入';
-    fi.addEventListener('input', e=>{ S.usage.fiberCC = e.target.value===''?null:+e.target.value; renderQuoteTotals(); });
-    B.appendChild(fi);
-    B.appendChild(el('div','mnote','纖維用量取決於切片時的纖維策略（圈數／等向層數／角度），無法由幾何推算。'));
-  }
+    if (fiberOn()){
+      B.appendChild(el('div','lbl', `纖維用量 (cc) · ${fibr().name}`));
+      const fi = el('input','num'); fi.type='number'; fi.min=0; fi.step='0.01';
+      fi.value = m.usage.fiberCC != null ? m.usage.fiberCC : '';
+      fi.placeholder = '由 Eiger 切片結果填入';
+      fi.addEventListener('input', e=>{ m.usage.fiberCC = e.target.value===''?null:+e.target.value; renderQuoteTotals(); });
+      B.appendChild(fi);
+    }
+  });
+  B.appendChild(el('div','mnote',
+    '⚠ 幾何體積是「實心」體積，未反映 Eiger 的填充率、殼層與支撐，與實際用量會有落差。'
+  + (fiberOn() ? '纖維用量取決於切片時的纖維策略（圈數／等向層數／角度），無法由幾何推算。' : '')));
 
   B.appendChild(el('div','lbl','工作類型'));
   const wrap = el('div'); wrap.style.display='flex'; wrap.style.gap='4px';
@@ -1616,17 +1803,23 @@ function stepQuote(B){
 function renderQuoteTotals(){
   const box = $('#quoteTotals'); if (!box) return;
   const c = calcCost();
-  if (!c){ box.innerHTML = '<div class="mnote">請先填入塑料用量。</div>'; return; }
+  if (!c){ box.innerHTML = '<div class="mnote">請先填入至少一個模型的塑料用量。</div>'; return; }
   const noPrice = ccPricePlastic()===0 || (fiberOn() && ccPriceFiber()===0);
+  const rowsHtml = c.rows.length > 1
+    ? c.rows.map(r=>`<div class="kv"><span>${r.name}</span><span>${NTD(r.pCost+r.fCost)}</span></div>`).join('')
+      + '<div style="border-top:1px solid var(--line);margin:4px 0"></div>'
+    : '';
   box.innerHTML =
-    `<div class="kv"><span>塑料 ${F(c.pCC,2)} cc × ${ccPricePlastic()}</span><span>${NTD(c.pCost)}</span></div>`
-  + (fiberOn() ? `<div class="kv"><span>纖維 ${F(c.fCC,2)} cc × ${ccPriceFiber()}</span><span>${NTD(c.fCost)}</span></div>` : '')
-  + `<div class="kv"><span>後處理</span><span>${NTD(c.post)}</span></div>`
+    rowsHtml
+  + `<div class="kv"><span>塑料合計 ${F(c.pCC,2)} cc × ${ccPricePlastic()}</span><span>${NTD(c.pCost)}</span></div>`
+  + (fiberOn() ? `<div class="kv"><span>纖維合計 ${F(c.fCC,2)} cc × ${ccPriceFiber()}</span><span>${NTD(c.fCost)}</span></div>` : '')
+  + `<div class="kv"><span>後處理（整批一次）</span><span>${NTD(c.post)}</span></div>`
   + `<div class="kv"><span>小計</span><span>${NTD(c.sub)}</span></div>`
   + `<div class="kv"><span>${S.workType} 倍率</span><span>× ${c.mul}</span></div>`
   + `<div class="kv" style="border-top:1px solid var(--line);margin-top:5px;padding-top:6px">
        <span style="font-weight:700;color:var(--ink2)">總計</span>
        <span style="font-weight:700;font-size:14px;color:var(--accent)">${NTD(c.total)}</span></div>`
+  + (c.missing ? `<div class="mnote" style="color:var(--warnText)">⚠ 還有 ${c.missing} 個模型尚未填塑料用量，未計入總計。</div>` : '')
   + (noPrice ? '<div class="mnote" style="color:var(--warnText)">⚠ 尚未設定單價（NT$/cc），金額不正確。請至右側「設定」填寫。</div>' : '');
 }
 
@@ -1651,8 +1844,8 @@ function closeModule(){
 }
 
 function modGeo(B){
-  const m = S.model;
-  if (!m){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型。')); return; }
+  const m = activeModel();
+  if (!m){ B.appendChild(el('div','mnote','請先於步驟 1 載入模型，或於左側清單點選一個。')); return; }
   const t = m.topo;
   B.appendChild(el('div','lbl','基本量測'));
   [['三角面', m.triCount.toLocaleString()],
@@ -1795,7 +1988,7 @@ function setView(v){
   const c = CAM[v]; if (!c) return;
   $$('#viewbar .vtab').forEach(b=>b.classList.toggle('on', b.dataset.view===v));
   V.phi = c.phi; V.theta = c.theta;
-  if (v==='home' && S.model) frameCamera();
+  if (v==='home' && S.models.length) frameCamera();
   V.updateCam();
 }
 function bindUI(){
@@ -1803,10 +1996,10 @@ function bindUI(){
   $$('#cubeWrap [data-cam]').forEach(b => b.addEventListener('click', ()=>setView(b.dataset.cam)));
   $('#btnOverhang').addEventListener('click', toggleOverhangColor);
   $('#btnFaceDown').addEventListener('click', ()=>{
-    if (!S.model){ toast('請先載入模型','err'); return; }
+    if (!S.models.length){ toast('請先載入模型','err'); return; }
     S.faceDownMode = !S.faceDownMode;
     updateFaceDownBtn();
-    if (S.faceDownMode) toast('請點擊模型上任一面 — 該面將轉向平台朝下','inf');
+    if (S.faceDownMode) toast('請點擊平台上任一模型的一個面 — 該面將轉向平台朝下','inf');
   });
   $('#btnRange').addEventListener('click', ()=>{
     S.showRange = !S.showRange;
