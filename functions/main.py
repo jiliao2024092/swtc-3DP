@@ -36,10 +36,24 @@ def get_db():
 # ── Secrets：Firebase 部署時用 firebase functions:secrets:set 設定 ──
 FORMLABS_CLIENT_ID     = SecretParam("FORMLABS_CLIENT_ID")
 FORMLABS_CLIENT_SECRET = SecretParam("FORMLABS_CLIENT_SECRET")
+EIGER_ACCESS_KEY       = SecretParam("EIGER_ACCESS_KEY")     # Markforged Eiger，走 HTTP Basic
+EIGER_SECRET_KEY       = SecretParam("EIGER_SECRET_KEY")
 
 # ── 常數 ──
 FORMLABS_API_BASE  = "https://api.formlabs.com/developer/v1"
 TRACKED_ALIASES    = ["AluminumBowfin", "AdroitSauropod"]   # 我們真的會扣材料的兩台
+
+# ── Markforged / Eiger v3 ──
+#   規劃與實測校正見 docs/markforged-integration-plan.md §0.5、§0.6
+EIGER_API_BASE = "https://www.eiger.io/api/v3"   # 必須含 https 與 www，否則會踩重導
+
+#   ★ 只同步「本系統納管」的機台（2026-08-03 使用者決策，§0.5.1）。
+#   Eiger 組織內另有 9 台屬其他據點（含東莞、上海）與金屬機（Metal X / sinter-1），
+#   絕不可整份 /devices 寫進 Firestore，否則會把非管轄範圍的機台資料一併帶進來。
+#   key = Eiger device id，value = 對應 3DP-BK.html DEFAULT_PRINTERS 的機台名
+EIGER_TRACKED_DEVICES = {
+    "94716b11-430c-427c-8d37-1d99bf9f7fdb": "MarkTwo",   # Eiger 上名為 "Mark Two Taichung"
+}
 
 #   ★ 已確認案例：FC-118_壓輪支撐架 這類實際印完的 print，Formlabs API 回傳的 status
 #   是 "PRINTING"（不是 FINISHED），導致落入下方「未知狀態一律當中止」的保險分支，
@@ -247,6 +261,184 @@ def api_get(url: str, token: str, params: Optional[dict] = None) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════
+# Eiger v3（Markforged）：HTTP Basic，無 token 交換
+# ════════════════════════════════════════════════════════════════
+def eiger_get(path: str, access_key: str, secret_key: str,
+              params: Optional[dict] = None) -> dict:
+    """GET Eiger 單頁。Access Key 當帳號、Secret Key 當密碼。
+
+    ★ 一律用 requests，不要改成 urllib：eiger.io 的憑證鏈多送一份自簽的
+      Starfield Root CA，Python 內建 ssl/urllib 會判 SSLCertVerificationError
+      (self signed certificate in certificate chain)，但 requests/urllib3 正常。
+      詳見 docs/markforged-integration-plan.md §0.5.0。
+    """
+    resp = requests.get(
+        f"{EIGER_API_BASE}{path}",
+        auth=(access_key, secret_key),
+        headers={"Accept": "application/json"},
+        params=params or {},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def eiger_get_all(path: str, access_key: str, secret_key: str,
+                  params: Optional[dict] = None, max_pages: int = 20) -> list:
+    """依 Eiger 分頁規則抓完所有頁。
+    ★ 與 Formlabs 的 per_page/page + next 不同：Eiger 用 page[size] / page[number]，
+      終止條件看 has_more_items。勿照抄 Formlabs 的分頁寫法。"""
+    items, page = [], 1
+    while page <= max_pages:
+        p = dict(params or {})
+        p["page[size]"]   = 100
+        p["page[number]"] = page
+        resp  = eiger_get(path, access_key, secret_key, p)
+        batch = resp.get("items", []) or []
+        items.extend(batch)
+        if not resp.get("has_more_items") or not batch:
+            break
+        page += 1
+    return items
+
+
+def _mf_materials(dev: dict) -> list:
+    """把 device 的「扁平」材料欄位組成陣列。
+
+    ★ 機台離線時這些 key 完全不存在（不是 null），一律用 .get()。
+      實測：同一台離線時無 loaded_primary_material，列印中才出現（§0.6.2）。
+      無資料時回傳空陣列，前端須顯示「資料不可得」而非「餘量 0」。
+    """
+    out = []
+    for slot, mat_key, cc_key in (
+        ("primary",   "loaded_primary_material",   "ccs_primary_remaining"),
+        ("secondary", "loaded_secondary_material", "ccs_secondary_remaining"),
+    ):
+        mat = dev.get(mat_key)
+        # Eiger 在「沒有掛料」時會回字串 "None"（不是 null），直接採用會生出
+        # 一個叫 None 的材料。兩種都要排除。（§0.5.3）
+        if not mat or str(mat).strip().lower() == "none":
+            continue
+        cc = dev.get(cc_key)
+        out.append({
+            "slot":         slot,
+            "material":     mat,
+            "remaining_cc": round(float(cc), 2) if isinstance(cc, (int, float)) else None,
+        })
+    return out
+
+
+def _mf_active_job(dev: dict) -> dict:
+    """抽出目前列印工作。機台閒置時 active_job 這個 key 不存在。
+
+    ★ 即時進度只能從這裡拿：/print_jobs 對同一筆工作的 progress / current_layer /
+      estimated_seconds_remaining 全部回 null，且大量陳舊紀錄永遠卡在
+      state="Printing"（實測 42 筆橫跨 4 個月）。詳見 §0.6.4。
+    ★ active_job 比 /print_jobs 的項目精簡，沒有 device / source / initiator，
+      兩者形狀不同，不可共用解析邏輯。
+    """
+    aj = dev.get("active_job")
+    if not isinstance(aj, dict):
+        return {}
+    b = aj.get("build") or {}
+    return {
+        "job_id":       aj.get("id"),
+        "job_state":    aj.get("state"),          # 原字串，不轉大小寫（§4.4）
+        "print_name":   b.get("title") or "",
+        "progress":     aj.get("progress"),       # 刻度待確認（§0.6.5），原樣存
+        "eta_seconds":  aj.get("estimated_seconds_remaining"),
+        "layer":        aj.get("current_layer"),
+        "layer_count":  aj.get("layer_count"),
+        "started_at":   aj.get("started_at"),
+        "job_material": b.get("primary_material"),
+        "job_ccs_primary": b.get("ccs_primary_required"),
+        "job_ccs_fiber":   b.get("ccs_fiber_required"),
+        "job_total_seconds": b.get("estimated_print_seconds"),
+        # 刻意不存 build.preview_url：那是 X-Amz-Expires=3600 的 presigned URL，
+        # 存進 Firestore 一小時後必定失效（§0.5.6）
+    }
+
+
+def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
+    """Markforged 機台狀態同步（階段 2：唯讀，完全不碰庫存與 inventory_history）。
+
+    只寫 printer_status/current 的 mf_printers 欄位，用 merge 保留 Formlabs 的 printers。
+    """
+    stats = {"devices_seen": 0, "devices_tracked": 0, "printing": 0, "errors": []}
+    try:
+        devices = eiger_get_all("/devices", access_key, secret_key)
+        stats["devices_seen"] = len(devices)
+
+        mf_printers = []
+        for d in devices:
+            did = d.get("id")
+            if did not in EIGER_TRACKED_DEVICES:      # ★ 白名單過濾，勿拿掉
+                continue
+            state = d.get("state") or ""
+            job   = _mf_active_job(d)
+            if job:
+                stats["printing"] += 1
+
+            entry = {
+                "device_id":   did,
+                "name":        d.get("name"),                      # Eiger 上的名稱
+                "display":     EIGER_TRACKED_DEVICES[did],         # 預約系統機台名
+                "device_type":   d.get("device_type"),
+                "device_series": d.get("device_series"),
+                "state":       state,     # 原字串（"Offline"/"Ready"/"Printing"…），
+                                          # 前端自行對照，後端不做大小寫正規化（§4.4）
+                "online":      state != "Offline",
+                "queue_length":      d.get("queue_length"),
+                "queue_eta_seconds": d.get("queue_estimated_time_seconds"),
+                "materials":   _mf_materials(d),
+                "maintenance": [
+                    {
+                        # ★ 欄位名是 consumable_title，不是 title（§0.5.2）
+                        "title":           m.get("consumable_title"),
+                        "status":          m.get("status"),
+                        "usage_remaining": m.get("usage_remaining"),
+                    }
+                    # Metal X / sinter-1 完全沒有這個 key，故 .get(..., [])
+                    for m in (d.get("maintenance_status") or [])
+                ],
+                # 刻意不存 device.updated_at：實測機台正在列印時它仍停在 2020 年，
+                # 不是心跳，存進去會誤導前端判斷資料新鮮度（§0.6.2）
+                "synced_at":   datetime.datetime.utcnow().isoformat() + "Z",
+            }
+            entry.update(job)
+            mf_printers.append(entry)
+
+        stats["devices_tracked"] = len(mf_printers)
+
+        if not mf_printers:
+            # 白名單一台都沒對到 → 多半是機台被移出組織或 id 打錯。
+            # 這種情況不要寫入空陣列覆蓋掉前一次的正常資料。
+            msg = (f"[eiger] 警告：/devices 回傳 {len(devices)} 台，"
+                   f"但白名單 {list(EIGER_TRACKED_DEVICES)} 一台都沒對到，略過寫入")
+            print(msg)
+            stats["errors"].append(msg)
+            return stats
+
+        get_db().collection("printer_status").document("current").set({
+            "mf_printers":   mf_printers,
+            "mf_updated_at": firestore.SERVER_TIMESTAMP,
+        }, merge=True)   # ★ merge：不可覆蓋 Formlabs 寫的 printers
+
+        for e in mf_printers:
+            print(f"[eiger] {e['display']}({e['name']}) state={e['state']!r} "
+                  f"materials={len(e['materials'])} "
+                  f"job={e.get('print_name') or '（閒置）'}")
+        print(f"[eiger] 已寫入 printer_status/current.mf_printers ({len(mf_printers)} 台)")
+
+    except Exception as e:
+        msg = f"[eiger] 同步失敗: {e}"
+        print(msg)
+        traceback.print_exc()
+        stats["errors"].append(msg)
+    return stats
+
+
+# ════════════════════════════════════════════════════════════════
 # 主同步函式（被 scheduled function 和 manual trigger 共用）
 # ════════════════════════════════════════════════════════════════
 def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> dict:
@@ -386,10 +578,14 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             })
 
         # 3. 寫 printer_status/current 給前端讀（取代 GitHub printer-status.json）
+        #   ★ 必須 merge=True：同一份文件另有 Eiger 同步寫入的 mf_printers / mf_updated_at
+        #     （見 perform_sync_eiger）。若用全量 set 會在每輪 Formlabs 同步把 Markforged
+        #     的機台狀態整份洗掉。merge 只影響「未列出的欄位保留」，printers 陣列本身
+        #     仍是整個取代（Firestore 的 merge 粒度是頂層欄位，不會與舊陣列合併）。
         db.collection("printer_status").document("current").set({
             "printers":   printers_summary,
             "updated_at": firestore.SERVER_TIMESTAMP,
-        })
+        }, merge=True)
         print(f"[sync] 已寫入 printer_status/current ({len(printers_summary)} 台)")
 
         # 4. 拉 inventory/main 看 last_processed_prints
@@ -815,3 +1011,54 @@ def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
         backfill=backfill,
     )
     return stats
+
+
+# ════════════════════════════════════════════════════════════════
+# Markforged / Eiger：獨立的排程與手動觸發
+#   ★ 刻意不併進 sync_formlabs_scheduled：Eiger 掛掉時不該拖累既有的
+#     Formlabs 同步（規劃 §3.1 的決策）。
+# ════════════════════════════════════════════════════════════════
+@scheduler_fn.on_schedule(
+    schedule="every 30 minutes",
+    timezone=scheduler_fn.Timezone("Asia/Taipei"),
+    timeout_sec=300,
+    memory=options.MemoryOption.MB_256,
+    secrets=[EIGER_ACCESS_KEY, EIGER_SECRET_KEY],
+    region="asia-east1",
+)
+def sync_eiger_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
+    print(f"[eiger scheduled] {datetime.datetime.utcnow().isoformat()}Z")
+    stats = perform_sync_eiger(
+        access_key=EIGER_ACCESS_KEY.value,
+        secret_key=EIGER_SECRET_KEY.value,
+    )
+    if stats.get("errors"):
+        print(f"[eiger scheduled] 有錯誤: {stats['errors']}")
+
+
+@https_fn.on_call(
+    timeout_sec=300,
+    memory=options.MemoryOption.MB_256,
+    secrets=[EIGER_ACCESS_KEY, EIGER_SECRET_KEY],
+    region="asia-east1",
+)
+def sync_eiger_manual(req: https_fn.CallableRequest) -> dict:
+    """從前端呼叫的 Markforged 手動同步（測試用，免等 30 分鐘排程）。
+    僅 admin 可呼叫，比照 sync_formlabs_manual。"""
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="必須登入",
+        )
+    uid = req.auth.uid
+    user_doc = get_db().collection("users").document(uid).get()
+    if not user_doc.exists or user_doc.to_dict().get("role") != "admin":
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
+            message="僅 admin 可手動觸發同步",
+        )
+    print(f"[eiger manual] uid={uid}")
+    return perform_sync_eiger(
+        access_key=EIGER_ACCESS_KEY.value,
+        secret_key=EIGER_SECRET_KEY.value,
+    )

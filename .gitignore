@@ -21,6 +21,9 @@ ui-debug.log
 .runtimeconfig.json
 serviceAccountKey.json
 
+# Eiger API 探測輸出（含員工 email/姓名、客戶件名、AWS presigned URL，不可外流）
+tools/_eiger_dump*/
+
 # 系統檔
 .DS_Store
 Thumbs.db

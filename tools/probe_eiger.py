@@ -22,20 +22,28 @@ Eiger API v3（Markforged）探測腳本 —— 接入前的第一步
     終端機列出欄位摘要與「規劃假設 vs 實際」的檢查結果
 
 本腳本只做 GET，不會對機台下任何指令。
+
+備註：改用 requests（而非 urllib）發送請求。eiger.io 的憑證鏈會多送一份
+自簽的 Starfield Root CA，Python 內建 ssl/urllib 對這種多餘的自簽根憑證
+較嚴格會直接判 SSLCertVerificationError（self signed certificate in
+certificate chain），但 requests/urllib3 驗證同一台主機沒有這個問題。
 """
 import os
 import sys
 import json
-import base64
 import pathlib
 import datetime
-import urllib.error
-import urllib.parse
-import urllib.request
+
+import requests
 
 API_BASE = "https://www.eiger.io/api/v3"   # spec 明載必須含 https 與 www，否則會踩重導
 OUT_DIR = pathlib.Path(__file__).resolve().parent / "_eiger_dump"
 DAYS_BACK = 90
+
+# 本系統唯一納管的機台（2026-08-03 決策，見 docs/markforged-integration-plan.md §0.5.1）
+# 對應 3DP-BK.html DEFAULT_PRINTERS 裡的 'MarkTwo'
+TARGET_DEVICE_ID = "94716b11-430c-427c-8d37-1d99bf9f7fdb"
+TARGET_DEVICE_NAME = "Mark Two Taichung"
 
 ACCESS_KEY = os.environ.get("EIGER_ACCESS_KEY")
 SECRET_KEY = os.environ.get("EIGER_SECRET_KEY")
@@ -46,28 +54,22 @@ if not ACCESS_KEY or not SECRET_KEY:
         "  （Access Key 當帳號、Secret Key 當密碼，走 HTTP Basic Auth）"
     )
 
-_auth = base64.b64encode(f"{ACCESS_KEY}:{SECRET_KEY}".encode()).decode()
+_auth = (ACCESS_KEY, SECRET_KEY)
 
 
 def api_get(path, params=None):
-    """GET 單頁。params 的 key 可含中括號（filter[state][eq]），需正確 urlencode。"""
+    """GET 單頁。params 的 key 可含中括號（filter[state][eq]），requests 會自動 urlencode。"""
     url = f"{API_BASE}{path}"
-    if params:
-        url += "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Basic {_auth}",
-        "Accept": "application/json",
-    })
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")[:500]
-        if e.code == 401:
-            sys.exit(f"✗ 401 未授權：金鑰無效，或組織尚未開通 API 存取權\n  {body}")
-        sys.exit(f"✗ HTTP {e.code} {url}\n  {body}")
-    except urllib.error.URLError as e:
+        resp = requests.get(url, params=params, auth=_auth,
+                             headers={"Accept": "application/json"}, timeout=30)
+    except requests.exceptions.RequestException as e:
         sys.exit(f"✗ 連線失敗 {url}\n  {e}")
+    if resp.status_code == 401:
+        sys.exit(f"✗ 401 未授權：金鑰無效，或組織尚未開通 API 存取權\n  {resp.text[:500]}")
+    if not resp.ok:
+        sys.exit(f"✗ HTTP {resp.status_code} {url}\n  {resp.text[:500]}")
+    return resp.json()
 
 
 def api_get_all(path, params=None, max_pages=20):
@@ -143,6 +145,51 @@ for d in devices:
     print()
 
 # ════════════════════════════════════════════════
+# 1b. active_job 完整結構 + 單機台端點
+#     第一次探測（2026-08-03）時全部機台都閒置，active_job 這個 key 根本不存在，
+#     導致 mf_printers 的 progress/eta/layer/print_name 欄位形狀無法驗證。
+#     → 本段專門在「有機台正在列印」時補抓，是階段 3（狀態卡）的前置。
+# ════════════════════════════════════════════════
+print("══ 1b. active_job 完整結構 ══")
+active = [d for d in devices if d.get("active_job")]
+if active:
+    dump("active_jobs", {d["name"]: d["active_job"] for d in active})
+    for d in active:
+        aj = d["active_job"]
+        print(f"\n  ── {d['name']!r} 正在列印，active_job 完整內容：")
+        print(json.dumps(aj, indent=4, ensure_ascii=False))
+else:
+    print("  ⚠ 目前沒有任何機台有 active_job。")
+    print("    若機台確實在列印中卻仍為空，代表 /devices 列表端點不回 active_job，")
+    print("    需改用下方單機台端點的結果，或該機台未連上 Eiger 雲端。")
+
+print(f"\n══ 1b-2. GET /devices/{{id}} 單機台端點（{TARGET_DEVICE_NAME}）══")
+target_detail = api_get(f"/devices/{TARGET_DEVICE_ID}")
+dump("device_target", target_detail)
+print(f"  state={target_detail.get('state')!r}")
+print(f"  primary  : {target_detail.get('loaded_primary_material')!r}  剩 {target_detail.get('ccs_primary_remaining')!r} cc")
+print(f"  secondary: {target_detail.get('loaded_secondary_material')!r}  剩 {target_detail.get('ccs_secondary_remaining')!r} cc")
+show_keys("單機台回傳", target_detail, "  ")
+
+# 比對「列表端點」與「單機台端點」是否給出不同欄位——若單機台較豐富，同步應改用單機台端點
+listed = next((d for d in devices if d.get("id") == TARGET_DEVICE_ID), None)
+if listed:
+    only_detail = set(target_detail) - set(listed)
+    only_listed = set(listed) - set(target_detail)
+    print(f"  → 只有單機台端點才有的欄位：{sorted(only_detail) or '（無）'}")
+    print(f"  → 只有列表端點才有的欄位：{sorted(only_listed) or '（無）'}")
+    if only_detail:
+        print("    ⚠ 單機台端點較豐富，perform_sync_eiger() 應對納管機台改打單機台端點")
+else:
+    print(f"  ⚠ 列表中找不到 id={TARGET_DEVICE_ID}，請確認機台是否仍在組織內")
+
+taj = target_detail.get("active_job")
+print(f"\n  {TARGET_DEVICE_NAME} 的 active_job："
+      + ("見下方完整內容" if taj else "None（此刻未在列印）"))
+if taj:
+    print(json.dumps(taj, indent=4, ensure_ascii=False))
+
+# ════════════════════════════════════════════════
 # 2. /print_jobs
 # ════════════════════════════════════════════════
 since = (datetime.datetime.utcnow() - datetime.timedelta(days=DAYS_BACK)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -176,6 +223,28 @@ for j in jobs[:5]:
     show_keys("print_job", j, "     ")
     show_keys("build", b, "     ")
     print()
+
+# ════════════════════════════════════════════════
+# 2b. 進行中的 print_job（不加 ended_at 過濾）
+#     ★ 上方第 2 段用 filter[ended_at][ge] 查詢，會「靜默地」把進行中的工作全部排除，
+#       所以第一次探測看到「ended_at 從無 null」是取樣偏差，不代表 ended_at 恆有值。
+#     這段刻意不加時間過濾，才看得到進行中工作的真實樣貌（含 null 時間欄位）。
+# ════════════════════════════════════════════════
+print("══ 2b. 進行中的 print_job（不加 ended_at 過濾，只抓最近的）══")
+recent = api_get_all("/print_jobs", {"sort[by]": "created_at", "sort[order]": "desc"}, max_pages=1)
+live = [j for j in recent if not j.get("ended_at") or j.get("state") not in ("Completed", "Canceled", "Failed")]
+dump("print_jobs_live", live)
+print(f"  最近 {len(recent)} 筆中，未結束/非終態的有 {len(live)} 筆")
+for j in live[:5]:
+    b = j.get("build") or {}
+    dev = j.get("device") or {}
+    print(f"\n  ── {b.get('title')!r} @ {dev.get('name')!r}")
+    print(f"     state={j.get('state')!r}  printing_state={j.get('printing_state')!r}")
+    print(f"     progress={j.get('progress')!r}  layer={j.get('current_layer')!r}/{j.get('layer_count')!r}")
+    print(f"     eta={j.get('estimated_seconds_remaining')!r}")
+    print(f"     started_at={j.get('started_at')!r}  ended_at={j.get('ended_at')!r}")
+if not live:
+    print("  （目前沒有進行中的工作）")
 
 # ════════════════════════════════════════════════
 # 3. 對規劃假設做檢查
