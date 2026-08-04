@@ -421,6 +421,15 @@
 
 Firestore 規則不需改動——現有 `match /inventory/{docId}` 已涵蓋（登入可讀、editor/admin 可寫）。
 
+> ⚠ **實作時的設計變更（2026-08-04，階段 4）**：原規劃要由同步把機台掛載材料寫進
+> `inventory/markforged.loaded`。實作時發現 **`inventory.html` 本來就已經訂閱
+> `printer_status/current`**，而該文件的 `mf_printers` 已含完全相同的資料
+> （`materials[].{slot,material,remaining_cc}` 加上 `state`／`online`）。
+> 再寫一份到 `inventory/markforged.loaded` 會：**寫入量加倍**（CLAUDE.md 有寫入配額爆量前例）、
+> 且兩份資料可能不同步。
+> → **改為 `renderMfLoaded()` 直接讀 `printer_status.mf_printers`，維持單一資料來源。**
+> `loaded` 欄位保留在文件結構中（`saveMfInv` 仍原樣保存以免誤刪），但**不再被任何程式寫入或顯示**。
+
 ```jsonc
 // inventory/markforged
 {
@@ -429,7 +438,7 @@ Firestore 規則不需改動——現有 `match /inventory/{docId}` 已涵蓋（
     "Carbon Fiber": { "total_cc":  450, "spools": 1, "cc_per_spool": 450 }
   },
   "safety":            { "Onyx": 400 },
-  "loaded":            { /* 各機台目前掛載的材料與餘量，由同步寫入，純顯示 */ },
+  "loaded":            { /* ⚠ 見下方說明：實作時決定不使用此欄位 */ },
   "processed_jobs":    [ /* 已寫過 history 的 print_job id，防重複 */ ],
   "deducted_jobs":     [ /* 已扣過庫存的 print_job id，防重複扣 */ ],
   "stock_shortfalls":  { /* 消耗超過帳面庫存的累計差額，比照 main 的做法 */ }
@@ -522,9 +531,9 @@ Eiger 狀態含空白且非全大寫。**不要**沿用 `.upper()` 後比對的�
 | 1 | 本機探測腳本：`GET /devices`、`GET /print_jobs` 各打一次，**dump 真實回傳** 校正欄位假設 | 階段 0 | ✅ **2026-08-03 完成，結果見 §0.5** |
 | 1b | **補探測**：趁機台實際列印中重跑，補齊 `active_job` 形狀與 `PrinterStateEnum` | 有機台在印 | ✅ **2026-08-03 完成，見 §0.6** |
 | 2 | 寫入 GCP Secrets；`perform_sync_eiger()` 只寫 `printer_status.mf_printers`（唯讀，不碰庫存） | 階段 1 | ✅ **2026-08-04 已部署上線**（`sync_eiger_scheduled` / `sync_eiger_manual`，asia-east1） |
-| 3 | `3DP-BK.html` 顯示 Markforged 狀態卡 | 階段 2 | ⬜ 阻擋已解除 |
-| 4 | `inventory/markforged` 資料結構 + 庫存新分頁（先純顯示，手動維護庫存） | 階段 3 | ⬜ |
-| 5 | 開啟自動扣料（`processed_jobs` / `deducted_jobs` 防重複），觀察一週對帳 | 階段 4 | ⬜ |
+| 3 | `3DP-BK.html` 顯示 Markforged 狀態卡 | 階段 2 | ✅ **2026-08-04 上線**（預約頁「機台狀態」台中組） |
+| 4 | `inventory/markforged` 資料結構 + 庫存新分頁（先純顯示，手動維護庫存） | 階段 3 | ✅ **2026-08-04 完成**（機台狀態改讀 `mf_printers`，見 §2.2 設計變更） |
+| 5 | 開啟自動扣料（`processed_jobs` / `deducted_jobs` 防重複），觀察一週對帳 | 階段 4 | ⛔ **暫緩，需先決策**（§0.5.6／§0.6.6／§0.6.7） |
 
 ### ⚠ 部署地雷：新增 Secret 後，CI 部署會 403 失敗（2026-08-04 實際踩到）
 
