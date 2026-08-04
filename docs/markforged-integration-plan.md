@@ -521,10 +521,41 @@ Eiger 狀態含空白且非全大寫。**不要**沿用 `.upper()` 後比對的�
 | 0 | 取得 API 存取權與金鑰、確認 device name | §0 | ✅ 金鑰已到位；**device 納管範圍待決策**（§0.5.1） |
 | 1 | 本機探測腳本：`GET /devices`、`GET /print_jobs` 各打一次，**dump 真實回傳** 校正欄位假設 | 階段 0 | ✅ **2026-08-03 完成，結果見 §0.5** |
 | 1b | **補探測**：趁機台實際列印中重跑，補齊 `active_job` 形狀與 `PrinterStateEnum` | 有機台在印 | ✅ **2026-08-03 完成，見 §0.6** |
-| 2 | 寫入 GCP Secrets；`perform_sync_eiger()` 只寫 `printer_status.mf_printers`（唯讀，不碰庫存） | 階段 1 | 🟡 **程式已完成並用真實 dump 測過（70 項）；待寫 GCP Secrets 才能部署** |
+| 2 | 寫入 GCP Secrets；`perform_sync_eiger()` 只寫 `printer_status.mf_printers`（唯讀，不碰庫存） | 階段 1 | ✅ **2026-08-04 已部署上線**（`sync_eiger_scheduled` / `sync_eiger_manual`，asia-east1） |
 | 3 | `3DP-BK.html` 顯示 Markforged 狀態卡 | 階段 2 | ⬜ 阻擋已解除 |
 | 4 | `inventory/markforged` 資料結構 + 庫存新分頁（先純顯示，手動維護庫存） | 階段 3 | ⬜ |
 | 5 | 開啟自動扣料（`processed_jobs` / `deducted_jobs` 防重複），觀察一週對帳 | 階段 4 | ⬜ |
+
+### ⚠ 部署地雷：新增 Secret 後，CI 部署會 403 失敗（2026-08-04 實際踩到）
+
+新增 `EIGER_ACCESS_KEY` / `EIGER_SECRET_KEY` 後直接 `git push`，
+GitHub Actions 的 `Deploy Firebase Cloud Function` **失敗**：
+
+```
+Error: Request to .../secrets/EIGER_SECRET_KEY:setIamPolicy had HTTP Error: 403,
+Permission 'secretmanager.secrets.setIamPolicy' denied
+```
+
+**原因**：function 要用 secret 時，Firebase 必須把「執行期 service account」
+（本專案為 `1074210451221-compute@developer.gserviceaccount.com`）加進該 secret 的 IAM policy，
+這需要 `secretmanager.secrets.setIamPolicy`。**CI 用的 service account 沒有這個權限**。
+既有的 `FORMLABS_*` 不受影響，是因為它們的 IAM 綁定早就存在，CI 不需要再改動。
+
+**解法（當時採用）**：從本機用權限較高的帳號部署一次，綁定建立後 CI 就不會再踩：
+
+```bash
+firebase deploy --only functions:sync_eiger_scheduled,functions:sync_eiger_manual --project swtc-3dp-poc
+```
+
+輸出會出現 `Granted roles/secretmanager.secretAccessor on .../EIGER_*_KEY to ...-compute@...`，
+那行就是 CI 缺的動作。
+
+⚠ **這是治標**：CI 的 service account 仍然沒有該權限，
+**下次再新增任何 Secret（或輪替金鑰導致需要重新綁定）會再次失敗**。
+治本要給 CI 的 service account `roles/secretmanager.secretIamAdmin`（限那些 secret）
+或 `roles/secretmanager.admin`（專案層級），屬帳號治理範疇（見 EVALUATION-NEXT-TOPICS 議題二）。
+
+---
 
 階段 1 的 dump 很關鍵——OpenAPI spec 描述的欄位與實際回傳常有出入（Formlabs 就踩過 `status` 回 `PRINTING` 但實際已完成、`print_finished_at` 回 1970 等案例），**不要跳過**。
 本次實測確實抓到 5 個 spec 讀不出來的坑（§0.5.0 SSL、§0.5.2 扁平欄位、§0.5.3 `"None"` 字串與 `™`、§0.5.4 fiber/tertiary 配對、§0.5.6 `printing_state` 恆為 Unknown），驗證了這一步的價值。
