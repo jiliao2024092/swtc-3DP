@@ -1801,8 +1801,46 @@ function getMachineLabelFE(id) {
     return id;
 }
 
+// ══ Markforged（Eiger API）機台狀態 ══════════════
+// 資料來源：printer_status/current 的 mf_printers（Cloud Function perform_sync_eiger 寫入）
+// 與 Formlabs 的 printers 陣列刻意分開，避免既有 buildStatusCard 對 Formlabs 欄位的假設被打破。
+// 欄位形狀見 docs/markforged-integration-plan.md §0.6.3。
+const MF_MACHINE_IMG = {
+    // 與 inventory.html 的 MF_MACHINE_IMG 同一張（原圖 docs/images/mkf2.png）
+    'MarkTwo': 'data:image/jpeg;base64,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',
+};
+// Eiger 的 PrinterStateEnum：首字大寫且含空白，★ 不可比照 Formlabs 用 .upper() 後比對
+// （實測只取樣到 Offline / Ready / Printing，其餘依 spec 先列上；未知狀態一律原樣顯示英文字串，
+//   不要顯示成「未知」，否則之後遇到沒見過的狀態會很難查）
+const MF_STATUS_MAP = {
+    'Printing':                 {label:'列印中',   color:'bg-[var(--accent-soft)] text-[var(--accent)]', dot:'bg-blue-500'},
+    'Ready':                    {label:'待命',     color:'bg-[var(--ok-soft)] text-[var(--ok)]',         dot:'bg-green-500'},
+    'Offline':                  {label:'離線',     color:'bg-[var(--bg-panel)] text-[var(--ink-4)]',     dot:'bg-gray-300'},
+    'Paused':                   {label:'已暫停',   color:'bg-[var(--warn-soft)] text-[var(--warn)]',     dot:'bg-yellow-500'},
+    'Print Finished':           {label:'已完成',   color:'bg-[var(--ok-soft)] text-[var(--ok)]',         dot:'bg-green-500'},
+    'Print Bed Needs Clearing': {label:'待清理床台',color:'bg-[var(--warn-soft)] text-[var(--warn)]',     dot:'bg-yellow-500'},
+    'Bed Needs Leveling':       {label:'待校平',   color:'bg-[var(--warn-soft)] text-[var(--warn)]',     dot:'bg-yellow-500'},
+    'Out of Material':          {label:'材料用盡', color:'bg-[var(--danger-soft)] text-[var(--danger)]', dot:'bg-red-500'},
+    'Material Jam':             {label:'材料阻塞', color:'bg-[var(--danger-soft)] text-[var(--danger)]', dot:'bg-red-500'},
+    'Fiber Jam':                {label:'纖維阻塞', color:'bg-[var(--danger-soft)] text-[var(--danger)]', dot:'bg-red-500'},
+    'Error':                    {label:'異常',     color:'bg-[var(--danger-soft)] text-[var(--danger)]', dot:'bg-red-500'},
+};
+function mfStatusFE(state){
+    return MF_STATUS_MAP[state] || {
+        label: state || '未知',   // 未收錄的狀態直接顯示原字串，便於發現新的 enum
+        color: 'bg-[var(--bg-panel)] text-[var(--ink-4)]',
+        dot:   'bg-gray-300',
+    };
+}
+function fmtEtaFE(sec){
+    if (sec == null || !isFinite(sec) || sec <= 0) return '';
+    const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    return h ? `約剩 ${h} 小時 ${m} 分` : `約剩 ${m} 分`;
+}
+
 let printerView = 'status';
 let cachedPrinters = [];
+let cachedMfPrinters = [];
 
 window.switchPrinterView = function(v){
     printerView = v;
@@ -1840,7 +1878,8 @@ function subscribePrinterStatus() {
             const data = snap.data();
             const printers = data.printers || [];
             cachedPrinters = printers;
-            console.log(`[printer_status ${new Date().toLocaleTimeString()}] 收到 ${printers.length} 台`);
+            cachedMfPrinters = data.mf_printers || [];   // Markforged（Eiger），可能尚未寫入
+            console.log(`[printer_status ${new Date().toLocaleTimeString()}] 收到 ${printers.length} 台 Formlabs、${cachedMfPrinters.length} 台 Markforged`);
 
             // 顯示 Cloud Function 上次寫入時間
             const updatedAt = data.updated_at?.toDate?.() || (data.updated_at ? new Date(data.updated_at) : null);
@@ -1849,7 +1888,8 @@ function subscribePrinterStatus() {
                     `資料時間：${updatedAt.toLocaleDateString('zh-TW')} ${updatedAt.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}`;
             }
 
-            if (!printers.length) {
+            // 注意：Formlabs 沒資料但 Markforged 有的情況也要渲染，不可只看 printers.length
+            if (!printers.length && !cachedMfPrinters.length) {
                 document.getElementById('panel-status').innerHTML =
                     '<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-6">尚無列印機資料</div>';
                 return;
@@ -1917,6 +1957,63 @@ function buildStatusCard(p) {
     return card;
 }
 
+// Markforged 狀態卡。刻意與 buildStatusCard 分開：Eiger 的欄位名與 Formlabs 不同
+// （layer/layer_count vs layer_now/layer_total、state vs status、materials 陣列 vs cartridges）。
+function buildMfStatusCard(p) {
+    const s = mfStatusFE(p.state);
+    const isPrinting = p.state === 'Printing';
+    const img = MF_MACHINE_IMG[p.display] || MF_MACHINE_IMG['MarkTwo'];
+    const eta = fmtEtaFE(p.eta_seconds);
+
+    // 機台離線時 Eiger 根本不回材料欄位（整個 key 不存在），此時 materials 會是空陣列。
+    // 必須顯示「資料不可得」而不是「餘量 0」，否則會誤導。
+    const mats = Array.isArray(p.materials) ? p.materials : [];
+    const matHTML = mats.length
+        ? mats.map(m => `<div class="flex justify-between text-xs">
+                <span class="text-[var(--ink-4)]">${m.slot === 'secondary' ? '纖維' : '塑料'} · ${m.material || '—'}</span>
+                <span class="text-[var(--ink-3)] font-medium">${m.remaining_cc == null ? '—' : Number(m.remaining_cc).toFixed(0) + ' cc'}</span>
+            </div>`).join('')
+        : `<p class="text-xs text-[var(--ink-5)]">${p.online ? '無掛載材料資料' : '離線中，無法取得材料餘量'}</p>`;
+
+    // 只顯示需要注意的耗材（Up to Date 的不佔版面）
+    const alerts = (p.maintenance || []).filter(m => m.status && m.status !== 'Up to Date');
+
+    const card = document.createElement('div');
+    card.className = 'border border-[var(--line)] rounded-xl p-4 hover:border-[var(--accent-border)] transition-colors';
+    card.innerHTML = `
+        <div class="flex items-start gap-3">
+            ${img?`<img src="${img}" alt="${p.display||''}" loading="lazy" class="w-16 h-16 object-contain flex-shrink-0 rounded-lg bg-[var(--bg-soft)]">`:''}
+            <div class="flex-1 min-w-0 space-y-3">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <p class="font-semibold text-[var(--ink)] text-sm">${p.display || p.name || ''}</p>
+                        <p class="text-xs text-[var(--ink-5)] mt-0.5">${p.device_type ? p.device_type + ' · ' : ''}${p.name || ''}</p>
+                    </div>
+                    <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
+                        <span class="w-1.5 h-1.5 rounded-full ${s.dot} ${isPrinting?'animate-pulse':''}"></span>${s.label}
+                    </span>
+                </div>
+                ${isPrinting?`
+                <div class="space-y-1.5 pt-1">
+                    <div class="flex justify-between items-center gap-2">
+                        <p class="text-xs text-[var(--ink-3)] truncate flex-1" title="${p.print_name||''}">${p.print_name?'📄 '+p.print_name:'列印中…'}</p>
+                        ${p.progress!=null?`<span class="text-xs font-medium text-[var(--accent)] shrink-0">${p.progress}%</span>`:''}
+                    </div>
+                    ${p.progress!=null?`<div class="bg-[var(--line-soft)] rounded-full h-1.5 overflow-hidden"><div class="bg-blue-500 h-full" style="width:${p.progress}%"></div></div>`:''}
+                    <div class="flex justify-between text-xs text-[var(--ink-5)]">
+                        <span>${(p.layer&&p.layer_count)?`第 ${p.layer} / ${p.layer_count} 層`:''}</span>
+                        <span>${eta}</span>
+                    </div>
+                </div>`:''}
+                <div class="space-y-1 pt-1">${matHTML}</div>
+                ${p.queue_length?`<p class="text-xs text-[var(--ink-5)]">佇列 ${p.queue_length} 件</p>`:''}
+                ${alerts.length?`<p class="text-xs text-[var(--warn)]">⚠ 耗材待更換：${alerts.map(a=>a.title).join('、')}</p>`:''}
+            </div>
+        </div>
+    `;
+    return card;
+}
+
 function togglePrinterGroup(groupName) {
     printerGroupCollapsed[groupName] = !printerGroupCollapsed[groupName];
     renderStatusPanel(cachedPrinters || []);
@@ -1931,14 +2028,17 @@ function renderStatusPanel(printers) {
     // 分組：台中 / 其他
     const taichung = printers.filter(p => TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n)));
     const others   = printers.filter(p => !TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n)));
+    // Markforged 目前只納管 Mark Two Taichung 一台，歸台中組（後端已用 device id 白名單過濾）
+    const mf = cachedMfPrinters || [];
 
     const groups = [
-        { name: '台中', printers: taichung },
-        { name: '其他', printers: others },
+        { name: '台中', printers: taichung, mf },
+        { name: '其他', printers: others,   mf: [] },
     ];
 
     groups.forEach(g => {
-        if (!g.printers.length) return;  // 該組沒有機台就不顯示
+        const count = g.printers.length + g.mf.length;
+        if (!count) return;  // 該組沒有機台就不顯示
         const collapsed = !!printerGroupCollapsed[g.name];
 
         const section = document.createElement('div');
@@ -1955,7 +2055,7 @@ function renderStatusPanel(printers) {
                     <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
                 <span class="text-sm font-semibold text-[var(--ink-2)]">${g.name}</span>
-                <span class="text-xs text-[var(--ink-5)]">${g.printers.length} 台</span>
+                <span class="text-xs text-[var(--ink-5)]">${count} 台</span>
             </span>
             <span class="text-xs text-[var(--ink-5)]">${collapsed?'已隱藏':'點此隱藏'}</span>
         `;
@@ -1966,12 +2066,13 @@ function renderStatusPanel(printers) {
             const body = document.createElement('div');
             body.className = 'p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3';
             g.printers.forEach(p => body.appendChild(buildStatusCard(p)));
+            g.mf.forEach(p => body.appendChild(buildMfStatusCard(p)));
             section.appendChild(body);
         }
         grid.appendChild(section);
     });
 
-    if (!taichung.length && !others.length) {
+    if (!taichung.length && !others.length && !mf.length) {
         grid.innerHTML = '<div class="text-center text-[var(--ink-5)] text-sm py-6">尚無列印機資料</div>';
     }
 }
