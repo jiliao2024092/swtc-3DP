@@ -564,6 +564,32 @@ firebase deploy --only functions:sync_eiger_scheduled,functions:sync_eiger_manua
 治本要給 CI 的 service account `roles/secretmanager.secretIamAdmin`（限那些 secret）
 或 `roles/secretmanager.admin`（專案層級），屬帳號治理範疇（見 EVALUATION-NEXT-TOPICS 議題二）。
 
+### ⚠⚠ 連帶事故：限縮部署範圍時漏掉既有 function（2026-08-04 實際踩到）
+
+上面用 `--only functions:sync_eiger_scheduled,functions:sync_eiger_manual` 繞過 403 之後，
+**`sync_formlabs_*` 沒有被重新部署**，而 CI 那次又失敗了
+⇒ 線上的 Formlabs 同步仍是舊程式碼，`perform_sync` 依然用**全量 `.set()`**
+寫 `printer_status/current`，**每輪把 Eiger 剛寫入的 `mf_printers` 整份洗掉**。
+
+症狀非常容易誤判成前端 bug 或瀏覽器快取——前端完全正常，資料是被後端洗掉的：
+
+```
+07:14:06  [eiger] 已寫入 mf_printers (1 台)
+07:20:21  [sync]  已寫入 printer_status/current (6 台)   ← mf_printers 在此消失
+07:44:05  [eiger] 已寫入 mf_printers (1 台)
+07:51:21  [sync]  已寫入 printer_status/current (6 台)   ← 又消失
+```
+
+`mf_printers` 只在每 30 分鐘週期中存在約 5〜9 分鐘，其餘時間欄位根本不在文件裡。
+
+**教訓**：**跨 function 共用同一份 Firestore 文件時，改動其中一支的寫入方式
+（尤其 `set` → `set(merge=True)`），另一支即使程式碼沒改也必須一起重新部署。**
+限縮 `--only` 範圍時要問一句：「這次改動有沒有影響到我沒列進去的 function？」
+
+排查手法（下次可直接沿用）：比對兩支 function 的寫入時間戳
+（`firebase functions:log | Select-String "已寫入 printer_status"`），
+若某一支的寫入總是緊接在另一支之後，且前者的欄位會消失，就是覆寫問題。
+
 ---
 
 階段 1 的 dump 很關鍵——OpenAPI spec 描述的欄位與實際回傳常有出入（Formlabs 就踩過 `status` 回 `PRINTING` 但實際已完成、`print_finished_at` 回 1970 等案例），**不要跳過**。
