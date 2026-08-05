@@ -145,22 +145,32 @@ def ask_settings(default_stl=None):
     lbl_q.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(4, 0))
 
     def on_res(*_):
-        r = RESINS[v_res.get()]
+        name = v_res.get()
+        r = RESINS[name]
         sub = [k for k, v in r.completeness().items() if v == "substitute"]
         lbl_q.config(text=(f"實測 {r.measured_count()}/4 項熱性質。"
                            + (f" 代用：{', '.join(sub)}" if sub else " 四項齊全")))
+        # 原廠建議條件排在清單最前面並自動選取
+        rec = materials.recommended_profile(name)
+        vals = ([rec.name] if rec else []) + list(CURE_PRESETS)
+        cb_prof["values"] = vals
+        v_prof.set(vals[0])
+        # 收縮預設也依材料自動帶出
+        v_sh.set(materials.default_shrink_key(name))
     v_res.trace_add("write", on_res); on_res()
 
     tk.Label(root, text="後固化條件").grid(row=5, column=0, sticky="w", padx=10, pady=(14, 2))
-    v_prof = tk.StringVar(value="Form Cure 60°C 60min")
-    ttk.Combobox(root, textvariable=v_prof, values=list(CURE_PRESETS), width=28,
-                 state="readonly").grid(row=6, column=0, sticky="w", padx=10)
+    v_prof = tk.StringVar()
+    cb_prof = ttk.Combobox(root, textvariable=v_prof, width=28, state="readonly")
+    cb_prof.grid(row=6, column=0, sticky="w", padx=10)
 
     tk.Label(root, text="光固化收縮（主要翹曲來源）").grid(
         row=5, column=1, sticky="w", padx=10, pady=(14, 2))
-    v_sh = tk.StringVar(value="淺色顏料（White/Grey）")
-    ttk.Combobox(root, textvariable=v_sh, values=list(materials.CURE_PRESETS_SHRINK),
-                 width=24, state="readonly").grid(row=6, column=1, sticky="w", padx=10)
+    v_sh = tk.StringVar()
+    cb_sh = ttk.Combobox(root, textvariable=v_sh,
+                         values=list(materials.CURE_PRESETS_SHRINK),
+                         width=30, state="readonly")
+    cb_sh.grid(row=6, column=1, sticky="w", padx=10)
     tk.Label(root, text="⚠ 此項為估計值，非 Formlabs 官方資料，需實測校正",
              fg="#a60", wraplength=520, justify="left").grid(
         row=7, column=0, columnspan=3, sticky="w", padx=10)
@@ -187,6 +197,7 @@ def ask_settings(default_stl=None):
             return
         state.update(ok=True, stl=v_file.get(), resin=v_res.get(),
                      profile=v_prof.get(), shrink=v_sh.get(),
+                     recommended=v_prof.get().startswith("原廠建議"),
                      density=MESH_PRESETS[v_dens.get()],
                      orient=v_or.get(), gravity=bool(v_grav.get()))
         root.destroy()
@@ -277,7 +288,8 @@ def main():
         return 0
 
     resin = RESINS[cfg["resin"]]
-    profile = CURE_PRESETS[cfg["profile"]]
+    profile = (materials.recommended_profile(cfg["resin"]) if cfg["recommended"]
+               else CURE_PRESETS[cfg["profile"]])
     shrink = materials.CURE_PRESETS_SHRINK[cfg["shrink"]]
 
     prog = Progress()

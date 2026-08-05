@@ -182,11 +182,31 @@ def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
             f"⚠ 凍結過程只橫跨 {trans_steps} 個時間步，時間解析度不足，"
             "翹曲會被低估。請增加冷卻時間步數（或延長冷卻模擬時間）後重算。")
 
-    # 分離「均勻收縮」與「形狀改變」：均勻收縮不算翹曲，但使用者仍想知道
+    # ── 分離「真正的形狀改變」與「不算翹曲的部分」──
+    #   要扣掉兩類位移：
+    #     1. 均勻縮放  —— 零件等比例縮小，形狀沒變
+    #     2. 剛體運動  —— 平移與旋轉，形狀更沒變
+    #
+    #   ★ 剛體運動非扣不可（曾經漏扣，導致嚴重誤判）：
+    #     有轉盤支撐時，零件是朝「面內錨定點」收縮而非繞形心收縮，
+    #     兩者相差一個剛體平移。若只扣均勻縮放，這個平移會被誤算成翹曲——
+    #     實測會讓同一個零件的「翹曲量」從 0.004 mm 暴增到 0.115 mm，
+    #     但重力本身造成的位移只有 0.4 奈米，差異全部來自這個假象。
+    from fea import _rigid_body_modes
+    R = _rigid_body_modes(pts)                     # (3n,6) 已正交化
     centered = pts - pts.mean(axis=0)
-    scale = float((u_total * centered).sum() / max((centered ** 2).sum(), 1e-30))
-    u_shape = u_total - scale * centered           # 扣掉等比例縮放分量
+    s_vec = centered.reshape(-1)                   # 均勻縮放模式
+    s_vec = s_vec - R @ (R.T @ s_vec)              # 對剛體模式正交化
+    nrm = np.linalg.norm(s_vec)
+    s_vec = s_vec / nrm if nrm > 1e-30 else s_vec
+
+    uflat = u_total.reshape(-1)
+    uflat = uflat - R @ (R.T @ uflat)              # 扣剛體平移與旋轉
+    scale_amp = float(s_vec @ uflat)
+    u_shape = (uflat - scale_amp * s_vec).reshape(-1, 3)   # 再扣均勻縮放
     shape_mag = np.linalg.norm(u_shape, axis=1)
+    # 均勻收縮率（線應變）：把振幅換算回無因次
+    scale = scale_amp / nrm if nrm > 1e-30 else 0.0
 
     return {
         "u": u_total,

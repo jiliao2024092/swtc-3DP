@@ -229,6 +229,56 @@ CURE_PRESETS = {
 }
 
 
+# ══════════════════════════════════════════════════════════════
+# 原廠建議固化條件（來源：使用者提供的「材料收縮率.xlsx」工作表2
+#   ——新版 V2 / V5 更新後的 Form Cure 時間與溫度）
+# ══════════════════════════════════════════════════════════════
+#   選定材料時自動帶出這組條件，不必自己猜。
+#   ⚠ Silicone 40A 需「隔水固化」（浸在水中隔絕氧氣），水的對流係數遠高於
+#     空氣，升降溫快得多，故另外調高 h；這會直接影響熱梯度與凍結時序。
+RECOMMENDED_CURE = {
+    "Clear V5":        (60, 15),
+    "Grey V5":         (60, 15),
+    "White V5":        (60, 15),
+    "Black V5":        (60, 15),
+    "Precision Model": (60, 15),
+    "Fast Model":      (60,  5),    # 表格為 Fast Draft Resin
+    "Tough 1500 V2":   (70, 60),
+    "Tough 2000":      (70, 60),    # 表格為 Tough 2000 V2
+    "Rigid 4000":      (80, 15),    # 表格為 Rigid 4000 V2
+    "Rigid 10K":       (70, 60),    # 表格為 Rigid 10K V2
+    "ESD":             (70, 60),    # 表格為 ESD Resin V2
+    "Silicone 40A":    (60, 25),    # 表格 20–30 分鐘，取中間值
+    "Flexible 80A V2": (60, 20),
+    "Elastic 50A V2":  (60, 20),
+    "BioMed Clear V2": (60, 30),
+    "Dental LT Clear V2": (60, 60),
+    # 表格未列，沿用舊有慣例
+    "Durable V2.1":    (60, 60),
+    "High Temp V2":    (80, 120),
+    "Flame Retardant": (70, 60),
+}
+
+# 需隔水固化的材料（水的對流係數遠高於空氣）
+WATER_CURED = {"Silicone 40A"}
+
+
+def recommended_profile(resin_name: str) -> Optional[CureProfile]:
+    """回傳該材料的原廠建議固化條件。找不到時回 None。"""
+    rc = RECOMMENDED_CURE.get(resin_name)
+    if not rc:
+        return None
+    temp, mins = rc
+    water = resin_name in WATER_CURED
+    return CureProfile(
+        name=f"原廠建議：{temp}°C / {mins} min" + ("（隔水固化）" if water else ""),
+        chamber_temp=float(temp), duration_min=float(mins),
+        # 水的對流係數約為空氣強制對流的 20–40 倍，取保守下限
+        h_heat=(400.0 if water else 15.0),
+        h_cool=(300.0 if water else 10.0),
+    )
+
+
 @dataclass
 class CureShrink:
     """後固化的光固化收縮模型。
@@ -261,13 +311,58 @@ class CureShrink:
 
 
 # 依顏料濃度給的穿透深度粗略分組（僅供起始值，仍須實測）
-CURE_PRESETS_SHRINK = {
-    "透明樹脂（Clear）":        CureShrink(-0.0015, 8.0),
-    "淺色顏料（White/Grey）":   CureShrink(-0.0015, 2.0),
-    "深色顏料（Black）":        CureShrink(-0.0015, 0.8),
-    "填料樹脂（Rigid）":        CureShrink(-0.0008, 1.5),
-    "關閉（只算熱效應）":        CureShrink(0.0, 1.0, enabled=False),
+# ── 依樹脂系列的線性收縮率（來源：使用者提供的「材料收縮率.xlsx」工作表1）──
+#
+# ⚠⚠ 重要限制：表格給的是該樹脂系列的**總線性收縮率**，
+#   而本模型的 surface_strain 需要的是「**後固化階段額外增加**的表面收縮」。
+#   列印當下就已經收縮掉大部分，後固化只再補上一部分（比例未知、無公開資料）。
+#   直接把總收縮率當成後固化收縮 ⇒ **會高估變形量**（偏保守）。
+#   → 相對比較（設計 A vs B）仍然可靠；絕對值務必實測校正。
+#
+# 每個系列給下限／上限兩檔（表格本身即為區間）。
+# UV 穿透深度依顏料濃度估計，**非表格資料**。
+SHRINK_SERIES = {
+    "標準樹脂 Clear（透明）":       (-0.004, -0.008, 8.0),
+    "標準樹脂 Grey/White（淺色）":  (-0.004, -0.008, 2.0),
+    "標準樹脂 Black（深色）":       (-0.004, -0.008, 0.8),
+    "高剛性 Rigid 4000/10K":       (-0.001, -0.003, 1.5),
+    "高韌性 Tough/Durable":        (-0.004, -0.009, 2.0),
+    "耐高溫 High Temp":            (-0.003, -0.005, 3.0),
+    "牙科/高精度 Dental/Precision": (-0.002, -0.004, 3.0),
+    "鑄造蠟 Castable Wax":         (-0.010, -0.022, 3.0),
 }
+
+CURE_PRESETS_SHRINK = {}
+for _n, (_lo, _hi, _pen) in SHRINK_SERIES.items():
+    CURE_PRESETS_SHRINK[f"{_n}　下限 {abs(_lo)*100:.1f}%"] = CureShrink(
+        _lo, _pen, note="表格線性收縮率下限（屬總收縮，後固化實際值更小）")
+    CURE_PRESETS_SHRINK[f"{_n}　上限 {abs(_hi)*100:.1f}%"] = CureShrink(
+        _hi, _pen, note="表格線性收縮率上限（屬總收縮，後固化實際值更小）")
+CURE_PRESETS_SHRINK["關閉（只算熱效應）"] = CureShrink(0.0, 1.0, enabled=False)
+
+# 材料 → 建議的收縮系列（UI 選材料時自動帶出）
+SHRINK_FOR_RESIN = {
+    "Clear V5": "標準樹脂 Clear（透明）",
+    "Grey V5":  "標準樹脂 Grey/White（淺色）",
+    "White V5": "標準樹脂 Grey/White（淺色）",
+    "Black V5": "標準樹脂 Black（深色）",
+    "Fast Model": "標準樹脂 Clear（透明）",
+    "Rigid 4000": "高剛性 Rigid 4000/10K",
+    "Rigid 10K":  "高剛性 Rigid 4000/10K",
+    "Tough 1500 V2": "高韌性 Tough/Durable",
+    "Tough 2000":    "高韌性 Tough/Durable",
+    "Durable V2.1":  "高韌性 Tough/Durable",
+    "High Temp V2":  "耐高溫 High Temp",
+    "ESD":           "標準樹脂 Black（深色）",
+    "Flame Retardant": "標準樹脂 Grey/White（淺色）",
+}
+
+
+def default_shrink_key(resin_name: str) -> str:
+    """依材料回傳建議的收縮預設鍵（取下限——總收縮的下限較接近後固化實況）。"""
+    series = SHRINK_FOR_RESIN.get(resin_name, "標準樹脂 Grey/White（淺色）")
+    lo = abs(SHRINK_SERIES[series][0]) * 100
+    return f"{series}　下限 {lo:.1f}%"
 
 
 def warn_profile_vs_resin(resin: Resin, prof: CureProfile) -> Optional[str]:

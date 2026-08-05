@@ -273,17 +273,42 @@ class IncrementalSolver:
 
         # ── 邊界條件 ──
         # 無支撐：零件自由懸浮，剛度矩陣有 6 個剛體模式，用 Lagrange 乘子消除。
-        # 有支撐：接觸轉盤的節點被固定，剛體模式已被約束，改用直接消去法。
+        # 有支撐：模擬「零件平放在固化機轉盤上」。
+        #
+        # ★★ 轉盤只擋垂直方向，水平必須自由 ★★
+        #   轉盤是「放」不是「夾」：零件可以在盤面上自由滑動與收縮，
+        #   只是不能往下陷。若把底面節點的 x/y 也固定（曾經如此，是錯的），
+        #   等於禁止零件在底面收縮——而光固化收縮是整個零件都在縮，
+        #   會在底面產生大量實際不存在的應力。
+        #   正確作法：底面節點只固定 z，另外加 3 個最小約束
+        #   （2 個平移 + 1 個繞 z 旋轉）消除面內剛體運動。
         self.supported = support_nodes is not None and len(support_nodes) > 0
         if self.supported:
+            sup = np.asarray(support_nodes, dtype=np.int64)
             fixed = np.zeros(self.ndof, dtype=bool)
-            for c in range(3):
-                fixed[np.asarray(support_nodes) * 3 + c] = True
+            fixed[sup * 3 + 2] = True                 # 只固定 z
+
+            # 面內最小約束：挑底面上相距最遠的兩點，避免數值病態
+            bp = pts[sup][:, :2]
+            centre = bp.mean(axis=0)
+            a = int(np.argmin(((bp - centre) ** 2).sum(axis=1)))   # 最接近中心
+            d2 = ((bp - bp[a]) ** 2).sum(axis=1)
+            b = int(np.argmax(d2))                                  # 距 a 最遠
+            na, nb = int(sup[a]), int(sup[b])
+            fixed[na * 3 + 0] = True                  # A 點固定 x、y → 消除 2 個平移
+            fixed[na * 3 + 1] = True
+            # B 點固定「與 AB 垂直的那個軸」→ 消除繞 z 的旋轉。
+            # 選 AB 較短的那個分量對應的軸，數值上較穩定。
+            ab = bp[b] - bp[a]
+            fixed[nb * 3 + (1 if abs(ab[0]) >= abs(ab[1]) else 0)] = True
+
             self.free = np.where(~fixed)[0]
             self.R = None
+            self.support_info = {"n_contact": len(sup), "anchor": na, "second": nb}
         else:
             self.free = None
             self.R = _rigid_body_modes(pts)
+            self.support_info = None
 
         # ── 自重載重（常數，與時間無關）──
         #   f_g = ∫ρ·g·N dV，四面體的體積平均分配到 4 個節點
