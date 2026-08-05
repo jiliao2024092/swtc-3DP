@@ -288,12 +288,38 @@ class Progress:
 #     真的把三個面板畫出來，任何繪圖參數錯誤都會當場現形。
 # ════════════════════════════════════════════════════════════
 def _make_grid(pv, st, deform_scale):
-    """建立網格；deform_scale=0 表示原始未變形形狀。"""
-    r, p, t = st["res"], st["pts"], st["tets"]
-    cells = np.hstack([np.full((len(t), 1), 4), t]).ravel()
-    ct = np.full(len(t), pv.CellType.TETRA)
+    """建立顯示用網格；deform_scale=0 表示原始未變形形狀。
+
+    ★ 只送**表面**給 VTK，不要送整包四面體。
+      渲染只看得到表面，把 53 萬個四面體丟進去（而且三個面板各一份）
+      會吃掉數 GB 記憶體並拖垮互動，實測會直接閃退。
+      表面三角形數量約為四面體的 1/3 以下，且完全不影響外觀。
+    """
+    r, p = st["res"], st["pts"]
+    surf = st["surf"]
     disp = r["u_shape"] * deform_scale if deform_scale else 0.0
-    return pv.UnstructuredGrid(cells, ct, (p + disp) * 1000.0)
+    faces = np.hstack([np.full((len(surf), 1), 3), surf]).ravel()
+    return pv.PolyData((p + disp) * 1000.0, faces)
+
+
+def _clim(vals, lo=2.0, hi=98.0):
+    """用百分位數決定色階範圍。
+
+    ★ 為什麼不直接用 min/max：應力與翹曲往往集中在極小的區域，
+      若把色階拉到絕對最大值，模型絕大部分都會落在色階最低端
+      （turbo 的低端是深藍紫）⇒ 整個畫面看起來一片深色、看不出分布。
+      裁掉頭尾各 2% 之後，顏色才會鋪開在真正有意義的範圍上。
+    """
+    v = np.asarray(vals, float)
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return None
+    a, b = np.percentile(v, [lo, hi])
+    if not np.isfinite(a) or not np.isfinite(b) or b - a < 1e-12:
+        a, b = float(v.min()), float(v.max())
+    if b - a < 1e-12:                      # 完全均勻（例如溫度沒有梯度）
+        return None
+    return [float(a), float(b)]
 
 def render_panels(pv, pl, st, resin, profile):
     r = st["res"]
@@ -302,7 +328,11 @@ def render_panels(pv, pl, st, resin, profile):
 
     # ── 左：原始模型 ──
     pl.subplot(0, 0)
-    pl.clear_actors()
+    # ★ 必須用 renderer.clear_actors() 只清目前面板。
+    #   Plotter.clear_actors() 會清掉**所有** renderer——
+    #   畫完左panel後切到中panel清除時會把左panel一併抹掉，
+    #   最後只剩最右邊那個面板有內容（實際踩過：「視窗只有右半邊」）。
+    pl.renderer.clear_actors()
     pl.add_mesh(_make_grid(pv, st, 0.0), color="#b9c4d0", show_edges=False,
                 opacity=1.0, lighting=True)
     pl.add_text("原始模型（未變形）", position="upper_edge",
@@ -320,10 +350,12 @@ def render_panels(pv, pl, st, resin, profile):
 
     # ── 中：翹曲量 ──
     pl.subplot(0, 1)
-    pl.clear_actors()
+    pl.renderer.clear_actors()
     g = _make_grid(pv, st, scale)
-    g.point_data["翹曲"] = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
-    pl.add_mesh(g, scalars="翹曲", cmap="turbo",
+    warp_vals = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
+    g.point_data["翹曲"] = warp_vals
+    pl.add_mesh(g, scalars="翹曲", cmap="turbo", clim=_clim(warp_vals),
+                below_color="#2b2b6b", above_color="#7a0000",
                 scalar_bar_args={"title": "翹曲量 (mm)", "color": "black",
                                  "title_font_size": 13, "label_font_size": 10,
                                  "position_x": 0.05, "position_y": 0.02,
@@ -339,7 +371,7 @@ def render_panels(pv, pl, st, resin, profile):
 
     # ── 右：殘留應力／最高溫度 ──
     pl.subplot(0, 2)
-    pl.clear_actors()
+    pl.renderer.clear_actors()
     g2 = _make_grid(pv, st, scale)
     if third == "stress":
         g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
@@ -352,6 +384,8 @@ def render_panels(pv, pl, st, resin, profile):
         bar, head = "後固化最高溫度 (°C)", \
                     f"最高溫度　Tg = {resin.tg.value:.0f}°C"
     pl.add_mesh(g2, scalars="值", cmap="turbo",
+                clim=_clim(g2.point_data["值"]),
+                below_color="#2b2b6b", above_color="#7a0000",
                 scalar_bar_args={"title": bar, "color": "black",
                                  "title_font_size": 13, "label_font_size": 10,
                                  "position_x": 0.05, "position_y": 0.02,

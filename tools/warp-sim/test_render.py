@@ -102,5 +102,44 @@ for name in list(RESINS)[:6]:
     except Exception as ex:
         chk(False, f"{name} 摘要可繪製", f"{type(ex).__name__}: {ex}")
 
+print("\n══ 4. ★ 三個面板都必須留有內容 ══")
+# 實際踩過：Plotter.clear_actors() 會清掉**所有** renderer，
+# 於是畫完左panel、切到中panel清除時把左panel一併抹掉，
+# 最後只剩最右邊有東西（使用者回報「視窗只有右半邊」）。
+pl = pv.Plotter(off_screen=True, shape=(1, 3), window_size=(900, 320))
+pl.set_background("white")
+app.render_panels(pv, pl, st, resin, profile)
+counts = []
+for i in range(3):
+    pl.subplot(0, i)
+    counts.append(len(pl.renderer.actors))
+pl.close()
+chk(all(c > 0 for c in counts),
+    f"★ 三個面板都有 actor（{counts}）——不會只剩右半邊", counts)
+chk(counts[0] > 0, "左：原始模型面板非空")
+chk(counts[1] > 0, "中：翹曲面板非空")
+chk(counts[2] > 0, "右：應力面板非空")
+
+print("\n══ 5. 顯示用網格只送表面（記憶體） ══")
+g_disp = app._make_grid(pv, st, 0.0)
+chk(isinstance(g_disp, pv.PolyData),
+    f"★ 顯示網格是表面 PolyData 而非體積網格（{type(g_disp).__name__}）")
+chk(g_disp.n_cells == len(st["surf"]),
+    f"★ 面數等於表面三角形數（{g_disp.n_cells:,}），未送入四面體")
+# 本測試的幾何很小（表面數與四面體數相近），故另以真實比例佐證：
+# 實際零件為 535,891 四面體 / 218,890 表面三角形，僅 41%，且三個面板共用同一比例。
+chk(g_disp.n_points == len(st["pts"]), "點集與求解網格對齊（純量陣列可直接沿用）")
+
+print("\n══ 6. 色階不會把整個模型壓在最低端 ══")
+vals = np.linalg.norm(st["res"]["u_shape"], axis=1) * 1000.0
+cl = app._clim(vals)
+if cl is not None:
+    frac_in = float(((vals >= cl[0]) & (vals <= cl[1])).mean())
+    chk(frac_in > 0.5,
+        f"★ 超過一半的點落在色階範圍內（{frac_in*100:.0f}%），顏色才鋪得開",
+        f"clim={cl}, min={vals.min():.5f}, max={vals.max():.5f}")
+chk(app._clim(np.zeros(100)) is None, "完全均勻的場回傳 None（交給 VTK 自動處理）")
+chk(app._clim(np.array([])) is None, "空陣列不會炸")
+
 print(f"\n{'='*56}\n通過 {PASS} 項，失敗 {FAIL} 項")
 sys.exit(1 if FAIL else 0)
