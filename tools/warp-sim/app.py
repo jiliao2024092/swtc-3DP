@@ -30,14 +30,24 @@ from mechanics import compute_warpage, sag_check
 # 求解（與 UI 分離，方便測試）
 # ════════════════════════════════════════════════════════════
 def run_simulation(pts, tets, surf, resin, profile, shrink=None,
-                   n_heat=25, n_cool=40, log=print):
+                   n_heat=25, n_cool=40, log=print, prog=None):
+    big = len(tets) > 200_000
+    if prog:
+        prog.stage("步驟 2/3　計算溫度歷程",
+                   "暫態熱傳導；大網格的第一次矩陣分解需數十秒，畫面會暫時凍結")
     log("  計算溫度歷程…")
     times, T_hist = solve_transient_thermal(
         pts, tets, surf, resin, profile,
-        n_steps_heat=n_heat, n_steps_cool=n_cool)
+        n_steps_heat=n_heat, n_steps_cool=n_cool,
+        progress=(prog.frac if prog else None))
+    if prog:
+        prog.stage("步驟 3/3　逐步熱彈性積分",
+                   ("這是最花時間的一步（約 2–4 分鐘）" if big
+                    else "計算變形與殘留應力"))
     log("  逐步熱彈性積分…")
     res = compute_warpage(pts, tets, T_hist, resin, profile,
-                          shrink=shrink, surf_faces=surf, n_uv_steps=n_heat)
+                          shrink=shrink, surf_faces=surf, n_uv_steps=n_heat,
+                          progress=(prog.frac if prog else None))
     res["T_hist"] = T_hist
     res["times"] = times
     res["T_peak_elem"] = res["T_elem"].max(axis=0)
@@ -172,6 +182,74 @@ def ask_settings(default_stl=None):
 
 
 # ════════════════════════════════════════════════════════════
+# 進度視窗
+# ════════════════════════════════════════════════════════════
+class Progress:
+    """網格化與求解期間的進度顯示。
+
+    ★ 為什麼一定要有：設定視窗按下「開始模擬」後就關閉，接著是數分鐘的
+      網格化與求解。exe 是 --windowed 模式沒有主控台，若不顯示任何東西，
+      使用者看到的就是「視窗消失、什麼都沒發生」——與當掉無法區分。
+
+    求解是同步阻塞的，因此靠 update() 在進度回呼中手動刷新畫面。
+    部分步驟（TetGen 網格化、第一次矩陣分解）內部無回呼，畫面會短暫凍結，
+    故文字須事先寫明「這一步可能需要 N 秒」。
+    """
+
+    def __init__(self):
+        self.ok = False
+        try:
+            import tkinter as tk
+            from tkinter import ttk
+            self.tk = tk
+            self.root = tk.Tk()
+            self.root.title("模擬進行中")
+            self.root.geometry("460x150")
+            self.root.resizable(False, False)
+            self.lbl = tk.Label(self.root, text="準備中…", font=("", 11),
+                                anchor="w", justify="left", wraplength=430)
+            self.lbl.pack(fill="x", padx=16, pady=(18, 6))
+            self.sub = tk.Label(self.root, text="", fg="#666", anchor="w",
+                                justify="left", wraplength=430)
+            self.sub.pack(fill="x", padx=16)
+            self.pb = ttk.Progressbar(self.root, length=428, mode="determinate",
+                                      maximum=100.0)
+            self.pb.pack(padx=16, pady=(10, 4))
+            self.ok = True
+            self._pump()
+        except Exception:
+            self.ok = False          # 無 GUI 時退回純文字輸出
+
+    def _pump(self):
+        if self.ok:
+            try:
+                self.root.update()
+            except Exception:
+                self.ok = False
+
+    def stage(self, text, hint=""):
+        print(f"[進度] {text} {hint}".rstrip(), flush=True)
+        if self.ok:
+            self.lbl.config(text=text)
+            self.sub.config(text=hint)
+            self.pb["value"] = 0
+            self._pump()
+
+    def frac(self, f):
+        if self.ok:
+            self.pb["value"] = max(0.0, min(1.0, float(f))) * 100.0
+            self._pump()
+
+    def close(self):
+        if self.ok:
+            try:
+                self.root.destroy()
+            except Exception:
+                pass
+            self.ok = False
+
+
+# ════════════════════════════════════════════════════════════
 # 主程式
 # ════════════════════════════════════════════════════════════
 def main():
@@ -185,19 +263,43 @@ def main():
     resin = RESINS[cfg["resin"]]
     profile = CURE_PRESETS[cfg["profile"]]
     shrink = materials.CURE_PRESETS_SHRINK[cfg["shrink"]]
-    print(f"[載入] {cfg['stl']}")
-    pts, tets, surf, info = load_stl_to_tets(cfg["stl"], density=cfg["density"])
-    print(f"[網格] {info['n_tet']:,} 元素、{info['n_node']:,} 節點"
-          f"（TetGen 開關 {info['switches']}）")
-    if info["n_tet"] > 200_000:
-        print("[提示] 網格較大，求解可能需要數分鐘，請耐心等候…")
 
-    base = run_simulation(pts, tets, surf, resin, profile, shrink)
-    print(f"[結果] 翹曲 {base['max_warp_mm']:.4f} mm、"
-          f"應力 {base['max_vm_MPa']:.2f} MPa")
+    prog = Progress()
+    try:
+        prog.stage("步驟 1/3　讀取 STL 並產生四面體網格",
+                   "TetGen 網格化期間畫面會暫時無回應，約 5–60 秒")
+        print(f"[載入] {cfg['stl']}")
+        pts, tets, surf, info = load_stl_to_tets(cfg["stl"],
+                                                 density=cfg["density"])
+        print(f"[網格] {info['n_tet']:,} 元素、{info['n_node']:,} 節點"
+              f"（TetGen 開關 {info['switches']}）")
+        if info["n_tet"] > 200_000:
+            prog.stage("步驟 1/3　網格完成",
+                       f"{info['n_tet']:,} 元素 / {info['n_node']:,} 節點"
+                       "　網格較大，求解需數分鐘")
 
-    sg = sag_check(pts, tets, resin, profile)
-    extra = sg["warning"] if sg else ""
+        base = run_simulation(pts, tets, surf, resin, profile, shrink, prog=prog)
+        print(f"[結果] 翹曲 {base['max_warp_mm']:.4f} mm、"
+              f"應力 {base['max_vm_MPa']:.2f} MPa")
+
+        sg = sag_check(pts, tets, resin, profile)
+        extra = sg["warning"] if sg else ""
+        prog.stage("完成，開啟 3D 檢視…")
+    except Exception as ex:
+        # 失敗時務必把錯誤「顯示出來」——exe 是 --windowed，沒有主控台可看
+        prog.close()
+        print(f"[錯誤] {ex}")
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            r = tk.Tk(); r.withdraw()
+            messagebox.showerror("模擬失敗", str(ex))
+            r.destroy()
+        except Exception:
+            pass
+        return 1
+    finally:
+        prog.close()
 
     # ── 狀態 ──
     st = {"pts": pts, "tets": tets, "surf": surf, "res": base, "info": info,
@@ -296,7 +398,13 @@ def main():
             print(f"[鑽孔] ⌀{radius*2000:.1f} mm，移除 {n_rm} 元素，重算中…")
             st["pts"], st["tets"], st["surf"] = p_new, t_new, s_new
             st["info"] = dict(st["info"], n_tet=len(t_new), n_node=len(p_new))
-            st["res"] = run_simulation(p_new, t_new, s_new, resin, profile, shrink)
+            pg = Progress()          # 重算同樣是數分鐘的阻塞計算，要有回饋
+            try:
+                pg.stage("鑽孔後重新計算", f"⌀{radius*2000:.1f} mm，已移除 {n_rm:,} 元素")
+                st["res"] = run_simulation(p_new, t_new, s_new, resin, profile,
+                                           shrink, prog=pg)
+            finally:
+                pg.close()
             print(f"[鑽孔] 翹曲 {st['baseline_warp']:.4f} → "
                   f"{st['res']['max_warp_mm']:.4f} mm")
             refresh()
