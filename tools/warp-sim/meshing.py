@@ -297,6 +297,63 @@ def depth_from_surface(pts, tets, surf_faces):
     return d
 
 
+# ════════════════════════════════════════════════════════════
+# 擺放方向與轉盤支撐
+# ════════════════════════════════════════════════════════════
+#   使用者選「哪一面朝下貼在固化機轉盤上」。
+#   內部一律把該方向轉成 −Z，重力即為 (0,0,−1)，底部節點視為受轉盤支撐。
+ORIENTATIONS = {
+    "Z− 面朝下（模型原本的底面）": (0, 0, -1),
+    "Z+ 面朝下（上下顛倒）":      (0, 0, 1),
+    "X− 面朝下":                 (-1, 0, 0),
+    "X+ 面朝下":                 (1, 0, 0),
+    "Y− 面朝下":                 (0, -1, 0),
+    "Y+ 面朝下":                 (0, 1, 0),
+}
+
+
+def orient_to_turntable(pts, down_dir):
+    """把「朝下的那一面」轉到 −Z，回傳 (pts_rotated, R)。
+
+    down_dir 是模型座標中「要貼在轉盤上」的方向。
+    旋轉後重力固定為 (0,0,−1)，底面為 z 最小處。
+    R 為旋轉矩陣，之後可把位移轉回原座標顯示。
+    """
+    d = np.asarray(down_dir, float)
+    d = d / max(np.linalg.norm(d), 1e-12)
+    target = np.array([0.0, 0.0, -1.0])
+
+    v = np.cross(d, target)
+    c = float(np.dot(d, target))
+    if np.linalg.norm(v) < 1e-12:
+        # 已經同向或完全反向
+        R = np.eye(3) if c > 0 else np.diag([1.0, -1.0, -1.0])
+    else:
+        # Rodrigues 公式
+        vx = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+        R = np.eye(3) + vx + vx @ vx * (1.0 / (1.0 + c))
+    return pts @ R.T, R
+
+
+def turntable_nodes(pts, tol_ratio=0.02):
+    """找出貼在轉盤上的節點（z 最低的一層）。
+
+    tol_ratio：以模型高度的比例決定「貼合」的容差。太小會只抓到少數點、
+    造成應力集中；太大會把側壁也算進來、過度拘束。2% 是折衷值。
+
+    ⚠ 這是**雙向拘束**的簡化：真實接觸是單向的（零件可以離開轉盤但不能陷入）。
+      若零件翹起，本模型會在該處產生不存在的拉力。對「哪裡會翹」的判斷影響不大，
+      但底面附近的應力值會偏高。
+    """
+    z = pts[:, 2]
+    h = float(z.max() - z.min())
+    tol = max(h * tol_ratio, 1e-9)
+    idx = np.where(z <= z.min() + tol)[0]
+    if len(idx) < 3:                       # 至少要 3 點才能定義平面
+        idx = np.argsort(z)[:3]
+    return idx
+
+
 def compact_mesh(pts, tets):
     """移除未被引用的節點並重新編號。打洞後必須呼叫。"""
     used = np.unique(tets)

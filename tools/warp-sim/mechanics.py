@@ -95,7 +95,7 @@ def freeze_reference_temp(T_elem, tg, T_final):
 
 def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
                     rubber_ratio=1e-3, shrink=None, surf_faces=None,
-                    n_uv_steps=None):
+                    n_uv_steps=None, support_nodes=None, gravity=False):
     """完整流程：溫度歷程 → 逐步熱彈性積分 → 永久位移／殘留應力。
 
     pts 單位為公尺。回傳 dict。
@@ -111,7 +111,11 @@ def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
     alpha = resin.cte.value
     E0, nu = resin.E.value, resin.nu.value
 
-    solver = IncrementalSolver(pts, tets, nu, rubber_ratio)
+    solver = IncrementalSolver(
+        pts, tets, nu, rubber_ratio,
+        support_nodes=support_nodes,
+        gravity_dir=((0.0, 0.0, -1.0) if gravity else None),
+        rho=(resin.rho.value if gravity else None))
     D_unit = elastic_D(1.0, nu)
 
     # ── 光固化收縮（見 materials.CureShrink）──
@@ -128,30 +132,39 @@ def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
         n_uv_steps = max(1, (n_step - 1) // 2)
     n_uv_steps = min(n_uv_steps, n_step - 1)
 
+    # ★ 總量形式：追蹤每個元素累積的「無應力應變」ε*，每步以當下剛度重新平衡。
+    #   相較純增量式，這樣才能表現「材料軟化時，同樣的自重造成更大下垂」。
+    #   ε* 的更新規則就是瞬間凍結模型：
+    #     玻璃態 → ε* 繼續累積熱應變與固化收縮（先前的變形被鎖住）
+    #     橡膠態 → ε* 直接設為當下總應變，使應力歸零（應力鬆弛／重熔）
     u_total = np.zeros((len(pts), 3))
-    eps_el = np.zeros((n_elem, 6))       # 累積彈性應變（僅玻璃態累積）
+    eps_star = np.zeros((n_elem, 6))
     ever_above = np.zeros(n_elem, dtype=bool)
+    iso = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 0.0])     # 等向應變的 Voigt 形式
 
     for n in range(1, n_step):
         T_prev, T_cur = T_elem[n - 1], T_elem[n]
         frozen = T_cur < tg                        # 玻璃態
         ever_above |= ~frozen
         E_elem = np.where(frozen, E0, E0 * rubber_ratio)
+
         deps = alpha * (T_cur - T_prev)            # 自由熱應變增量
         if n <= n_uv_steps:
             deps = deps + cure_eps_total / n_uv_steps   # 光固化收縮增量
+        eps_star = eps_star + deps[:, None] * iso[None, :]
 
-        du, dstrain, d_elastic = solver.step(
-            E_elem, deps, mask_key=frozen.tobytes())
-        u_total += du
+        u_total, strain, elastic = solver.step_total(
+            E_elem, eps_star, u_total, mask_key=frozen.tobytes())
 
-        # 橡膠態元素的應力隨即鬆弛 ⇒ 其累積彈性應變歸零；
-        # 玻璃態元素才累積。這同時處理了「升溫重熔」的情況。
-        eps_el = np.where(frozen[:, None], eps_el + d_elastic, 0.0)
+        # 橡膠態：把當下形狀當成新的無應力狀態 ⇒ 應力歸零
+        # （同時自動處理「升溫重熔會抹除先前凍結」的情況）
+        if (~frozen).any():
+            eps_star = np.where(frozen[:, None], eps_star, strain)
 
         if progress:
             progress(n / (n_step - 1))
 
+    eps_el = strain - eps_star
     stress = (eps_el @ D_unit.T) * E0
     vm = von_mises(stress)
     disp_mag = np.linalg.norm(u_total, axis=1)

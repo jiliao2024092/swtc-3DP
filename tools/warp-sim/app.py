@@ -5,11 +5,14 @@
     python app.py [模型.stl]
 不帶參數時會跳出檔案選擇視窗。
 
+結果畫面為三面板連動視圖（左：原始模型　中：翹曲量　右：殘留應力）。
+
 介面操作：
-    左鍵拖曳 / 滾輪  旋轉、縮放
-    1 / 2 / 3        切換熱圖：變形量 / 殘留應力 / 最高溫度
+    左鍵拖曳 / 滾輪  旋轉、縮放（三個面板連動）
+    3                右側面板切換 殘留應力 ／ 最高溫度
     D                切換「變形後形狀」顯示（依放大倍率）
-    H                在滑鼠指到的位置鑽孔 → 自動重算並比較
+    P                在滑鼠位置選點
+    H                在選定的點鑽孔 → 自動重算並比較
     U                復原上一次鑽孔
     S                儲存目前畫面為 PNG
     Q                離開
@@ -21,7 +24,8 @@ import numpy as np
 import materials
 from materials import RESINS, CURE_PRESETS, warn_profile_vs_resin
 from meshing import (load_stl_to_tets, drill_hole, compact_mesh,
-                     _surface_from_tets, MESH_PRESETS)
+                     _surface_from_tets, MESH_PRESETS, ORIENTATIONS,
+                     orient_to_turntable, turntable_nodes)
 from fea import solve_transient_thermal
 from mechanics import compute_warpage, sag_check
 
@@ -30,7 +34,8 @@ from mechanics import compute_warpage, sag_check
 # 求解（與 UI 分離，方便測試）
 # ════════════════════════════════════════════════════════════
 def run_simulation(pts, tets, surf, resin, profile, shrink=None,
-                   n_heat=25, n_cool=40, log=print, prog=None):
+                   n_heat=25, n_cool=40, log=print, prog=None,
+                   support_nodes=None, gravity=False):
     big = len(tets) > 200_000
     if prog:
         prog.stage("步驟 2/3　計算溫度歷程",
@@ -47,7 +52,8 @@ def run_simulation(pts, tets, surf, resin, profile, shrink=None,
     log("  逐步熱彈性積分…")
     res = compute_warpage(pts, tets, T_hist, resin, profile,
                           shrink=shrink, surf_faces=surf, n_uv_steps=n_heat,
-                          progress=(prog.frac if prog else None))
+                          progress=(prog.frac if prog else None),
+                          support_nodes=support_nodes, gravity=gravity)
     res["T_hist"] = T_hist
     res["times"] = times
     res["T_peak_elem"] = res["T_elem"].max(axis=0)
@@ -114,7 +120,7 @@ def ask_settings(default_stl=None):
 
     root = tk.Tk()
     root.title("SLA 後固化變形模擬 — 設定")
-    root.geometry("600x400")
+    root.geometry("640x440")
     state = {"ok": False}
 
     tk.Label(root, text="STL 檔案").grid(row=0, column=0, sticky="w", padx=10, pady=(12, 2))
@@ -159,6 +165,15 @@ def ask_settings(default_stl=None):
              fg="#a60", wraplength=520, justify="left").grid(
         row=7, column=0, columnspan=3, sticky="w", padx=10)
 
+    tk.Label(root, text="哪一面放在轉盤上").grid(row=8, column=1, sticky="w",
+                                              padx=10, pady=(10, 2))
+    v_or = tk.StringVar(value="Z− 面朝下（模型原本的底面）")
+    ttk.Combobox(root, textvariable=v_or, values=list(ORIENTATIONS), width=24,
+                 state="readonly").grid(row=9, column=1, sticky="w", padx=10)
+    v_grav = tk.BooleanVar(value=True)
+    tk.Checkbutton(root, text="計入自重（零件平放於轉盤，承受自身重量）",
+                   variable=v_grav).grid(row=10, column=1, sticky="w", padx=8)
+
     tk.Label(root, text="網格密度").grid(row=8, column=0, sticky="w",
                                        padx=10, pady=(10, 2))
     v_dens = tk.StringVar(value="標準（建議）")
@@ -172,11 +187,12 @@ def ask_settings(default_stl=None):
             return
         state.update(ok=True, stl=v_file.get(), resin=v_res.get(),
                      profile=v_prof.get(), shrink=v_sh.get(),
-                     density=MESH_PRESETS[v_dens.get()])
+                     density=MESH_PRESETS[v_dens.get()],
+                     orient=v_or.get(), gravity=bool(v_grav.get()))
         root.destroy()
 
     tk.Button(root, text="開始模擬", command=go, width=16,
-              bg="#2563eb", fg="white").grid(row=10, column=0, pady=16, padx=10, sticky="w")
+              bg="#2563eb", fg="white").grid(row=11, column=0, pady=14, padx=10, sticky="w")
     root.mainloop()
     return state
 
@@ -273,12 +289,21 @@ def main():
                                                  density=cfg["density"])
         print(f"[網格] {info['n_tet']:,} 元素、{info['n_node']:,} 節點"
               f"（TetGen 開關 {info['switches']}）")
+        # ★ 依使用者選的擺放方向旋轉：把「貼在轉盤上的面」轉到 −Z，
+        #   重力即為 (0,0,−1)、底面節點視為受轉盤支撐。
+        pts, _R = orient_to_turntable(pts, ORIENTATIONS[cfg["orient"]])
+        support = turntable_nodes(pts) if cfg["gravity"] else None
+        if cfg["gravity"]:
+            print(f"[擺放] {cfg['orient']}，轉盤接觸節點 {len(support):,} 個，計入自重")
+        else:
+            print(f"[擺放] {cfg['orient']}，未計入自重（零件視為自由懸浮）")
         if info["n_tet"] > 200_000:
             prog.stage("步驟 1/3　網格完成",
                        f"{info['n_tet']:,} 元素 / {info['n_node']:,} 節點"
                        "　網格較大，求解需數分鐘")
 
-        base = run_simulation(pts, tets, surf, resin, profile, shrink, prog=prog)
+        base = run_simulation(pts, tets, surf, resin, profile, shrink, prog=prog,
+                              support_nodes=support, gravity=cfg["gravity"])
         print(f"[結果] 翹曲 {base['max_warp_mm']:.4f} mm、"
               f"應力 {base['max_vm_MPa']:.2f} MPa")
 
@@ -303,61 +328,98 @@ def main():
 
     # ── 狀態 ──
     st = {"pts": pts, "tets": tets, "surf": surf, "res": base, "info": info,
-          "field": "warp", "scale": 20.0, "deformed": True,
+          "third": "stress", "scale": 20.0, "deformed": True, "pick": None,
           "history": [], "baseline_warp": base["max_warp_mm"], "extra": extra}
 
-    pl = pv.Plotter(title="SLA 後固化變形模擬")
+    # ── 三面板連動視圖 ──
+    #   左：原始模型（比對基準）　中：翹曲量　右：殘留應力
+    #   link_views() 讓三個面板共用相機，轉動任一個另外兩個同步轉。
+    pl = pv.Plotter(title="SLA 後固化變形模擬", shape=(1, 3), border=True,
+                    border_color="#cccccc")
     pl.set_background("white")
 
-    def build_grid():
-        """依目前狀態建立可視化網格。"""
+    def make_grid(deform_scale):
+        """建立網格；deform_scale=0 表示原始未變形形狀。"""
         r, p, t = st["res"], st["pts"], st["tets"]
         cells = np.hstack([np.full((len(t), 1), 4), t]).ravel()
         ct = np.full(len(t), pv.CellType.TETRA)
-        disp = r["u_shape"] if st["deformed"] else np.zeros_like(r["u_shape"])
-        grid = pv.UnstructuredGrid(cells, ct, (p + disp * st["scale"]) * 1000.0)
-        if st["field"] == "warp":
-            grid.point_data["值"] = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
-            title = "翹曲量 (mm)"
-        elif st["field"] == "stress":
-            grid.point_data["值"] = elem_to_point(p, t, r["von_mises"]) / 1e6
-            title = "殘留應力 von Mises (MPa)"
-        else:
-            grid.point_data["值"] = elem_to_point(p, t, r["T_peak_elem"])
-            title = "後固化最高溫度 (°C)"
-        return grid, title
+        disp = r["u_shape"] * deform_scale if deform_scale else 0.0
+        return pv.UnstructuredGrid(cells, ct, (p + disp) * 1000.0)
 
     def refresh():
+        r = st["res"]
+        scale = st["scale"] if st["deformed"] else 0.0
+        third = st["third"]
+
+        # ── 左：原始模型 ──
+        pl.subplot(0, 0)
         pl.clear_actors()
-        grid, title = build_grid()
-        pl.add_mesh(grid, scalars="值", cmap="turbo", show_edges=False,
-                    scalar_bar_args={"title": title, "color": "black",
-                                     "title_font_size": 14, "label_font_size": 11})
-        if st["deformed"]:
-            pl.add_text(f"變形放大 ×{st['scale']:.0f}", position="lower_right",
-                        font_size=9, color="black")
+        pl.add_mesh(make_grid(0.0), color="#b9c4d0", show_edges=False,
+                    opacity=1.0, lighting=True)
+        pl.add_text("原始模型（未變形）", position="upper_edge",
+                    font_size=10, color="black")
         cmp_txt = ""
         if st["history"]:
-            d = st["res"]["max_warp_mm"] - st["baseline_warp"]
-            pct = d / max(st["baseline_warp"], 1e-12) * 100
-            cmp_txt = (f"已鑽 {len(st['history'])} 個孔　"
-                       f"翹曲 {st['baseline_warp']:.4f} → "
-                       f"{st['res']['max_warp_mm']:.4f} mm（{pct:+.1f}%）")
-        pl.add_text(summary_text(resin, profile, st["res"], st["info"],
+            pct = ((r["max_warp_mm"] - st["baseline_warp"])
+                   / max(st["baseline_warp"], 1e-12) * 100)
+            cmp_txt = (f"已鑽 {len(st['history'])} 個孔　翹曲 "
+                       f"{st['baseline_warp']:.4f} → {r['max_warp_mm']:.4f} mm"
+                       f"（{pct:+.1f}%）")
+        pl.add_text(summary_text(resin, profile, r, st["info"],
                                  (st["extra"] + "\n" + cmp_txt).strip()),
-                    position="upper_left", font_size=8, color="black")
-        pl.add_text("1/2/3 熱圖　D 變形　H 鑽孔　U 復原　S 存圖　Q 離開",
-                    position="lower_left", font_size=9, color="#333333")
+                    position="lower_left", font_size=7, color="black")
+
+        # ── 中：翹曲量 ──
+        pl.subplot(0, 1)
+        pl.clear_actors()
+        g = make_grid(scale)
+        g.point_data["翹曲"] = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
+        pl.add_mesh(g, scalars="翹曲", cmap="turbo",
+                    scalar_bar_args={"title": "翹曲量 (mm)", "color": "black",
+                                     "title_font_size": 13, "label_font_size": 10,
+                                     "position_x": 0.05, "position_y": 0.02,
+                                     "width": 0.9, "height": 0.06})
+        pl.add_text(f"翹曲量　最大 {r['max_warp_mm']:.4f} mm", position="upper_edge",
+                    font_size=10, color="black")
+        if st["deformed"]:
+            pl.add_text(f"變形放大 ×{st['scale']:.0f}", position="upper_right",
+                        font_size=8, color="#a60")
+        else:
+            pl.add_text("（變形放大已關閉，按 D 開啟）", position="upper_right",
+                        font_size=8, color="#666")
+
+        # ── 右：殘留應力／最高溫度 ──
+        pl.subplot(0, 2)
+        pl.clear_actors()
+        g2 = make_grid(scale)
+        if third == "stress":
+            g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
+                                                r["von_mises"]) / 1e6
+            bar, head = "殘留應力 von Mises (MPa)", \
+                        f"殘留應力　最大 {r['max_vm_MPa']:.2f} MPa"
+        else:
+            g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
+                                                r["T_peak_elem"])
+            bar, head = "後固化最高溫度 (°C)", \
+                        f"最高溫度　Tg = {resin.tg.value:.0f}°C"
+        pl.add_mesh(g2, scalars="值", cmap="turbo",
+                    scalar_bar_args={"title": bar, "color": "black",
+                                     "title_font_size": 13, "label_font_size": 10,
+                                     "position_x": 0.05, "position_y": 0.02,
+                                     "width": 0.9, "height": 0.06})
+        pl.add_text(head, position="upper_edge", font_size=10, color="black")
+        pl.add_text("按 3 切換 應力／溫度", position="upper_right",
+                    font_size=8, color="#666")
+        pl.add_text("左鍵拖曳旋轉（三視圖連動）　D 變形　3 切換右圖　"
+                    "P 選點→H 鑽孔　U 復原　S 存圖　Q 離開",
+                    position="lower_edge", font_size=8, color="#333333")
         pl.render()
 
     # ── 互動 ──
-    def set_field(f):
-        def _():
-            st["field"] = f; refresh()
-        return _
-    pl.add_key_event("1", set_field("warp"))
-    pl.add_key_event("2", set_field("stress"))
-    pl.add_key_event("3", set_field("temp"))
+    def toggle_third():
+        st["third"] = "temp" if st["third"] == "stress" else "stress"
+        refresh()
+    pl.add_key_event("3", toggle_third)
 
     def toggle_def():
         st["deformed"] = not st["deformed"]; refresh()
@@ -370,11 +432,10 @@ def main():
     pl.add_key_event("s", save_png)
 
     def do_drill():
-        """在目前滑鼠位置沿視線方向鑽穿。"""
-        picker = pl.iren.get_picker()
-        pos = pl.pick_click_position() if hasattr(pl, "pick_click_position") else None
+        """在先前用 P 選定的位置沿視線方向鑽穿。"""
+        pos = st.get("pick")
         if pos is None:
-            print("[鑽孔] 請先用滑鼠左鍵點選零件表面再按 H")
+            print("[鑽孔] 請先把滑鼠移到零件上按 P 選點，再按 H 鑽孔")
             return
         p_world = np.array(pos, float) / 1000.0            # mm → m
         # 沿目前視線方向鑽穿整個零件
@@ -401,8 +462,12 @@ def main():
             pg = Progress()          # 重算同樣是數分鐘的阻塞計算，要有回饋
             try:
                 pg.stage("鑽孔後重新計算", f"⌀{radius*2000:.1f} mm，已移除 {n_rm:,} 元素")
+                # 鑽孔可能移除底部元素，支撐節點必須重算
+                sup_new = turntable_nodes(p_new) if cfg["gravity"] else None
                 st["res"] = run_simulation(p_new, t_new, s_new, resin, profile,
-                                           shrink, prog=pg)
+                                           shrink, prog=pg,
+                                           support_nodes=sup_new,
+                                           gravity=cfg["gravity"])
             finally:
                 pg.close()
             print(f"[鑽孔] 翹曲 {st['baseline_warp']:.4f} → "
@@ -422,15 +487,29 @@ def main():
         print("[復原] 已回到上一步")
     pl.add_key_event("u", undo)
 
+    pl.subplot(0, 1)
     pl.add_slider_widget(
         lambda v: (st.update(scale=v), refresh())[-1],
         [1.0, 200.0], value=st["scale"], title="變形放大倍率",
-        pointa=(0.72, 0.06), pointb=(0.97, 0.06),
+        pointa=(0.10, 0.90), pointb=(0.90, 0.90),
         style="modern", color="black")
 
-    pl.enable_point_picking(show_message=False, show_point=True,
-                            left_clicking=True)
+    # ★ 選點必須綁在 P 鍵而非左鍵：
+    #   left_clicking=True 會把左鍵從「旋轉視角」搶走，導致模型完全轉不動。
+    #   （使用者實際回報過「結果畫面無法轉動視角」，原因就是這個。）
+    def on_pick(point, *_):
+        st["pick"] = np.array(point, float)
+        print(f"[選點] {np.round(st['pick'], 2)} mm，按 H 在此鑽孔")
+    try:
+        pl.enable_point_picking(callback=on_pick, show_message=False,
+                                show_point=True, left_clicking=False)
+    except TypeError:
+        pl.enable_point_picking(callback=on_pick, show_message=False)
+
+    pl.link_views()          # 三個面板共用相機，轉一個全部同步
     refresh()
+    pl.subplot(0, 1)
+    pl.reset_camera()
     pl.show()
     return 0
 

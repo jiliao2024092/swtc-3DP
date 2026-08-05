@@ -251,7 +251,12 @@ class IncrementalSolver:
     效能：剛度矩陣只在「凍結集合改變」時重新分解，其餘時間步重複使用。
     """
 
-    def __init__(self, pts, tets, nu, rubber_ratio=1e-3):
+    def __init__(self, pts, tets, nu, rubber_ratio=1e-3, support_nodes=None,
+                 gravity_dir=None, rho=None):
+        """support_nodes：placed 於轉盤上、需受支撐的節點索引（None 表示自由懸浮）。
+        gravity_dir：重力方向單位向量（如 [0,0,-1]）。None 表示不計自重。
+        rho：密度 kg/m³（計自重時必填）。
+        """
         self.pts, self.tets, self.nu = pts, tets, nu
         self.rubber_ratio = rubber_ratio
         nodes = pts[tets]
@@ -263,48 +268,104 @@ class IncrementalSolver:
         self.ndof = self.n_node * 3
         self.dofs = (tets[:, :, None] * 3 +
                      np.arange(3)[None, None, :]).reshape(len(tets), 12)
-        self.R = _rigid_body_modes(pts)
         self._cache_key = None
         self._lu = None
 
-    def _factorize(self, E_elem):
+        # ── 邊界條件 ──
+        # 無支撐：零件自由懸浮，剛度矩陣有 6 個剛體模式，用 Lagrange 乘子消除。
+        # 有支撐：接觸轉盤的節點被固定，剛體模式已被約束，改用直接消去法。
+        self.supported = support_nodes is not None and len(support_nodes) > 0
+        if self.supported:
+            fixed = np.zeros(self.ndof, dtype=bool)
+            for c in range(3):
+                fixed[np.asarray(support_nodes) * 3 + c] = True
+            self.free = np.where(~fixed)[0]
+            self.R = None
+        else:
+            self.free = None
+            self.R = _rigid_body_modes(pts)
+
+        # ── 自重載重（常數，與時間無關）──
+        #   f_g = ∫ρ·g·N dV，四面體的體積平均分配到 4 個節點
+        self.f_gravity = np.zeros(self.ndof)
+        if gravity_dir is not None and rho:
+            g = np.asarray(gravity_dir, float)
+            g = g / max(np.linalg.norm(g), 1e-12) * 9.81
+            per_node = rho * self.vol / 4.0                  # kg
+            for c in range(3):
+                w = np.repeat(per_node * g[c], 4)
+                self.f_gravity[:] += np.bincount(
+                    self.tets.ravel() * 3 + c, weights=w, minlength=self.ndof)
+
+    def _assemble_K(self, E_elem):
         Ke = (self.vol * E_elem)[:, None, None] * np.einsum(
             'nki,kl,nlj->nij', self.B, self.D_unit, self.B)
         rows = np.repeat(self.dofs, 12, axis=1).ravel()
         cols = np.tile(self.dofs, (1, 12)).ravel()
-        K = sp.coo_matrix((Ke.ravel(), (rows, cols)),
-                          shape=(self.ndof, self.ndof)).tocsr()
+        return sp.coo_matrix((Ke.ravel(), (rows, cols)),
+                             shape=(self.ndof, self.ndof)).tocsr()
+
+    def _factorize(self, E_elem):
+        K = self._assemble_K(E_elem)
+        if self.supported:
+            self._K = K
+            return spla.splu(K[self.free][:, self.free].tocsc())
         Rs = sp.csr_matrix(self.R)
         A = sp.bmat([[K, Rs], [Rs.T, sp.csr_matrix((6, 6))]], format='csc')
+        self._K = K
         return spla.splu(A)
 
-    def step(self, E_elem, deps_elem, mask_key=None):
-        """走一個時間步，回傳 (du, dstrain, dstress_unitE)。
+    def _solve(self, f):
+        """解 K·u = f，套用邊界條件。"""
+        if self.supported:
+            u = np.zeros(self.ndof)
+            u[self.free] = self._lu.solve(f[self.free])
+            return u
+        f = f - self.R @ (self.R.T @ f)
+        sol = self._lu.solve(np.concatenate([f, np.zeros(6)]))
+        u = sol[:self.ndof]
+        return u - self.R @ (self.R.T @ u)
 
-        deps_elem：各元素的等向自由應變增量（純量）。
-        mask_key：用來判斷是否需要重新分解的鍵（通常是凍結遮罩的 bytes）。
+    def step_total(self, E_elem, eps_star_elem, u_prev, mask_key=None):
+        """★ 總量形式的一步：解 K_n·u_n = f_g + f(ε*_n)。
+
+        為什麼用總量形式而不是純增量：加入自重之後，重力是**恆定載重**，
+        但剛度會隨材料軟化而下降 —— 同樣的重力在軟化時會產生更大的下垂。
+        純增量式（Δf=0 之後就不再更新）無法表現這件事。
+        總量形式每一步都以當下的剛度重新達成平衡，自然涵蓋此效應。
+
+        eps_star_elem：各元素累積的無應力應變（Voigt，6 分量）。
+        回傳 (u_total, strain, elastic_strain)。
         """
         if mask_key is None or mask_key != self._cache_key:
             self._lu = self._factorize(E_elem)
             self._cache_key = mask_key
 
+        fe = (self.vol * E_elem)[:, None] * np.einsum(
+            'nki,kl,nl->ni', self.B, self.D_unit, eps_star_elem)
+        f = np.bincount(self.dofs.ravel(), weights=fe.ravel(),
+                        minlength=self.ndof) + self.f_gravity
+
+        u = self._solve(f)
+        ue = u[self.dofs]
+        strain = np.einsum('nij,nj->ni', self.B, ue)
+        return u.reshape(self.n_node, 3), strain, strain - eps_star_elem
+
+    def step(self, E_elem, deps_elem, mask_key=None):
+        """增量形式（舊介面，無自重時仍可用）。保留供既有測試與比對。"""
+        if mask_key is None or mask_key != self._cache_key:
+            self._lu = self._factorize(E_elem)
+            self._cache_key = mask_key
         eps_star = np.zeros((len(self.tets), 6))
         eps_star[:, 0] = eps_star[:, 1] = eps_star[:, 2] = deps_elem
-        # f_e = V·E_e·B^T·D_unit·ε*
         fe = (self.vol * E_elem)[:, None] * np.einsum(
             'nki,kl,nl->ni', self.B, self.D_unit, eps_star)
         f = np.bincount(self.dofs.ravel(), weights=fe.ravel(),
                         minlength=self.ndof)
-        f = f - self.R @ (self.R.T @ f)
-
-        sol = self._lu.solve(np.concatenate([f, np.zeros(6)]))
-        du = sol[:self.ndof]
-        du = du - self.R @ (self.R.T @ du)
-
+        du = self._solve(f)
         ue = du[self.dofs]
         dstrain = np.einsum('nij,nj->ni', self.B, ue)
-        d_elastic = dstrain - eps_star
-        return du.reshape(self.n_node, 3), dstrain, d_elastic
+        return du.reshape(self.n_node, 3), dstrain, dstrain - eps_star
 
 
 def solve_eigenstrain(pts, tets, E, nu, eig_strain):
