@@ -20,7 +20,8 @@ import numpy as np
 
 import materials
 from materials import RESINS, CURE_PRESETS, warn_profile_vs_resin
-from meshing import load_stl_to_tets, drill_hole, compact_mesh, _surface_from_tets
+from meshing import (load_stl_to_tets, drill_hole, compact_mesh,
+                     _surface_from_tets, MESH_PRESETS)
 from fea import solve_transient_thermal
 from mechanics import compute_warpage, sag_check
 
@@ -148,19 +149,20 @@ def ask_settings(default_stl=None):
              fg="#a60", wraplength=520, justify="left").grid(
         row=7, column=0, columnspan=3, sticky="w", padx=10)
 
-    tk.Label(root, text="網格邊長 (mm，空白=自動)").grid(row=8, column=0, sticky="w",
-                                                    padx=10, pady=(10, 2))
-    v_size = tk.StringVar(value="")
-    tk.Entry(root, textvariable=v_size, width=10).grid(row=9, column=0, sticky="w", padx=10)
-    tk.Label(root, text="（越小越準但越慢；建議先用自動）",
-             fg="#666").grid(row=9, column=1, sticky="w")
+    tk.Label(root, text="網格密度").grid(row=8, column=0, sticky="w",
+                                       padx=10, pady=(10, 2))
+    v_dens = tk.StringVar(value="標準（建議）")
+    ttk.Combobox(root, textvariable=v_dens, values=list(MESH_PRESETS), width=28,
+                 state="readonly").grid(row=9, column=0, sticky="w", padx=10)
+    tk.Label(root, text="標準約需 1–3 分鐘；快速僅數秒但厚度解析度低",
+             fg="#666", wraplength=260, justify="left").grid(row=9, column=1, sticky="w")
 
     def go():
         if not v_file.get():
             return
         state.update(ok=True, stl=v_file.get(), resin=v_res.get(),
                      profile=v_prof.get(), shrink=v_sh.get(),
-                     size=float(v_size.get()) if v_size.get().strip() else None)
+                     density=MESH_PRESETS[v_dens.get()])
         root.destroy()
 
     tk.Button(root, text="開始模擬", command=go, width=16,
@@ -184,9 +186,11 @@ def main():
     profile = CURE_PRESETS[cfg["profile"]]
     shrink = materials.CURE_PRESETS_SHRINK[cfg["shrink"]]
     print(f"[載入] {cfg['stl']}")
-    pts, tets, surf, info = load_stl_to_tets(cfg["stl"], cfg["size"])
-    print(f"[網格] {info['n_tet']} 元素、{info['n_node']} 節點、"
-          f"邊長 {info['target_size_mm']:.2f} mm")
+    pts, tets, surf, info = load_stl_to_tets(cfg["stl"], density=cfg["density"])
+    print(f"[網格] {info['n_tet']:,} 元素、{info['n_node']:,} 節點"
+          f"（TetGen 開關 {info['switches']}）")
+    if info["n_tet"] > 200_000:
+        print("[提示] 網格較大，求解可能需要數分鐘，請耐心等候…")
 
     base = run_simulation(pts, tets, surf, resin, profile, shrink)
     print(f"[結果] 翹曲 {base['max_warp_mm']:.4f} mm、"

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""STL → 四面體網格（gmsh），以及打洞工具。
+"""STL → 四面體網格（TetGen），以及打洞工具。
 
 單位約定：STL 一律視為 **mm**（3D 列印慣例），內部運算轉為 **公尺**（SI）。
 所有輸出給使用者的長度再轉回 mm。
 """
+import pathlib
+
 import numpy as np
 
 
@@ -21,69 +23,151 @@ def _surface_from_tets(tets):
     return faces[idx[cnt == 1]]
 
 
-def load_stl_to_tets(stl_path, target_size_mm=None, scale_to_m=1e-3,
-                     progress=None):
-    """STL → 四面體網格。
+def read_stl(path):
+    """讀取二進位或 ASCII STL，回傳 (vertices, faces)，單位 mm。
 
-    target_size_mm：目標元素邊長。None 時自動取包圍盒最短邊的 1/8，
-      並限制在 [0.5, 5] mm——太細會讓求解時間爆炸，太粗抓不到厚薄差異。
+    自己讀而不透過 gmsh：可以在網格化前先做品質診斷，
+    出問題時給得出「檔案哪裡壞」的具體訊息，而不是一句晦澀的函式庫錯誤。
+    """
+    import struct
+    raw = pathlib.Path(path).read_bytes()
+    head = raw[:5].lower()
+    is_ascii = head.startswith(b"solid") and b"facet" in raw[:2048]
+
+    if is_ascii:
+        import re
+        nums = re.findall(rb"vertex\s+(\S+)\s+(\S+)\s+(\S+)", raw)
+        if not nums:
+            raise ValueError("ASCII STL 中找不到任何 vertex")
+        V = np.array([[float(a) for a in t] for t in nums], dtype=np.float64)
+    else:
+        if len(raw) < 84:
+            raise ValueError("STL 檔案過短，可能損毀")
+        n = struct.unpack("<I", raw[80:84])[0]
+        expect = 84 + n * 50
+        if expect != len(raw):
+            raise ValueError(
+                f"二進位 STL 長度不符：檔頭宣告 {n:,} 個三角形（應為 "
+                f"{expect:,} bytes），實際 {len(raw):,} bytes。檔案可能損毀或被截斷")
+        d = np.frombuffer(raw[84:expect], dtype=np.uint8).reshape(n, 50)
+        V = d[:, 12:48].copy().view(np.float32).reshape(n * 3, 3).astype(np.float64)
+
+    # 合併重合頂點（STL 每個三角形各自帶頂點，本來就是重複的）
+    uniq, inv = np.unique(np.round(V, 5), axis=0, return_inverse=True)
+    faces = inv.reshape(-1, 3)
+    return uniq, faces
+
+
+def check_surface(verts, faces):
+    """網格化前的品質診斷。回傳 (ok, info, 錯誤訊息)。
+
+    TetGen 需要「水密且流形」的封閉曲面。先在這裡擋下並說清楚問題，
+    比讓 TetGen 丟出難懂的錯誤好得多。
+    """
+    deg = ((faces[:, 0] == faces[:, 1]) | (faces[:, 1] == faces[:, 2]) |
+           (faces[:, 0] == faces[:, 2]))
+    f = faces[~deg]
+    e = np.sort(np.concatenate([f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]]), axis=1)
+    ue, cnt = np.unique(e, axis=0, return_counts=True)
+    n_open = int((cnt == 1).sum())
+    n_nonmanifold = int((cnt > 2).sum())
+    _, c2 = np.unique(np.sort(f, axis=1), axis=0, return_counts=True)
+    n_dup = int((c2 > 1).sum())
+    euler = len(verts) - len(ue) + len(f)
+
+    info = {"n_vert": len(verts), "n_face": len(faces),
+            "n_degenerate": int(deg.sum()), "n_open_edge": n_open,
+            "n_nonmanifold_edge": n_nonmanifold, "n_duplicate_face": n_dup,
+            "euler": euler, "genus": (2 - euler) // 2 if euler % 2 == 0 else None,
+            "watertight": n_open == 0 and n_nonmanifold == 0}
+
+    if n_open:
+        return False, info, (
+            f"STL 不是封閉實體：有 {n_open:,} 條邊只被一個三角形使用（破洞）。\n"
+            "請在 CAD 或修復工具（如 Meshmixer / Netfabb）補洞後再匯入。")
+    if n_nonmanifold:
+        return False, info, (
+            f"STL 有 {n_nonmanifold:,} 條非流形邊（一條邊被 3 個以上三角形共用）。\n"
+            "常見於多個實體重疊未做布林聯集。請先在 CAD 合併後再匯出。")
+    return True, info, ""
+
+
+#   網格密度預設。實測（210×172×10.5 mm、10k 三角形的平板零件）：
+#     fast     20,626 tets / 5,993 nodes   厚度約 2.5 層   求解數秒
+#     normal  535,900 tets / 130,062 nodes 厚度約 7.6 層   求解約 140 秒
+#     fine  1,000,061 tets / 218,631 nodes 厚度約 8.9 層   求解過久
+#   'Y' 表示保留 STL 原表面、不在邊界加點；拿掉 Y 後 TetGen 會細化表面，
+#   元素數躍升一個數量級，但厚度方向的解析度才夠算光固化收縮的深度分布。
+MESH_PRESETS = {
+    "快速（保留原表面，厚度解析度低）": "Y",
+    "標準（建議）":                    "",
+    "精細（慢，記憶體需求高）":          "fine",
+}
+
+
+def load_stl_to_tets(stl_path, target_size_mm=None, scale_to_m=1e-3,
+                     progress=None, max_tets=1_200_000, density=""):
+    """STL → 四面體網格（TetGen）。
+
+    ★ 為什麼用 TetGen 而不是 gmsh：
+      gmsh 從 STL 建體積要先 classifySurfaces + createGeometry 做「重新參數化」，
+      對真實 CAD 匯出的 STL 極易失敗，實測錯誤包括
+      「Wrong topology of boundary mesh for parametrization」、
+      「Invalid boundary mesh (overlapping facets)」，甚至直接 access violation。
+      TetGen 專門處理「水密三角面 → 四面體」，不需要任何參數化，穩健得多。
+
+    target_size_mm：期望元素邊長。⚠ 實際元素數主要由 **STL 自身的表面三角形密度**
+      決定，此參數只能讓網格更細、無法讓它比表面更粗
+      （實測同一檔案 a=2000 與 a=30 產出的元素數相同）。
+      若元素太多，需在 CAD 端簡化模型或降低匯出精度。
 
     回傳 (pts_m, tets, surf_faces, info)
     """
-    import gmsh
-    gmsh.initialize()
-    try:
-        gmsh.option.setNumber("General.Terminal", 0)
-        gmsh.merge(str(stl_path))
+    import tetgen
 
-        # STL 是純三角面片，要先分類成幾何面才能建體積
-        # angle=40° 為特徵邊偵測門檻；forReparametrization=True 讓曲面可重新參數化
-        gmsh.model.mesh.classifySurfaces(40 * np.pi / 180.0, True, True,
-                                         180 * np.pi / 180.0)
-        gmsh.model.mesh.createGeometry()
+    verts, faces = read_stl(stl_path)
+    ok, sinfo, msg = check_surface(verts, faces)
+    if not ok:
+        raise ValueError(msg)
 
-        surfaces = gmsh.model.getEntities(2)
-        if not surfaces:
-            raise ValueError("STL 中找不到任何面，檔案可能損毀")
-        loop = gmsh.model.geo.addSurfaceLoop([s[1] for s in surfaces])
-        gmsh.model.geo.addVolume([loop])
-        gmsh.model.geo.synchronize()
+    bbox_mm = verts.max(axis=0) - verts.min(axis=0)
 
-        # 依包圍盒決定網格尺寸
-        xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(-1, -1)
-        bbox_mm = np.array([xmax - xmin, ymax - ymin, zmax - zmin])
+    # 組出 TetGen 開關（各模式的實測差異見 MESH_PRESETS 註解）
+    sw = "pq1.414"
+    if density == "Y":
+        sw += "Y"                       # 保留原表面，元素最少
+    elif density == "fine" or target_size_mm is not None:
         if target_size_mm is None:
-            target_size_mm = float(np.clip(bbox_mm.min() / 8.0, 0.5, 5.0))
-        gmsh.option.setNumber("Mesh.MeshSizeMax", target_size_mm)
-        gmsh.option.setNumber("Mesh.MeshSizeMin", target_size_mm * 0.3)
-        gmsh.option.setNumber("Mesh.Algorithm3D", 1)      # Delaunay，最穩健
+            target_size_mm = float(np.clip(bbox_mm.min() / 8.0, 0.3, 8.0))
+        # TetGen 的 a 是「最大四面體體積」，由邊長換算（正四面體 V ≈ h³/8.5）
+        sw += f"a{max(target_size_mm ** 3 / 8.5, 1e-6):g}"
 
-        if progress:
-            progress("產生四面體網格中…")
-        gmsh.model.mesh.generate(3)
+    if progress:
+        progress("產生四面體網格中…")
+    tg = tetgen.TetGen(np.ascontiguousarray(verts, dtype=np.float64),
+                       np.ascontiguousarray(faces, dtype=np.int32))
+    try:
+        out = tg.tetrahedralize(switches=sw)
+    except Exception as ex:
+        raise ValueError(
+            f"四面體網格化失敗：{ex}\n"
+            "常見原因是模型有自交面（表面自己穿過自己）。"
+            "請在 CAD 檢查並修復後重新匯出。") from ex
 
-        node_tags, coords, _ = gmsh.model.mesh.getNodes()
-        pts = coords.reshape(-1, 3) * scale_to_m
-        # gmsh 的 node tag 未必連續，需重新映射
-        remap = np.zeros(int(node_tags.max()) + 1, dtype=np.int64)
-        remap[node_tags.astype(np.int64)] = np.arange(len(node_tags))
+    nodes, elems = np.asarray(out[0], dtype=np.float64), np.asarray(out[1])
+    if len(elems) == 0:
+        raise ValueError("TetGen 未產生任何四面體，模型可能不是有效實體")
+    if len(elems) > max_tets:
+        raise ValueError(
+            f"網格量過大：{len(elems):,} 個四面體（上限 {max_tets:,}）。\n"
+            f"此模型表面有 {len(faces):,} 個三角形，元素數主要由它決定。\n"
+            "請在 CAD 端降低 STL 匯出精度（加大弦高公差）後重試。")
 
-        etypes, etags, enodes = gmsh.model.mesh.getElements(3)
-        tets = None
-        for et, en in zip(etypes, enodes):
-            if et == 4:                                   # 4 = 4 節點四面體
-                tets = remap[en.astype(np.int64)].reshape(-1, 4)
-        if tets is None or len(tets) == 0:
-            raise ValueError("未能產生四面體元素——STL 可能不是封閉實體（非水密）")
-
-        info = {
-            "bbox_mm": bbox_mm,
-            "target_size_mm": target_size_mm,
-            "n_node": len(pts),
-            "n_tet": len(tets),
-        }
-    finally:
-        gmsh.finalize()
+    pts = nodes * scale_to_m
+    tets = elems.astype(np.int64)
+    info = {"bbox_mm": bbox_mm, "target_size_mm": target_size_mm,
+            "n_node": len(pts), "n_tet": len(tets), "stl": sinfo,
+            "switches": sw}
 
     # 剔除退化元素（體積為零）——它們會讓求解器崩潰
     from fea import tet_shape_grads
@@ -123,9 +207,9 @@ def drill_hole(pts, tets, p0, p1, radius, keep_connected=True):
         * 孔壁的**局部應力集中值** → 不可信，會隨網格粗細變動
       若要看局部應力集中，需要在 CAD 中真的開孔後重新匯入。
 
-      之所以這樣做而不是布林運算：gmsh 的布林運算需要 OCC 核心，
-      而 STL 匯入走的是 geo 核心、無法直接布林。改用元素移除可以
-      對任何 STL 都穩定運作，代價就是孔壁精度。
+      之所以這樣做而不是真正的布林運算：那需要 CAD 核心（OCC），
+      對 STL 輸入既不穩定也很慢。改用元素移除可以對任何網格穩定運作，
+      代價就是孔壁精度。
 
     p0, p1：圓柱軸兩端點（公尺）。radius：半徑（公尺）。
 
