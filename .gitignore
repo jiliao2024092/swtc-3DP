@@ -34,3 +34,7 @@ Thumbs.db
 
 # Node（如果有用到）
 node_modules/
+# warp-sim 桌面工具的建置產物（venv 已由上方 **/venv/ 涵蓋）
+tools/warp-sim/build/
+tools/warp-sim/dist/
+tools/warp-sim/*.spec
