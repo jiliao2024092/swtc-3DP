@@ -104,6 +104,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Markforged 材料餘量觀測紀錄（觀測模式，不影響庫存）。
+    // 只由 Cloud Function（admin SDK，不受規則限制）寫入，比照 printer_status 全面禁寫。
+    match /mf_material_log/{logId} {
+      allow read: if isLoggedIn();
+      allow write: if false;
+    }
+
     match /workboard_orders/{orderId} {
       allow read: if hasPerm('view_board');
       allow create, update: if hasPerm('edit_board');

@@ -533,7 +533,8 @@ Eiger 狀態含空白且非全大寫。**不要**沿用 `.upper()` 後比對的�
 | 2 | 寫入 GCP Secrets；`perform_sync_eiger()` 只寫 `printer_status.mf_printers`（唯讀，不碰庫存） | 階段 1 | ✅ **2026-08-04 已部署上線**（`sync_eiger_scheduled` / `sync_eiger_manual`，asia-east1） |
 | 3 | `3DP-BK.html` 顯示 Markforged 狀態卡 | 階段 2 | ✅ **2026-08-04 上線**（預約頁「機台狀態」台中組） |
 | 4 | `inventory/markforged` 資料結構 + 庫存新分頁（先純顯示，手動維護庫存） | 階段 3 | ✅ **2026-08-04 完成**（機台狀態改讀 `mf_printers`，見 §2.2 設計變更） |
-| 5 | 開啟自動扣料（`processed_jobs` / `deducted_jobs` 防重複），觀察一週對帳 | 階段 4 | ⛔ **暫緩，需先決策**（§0.5.6／§0.6.6／§0.6.7） |
+| 5 | ~~開啟自動扣料~~ → **改為觀測模式**：只記錄材料餘量變化，不扣庫存 | 階段 4 | 🟢 **2026-08-04 上線**（見 §7） |
+| 6 | 依觀測資料驗證準確度後，再決定是否開啟自動扣料 | 累積足夠觀測資料 | ⬜ 待資料 |
 
 ### ⚠ 部署地雷：新增 Secret 後，CI 部署會 403 失敗（2026-08-04 實際踩到）
 
@@ -602,10 +603,12 @@ firebase deploy --only functions:sync_eiger_scheduled,functions:sync_eiger_manua
 **已決策（2026-08-03）**：
 - ✅ **納管範圍＝`Mark Two Taichung` 一台**，Metal X / sinter-1 不納入（§0.5.1）
 
-**探測後新增、仍待決策的**：
-- ⚠ **Canceled/Failed 的材料損耗如何處理**：全樣本佔 33%；納管的這台 6 筆裡就有 2 筆 Canceled（且是用量最大的兩筆）。只扣 Completed 會系統性少扣（§0.5.6）→ 擋住階段 5
-- ⚠ **自動扣料是否值得做**：該台 90 天 Completed 僅 6.8 cc（§0.5.1）→ 擋住階段 5
-- `initiator` 的員工 email/姓名是否寫入 Firestore（PII 範圍）
+**已決策（2026-08-04）**：
+- ✅ **不採用 print_job 終態扣料**，改走餘量差額的**觀測模式**（不扣庫存），見 §7
+- ✅ `initiator` 的員工 email/姓名**不寫入 Firestore**（`active_job` 本來就沒這個欄位，天然避開）
+
+**仍待決策的**：
+- ⏳ **是否開啟自動扣料**：等觀測資料累積後，用實際數字驗證餘量差額法的準確度再定（§7.4）
 - 支撐材（`ccs_tertiary_required`）如何計入庫存——目前納管範圍用不到，擴大範圍時才需處理（§0.5.4）
 
 **原有**：
@@ -613,6 +616,74 @@ firebase deploy --only functions:sync_eiger_scheduled,functions:sync_eiger_manua
 - Markforged 機台圖片來源（**實測有 7 種機型**，不只 Mark Two）
 - 排程頻率：跟 Formlabs 一樣 30 分鐘，或因用量是預估值而拉長
 - 一捲線材的標準 cc 數（各材料不同，需建表）
+
+---
+
+## 7. 材料觀測模式（2026-08-04 上線，取代原階段 5 的自動扣料）
+
+### 7.1 為什麼放棄「用 print_job 終態扣料」
+
+原規劃 §2.3 是「查 `state=Completed` 的工作 → 依 `ccs_*_required` 扣料」。
+用納管機台近 90 天的**實際資料**檢驗，這條路走不通：
+
+| 狀態 | 筆數 | 塑料用量 |
+|---|---|---|
+| Completed | 4 | **6.8 cc** |
+| Canceled | 2 | **92.1 cc** |
+
+- **只扣 Completed** → 只捕捉到 6.8/98.9 cc，漏掉九成以上的消耗
+- **把 Canceled 全額扣掉** → `ccs_*_required` 是切片的**全量預估**，工作可能在 5% 就被取消，會大幅多扣
+- 另有大量工作**永遠卡在 `state="Printing"`**（實測 42 筆橫跨 4 個月，§0.6.4），
+  `ended_at` 恆為 null，永遠進不了扣料查詢
+
+→ 問題的根源是「依賴工作的最終狀態」。只要換成量測**實際吐料量**就全部繞開。
+
+### 7.2 做法：追蹤 `ccs_*_remaining` 的差額
+
+§0.6.7 實測確認機台的 `ccs_primary_remaining` 會**隨列印即時遞減**
+（25 分鐘內 500.058 → 498.720 cc）。每次同步比對上一次的讀數：
+
+| 情況 | 判定 | 處理 |
+|---|---|---|
+| 餘量下降 | `consume` | 記錄消耗量（`consumed_cc` 為正值） |
+| 餘量上升 | `refill` | **換料／補料，不是負消耗**，`consumed_cc` 記為 null |
+| 材料名稱改變 | `material_change` | 不計算 delta（不同材料相減無意義） |
+| 變化量 < 0.01 cc | — | **完全不寫入**（見 §7.3） |
+| 機台離線（無材料欄位） | — | 跳過，**基準值原樣保留** |
+
+### 7.3 兩個必須守住的設計
+
+1. **無變化就不寫入**。少了這個判斷會變成每 30 分鐘無條件寫一筆，
+   一天 48 筆 × 槽位數白白吃掉寫入額度（CLAUDE.md 有 11 萬寫入/天的爆量前例）。
+2. **離線時不可清空基準值**。基準存在 `inventory/markforged_watch` 的 `last_seen`，
+   機台離線時該機台的條目**原樣保留**。若跟著清空，離線期間的消耗會在復線後
+   因為沒有基準而**永久遺失**——而 Mark Two 是有可能離線列印的。
+
+### 7.4 資料落點
+
+| 路徑 | 內容 | 寫入時機 |
+|---|---|---|
+| `inventory/markforged_watch` | `last_seen{device|slot → {material, remaining_cc, at}}` 基準值 | 只在基準真的改變時 |
+| `mf_material_log/{id}` | 每筆變化的觀測紀錄 | 只在偵測到變化時 |
+
+`mf_material_log` 的紀錄帶 **`stock_deducted: false`** 與 `note: "觀測模式，未扣庫存"`，
+並附上當下的 `job_name` / `job_id` / `device_state` 供人工對帳。
+doc id 為 `mfobs_{device}_{slot}_{時間戳}`，同一分鐘內重跑不會產生重複紀錄。
+
+⚠ **刻意不寫進 `inventory_history`**：那個 collection 是 Formlabs 的消耗紀錄，
+前端會據以彙總與回補庫存，混進去會污染既有邏輯。
+
+Firestore 規則：`match /mf_material_log/{logId}` 比照 `printer_status` 設為
+登入可讀、**全面禁寫**（只有 Cloud Function 的 admin SDK 能寫）。
+
+### 7.5 觀測期要驗證什麼（決定要不要開扣料的依據）
+
+1. **餘量遞減是實測還是推算？** §0.6.7 的單一取樣顯示「用掉 48.4% 的料 vs 進度 55%」，
+   接近但不相等。若只是「切片預估量 × 進度」，那對列印失敗的額外損耗一樣無感，
+   只是比終態法細緻。**需要用列印失敗的案例來驗。**
+2. **換料造成的正跳是否都被正確識別**（不會被誤記成消耗）。
+3. **離線期間的消耗能否在復線後正確補捉**。
+4. 累積的 `consumed_cc` 總和與**人工盤點**的差距有多大。
 
 ---
 

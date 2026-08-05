@@ -359,12 +359,97 @@ def _mf_active_job(dev: dict) -> dict:
     }
 
 
+def _mf_observe(db, entries: list, now_iso: str) -> int:
+    """★ 觀測模式：只記錄材料餘量的變化，完全不扣庫存（2026-08-04 使用者決策）。
+
+    為什麼不用 print_job 的終態來扣料（原規劃 §2.3 的做法）：
+      納管機台近 90 天 Completed 只有 4 筆共 6.8 cc，但 Canceled 有 2 筆共 92.1 cc；
+      另有大量工作永遠卡在 state="Printing" 不會結案（§0.6.4）。
+      只扣 Completed 會漏掉絕大多數消耗，把 Canceled 全額扣掉又會大幅多扣
+      （ccs_*_required 是切片全量預估，工作可能在 5% 就被取消）。
+
+    改用 device 的 ccs_*_remaining 差額：實測它會隨列印即時遞減（§0.6.7），
+    不論工作最後完成、取消還是卡住，實際吐出去的料都會反映在餘量上。
+
+    基準值存在 inventory/markforged_watch，**機台離線時不清空**——否則離線期間的
+    消耗會在復線後因為沒有基準而永久遺失。
+    """
+    ref  = db.collection("inventory").document("markforged_watch")
+    snap = ref.get()
+    prev = ((snap.to_dict() or {}).get("last_seen") or {}) if snap.exists else {}
+
+    new_seen = dict(prev)     # 以舊值為底，這次沒看到的機台/槽位原樣保留
+    logs = []
+
+    for e in entries:
+        for m in e.get("materials", []):
+            mat, cc = m.get("material"), m.get("remaining_cc")
+            if not mat or cc is None:
+                continue
+            key = f"{e['device_id']}|{m.get('slot')}"
+            p   = prev.get(key) or {}
+            new_seen[key] = {"material": mat, "remaining_cc": cc, "at": now_iso}
+
+            if not p:
+                continue      # 第一次看到這個槽位，只建立基準，不產生紀錄
+
+            if p.get("material") != mat:
+                kind, delta = "material_change", None
+            else:
+                delta = round(cc - float(p.get("remaining_cc") or 0), 3)
+                # ★ 沒有實際變化就不寫。省略這個判斷會變成每 30 分鐘無條件寫一筆，
+                #   一天 48 筆 × 槽位數，白白吃掉寫入額度（CLAUDE.md 有爆量前例）。
+                if abs(delta) < 0.01:
+                    continue
+                # 餘量上升 = 換料或補料，不是負消耗，不可當成扣料依據
+                kind = "consume" if delta < 0 else "refill"
+
+            logs.append({
+                "doc_id": f"mfobs_{e.get('display')}_{m.get('slot')}_"
+                          f"{now_iso.replace(':','').replace('-','')[:15]}",
+                "data": {
+                    "source":      "markforged",
+                    "device_id":   e["device_id"],
+                    "device":      e.get("display"),
+                    "slot":        m.get("slot"),
+                    "material":    mat,
+                    "prev_material": p.get("material"),
+                    "from_cc":     p.get("remaining_cc"),
+                    "to_cc":       cc,
+                    "delta_cc":    delta,               # 負值 = 消耗
+                    "consumed_cc": (-delta) if (delta is not None and delta < 0) else None,
+                    "kind":        kind,
+                    "device_state": e.get("state"),
+                    "job_name":    e.get("print_name"),  # 當下在印什麼，供人工對帳參考
+                    "job_id":      e.get("job_id"),
+                    "observed_at": now_iso,
+                    "prev_at":     p.get("at"),
+                    # 明確標記：這是觀測資料，庫存沒有被動過
+                    "stock_deducted": False,
+                    "note":        "觀測模式，未扣庫存",
+                },
+            })
+
+    for lg in logs:
+        db.collection("mf_material_log").document(lg["doc_id"]).set(lg["data"])
+        d = lg["data"]
+        print(f"[eiger][觀測] {d['device']} {d['slot']} {d['material']} "
+              f"{d['from_cc']} → {d['to_cc']} cc（{d['kind']}）")
+
+    # 基準值有變才寫，避免機台整天離線時每輪都寫一次
+    if new_seen != prev:
+        ref.set({"last_seen": new_seen, "updated_at": firestore.SERVER_TIMESTAMP}, merge=True)
+
+    return len(logs)
+
+
 def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
     """Markforged 機台狀態同步（階段 2：唯讀，完全不碰庫存與 inventory_history）。
 
     只寫 printer_status/current 的 mf_printers 欄位，用 merge 保留 Formlabs 的 printers。
     """
-    stats = {"devices_seen": 0, "devices_tracked": 0, "printing": 0, "errors": []}
+    stats = {"devices_seen": 0, "devices_tracked": 0, "printing": 0,
+             "observations": 0, "errors": []}
     try:
         devices = eiger_get_all("/devices", access_key, secret_key)
         stats["devices_seen"] = len(devices)
@@ -419,10 +504,20 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
             stats["errors"].append(msg)
             return stats
 
-        get_db().collection("printer_status").document("current").set({
+        db = get_db()
+        db.collection("printer_status").document("current").set({
             "mf_printers":   mf_printers,
             "mf_updated_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)   # ★ merge：不可覆蓋 Formlabs 寫的 printers
+
+        # 材料餘量觀測（只記錄，不扣庫存）。失敗不可影響機台狀態同步本身。
+        try:
+            stats["observations"] = _mf_observe(
+                db, mf_printers, datetime.datetime.utcnow().isoformat() + "Z")
+        except Exception as oe:
+            msg = f"[eiger] 觀測記錄失敗（機台狀態已正常寫入）: {oe}"
+            print(msg)
+            stats["errors"].append(msg)
 
         for e in mf_printers:
             print(f"[eiger] {e['display']}({e['name']}) state={e['state']!r} "
