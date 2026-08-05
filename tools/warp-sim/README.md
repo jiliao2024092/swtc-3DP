@@ -179,6 +179,8 @@ venv\Scripts\python.exe app.py [模型.stl]
 | `app.py` | PyVista 圖形介面 |
 | `verify.py` | **解析解驗證**（27 項）——改動求解器後必跑 |
 | `test_pipeline.py` | **端對端測試**（36 項）——含物理直覺檢查 |
+| `test_gravity.py` | **自重與轉盤邊界條件**（32 項）——含水平自由的正反證 |
+| `test_ui.py` | **設定視窗煙霧測試**（29 項）——實際建構視窗並觸發所有回呼 |
 | `build_exe.py` | PyInstaller 打包腳本 |
 
 ### 改動後務必執行
@@ -186,10 +188,16 @@ venv\Scripts\python.exe app.py [模型.stl]
 ```
 venv\Scripts\python.exe verify.py
 venv\Scripts\python.exe test_pipeline.py
+venv\Scripts\python.exe test_gravity.py
+venv\Scripts\python.exe test_ui.py
 ```
 
-這兩支測試在開發過程中實際抓到過三個嚴重錯誤：
+這些測試在開發過程中實際抓到過六個嚴重錯誤：
 形函數梯度的轉置寫反（斜四面體算錯）、
 單次求解在數學上無法產生翹曲（必須改增量式）、
-以及等間隔時間步在快速冷卻時會把凍結時序抹平（導致快冷反而算出較小應力）。
-**沒有這些測試，這些錯誤都會產出「看起來很專業但完全錯誤」的數字。**
+等間隔時間步在快速冷卻時會把凍結時序抹平（導致快冷反而算出較小應力）、
+轉盤把底面水平方向也鎖死（純等向收縮竟產生 22.74 MPa 假應力）、
+翹曲量測未扣剛體運動（同一零件量出 0.115 mm，實際只有 0.005 mm）、
+以及 tkinter 回呼引用了尚未建立的元件（程式一啟動就 NameError 崩潰）。
+**沒有這些測試，這些錯誤都會產出「看起來很專業但完全錯誤」的數字，
+或是讓程式在使用者面前直接崩潰。**

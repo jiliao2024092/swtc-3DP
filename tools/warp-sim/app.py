@@ -144,6 +144,21 @@ def ask_settings(default_stl=None):
     lbl_q = tk.Label(root, text="", fg="#a60", justify="left", wraplength=520)
     lbl_q.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(4, 0))
 
+    tk.Label(root, text="後固化條件").grid(row=5, column=0, sticky="w", padx=10, pady=(14, 2))
+    v_prof = tk.StringVar()
+    cb_prof = ttk.Combobox(root, textvariable=v_prof, width=28, state="readonly")
+    cb_prof.grid(row=6, column=0, sticky="w", padx=10)
+
+    tk.Label(root, text="光固化收縮（主要翹曲來源）").grid(
+        row=5, column=1, sticky="w", padx=10, pady=(14, 2))
+    v_sh = tk.StringVar()
+    cb_sh = ttk.Combobox(root, textvariable=v_sh,
+                         values=list(materials.CURE_PRESETS_SHRINK),
+                         width=30, state="readonly")
+    cb_sh.grid(row=6, column=1, sticky="w", padx=10)
+
+    # ★ on_res 會寫入 cb_prof / v_sh，因此必須定義在那些元件**建立之後**，
+    #   否則初次呼叫時會 NameError（free variable 尚未賦值）。
     def on_res(*_):
         name = v_res.get()
         r = RESINS[name]
@@ -157,20 +172,8 @@ def ask_settings(default_stl=None):
         v_prof.set(vals[0])
         # 收縮預設也依材料自動帶出
         v_sh.set(materials.default_shrink_key(name))
-    v_res.trace_add("write", on_res); on_res()
-
-    tk.Label(root, text="後固化條件").grid(row=5, column=0, sticky="w", padx=10, pady=(14, 2))
-    v_prof = tk.StringVar()
-    cb_prof = ttk.Combobox(root, textvariable=v_prof, width=28, state="readonly")
-    cb_prof.grid(row=6, column=0, sticky="w", padx=10)
-
-    tk.Label(root, text="光固化收縮（主要翹曲來源）").grid(
-        row=5, column=1, sticky="w", padx=10, pady=(14, 2))
-    v_sh = tk.StringVar()
-    cb_sh = ttk.Combobox(root, textvariable=v_sh,
-                         values=list(materials.CURE_PRESETS_SHRINK),
-                         width=30, state="readonly")
-    cb_sh.grid(row=6, column=1, sticky="w", padx=10)
+    v_res.trace_add("write", on_res)
+    on_res()
     tk.Label(root, text="⚠ 此項為估計值，非 Formlabs 官方資料，需實測校正",
              fg="#a60", wraplength=520, justify="left").grid(
         row=7, column=0, columnspan=3, sticky="w", padx=10)
