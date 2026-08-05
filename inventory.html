@@ -760,15 +760,48 @@
                 </div>
             </div>
 
-            <!-- 機台狀態（可摺疊，比照 Formlabs「機台狀態」；接上 Eiger API 後由 printer_status.mf_printers 填入）-->
+            <!-- 機台狀態（可摺疊，比照 Formlabs「機台狀態」；資料來自 printer_status.mf_printers）-->
             <details class="mb-6 border border-[var(--line)] rounded-xl overflow-hidden">
                 <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
                     <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
                     <span class="font-semibold text-[var(--ink)]">機台狀態</span>
-                    <span class="text-xs text-[var(--ink-5)] ml-2">欄位已保留；接上 Eiger API 後自動同步機台即時狀態與材料餘量</span>
+                    <span class="text-xs text-[var(--ink-5)] ml-2">由 Eiger API 每 30 分鐘自動同步機台即時狀態與材料餘量</span>
                 </summary>
                 <div class="p-4 border-t border-[var(--line-soft)]">
                     <div id="mf-loaded-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </div>
+            </details>
+
+            <!-- 材料餘量觀測（觀測模式：只記錄，不扣庫存；資料來自 mf_material_log）-->
+            <details class="mb-6 border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span class="font-semibold text-[var(--ink)]">材料餘量觀測</span>
+                    <span id="mf-obs-count" class="text-xs text-[var(--ink-5)] ml-2"></span>
+                </summary>
+                <div class="p-4 border-t border-[var(--line-soft)]">
+                    <div class="mb-3 flex items-start gap-2 text-xs text-[var(--ink-4)] leading-relaxed">
+                        <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                        <span>系統每 30 分鐘比對機台回報的材料餘量，記錄變化量。
+                        <b class="text-[var(--warn)]">這些紀錄不會扣減下方庫存</b>，
+                        僅用於累積資料、驗證準確度，作為日後是否開啟自動扣料的依據。</span>
+                    </div>
+                    <div id="mf-obs-summary" class="mb-3"></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-[var(--ink-4)] border-b border-[var(--line-soft)]">
+                                    <th class="text-left  py-2 px-2 font-medium">時間</th>
+                                    <th class="text-left  py-2 px-2 font-medium">機台 / 槽位</th>
+                                    <th class="text-left  py-2 px-2 font-medium">材料</th>
+                                    <th class="text-right py-2 px-2 font-medium">變化</th>
+                                    <th class="text-right py-2 px-2 font-medium">餘量</th>
+                                    <th class="text-left  py-2 px-2 font-medium">當下工作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mf-obs-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </details>
 
@@ -1095,11 +1128,15 @@ let isEditor = false;
 let mfInv = {
     stock:  {},   // 材料名稱 → {total_cc, cc_per_spool, category:'plastic'|'fiber', note, updated_at, updated_by}
     safety: {},   // 材料名稱 → 安全庫存 cc
-    loaded: {},   // 機台名稱 → [{slot, material, remaining_cc}]（接上 API 後由 Cloud Function 寫入，純顯示）
+    loaded: {},   // ⚠ 已不使用：機台掛載材料改由 printer_status.mf_printers 提供（見規劃文件 §2.2）
 };
 let mfLoadedFromFirestore = false;   // 同 invLoadedFromFirestore：snapshot 回來前不准寫，避免覆寫真實資料
 let isMfEditMode = false;
 let unsubscribeMf = null;
+// 材料餘量觀測紀錄（mf_material_log）。★ 觀測模式：只記錄不扣庫存，
+// 與 mfHistory（inventory_history 的消耗紀錄）是完全不同的東西，切勿混用。
+let mfObservations = [];
+let unsubscribeMfObs = null;
 // Markforged 消耗紀錄：與 Formlabs 共用 inventory_history collection，靠 source 欄位區分。
 // rebuildInvHistory() 會把兩者拆開 —— inv.history 只留 Formlabs，既有統計邏輯完全不受影響。
 let mfHistory = [];
@@ -1379,6 +1416,19 @@ function subscribeAll() {
     if (unsubscribeInv)  unsubscribeInv();
     if (unsubscribeHist) unsubscribeHist();
     if (unsubscribeMf)   unsubscribeMf();
+    if (unsubscribeMfObs) unsubscribeMfObs();
+
+    // 訂閱 mf_material_log（材料餘量觀測，觀測模式不扣庫存）
+    // 只取最近 200 筆：這個 collection 會隨時間累積，不設上限會讓讀取量無限成長
+    console.log('[subscribeAll] 訂閱 mf_material_log...');
+    unsubscribeMfObs = onSnapshot(
+        query(collection(db, 'mf_material_log'), orderBy('observed_at', 'desc'), limit(200)),
+        (snap) => {
+            mfObservations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            if (currentTab === 'mf') renderMfObservations();
+        },
+        (err) => console.error('[mf_material_log] 訂閱失敗:', err)
+    );
 
     // 訂閱 inventory/markforged（Markforged 線材，獨立文件）
     // 文件可能尚未建立（第一次使用），不存在時視為空資料而非錯誤
@@ -2714,8 +2764,67 @@ function renderMfMonthly() {
     }).join('');
 }
 
+// 材料餘量觀測表。★ 這裡的數字不影響庫存，純粹是累積資料供日後驗證。
+const MF_OBS_KIND = {
+    consume:         { label: '消耗',   cls: 'text-[var(--danger)]' },
+    refill:          { label: '換料/補料', cls: 'text-[var(--ok)]' },
+    material_change: { label: '更換材料', cls: 'text-[var(--warn)]' },
+};
+function renderMfObservations() {
+    const body = document.getElementById('mf-obs-body');
+    const cnt  = document.getElementById('mf-obs-count');
+    const sum  = document.getElementById('mf-obs-summary');
+    if (!body) return;
+
+    if (!mfObservations.length) {
+        if (cnt) cnt.textContent = '尚無紀錄';
+        if (sum) sum.innerHTML = '';
+        body.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-[var(--ink-5)]">'
+            + '尚無觀測紀錄。機台上線並開始列印後，餘量變化會自動記錄於此。</td></tr>';
+        return;
+    }
+    if (cnt) cnt.textContent = `最近 ${mfObservations.length} 筆`;
+
+    // 依材料加總消耗（只算 consume，換料與更換材料不計入）
+    const byMat = {};
+    mfObservations.forEach(o => {
+        if (o.kind !== 'consume' || !o.consumed_cc) return;
+        byMat[o.material] = (byMat[o.material] || 0) + o.consumed_cc;
+    });
+    if (sum) {
+        const parts = Object.entries(byMat).sort((a, b) => b[1] - a[1]);
+        sum.innerHTML = parts.length
+            ? `<div class="flex flex-wrap gap-2">${parts.map(([m, cc]) =>
+                `<span class="text-xs px-2 py-1 rounded-md bg-[var(--bg-panel)] text-[var(--ink-3)]">
+                    ${escHtml(m)}：累計 <b class="text-[var(--ink)]">${cc.toFixed(1)}</b> cc</span>`).join('')}</div>`
+            : '<div class="text-xs text-[var(--ink-5)]">目前尚無消耗紀錄（僅有換料或材料更換）</div>';
+    }
+
+    body.innerHTML = mfObservations.map(o => {
+        const k = MF_OBS_KIND[o.kind] || { label: o.kind || '—', cls: 'text-[var(--ink-4)]' };
+        const t = o.observed_at ? String(o.observed_at).replace('T', ' ').slice(0, 16) : '—';
+        const slot = o.slot === 'secondary' ? '纖維' : o.slot === 'primary' ? '塑料' : (o.slot || '');
+        // delta 為 null（更換材料）時不顯示數字，避免看起來像 0
+        const delta = o.delta_cc == null
+            ? `<span class="${k.cls}">${k.label}</span>`
+            : `<span class="${k.cls}">${o.delta_cc > 0 ? '+' : ''}${o.delta_cc.toFixed(2)} cc</span>`;
+        const matCell = o.kind === 'material_change'
+            ? `${escHtml(o.prev_material || '—')} → ${escHtml(o.material || '—')}`
+            : escHtml(o.material || '—');
+        return `<tr class="border-b border-[var(--line-soft)] hover:bg-[var(--bg-soft)]">
+            <td class="py-2 px-2 text-[var(--ink-4)] whitespace-nowrap">${t}</td>
+            <td class="py-2 px-2 text-[var(--ink-3)] whitespace-nowrap">${escHtml(o.device || '—')} · ${escHtml(slot)}</td>
+            <td class="py-2 px-2 text-[var(--ink-3)]">${matCell}</td>
+            <td class="py-2 px-2 text-right whitespace-nowrap">${delta}</td>
+            <td class="py-2 px-2 text-right text-[var(--ink-4)] whitespace-nowrap">${o.to_cc == null ? '—' : Number(o.to_cc).toFixed(0) + ' cc'}</td>
+            <td class="py-2 px-2 text-[var(--ink-5)] max-w-[180px] truncate" title="${escHtml(o.job_name || '')}">${escHtml(o.job_name || '—')}</td>
+        </tr>`;
+    }).join('');
+}
+
 function renderMfPanel() {
     renderMfLoaded();
+    renderMfObservations();
     renderMfTable();
     renderMfConsumables();
     updateMfEditButtons();
