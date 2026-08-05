@@ -292,9 +292,30 @@ def depth_from_surface(pts, tets, surf_faces):
         (tri[:, 2] + tri[:, 0]) / 2,
     ], axis=0)
     tree = cKDTree(samples)
-    centroids = pts[tets].mean(axis=1)
-    d, _ = tree.query(centroids, k=1)
-    return d
+
+    # ★ 先在**節點**上求深度再平均到元素，並做拉普拉斯平滑。
+    #   直接用元素質心查最近取樣點會有 ~網格尺寸/2 的離散誤差；
+    #   當 UV 穿透深度與網格尺寸同量級時（例如 pen=2mm、網格 1.4mm），
+    #   這個誤差經過 exp(−d/pen) 放大，會讓收縮場變成雜訊，
+    #   算出來的應力圖呈現「電視雪花」般的斑點，而非表面到心部的平滑梯度。
+    d_node, _ = tree.query(pts, k=1)
+    d_node = np.maximum(d_node, 0.0)
+
+    # 以四面體連結關係做幾次鄰域平均，抹掉取樣造成的高頻雜訊。
+    # 表面節點深度本來就接近 0，平滑不會破壞邊界值。
+    n_node = len(pts)
+    flat = tets.ravel()
+    for _ in range(3):
+        acc = np.zeros(n_node)
+        cnt = np.zeros(n_node)
+        for c in range(4):
+            other = tets[:, [i for i in range(4) if i != c]]
+            np.add.at(acc, tets[:, c], d_node[other].sum(axis=1))
+            np.add.at(cnt, tets[:, c], 3.0)
+        nb = np.where(cnt > 0, acc / np.maximum(cnt, 1e-30), d_node)
+        d_node = 0.5 * d_node + 0.5 * nb        # 保守混合，避免過度抹平
+
+    return d_node[tets].mean(axis=1)
 
 
 # ════════════════════════════════════════════════════════════

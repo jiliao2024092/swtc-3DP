@@ -302,6 +302,70 @@ def _make_grid(pv, st, deform_scale):
     return pv.PolyData((p + disp) * 1000.0, faces)
 
 
+# ★★ VTK 預設字型不支援中日韓文字 ★★
+#   不指定字型檔的話，所有中文都會顯示成空白或亂碼——
+#   實測畫面上只剩數字，所有中文標題與說明完全看不見。
+#   （使用者因此要求「三個畫面代表什麼也寫上去」，其實早就寫了，只是看不到。）
+#   ⚠ 不可用「副檔名」猜哪個字型可用。開發時曾推測「.ttf 相容性比 .ttc 好」
+#     而選了標楷體 kaiu.ttf —— 實測它的中文在 VTK 下**一個像素都畫不出來**，
+#     反而 .ttc 全部正常。故改為**實際渲染一個中文字並數像素**來挑選。
+_CJK_CANDIDATES = [
+    "C:/Windows/Fonts/msjh.ttc",      # 微軟正黑體（繁中，首選）
+    "C:/Windows/Fonts/msjhl.ttc",
+    "C:/Windows/Fonts/mingliu.ttc",   # 新細明體
+    "C:/Windows/Fonts/msyh.ttc",      # 微軟雅黑（簡中）
+    "C:/Windows/Fonts/simsun.ttc",
+    "C:/Windows/Fonts/kaiu.ttf",      # 實測畫不出中文，僅作最後備援
+]
+
+
+def _font_renders_cjk(path):
+    """實際畫一個中文字，看有沒有墨跡。這是唯一可靠的判斷方式。"""
+    try:
+        import pyvista as pv
+        import numpy as _np
+        p = pv.Plotter(off_screen=True, window_size=(240, 90))
+        p.set_background("white")
+        p.add_text("測試", position=(8, 20), font_size=24, color="black",
+                   font_file=path)
+        img = _np.asarray(p.screenshot(return_img=True))
+        p.close()
+        return int((img.mean(axis=2) < 128).sum()) > 50
+    except Exception:
+        return False
+
+
+def _cjk_font():
+    """挑出真的畫得出中文的字型；全部不行時回 None（改用英文標籤）。"""
+    import os
+    for f in _CJK_CANDIDATES:
+        if os.path.exists(f) and _font_renders_cjk(f):
+            return f
+    return None
+
+
+CJK_FONT = None          # 延後到第一次繪製時才偵測（避免拖慢啟動）
+
+
+def ensure_font():
+    global CJK_FONT
+    if CJK_FONT is None:
+        CJK_FONT = _cjk_font() or False
+        print(f"[字型] 中文字型：{CJK_FONT or '找不到，將以英文標籤顯示'}")
+    return CJK_FONT or None
+
+
+def _txt(pl, text, **kw):
+    """add_text 的包裝：自動帶入可用的中文字型，失敗時退回預設字型。"""
+    f = ensure_font()
+    if f:
+        try:
+            return pl.add_text(text, font_file=f, **kw)
+        except Exception:
+            pass
+    return pl.add_text(text, **kw)
+
+
 def _clim(vals, lo=2.0, hi=98.0):
     """用百分位數決定色階範圍。
 
@@ -321,6 +385,18 @@ def _clim(vals, lo=2.0, hi=98.0):
         return None
     return [float(a), float(b)]
 
+# 文字排版用的視埠座標（0–1，相對於各自的面板）。
+#   ★ 不要用 "upper_edge" / "upper_left" 這類語意位置：
+#     它們會互相重疊——標題在正上方置中、說明在左上角，兩者在窄面板中
+#     會直接壓在一起（實測畫面上說明文字蓋住標題，完全看不清）。
+#     改用明確座標，各行之間留出固定間距。
+_P_TITLE = (0.02, 0.945)
+_P_DESC  = (0.02, 0.875)
+_P_NOTE  = (0.02, 0.825)
+_P_SUMM  = (0.02, 0.115)
+_P_HINT  = (0.02, 0.015)
+
+
 def render_panels(pv, pl, st, resin, profile):
     r = st["res"]
     scale = st["scale"] if st["deformed"] else 0.0
@@ -335,8 +411,12 @@ def render_panels(pv, pl, st, resin, profile):
     pl.renderer.clear_actors()
     pl.add_mesh(_make_grid(pv, st, 0.0), color="#b9c4d0", show_edges=False,
                 opacity=1.0, lighting=True)
-    pl.add_text("原始模型（未變形）", position="upper_edge",
-                font_size=10, color="black")
+    _txt(pl, "① 原始模型（比對基準）", position=_P_TITLE, viewport=True,
+         font_size=12, color="black")
+    _txt(pl, "你匯入的原始形狀，完全未變形。", position=_P_DESC, viewport=True,
+         font_size=9, color="#444444")
+    _txt(pl, "與中／右面板對照，即可看出哪裡跑掉。", position=_P_NOTE,
+         viewport=True, font_size=9, color="#444444")
     cmp_txt = ""
     if st["history"]:
         pct = ((r["max_warp_mm"] - st["baseline_warp"])
@@ -344,9 +424,12 @@ def render_panels(pv, pl, st, resin, profile):
         cmp_txt = (f"已鑽 {len(st['history'])} 個孔　翹曲 "
                    f"{st['baseline_warp']:.4f} → {r['max_warp_mm']:.4f} mm"
                    f"（{pct:+.1f}%）")
-    pl.add_text(summary_text(resin, profile, r, st["info"],
-                             (st["extra"] + "\n" + cmp_txt).strip()),
-                position="lower_left", font_size=7, color="black")
+    _txt(pl, summary_text(resin, profile, r, st["info"],
+                          (st["extra"] + "\n" + cmp_txt).strip()),
+         position=_P_SUMM, viewport=True, font_size=8, color="black")
+    _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　D 變形開關　3 切換右圖\n"
+             "P 選點 → H 鑽孔　U 復原　S 存圖　Q 離開",
+         position=_P_HINT, viewport=True, font_size=9, color="#333333")
 
     # ── 中：翹曲量 ──
     pl.subplot(0, 1)
@@ -360,14 +443,15 @@ def render_panels(pv, pl, st, resin, profile):
                                  "title_font_size": 13, "label_font_size": 10,
                                  "position_x": 0.05, "position_y": 0.02,
                                  "width": 0.9, "height": 0.06})
-    pl.add_text(f"翹曲量　最大 {r['max_warp_mm']:.4f} mm", position="upper_edge",
-                font_size=10, color="black")
-    if st["deformed"]:
-        pl.add_text(f"變形放大 ×{st['scale']:.0f}", position="upper_right",
-                    font_size=8, color="#aa6600")
-    else:
-        pl.add_text("（變形放大已關閉，按 D 開啟）", position="upper_right",
-                    font_size=8, color="#666666")
+    _txt(pl, f"② 翹曲量（形狀跑掉多少）　最大 {r['max_warp_mm']:.4f} mm",
+         position=_P_TITLE, viewport=True, font_size=12, color="black")
+    _txt(pl, "各點偏離原位的距離，已扣掉均勻收縮與整體位移。",
+         position=_P_DESC, viewport=True, font_size=9, color="#444444")
+    _txt(pl, ("紅＝變形最大　藍＝幾乎沒動　"
+              + (f"（形狀已放大 ×{st['scale']:.0f} 以便觀察）"
+                 if st["deformed"] else "（變形放大已關閉，按 D 開啟）")),
+         position=_P_NOTE, viewport=True, font_size=9,
+         color=("#aa6600" if st["deformed"] else "#666666"))
 
     # ── 右：殘留應力／最高溫度 ──
     pl.subplot(0, 2)
@@ -377,12 +461,16 @@ def render_panels(pv, pl, st, resin, profile):
         g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
                                             r["von_mises"]) / 1e6
         bar, head = "殘留應力 von Mises (MPa)", \
-                    f"殘留應力　最大 {r['max_vm_MPa']:.2f} MPa"
+                    f"③ 殘留應力　最大 {r['max_vm_MPa']:.2f} MPa"
+        sub_desc = ("固化後鎖在零件內部、拿不掉的內應力。",
+                    "紅＝應力集中，是裂痕與後續變形的起點。")
     else:
         g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
                                             r["T_peak_elem"])
         bar, head = "後固化最高溫度 (°C)", \
-                    f"最高溫度　Tg = {resin.tg.value:.0f}°C"
+                    f"③ 後固化最高溫度　Tg = {resin.tg.value:.0f}°C"
+        sub_desc = ("固化過程中各處達到的最高溫度。",
+                    f"超過 Tg（{resin.tg.value:.0f}°C）的區域會軟化，風險較高。")
     pl.add_mesh(g2, scalars="值", cmap="turbo",
                 clim=_clim(g2.point_data["值"]),
                 below_color="#2b2b6b", above_color="#7a0000",
@@ -390,12 +478,11 @@ def render_panels(pv, pl, st, resin, profile):
                                  "title_font_size": 13, "label_font_size": 10,
                                  "position_x": 0.05, "position_y": 0.02,
                                  "width": 0.9, "height": 0.06})
-    pl.add_text(head, position="upper_edge", font_size=10, color="black")
-    pl.add_text("按 3 切換 應力／溫度", position="upper_right",
-                font_size=8, color="#666666")
-    pl.add_text("左鍵拖曳旋轉（三視圖連動）　D 變形　3 切換右圖　"
-                "P 選點→H 鑽孔　U 復原　S 存圖　Q 離開",
-                position="lower_edge", font_size=8, color="#333333")
+    _txt(pl, head, position=_P_TITLE, viewport=True, font_size=12, color="black")
+    _txt(pl, sub_desc[0], position=_P_DESC, viewport=True,
+         font_size=9, color="#444444")
+    _txt(pl, sub_desc[1] + "　（按 3 切換 應力／溫度）", position=_P_NOTE,
+         viewport=True, font_size=9, color="#444444")
     pl.render()
 
 
@@ -556,22 +643,35 @@ def main():
         pointa=(0.10, 0.90), pointb=(0.90, 0.90),
         style="modern", color="black")
 
-    # ★ 選點必須綁在 P 鍵而非左鍵：
-    #   left_clicking=True 會把左鍵從「旋轉視角」搶走，導致模型完全轉不動。
-    #   （使用者實際回報過「結果畫面無法轉動視角」，原因就是這個。）
-    def on_pick(point, *_):
-        st["pick"] = np.array(point, float)
+    # ★★ 不使用 enable_point_picking ★★
+    #   它會在 interactor 上掛一個**常駐觀察者**，滑鼠事件都會觸發拾取運算——
+    #   包含「旋轉拖曳」。在 16 萬個表面三角形 × 3 個連動面板上，
+    #   每次拖曳都在做大量射線求交，實測會在轉動幾秒後直接閃退。
+    #   （使用者回報：「轉動一下子就當掉閃退」。）
+    #   改成按 P 時才做**單次**拾取，平時完全不介入滑鼠事件。
+    def do_pick():
+        try:
+            pos = pl.pick_mouse_position()
+        except Exception as ex:
+            print(f"[選點] 失敗：{ex}")
+            return
+        if pos is None:
+            print("[選點] 請把滑鼠移到零件上再按 P")
+            return
+        st["pick"] = np.array(pos, float)
         print(f"[選點] {np.round(st['pick'], 2)} mm，按 H 在此鑽孔")
-    try:
-        pl.enable_point_picking(callback=on_pick, show_message=False,
-                                show_point=True, left_clicking=False)
-    except TypeError:
-        pl.enable_point_picking(callback=on_pick, show_message=False)
+    pl.add_key_event("p", do_pick)
 
     pl.link_views()          # 三個面板共用相機，轉一個全部同步
     refresh()
     pl.subplot(0, 1)
     pl.reset_camera()
+    # 關閉反鋸齒：部分顯示卡驅動在多視埠 + 大網格下容易不穩，
+    # 且對本工具的判讀沒有幫助。
+    try:
+        pl.disable_anti_aliasing()
+    except Exception:
+        pass
     pl.show()
     return 0
 

@@ -38,3 +38,7 @@ node_modules/
 tools/warp-sim/build/
 tools/warp-sim/dist/
 tools/warp-sim/*.spec
+
+# warp-sim 產生的預覽圖
+tools/warp-sim/preview*.png
+tools/warp-sim/*_warp.png
