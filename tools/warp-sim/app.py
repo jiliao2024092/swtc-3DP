@@ -279,6 +279,93 @@ class Progress:
             self.ok = False
 
 
+
+# ════════════════════════════════════════════════════════════
+# 結果視圖的繪製（抽成模組層級，才能離屏測試）
+#   ★ 先前兩次都在這裡踩到「執行期才崩潰」的錯誤
+#     （3 碼十六進位顏色 PyVista 不接受、回呼引用未建立的元件），
+#     語法檢查完全抓不到。抽出來後 test_render.py 可以用 off_screen
+#     真的把三個面板畫出來，任何繪圖參數錯誤都會當場現形。
+# ════════════════════════════════════════════════════════════
+def _make_grid(pv, st, deform_scale):
+    """建立網格；deform_scale=0 表示原始未變形形狀。"""
+    r, p, t = st["res"], st["pts"], st["tets"]
+    cells = np.hstack([np.full((len(t), 1), 4), t]).ravel()
+    ct = np.full(len(t), pv.CellType.TETRA)
+    disp = r["u_shape"] * deform_scale if deform_scale else 0.0
+    return pv.UnstructuredGrid(cells, ct, (p + disp) * 1000.0)
+
+def render_panels(pv, pl, st, resin, profile):
+    r = st["res"]
+    scale = st["scale"] if st["deformed"] else 0.0
+    third = st["third"]
+
+    # ── 左：原始模型 ──
+    pl.subplot(0, 0)
+    pl.clear_actors()
+    pl.add_mesh(_make_grid(pv, st, 0.0), color="#b9c4d0", show_edges=False,
+                opacity=1.0, lighting=True)
+    pl.add_text("原始模型（未變形）", position="upper_edge",
+                font_size=10, color="black")
+    cmp_txt = ""
+    if st["history"]:
+        pct = ((r["max_warp_mm"] - st["baseline_warp"])
+               / max(st["baseline_warp"], 1e-12) * 100)
+        cmp_txt = (f"已鑽 {len(st['history'])} 個孔　翹曲 "
+                   f"{st['baseline_warp']:.4f} → {r['max_warp_mm']:.4f} mm"
+                   f"（{pct:+.1f}%）")
+    pl.add_text(summary_text(resin, profile, r, st["info"],
+                             (st["extra"] + "\n" + cmp_txt).strip()),
+                position="lower_left", font_size=7, color="black")
+
+    # ── 中：翹曲量 ──
+    pl.subplot(0, 1)
+    pl.clear_actors()
+    g = _make_grid(pv, st, scale)
+    g.point_data["翹曲"] = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
+    pl.add_mesh(g, scalars="翹曲", cmap="turbo",
+                scalar_bar_args={"title": "翹曲量 (mm)", "color": "black",
+                                 "title_font_size": 13, "label_font_size": 10,
+                                 "position_x": 0.05, "position_y": 0.02,
+                                 "width": 0.9, "height": 0.06})
+    pl.add_text(f"翹曲量　最大 {r['max_warp_mm']:.4f} mm", position="upper_edge",
+                font_size=10, color="black")
+    if st["deformed"]:
+        pl.add_text(f"變形放大 ×{st['scale']:.0f}", position="upper_right",
+                    font_size=8, color="#aa6600")
+    else:
+        pl.add_text("（變形放大已關閉，按 D 開啟）", position="upper_right",
+                    font_size=8, color="#666666")
+
+    # ── 右：殘留應力／最高溫度 ──
+    pl.subplot(0, 2)
+    pl.clear_actors()
+    g2 = _make_grid(pv, st, scale)
+    if third == "stress":
+        g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
+                                            r["von_mises"]) / 1e6
+        bar, head = "殘留應力 von Mises (MPa)", \
+                    f"殘留應力　最大 {r['max_vm_MPa']:.2f} MPa"
+    else:
+        g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
+                                            r["T_peak_elem"])
+        bar, head = "後固化最高溫度 (°C)", \
+                    f"最高溫度　Tg = {resin.tg.value:.0f}°C"
+    pl.add_mesh(g2, scalars="值", cmap="turbo",
+                scalar_bar_args={"title": bar, "color": "black",
+                                 "title_font_size": 13, "label_font_size": 10,
+                                 "position_x": 0.05, "position_y": 0.02,
+                                 "width": 0.9, "height": 0.06})
+    pl.add_text(head, position="upper_edge", font_size=10, color="black")
+    pl.add_text("按 3 切換 應力／溫度", position="upper_right",
+                font_size=8, color="#666666")
+    pl.add_text("左鍵拖曳旋轉（三視圖連動）　D 變形　3 切換右圖　"
+                "P 選點→H 鑽孔　U 復原　S 存圖　Q 離開",
+                position="lower_edge", font_size=8, color="#333333")
+    pl.render()
+
+
+
 # ════════════════════════════════════════════════════════════
 # 主程式
 # ════════════════════════════════════════════════════════════
@@ -353,82 +440,8 @@ def main():
                     border_color="#cccccc")
     pl.set_background("white")
 
-    def make_grid(deform_scale):
-        """建立網格；deform_scale=0 表示原始未變形形狀。"""
-        r, p, t = st["res"], st["pts"], st["tets"]
-        cells = np.hstack([np.full((len(t), 1), 4), t]).ravel()
-        ct = np.full(len(t), pv.CellType.TETRA)
-        disp = r["u_shape"] * deform_scale if deform_scale else 0.0
-        return pv.UnstructuredGrid(cells, ct, (p + disp) * 1000.0)
-
     def refresh():
-        r = st["res"]
-        scale = st["scale"] if st["deformed"] else 0.0
-        third = st["third"]
-
-        # ── 左：原始模型 ──
-        pl.subplot(0, 0)
-        pl.clear_actors()
-        pl.add_mesh(make_grid(0.0), color="#b9c4d0", show_edges=False,
-                    opacity=1.0, lighting=True)
-        pl.add_text("原始模型（未變形）", position="upper_edge",
-                    font_size=10, color="black")
-        cmp_txt = ""
-        if st["history"]:
-            pct = ((r["max_warp_mm"] - st["baseline_warp"])
-                   / max(st["baseline_warp"], 1e-12) * 100)
-            cmp_txt = (f"已鑽 {len(st['history'])} 個孔　翹曲 "
-                       f"{st['baseline_warp']:.4f} → {r['max_warp_mm']:.4f} mm"
-                       f"（{pct:+.1f}%）")
-        pl.add_text(summary_text(resin, profile, r, st["info"],
-                                 (st["extra"] + "\n" + cmp_txt).strip()),
-                    position="lower_left", font_size=7, color="black")
-
-        # ── 中：翹曲量 ──
-        pl.subplot(0, 1)
-        pl.clear_actors()
-        g = make_grid(scale)
-        g.point_data["翹曲"] = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
-        pl.add_mesh(g, scalars="翹曲", cmap="turbo",
-                    scalar_bar_args={"title": "翹曲量 (mm)", "color": "black",
-                                     "title_font_size": 13, "label_font_size": 10,
-                                     "position_x": 0.05, "position_y": 0.02,
-                                     "width": 0.9, "height": 0.06})
-        pl.add_text(f"翹曲量　最大 {r['max_warp_mm']:.4f} mm", position="upper_edge",
-                    font_size=10, color="black")
-        if st["deformed"]:
-            pl.add_text(f"變形放大 ×{st['scale']:.0f}", position="upper_right",
-                        font_size=8, color="#a60")
-        else:
-            pl.add_text("（變形放大已關閉，按 D 開啟）", position="upper_right",
-                        font_size=8, color="#666")
-
-        # ── 右：殘留應力／最高溫度 ──
-        pl.subplot(0, 2)
-        pl.clear_actors()
-        g2 = make_grid(scale)
-        if third == "stress":
-            g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
-                                                r["von_mises"]) / 1e6
-            bar, head = "殘留應力 von Mises (MPa)", \
-                        f"殘留應力　最大 {r['max_vm_MPa']:.2f} MPa"
-        else:
-            g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
-                                                r["T_peak_elem"])
-            bar, head = "後固化最高溫度 (°C)", \
-                        f"最高溫度　Tg = {resin.tg.value:.0f}°C"
-        pl.add_mesh(g2, scalars="值", cmap="turbo",
-                    scalar_bar_args={"title": bar, "color": "black",
-                                     "title_font_size": 13, "label_font_size": 10,
-                                     "position_x": 0.05, "position_y": 0.02,
-                                     "width": 0.9, "height": 0.06})
-        pl.add_text(head, position="upper_edge", font_size=10, color="black")
-        pl.add_text("按 3 切換 應力／溫度", position="upper_right",
-                    font_size=8, color="#666")
-        pl.add_text("左鍵拖曳旋轉（三視圖連動）　D 變形　3 切換右圖　"
-                    "P 選點→H 鑽孔　U 復原　S 存圖　Q 離開",
-                    position="lower_edge", font_size=8, color="#333333")
-        pl.render()
+        render_panels(pv, pl, st, resin, profile)
 
     # ── 互動 ──
     def toggle_third():

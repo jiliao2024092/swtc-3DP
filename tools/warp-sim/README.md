@@ -181,6 +181,7 @@ venv\Scripts\python.exe app.py [模型.stl]
 | `test_pipeline.py` | **端對端測試**（36 項）——含物理直覺檢查 |
 | `test_gravity.py` | **自重與轉盤邊界條件**（32 項）——含水平自由的正反證 |
 | `test_ui.py` | **設定視窗煙霧測試**（29 項）——實際建構視窗並觸發所有回呼 |
+| `test_render.py` | **結果視圖離屏繪製**（12 項）——真的把三面板畫成 PNG |
 | `build_exe.py` | PyInstaller 打包腳本 |
 
 ### 改動後務必執行
@@ -190,7 +191,14 @@ venv\Scripts\python.exe verify.py
 venv\Scripts\python.exe test_pipeline.py
 venv\Scripts\python.exe test_gravity.py
 venv\Scripts\python.exe test_ui.py
+venv\Scripts\python.exe test_render.py
 ```
+
+`test_ui.py` 與 `test_render.py` 專門攔截 **GUI 的執行期錯誤**——
+語法檢查對 tkinter 回呼與 PyVista 繪圖參數完全無效，
+只有真的把視窗建起來、真的把畫面畫出來才抓得到。
+（已實際攔截：3 碼十六進位顏色 `#a60` PyVista 不接受、
+回呼引用尚未建立的元件。兩者都會讓程式一啟動就崩潰。）
 
 這些測試在開發過程中實際抓到過六個嚴重錯誤：
 形函數梯度的轉置寫反（斜四面體算錯）、
