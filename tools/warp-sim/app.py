@@ -117,156 +117,244 @@ def summary_text(resin, profile, res, info, extra=""):
 
 
 # ════════════════════════════════════════════════════════════
-# 設定視窗（tkinter，只在啟動時出現一次）
+# 設定視窗
+#
+# ★ 流程刻意設計成「設定 → 選面 → 設定」的重開，而不是在 tkinter 的
+#   回呼裡直接開 VTK 視窗。
+#   後者會形成**巢狀事件迴圈**（tkinter mainloop 裡再跑 VTK interactor），
+#   實測會出現視窗開不起來、點擊無反應、關不掉等問題
+#   （使用者回報「3D 中點選畫面點擊失敗」「應該要有視窗可以預覽並點擊」）。
+#   改成：按下「選面」→ 記下意圖並**關閉**設定視窗 → 由外層開 VTK 預覽
+#   → 預覽關閉後**重建**設定視窗並帶回先前的選擇。全程只有一個事件迴圈。
 # ════════════════════════════════════════════════════════════
-def ask_settings(default_stl=None):
+def ask_settings(default_stl=None, initial=None):
+    """顯示設定視窗。回傳 state dict。
+
+    state["action"] 為 "run"（開始模擬）／"pick_face"（去選面）／"cancel"。
+    initial 用於重建視窗時帶回上次的選擇。
+    """
     import tkinter as tk
     from tkinter import filedialog, ttk
 
+    ini = dict(initial or {})
     root = tk.Tk()
     root.title("SLA 後固化變形模擬 — 設定")
-    root.geometry("680x520")
-    state = {"ok": False}
+    root.configure(bg="#f4f6f8")
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+    except Exception:
+        pass
+    style.configure("TLabelframe", background="#f4f6f8", borderwidth=1)
+    style.configure("TLabelframe.Label", background="#f4f6f8",
+                    foreground="#1f2d3d", font=("Microsoft JhengHei UI", 10, "bold"))
+    style.configure("TLabel", background="#f4f6f8", foreground="#1f2d3d",
+                    font=("Microsoft JhengHei UI", 9))
+    style.configure("Hint.TLabel", foreground="#6b7684",
+                    font=("Microsoft JhengHei UI", 8))
+    style.configure("Warn.TLabel", foreground="#b45309",
+                    font=("Microsoft JhengHei UI", 8))
+    style.configure("Good.TLabel", foreground="#047857",
+                    font=("Microsoft JhengHei UI", 9, "bold"))
+    style.configure("TButton", font=("Microsoft JhengHei UI", 9))
+    style.configure("Go.TButton", font=("Microsoft JhengHei UI", 11, "bold"))
 
-    tk.Label(root, text="STL 檔案").grid(row=0, column=0, sticky="w", padx=10, pady=(12, 2))
-    v_file = tk.StringVar(value=default_stl or "")
-    e = tk.Entry(root, textvariable=v_file, width=52)
-    e.grid(row=1, column=0, columnspan=2, sticky="w", padx=10)
+    state = {"action": "cancel"}
+    PAD = dict(padx=10, pady=4)
 
-    def pick():
+    # ── 1. 模型檔案 ──
+    f1 = ttk.LabelFrame(root, text=" 1. 模型檔案 ")
+    f1.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
+    f1.columnconfigure(0, weight=1)
+    v_file = tk.StringVar(value=ini.get("stl") or default_stl or "")
+    ttk.Entry(f1, textvariable=v_file, width=64).grid(row=0, column=0,
+                                                     sticky="ew", **PAD)
+
+    def browse():
         p = filedialog.askopenfilename(
             title="選擇 STL", filetypes=[("STL", "*.stl"), ("全部", "*.*")])
         if p:
             v_file.set(p)
-    tk.Button(root, text="瀏覽…", command=pick).grid(row=1, column=2, padx=6)
+    ttk.Button(f1, text="瀏覽…", command=browse).grid(row=0, column=1, **PAD)
 
-    tk.Label(root, text="樹脂材料").grid(row=2, column=0, sticky="w", padx=10, pady=(14, 2))
-    v_res = tk.StringVar(value="Clear V5")
-    cb1 = ttk.Combobox(root, textvariable=v_res, values=list(RESINS), width=28,
-                       state="readonly")
-    cb1.grid(row=3, column=0, sticky="w", padx=10)
+    # ── 2. 材料與固化條件 ──
+    f2 = ttk.LabelFrame(root, text=" 2. 材料與後固化條件 ")
+    f2.grid(row=1, column=0, sticky="ew", padx=12, pady=6)
+    f2.columnconfigure(1, weight=1)
+    f2.columnconfigure(3, weight=1)
 
-    lbl_q = tk.Label(root, text="", fg="#a60", justify="left", wraplength=520)
-    lbl_q.grid(row=4, column=0, columnspan=3, sticky="w", padx=10, pady=(4, 0))
+    ttk.Label(f2, text="樹脂材料").grid(row=0, column=0, sticky="w", **PAD)
+    v_res = tk.StringVar(value=ini.get("resin", "Clear V5"))
+    ttk.Combobox(f2, textvariable=v_res, values=list(RESINS), width=22,
+                 state="readonly").grid(row=0, column=1, sticky="w", **PAD)
 
-    tk.Label(root, text="後固化條件").grid(row=5, column=0, sticky="w", padx=10, pady=(14, 2))
+    ttk.Label(f2, text="後固化條件").grid(row=0, column=2, sticky="w", **PAD)
     v_prof = tk.StringVar()
-    cb_prof = ttk.Combobox(root, textvariable=v_prof, width=28, state="readonly")
-    cb_prof.grid(row=6, column=0, sticky="w", padx=10)
+    cb_prof = ttk.Combobox(f2, textvariable=v_prof, width=26, state="readonly")
+    cb_prof.grid(row=0, column=3, sticky="w", **PAD)
 
-    tk.Label(root, text="光固化收縮（主要翹曲來源）").grid(
-        row=5, column=1, sticky="w", padx=10, pady=(14, 2))
+    lbl_q = ttk.Label(f2, text="", style="Warn.TLabel", wraplength=620,
+                      justify="left")
+    lbl_q.grid(row=1, column=0, columnspan=4, sticky="w", padx=10)
+
+    ttk.Label(f2, text="光固化收縮").grid(row=2, column=0, sticky="w", **PAD)
     v_sh = tk.StringVar()
-    cb_sh = ttk.Combobox(root, textvariable=v_sh,
-                         values=list(materials.CURE_PRESETS_SHRINK),
-                         width=30, state="readonly")
-    cb_sh.grid(row=6, column=1, sticky="w", padx=10)
+    ttk.Combobox(f2, textvariable=v_sh,
+                 values=list(materials.CURE_PRESETS_SHRINK), width=34,
+                 state="readonly").grid(row=2, column=1, columnspan=3,
+                                        sticky="w", **PAD)
+    ttk.Label(f2, text="⚠ 收縮率為估計值（非 Formlabs 官方資料），"
+                      "絕對變形量需以實測校正；設計 A vs B 的相對比較才可靠",
+              style="Warn.TLabel", wraplength=620, justify="left").grid(
+        row=3, column=0, columnspan=4, sticky="w", padx=10, pady=(0, 6))
 
-    # ★ on_res 會寫入 cb_prof / v_sh，因此必須定義在那些元件**建立之後**，
-    #   否則初次呼叫時會 NameError（free variable 尚未賦值）。
     def on_res(*_):
         name = v_res.get()
         r = RESINS[name]
         sub = [k for k, v in r.completeness().items() if v == "substitute"]
-        lbl_q.config(text=(f"實測 {r.measured_count()}/4 項熱性質。"
-                           + (f" 代用：{', '.join(sub)}" if sub else " 四項齊全")))
-        # 原廠建議條件排在清單最前面並自動選取
+        lbl_q.config(text=(f"實測 {r.measured_count()}/4 項熱性質"
+                           + (f"；代用：{', '.join(sub)}（取自相近樹脂）"
+                              if sub else "（四項齊全）")))
         rec = materials.recommended_profile(name)
         vals = ([rec.name] if rec else []) + list(CURE_PRESETS)
         cb_prof["values"] = vals
-        v_prof.set(vals[0])
-        # 收縮預設也依材料自動帶出
-        v_sh.set(materials.default_shrink_key(name))
+        if ini.get("profile") in vals:
+            v_prof.set(ini["profile"])
+        else:
+            v_prof.set(vals[0])
+        v_sh.set(ini.get("shrink") or materials.default_shrink_key(name))
+        ini.pop("profile", None)
+        ini.pop("shrink", None)
     v_res.trace_add("write", on_res)
     on_res()
-    tk.Label(root, text="⚠ 此項為估計值，非 Formlabs 官方資料，需實測校正",
-             fg="#a60", wraplength=520, justify="left").grid(
-        row=7, column=0, columnspan=3, sticky="w", padx=10)
 
-    tk.Label(root, text="哪一面放在轉盤上").grid(row=8, column=1, sticky="w",
-                                              padx=10, pady=(10, 2))
-    v_or = tk.StringVar(value=list(ORIENTATIONS)[0])
-    ttk.Combobox(root, textvariable=v_or, values=list(ORIENTATIONS),
-                 width=24, state="readonly").grid(row=9, column=1, sticky="w", padx=10)
+    # ── 3. 擺放與邊界條件 ──
+    f3 = ttk.LabelFrame(root, text=" 3. 在固化機中的擺放 ")
+    f3.grid(row=2, column=0, sticky="ew", padx=12, pady=6)
+    f3.columnconfigure(3, weight=1)
 
-    # ★ 「點選面」在**按下開始模擬之前**就完成，不打斷後續流程。
-    #   只讀 STL 表面即可（<1 秒），不必等四面體網格化（數十秒）。
-    picked = {"down": None}
-    lbl_or = tk.Label(root, text="", fg="#0a0", justify="left", wraplength=300)
-    lbl_or.grid(row=11, column=1, sticky="w", padx=10)
+    ttk.Label(f3, text="哪一面貼在轉盤上").grid(row=0, column=0, sticky="w", **PAD)
+    v_or = tk.StringVar(value=ini.get("orient", list(ORIENTATIONS)[0]))
+    ttk.Combobox(f3, textvariable=v_or, values=list(ORIENTATIONS), width=22,
+                 state="readonly").grid(row=0, column=1, sticky="w", **PAD)
 
-    def pick_face():
-        path = v_file.get().strip()
-        if not path:
-            lbl_or.config(text="請先選擇 STL 檔案", fg="#c00")
+    picked = {"down": ini.get("down_vec")}
+
+    def go_pick():
+        if not v_file.get().strip():
+            lbl_or.config(text="請先選擇 STL 檔案", style="Warn.TLabel")
             return
-        try:
-            import pyvista as pv
-            from meshing import read_stl, check_surface
-            verts, tri = read_stl(path)
-            ok, _info, msg = check_surface(verts, tri)
-            if not ok:
-                lbl_or.config(text=msg.splitlines()[0], fg="#c00")
-                return
-            root.withdraw()                     # 收起設定視窗避免兩個事件迴圈打架
-            try:
-                d = choose_orientation_by_click(pv, verts, tri)
-            finally:
-                root.deiconify()
-            picked["down"] = np.asarray(d, float)
-            lbl_or.config(
-                text=f"已選定朝下方向 ({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})",
-                fg="#0a0")
-        except Exception as ex:
-            lbl_or.config(text=f"選面失敗：{ex}", fg="#c00")
+        state.update(action="pick_face", **_collect())
+        root.destroy()
+    ttk.Button(f3, text="▶ 在 3D 中點選面…", command=go_pick).grid(
+        row=0, column=2, sticky="w", **PAD)
 
-    tk.Button(root, text="▶ 在 3D 中點選面…", command=pick_face,
-              bg="#0e7", fg="black").grid(row=10, column=1, sticky="w",
-                                          padx=10, pady=(4, 0))
-    v_grav = tk.BooleanVar(value=True)
-    tk.Checkbutton(root, text="計入自重（零件平放於轉盤，承受自身重量）",
-                   variable=v_grav).grid(row=12, column=1, sticky="w", padx=8)
+    d0 = picked["down"]
+    lbl_or = ttk.Label(
+        f3,
+        text=(f"已由 3D 點選：朝下方向 ({d0[0]:+.2f}, {d0[1]:+.2f}, {d0[2]:+.2f})"
+              if d0 is not None else "（未使用 3D 點選，將採用左側下拉選單）"),
+        style=("Good.TLabel" if d0 is not None else "Hint.TLabel"),
+        wraplength=620, justify="left")
+    lbl_or.grid(row=1, column=0, columnspan=4, sticky="w", padx=10)
 
-    tk.Label(root, text="網格密度").grid(row=8, column=0, sticky="w",
-                                       padx=10, pady=(10, 2))
-    v_dens = tk.StringVar(value="標準（建議）")
-    ttk.Combobox(root, textvariable=v_dens, values=list(MESH_PRESETS), width=28,
-                 state="readonly").grid(row=9, column=0, sticky="w", padx=10)
-    tk.Label(root, text="標準約需 1–3 分鐘；快速僅數秒但厚度解析度低",
-             fg="#666", wraplength=260, justify="left").grid(row=9, column=1, sticky="w")
+    v_grav = tk.BooleanVar(value=ini.get("gravity", True))
+    ttk.Checkbutton(f3, text="計入自重（零件平放於轉盤，承受自身重量）",
+                    variable=v_grav).grid(row=2, column=0, columnspan=3,
+                                          sticky="w", padx=8, pady=(2, 8))
 
-    def go():
-        if not v_file.get():
+    # ── 4. 網格 ──
+    f4 = ttk.LabelFrame(root, text=" 4. 網格密度 ")
+    f4.grid(row=3, column=0, sticky="ew", padx=12, pady=6)
+    f4.columnconfigure(2, weight=1)
+    v_dens = tk.StringVar(value=ini.get("density_label", "標準（建議）"))
+    ttk.Combobox(f4, textvariable=v_dens, values=list(MESH_PRESETS), width=26,
+                 state="readonly").grid(row=0, column=0, sticky="w", **PAD)
+    ttk.Label(f4, text="標準約需 1–4 分鐘；快速僅數秒但厚度方向解析度低，"
+                      "只適合快速比對", style="Hint.TLabel",
+              wraplength=460, justify="left").grid(row=0, column=1, sticky="w",
+                                                   padx=6)
+
+    def _collect():
+        return dict(stl=v_file.get(), resin=v_res.get(), profile=v_prof.get(),
+                    shrink=v_sh.get(), orient=v_or.get(),
+                    down_vec=picked["down"], gravity=bool(v_grav.get()),
+                    density_label=v_dens.get(),
+                    density=MESH_PRESETS[v_dens.get()],
+                    recommended=v_prof.get().startswith("原廠建議"))
+
+    def go_run():
+        if not v_file.get().strip():
+            lbl_or.config(text="請先選擇 STL 檔案", style="Warn.TLabel")
             return
-        state.update(ok=True, stl=v_file.get(), resin=v_res.get(),
-                     profile=v_prof.get(), shrink=v_sh.get(),
-                     recommended=v_prof.get().startswith("原廠建議"),
-                     density=MESH_PRESETS[v_dens.get()],
-                     orient=v_or.get(), down_vec=picked["down"],
-                     gravity=bool(v_grav.get()))
+        state.update(action="run", **_collect())
         root.destroy()
 
-    tk.Button(root, text="開始模擬", command=go, width=16,
-              bg="#2563eb", fg="white").grid(row=13, column=0, pady=14, padx=10, sticky="w")
+    bar = tk.Frame(root, bg="#f4f6f8")
+    bar.grid(row=4, column=0, sticky="ew", padx=12, pady=(8, 14))
+    ttk.Button(bar, text="開始模擬", style="Go.TButton",
+               command=go_run).pack(side="left")
+    ttk.Button(bar, text="取消", command=root.destroy).pack(side="left", padx=8)
+
+    root.columnconfigure(0, weight=1)
+    root.update_idletasks()
+    w = max(root.winfo_reqwidth(), 700)
+    h = max(root.winfo_reqheight(), 480)
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    root.geometry(f"{w}x{h}+{(sw - w) // 2}+{max((sh - h) // 3, 0)}")
+    root.minsize(w, h)
     root.mainloop()
     return state
 
 
+def settings_flow(default_stl=None):
+    """設定 →（可選）3D 選面 → 設定 的完整流程。回傳最終設定或 None。
+
+    ★ 每一步都是**獨立**的事件迴圈，不會巢狀。
+    """
+    import pyvista as pv
+    from meshing import read_stl, check_surface
+
+    carry = {}
+    while True:
+        st = ask_settings(default_stl, initial=carry)
+        act = st.get("action")
+        if act == "cancel":
+            return None
+        carry = {k: v for k, v in st.items() if k != "action"}
+        if act == "run":
+            return carry
+        # act == "pick_face"：設定視窗已關閉，這裡才開 VTK 預覽
+        try:
+            verts, tri = read_stl(carry["stl"])
+            ok, _i, msg = check_surface(verts, tri)
+            if not ok:
+                print(f"[選面] STL 有問題：{msg}")
+                continue
+            d = choose_orientation_by_click(pv, verts, tri)
+            carry["down_vec"] = None if d is None else np.asarray(d, float)
+        except Exception as ex:
+            print(f"[選面] 失敗：{ex}")
+
+
 # ════════════════════════════════════════════════════════════
-# 擺放方向：讓使用者直接點模型上的面
+# 3D 預覽：點選「貼在轉盤上的面」
 # ════════════════════════════════════════════════════════════
 def choose_orientation_by_click(pv, verts_mm, tri, default_down=(0, 0, -1)):
-    """開一個預覽視窗，讓使用者點選「要貼在轉盤上的那一面」。
+    """開預覽視窗讓使用者**用滑鼠點**選要貼在轉盤上的面。
 
-    verts_mm/tri 直接來自 read_stl()，**不需要先做四面體網格化**——
-    只是看外觀選面而已，讀 STL 表面不到一秒，而網格化要數十秒。
-    這讓這個步驟可以放在「開始模擬」之前的設定階段完成。
+    回傳該面的朝外法向；取消則回傳 None（呼叫端沿用下拉選單的選擇）。
 
-    回傳該面的朝外法向（模型座標）；使用者取消時回傳 default_down。
+    ★ 為什麼能安全地用「左鍵點擊」拾取：
+      先前在結果視窗用 enable_point_picking 會崩潰，是因為它掛**常駐**
+      觀察者、每個滑鼠事件都運算，而且場景有 3 個連動面板與 16 萬三角形。
+      這裡是**單一面板、單一網格、無純量場**的簡單場景，而且我們自己
+      在 LeftButtonRelease 時才做**一次**射線求交。
 
-    ★ 用自寫的 RayPicker 而非 PyVista 的 enable_*_picking：
-      內建拾取會掛常駐觀察者、每次滑鼠移動都運算，大網格下會崩潰。
-      這裡只在按下空白鍵時做一次射線求交。
+      關鍵是要區分「點擊」與「拖曳旋轉」：按下與放開的位移小於門檻才算點擊，
+      否則視為旋轉、不拾取。這樣左鍵同時能旋轉又能選面。
+
+    verts_mm/tri 直接來自 read_stl()，不需要四面體網格化。
     """
     from picking import RayPicker
 
@@ -274,63 +362,104 @@ def choose_orientation_by_click(pv, verts_mm, tri, default_down=(0, 0, -1)):
     poly = pv.PolyData(np.asarray(verts_mm, float), faces)
     rp = RayPicker(poly)
     normals = rp.face_normals()
+    bb = poly.bounds
+    span = max(bb[1] - bb[0], bb[3] - bb[2], bb[5] - bb[4])
 
-    state = {"down": np.asarray(default_down, float), "confirmed": False,
-             "hi": None}
+    S = {"down": None, "press": None, "marker": None, "lbl": None,
+         "arrow": None, "ok": False}
 
-    pl = pv.Plotter(title="選擇貼在轉盤上的面", window_size=_window_size(0.7))
-    pl.set_background("white")
-    pl.add_mesh(poly, color="#b9c4d0", show_edges=False, lighting=True)
+    pl = pv.Plotter(title="選擇貼在轉盤上的面", window_size=_window_size(0.68))
+    pl.set_background("#eef2f6")
+    pl.add_mesh(poly, color="#c8d3de", show_edges=False, lighting=True,
+                smooth_shading=False, specular=0.25)
+    try:
+        pl.add_axes(line_width=3)
+    except Exception:
+        pass
 
-    info = {"actor": None}
+    def _status():
+        if S["down"] is None:
+            return "尚未選擇　→　用滑鼠左鍵**點一下**要貼在轉盤上的面"
+        d = S["down"]
+        return (f"已選定　朝下方向 = ({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})"
+                "　→　按 Enter 確認")
 
-    def label():
-        d = state["down"]
-        return (f"目前選定：朝下方向 = ({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})\n"
-                + ("（已點選模型上的面）" if state["hi"] is not None
-                   else "（尚未點選，使用預設底面）"))
-
-    def redraw_label():
-        if info["actor"] is not None:
-            pl.remove_actor(info["actor"], render=False)
-        info["actor"] = _txt(
-            pl, label(), position=(0.02, 0.86), viewport=True,
-            font_size=11, color="#0b5")
+    def _redraw_status():
+        if S["lbl"] is not None:
+            try:
+                pl.remove_actor(S["lbl"], render=False)
+            except Exception:
+                pass
+        S["lbl"] = _txt(pl, _status(), position=(0.02, 0.055), viewport=True,
+                        font_size=13,
+                        color=("#047857" if S["down"] is not None else "#b45309"))
         pl.render()
 
-    def do_pick():
-        x, y = pl.iren.interactor.GetEventPosition()
+    def _mark(hit, nrm):
+        for k in ("marker", "arrow"):
+            if S[k] is not None:
+                try:
+                    pl.remove_actor(S[k], render=False)
+                except Exception:
+                    pass
+                S[k] = None
+        S["marker"] = pl.add_mesh(
+            pv.Sphere(radius=span * 0.018, center=hit), color="#dc2626",
+            render=False)
+        # 箭頭指出「這一面會朝下」
+        S["arrow"] = pl.add_mesh(
+            pv.Arrow(start=hit, direction=nrm, scale=span * 0.28),
+            color="#dc2626", render=False)
+
+    def _do_pick(x, y):
         hit, cid = rp.pick(pl.renderer, x, y)
         if cid is None:
-            print("[選面] 請把滑鼠移到模型上再按空白鍵")
+            print("[選面] 沒點到模型，請點在模型表面上")
             return
-        # 該面的朝外法向即為「這一面朝下」時要轉到 −Z 的方向
-        state["down"] = normals[cid].astype(float)
-        state["hi"] = cid
-        # 用一個小球標示點到的位置
-        if state.get("marker") is not None:
-            pl.remove_actor(state["marker"], render=False)
-        bbox = poly.bounds
-        rad = 0.02 * max(bbox[1] - bbox[0], bbox[3] - bbox[2], bbox[5] - bbox[4])
-        state["marker"] = pl.add_mesh(pv.Sphere(radius=rad, center=hit),
-                                      color="#e11", render=False)
-        print(f"[選面] 法向 {np.round(state['down'], 3)} 將朝下")
-        redraw_label()
+        S["down"] = normals[cid].astype(float)
+        _mark(hit, S["down"])
+        print(f"[選面] 已選：法向 {np.round(S['down'], 3)} 會朝下")
+        _redraw_status()
+
+    # ── 點擊 vs 拖曳 ──
+    def on_press(obj, evt):
+        S["press"] = pl.iren.interactor.GetEventPosition()
+
+    def on_release(obj, evt):
+        p0 = S["press"]
+        S["press"] = None
+        if p0 is None:
+            return
+        x, y = pl.iren.interactor.GetEventPosition()
+        if abs(x - p0[0]) + abs(y - p0[1]) > 4:      # 移動過多 ⇒ 是旋轉
+            return
+        _do_pick(x, y)
+
+    pl.iren.interactor.AddObserver("LeftButtonPressEvent", on_press, 1.0)
+    pl.iren.interactor.AddObserver("LeftButtonReleaseEvent", on_release, -1.0)
 
     def confirm():
-        state["confirmed"] = True
+        if S["down"] is None:
+            print("[選面] 尚未選擇任何面；如要沿用下拉選單設定請按 Q 離開")
+            return
+        S["ok"] = True
         pl.close()
-
-    pl.add_key_event("space", do_pick)
     pl.add_key_event("Return", confirm)
 
-    _txt(pl, "① 用左鍵拖曳轉動模型，找到要「貼在轉盤上」的那一面\n"
-             "② 把滑鼠移到那一面上，按【空白鍵】選取（會出現紅點）\n"
-             "③ 按【Enter】確認並開始模擬　　按【Q】取消改用預設底面",
-         position=(0.02, 0.93), viewport=True, font_size=12, color="black")
-    redraw_label()
+    _txt(pl, "選擇「要貼在固化機轉盤上」的那一面",
+         position=(0.02, 0.955), viewport=True, font_size=16, color="#0f172a")
+    _txt(pl, "左鍵拖曳＝旋轉　　左鍵單擊模型＝選取該面（出現紅點與箭頭）\n"
+             "滾輪＝縮放　　Enter＝確認並返回　　Q＝取消（沿用下拉選單）",
+         position=(0.02, 0.885), viewport=True, font_size=11, color="#334155")
+    _redraw_status()
+    pl.reset_camera()
+    pl.camera.zoom(0.85)
+    try:
+        pl.disable_anti_aliasing()
+    except Exception:
+        pass
     pl.show()
-    return state["down"]
+    return S["down"] if S["ok"] else None
 
 
 # ════════════════════════════════════════════════════════════
@@ -659,8 +788,8 @@ def main():
     import pyvista as pv
 
     arg = sys.argv[1] if len(sys.argv) > 1 else None
-    cfg = ask_settings(arg)
-    if not cfg.get("ok"):
+    cfg = settings_flow(arg)
+    if cfg is None:
         return 0
 
     resin = RESINS[cfg["resin"]]

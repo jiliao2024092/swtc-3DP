@@ -30,9 +30,22 @@ tk.Misc.mainloop = lambda self: None       # 不阻塞，只驗證建構過程
 try:
     st = app.ask_settings("dummy.stl")
     chk(True, "★ ask_settings 建構完成（含所有回呼初次觸發）")
-    chk(st.get("ok") is False, "未按下開始 → ok=False")
+    chk(st.get("action") == "cancel", "未按任何鈕 → action=cancel", st.get("action"))
 except Exception as ex:
     chk(False, "★ ask_settings 建構完成", f"{type(ex).__name__}: {ex}")
+
+print("\n══ 1b. 重建視窗時能帶回先前選擇 ══")
+#   「設定 → 選面 → 設定」的流程會重建視窗，必須能吃回先前的值。
+try:
+    import numpy as _np
+    carry = {"stl": "x.stl", "resin": "Rigid 4000",
+             "down_vec": _np.array([0.0, 1.0, 0.0]), "gravity": False,
+             "density_label": "快速（保留原表面，厚度解析度低）"}
+    st2 = app.ask_settings(initial=carry)
+    chk(True, "★ 帶 initial 重建設定視窗不出錯")
+    chk(st2.get("action") == "cancel", "重建後預設仍為 cancel")
+except Exception as ex:
+    chk(False, "★ 帶 initial 重建設定視窗不出錯", f"{type(ex).__name__}: {ex}")
 finally:
     tk.Misc.mainloop = orig_mainloop
 
