@@ -7,12 +7,17 @@
 
 結果畫面為三面板連動視圖（左：原始模型　中：翹曲量　右：殘留應力）。
 
+啟動流程：
+    設定視窗 → （可選）在 3D 預覽中點選「貼在轉盤上的面」 → 求解 → 結果視圖
+
 介面操作：
     左鍵拖曳 / 滾輪  旋轉、縮放（三個面板連動）
+    + / -            變形放大倍率（預設會自動算到看得見的程度）
+    D                切換「變形後形狀」顯示
     3                右側面板切換 殘留應力 ／ 最高溫度
-    D                切換「變形後形狀」顯示（依放大倍率）
-    P                在滑鼠位置選點
-    H                在選定的點鑽孔 → 自動重算並比較
+    H                進入／離開鑽孔模式（紅色圓柱跟著滑鼠貼在模型上）
+      [ ]              鑽孔模式中調整孔徑
+      Enter            確認鑽孔，自動重算並與原始結果比較
     U                復原上一次鑽孔
     S                儲存目前畫面為 PNG
     Q                離開
@@ -180,9 +185,10 @@ def ask_settings(default_stl=None):
 
     tk.Label(root, text="哪一面放在轉盤上").grid(row=8, column=1, sticky="w",
                                               padx=10, pady=(10, 2))
-    v_or = tk.StringVar(value="Z− 面朝下（模型原本的底面）")
-    ttk.Combobox(root, textvariable=v_or, values=list(ORIENTATIONS), width=24,
-                 state="readonly").grid(row=9, column=1, sticky="w", padx=10)
+    _CLICK = "▶ 在 3D 預覽中點選面（推薦）"
+    v_or = tk.StringVar(value=_CLICK)
+    ttk.Combobox(root, textvariable=v_or, values=[_CLICK] + list(ORIENTATIONS),
+                 width=24, state="readonly").grid(row=9, column=1, sticky="w", padx=10)
     v_grav = tk.BooleanVar(value=True)
     tk.Checkbutton(root, text="計入自重（零件平放於轉盤，承受自身重量）",
                    variable=v_grav).grid(row=10, column=1, sticky="w", padx=8)
@@ -202,13 +208,91 @@ def ask_settings(default_stl=None):
                      profile=v_prof.get(), shrink=v_sh.get(),
                      recommended=v_prof.get().startswith("原廠建議"),
                      density=MESH_PRESETS[v_dens.get()],
-                     orient=v_or.get(), gravity=bool(v_grav.get()))
+                     orient=("__click__" if v_or.get() == _CLICK else v_or.get()),
+                     gravity=bool(v_grav.get()))
         root.destroy()
 
     tk.Button(root, text="開始模擬", command=go, width=16,
               bg="#2563eb", fg="white").grid(row=11, column=0, pady=14, padx=10, sticky="w")
     root.mainloop()
     return state
+
+
+# ════════════════════════════════════════════════════════════
+# 擺放方向：讓使用者直接點模型上的面
+# ════════════════════════════════════════════════════════════
+def choose_orientation_by_click(pv, pts_m, surf, default_down=(0, 0, -1)):
+    """開一個預覽視窗，讓使用者點選「要貼在轉盤上的那一面」。
+
+    回傳該面的朝外法向（模型座標）；使用者取消時回傳 default_down。
+
+    ★ 用自寫的 RayPicker 而非 PyVista 的 enable_*_picking：
+      內建拾取會掛常駐觀察者、每次滑鼠移動都運算，大網格下會崩潰。
+      這裡只在按下空白鍵時做一次射線求交。
+    """
+    from picking import RayPicker
+
+    faces = np.hstack([np.full((len(surf), 1), 3), surf]).ravel()
+    poly = pv.PolyData(pts_m * 1000.0, faces)
+    rp = RayPicker(poly)
+    normals = rp.face_normals()
+
+    state = {"down": np.asarray(default_down, float), "confirmed": False,
+             "hi": None}
+
+    pl = pv.Plotter(title="選擇貼在轉盤上的面", window_size=_window_size(0.7))
+    pl.set_background("white")
+    pl.add_mesh(poly, color="#b9c4d0", show_edges=False, lighting=True)
+
+    info = {"actor": None}
+
+    def label():
+        d = state["down"]
+        return (f"目前選定：朝下方向 = ({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})\n"
+                + ("（已點選模型上的面）" if state["hi"] is not None
+                   else "（尚未點選，使用預設底面）"))
+
+    def redraw_label():
+        if info["actor"] is not None:
+            pl.remove_actor(info["actor"], render=False)
+        info["actor"] = _txt(
+            pl, label(), position=(0.02, 0.86), viewport=True,
+            font_size=11, color="#0b5")
+        pl.render()
+
+    def do_pick():
+        x, y = pl.iren.interactor.GetEventPosition()
+        hit, cid = rp.pick(pl.renderer, x, y)
+        if cid is None:
+            print("[選面] 請把滑鼠移到模型上再按空白鍵")
+            return
+        # 該面的朝外法向即為「這一面朝下」時要轉到 −Z 的方向
+        state["down"] = normals[cid].astype(float)
+        state["hi"] = cid
+        # 用一個小球標示點到的位置
+        if state.get("marker") is not None:
+            pl.remove_actor(state["marker"], render=False)
+        bbox = poly.bounds
+        rad = 0.02 * max(bbox[1] - bbox[0], bbox[3] - bbox[2], bbox[5] - bbox[4])
+        state["marker"] = pl.add_mesh(pv.Sphere(radius=rad, center=hit),
+                                      color="#e11", render=False)
+        print(f"[選面] 法向 {np.round(state['down'], 3)} 將朝下")
+        redraw_label()
+
+    def confirm():
+        state["confirmed"] = True
+        pl.close()
+
+    pl.add_key_event("space", do_pick)
+    pl.add_key_event("Return", confirm)
+
+    _txt(pl, "① 用左鍵拖曳轉動模型，找到要「貼在轉盤上」的那一面\n"
+             "② 把滑鼠移到那一面上，按【空白鍵】選取（會出現紅點）\n"
+             "③ 按【Enter】確認並開始模擬　　按【Q】取消改用預設底面",
+         position=(0.02, 0.93), viewport=True, font_size=12, color="black")
+    redraw_label()
+    pl.show()
+    return state["down"]
 
 
 # ════════════════════════════════════════════════════════════
@@ -366,6 +450,42 @@ def _txt(pl, text, **kw):
     return pl.add_text(text, **kw)
 
 
+def _window_size(frac=0.88, aspect=None):
+    """依實際螢幕解析度決定視窗大小，不要寫死。
+
+    寫死尺寸在高解析度螢幕上會變成一個小視窗、在低解析度上又超出畫面。
+    """
+    try:
+        import tkinter as tk
+        r = tk.Tk(); r.withdraw()
+        sw, sh = r.winfo_screenwidth(), r.winfo_screenheight()
+        r.destroy()
+    except Exception:
+        sw, sh = 1600, 900
+    w = int(sw * frac)
+    h = int(sh * frac * 0.82)          # 留出工作列與標題列
+    if aspect:                          # 例如三面板需要較寬
+        h = min(h, int(w / aspect))
+    return [max(w, 900), max(h, 520)]
+
+
+def auto_scale(pts, u_shape, target_frac=0.06):
+    """自動決定變形放大倍率，使最大變形約為零件尺寸的 target_frac。
+
+    ★ 為什麼要自動：實際翹曲往往只有零件尺寸的萬分之幾。
+      先前固定用 ×20——以真實零件為例，翹曲 0.0465 mm × 20 = 0.93 mm，
+      在 210 mm 的零件上僅 0.44%，**肉眼完全看不出來**，
+      按 D 切換「變形／未變形」也就看不出差別
+      （使用者因此回報「按鍵 D 沒作用」，其實有作用，只是看不見）。
+    """
+    dmax = float(np.linalg.norm(u_shape, axis=1).max()) if len(u_shape) else 0.0
+    if dmax <= 1e-15:
+        return 1.0
+    bbox = pts.max(axis=0) - pts.min(axis=0)
+    diag = float(np.linalg.norm(bbox))
+    return float(np.clip(target_frac * diag / dmax, 1.0, 100000.0))
+
+
 def _clim(vals, lo=2.0, hi=98.0):
     """用百分位數決定色階範圍。
 
@@ -390,11 +510,17 @@ def _clim(vals, lo=2.0, hi=98.0):
 #     它們會互相重疊——標題在正上方置中、說明在左上角，兩者在窄面板中
 #     會直接壓在一起（實測畫面上說明文字蓋住標題，完全看不清）。
 #     改用明確座標，各行之間留出固定間距。
-_P_TITLE = (0.02, 0.945)
-_P_DESC  = (0.02, 0.875)
-_P_NOTE  = (0.02, 0.825)
-_P_SUMM  = (0.02, 0.115)
+#   版面配置：上方 0.80–1.00 放標題與說明、下方 0.00–0.22 放摘要與色階條，
+#   中間 0.22–0.80 完全留給模型。相機另外縮放以確保模型不會頂到文字。
+_P_TITLE = (0.02, 0.955)
+_P_DESC  = (0.02, 0.895)
+_P_NOTE  = (0.02, 0.850)
+_P_SUMM  = (0.02, 0.135)
 _P_HINT  = (0.02, 0.015)
+#   相機縮放：<1 表示把模型拉遠、留出上下邊界。
+#   ★ 不縮放的話 reset_camera() 會讓模型填滿整個視埠，直接被上下文字蓋住
+#     （使用者回報「文字遮擋到模型」）。
+_CAM_ZOOM = 0.62
 
 
 def render_panels(pv, pl, st, resin, profile):
@@ -427,8 +553,9 @@ def render_panels(pv, pl, st, resin, profile):
     _txt(pl, summary_text(resin, profile, r, st["info"],
                           (st["extra"] + "\n" + cmp_txt).strip()),
          position=_P_SUMM, viewport=True, font_size=6, color="#222222")
-    _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　+ - 變形倍率　D 變形開關\n"
-             "3 切換右圖　P 選點 → H 鑽孔　U 復原　S 存圖　Q 離開",
+    _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　＋－ 變形倍率　Ｄ 變形開關\n"
+             "３ 切換右圖　　Ｈ 進入鑽孔模式 → 移動滑鼠 → Enter 確認　"
+             "Ｕ 復原　Ｓ 存圖　Ｑ 離開",
          position=_P_HINT, viewport=True, font_size=7, color="#333333")
 
     # ── 中：翹曲量 ──
@@ -441,8 +568,8 @@ def render_panels(pv, pl, st, resin, profile):
                 below_color="#2b2b6b", above_color="#7a0000",
                 scalar_bar_args={"title": "翹曲量 (mm)", "color": "black",
                                  "title_font_size": 13, "label_font_size": 10,
-                                 "position_x": 0.05, "position_y": 0.02,
-                                 "width": 0.9, "height": 0.06})
+                                 "position_x": 0.08, "position_y": 0.035,
+                                 "width": 0.84, "height": 0.045})
     _txt(pl, f"② 翹曲量（形狀跑掉多少）　最大 {r['max_warp_mm']:.4f} mm",
          position=_P_TITLE, viewport=True, font_size=12, color="black")
     _txt(pl, "各點偏離原位的距離，已扣掉均勻收縮與整體位移。",
@@ -476,8 +603,8 @@ def render_panels(pv, pl, st, resin, profile):
                 below_color="#2b2b6b", above_color="#7a0000",
                 scalar_bar_args={"title": bar, "color": "black",
                                  "title_font_size": 13, "label_font_size": 10,
-                                 "position_x": 0.05, "position_y": 0.02,
-                                 "width": 0.9, "height": 0.06})
+                                 "position_x": 0.08, "position_y": 0.035,
+                                 "width": 0.84, "height": 0.045})
     _txt(pl, head, position=_P_TITLE, viewport=True, font_size=12, color="black")
     _txt(pl, sub_desc[0], position=_P_DESC, viewport=True,
          font_size=9, color="#444444")
@@ -514,7 +641,16 @@ def main():
               f"（TetGen 開關 {info['switches']}）")
         # ★ 依使用者選的擺放方向旋轉：把「貼在轉盤上的面」轉到 −Z，
         #   重力即為 (0,0,−1)、底面節點視為受轉盤支撐。
-        pts, _R = orient_to_turntable(pts, ORIENTATIONS[cfg["orient"]])
+        if cfg.get("orient") == "__click__":
+            prog.close()
+            print("[擺放] 請在預覽視窗中點選要貼在轉盤上的面…")
+            down = choose_orientation_by_click(
+                pv, pts, surf, default_down=(0, 0, -1))
+            prog = Progress()
+            prog.stage("已選定擺放方向，繼續計算…")
+        else:
+            down = ORIENTATIONS[cfg["orient"]]
+        pts, _R = orient_to_turntable(pts, down)
         support = turntable_nodes(pts) if cfg["gravity"] else None
         if cfg["gravity"]:
             print(f"[擺放] {cfg['orient']}，轉盤接觸節點 {len(support):,} 個，計入自重")
@@ -551,14 +687,15 @@ def main():
 
     # ── 狀態 ──
     st = {"pts": pts, "tets": tets, "surf": surf, "res": base, "info": info,
-          "third": "stress", "scale": 20.0, "deformed": True, "pick": None,
+          "third": "stress", "scale": auto_scale(pts, base["u_shape"]),
+          "deformed": True, "pick": None, "drill": None,
           "history": [], "baseline_warp": base["max_warp_mm"], "extra": extra}
 
     # ── 三面板連動視圖 ──
     #   左：原始模型（比對基準）　中：翹曲量　右：殘留應力
     #   link_views() 讓三個面板共用相機，轉動任一個另外兩個同步轉。
     pl = pv.Plotter(title="SLA 後固化變形模擬", shape=(1, 3), border=True,
-                    border_color="#cccccc")
+                    border_color="#cccccc", window_size=_window_size(0.92))
     pl.set_background("white")
 
     def refresh():
@@ -580,22 +717,110 @@ def main():
         print(f"[存檔] {out}")
     pl.add_key_event("s", save_png)
 
-    def do_drill():
-        """在先前用 P 選定的位置沿視線方向鑽穿。"""
-        pos = st.get("pick")
-        if pos is None:
-            print("[鑽孔] 請先把滑鼠移到零件上按 P 選點，再按 H 鑽孔")
+    # ── 鑽孔模式：滑鼠跟隨的虛擬圓柱預覽 ──
+    #   按 H 進入／離開。進入後圓柱會跟著滑鼠貼在模型表面上，
+    #   Enter 確認鑽孔、[ ] 調整孔徑、H 或 Esc 取消。
+    #   ★ 觀察者只更新「一個預覽 actor」，不做 clear_actors／subplot 切換，
+    #     與先前造成閃退的做法（在回呼中重建整個場景）本質不同。
+    from picking import RayPicker
+    drill = {"on": False, "picker": None, "actor": None, "hint": None,
+             "radius": None, "hit": None, "axis": None, "obs": None}
+
+    def _bbox_min():
+        b = st["pts"].max(axis=0) - st["pts"].min(axis=0)
+        return float(b.min())
+
+    def _rebuild_picker():
+        faces = np.hstack([np.full((len(st["surf"]), 1), 3), st["surf"]]).ravel()
+        poly = pv.PolyData(st["pts"] * 1000.0, faces)
+        drill["picker"] = RayPicker(poly)
+
+    def _clear_preview():
+        for k in ("actor", "hint"):
+            if drill[k] is not None:
+                try:
+                    pl.remove_actor(drill[k], render=False)
+                except Exception:
+                    pass
+                drill[k] = None
+
+    def _update_preview(*_):
+        """滑鼠移動時把預覽圓柱貼到模型表面。只更新單一 actor。"""
+        if not drill["on"]:
             return
-        p_world = np.array(pos, float) / 1000.0            # mm → m
-        # 沿目前視線方向鑽穿整個零件
-        cam = np.array(pl.camera.position, float) / 1000.0
-        focal = np.array(pl.camera.focal_point, float) / 1000.0
-        axis = focal - cam
-        axis /= max(np.linalg.norm(axis), 1e-12)
+        try:
+            x, y = pl.iren.interactor.GetEventPosition()
+            pl.subplot(0, 1)
+            hit, cid = drill["picker"].pick(pl.renderer, x, y)
+        except Exception:
+            return
+        if hit is None:
+            return
+        axis = drill["picker"].view_direction(pl.renderer, x, y)
+        drill["hit"] = np.array(hit, float) / 1000.0
+        drill["axis"] = axis
+        bbox_mm = (st["pts"].max(axis=0) - st["pts"].min(axis=0)) * 1000.0
+        L = float(np.linalg.norm(bbox_mm))
+        r_mm = drill["radius"] * 1000.0
+        cyl = pv.Cylinder(center=np.array(hit, float), direction=axis,
+                          radius=r_mm, height=L * 1.2, resolution=32)
+        _clear_preview()
+        drill["actor"] = pl.add_mesh(cyl, color="#ff3333", opacity=0.45,
+                                     render=False)
+        drill["hint"] = _txt(
+            pl, f"鑽孔模式　⌀{r_mm*2:.2f} mm　"
+                f"[ ] 調孔徑　Enter 確認　H 取消",
+            position=(0.02, 0.06), viewport=True, font_size=11, color="#cc0000")
+        pl.render()
+
+    def toggle_drill():
+        if drill["on"]:
+            drill["on"] = False
+            if drill["obs"] is not None:
+                try:
+                    pl.iren.interactor.RemoveObserver(drill["obs"])
+                except Exception:
+                    pass
+                drill["obs"] = None
+            _clear_preview()
+            pl.render()
+            print("[鑽孔] 已離開鑽孔模式")
+            return
+        drill["on"] = True
+        if drill["radius"] is None:
+            drill["radius"] = float(np.clip(_bbox_min() * 0.12, 0.0005, 0.005))
+        _rebuild_picker()
+        drill["obs"] = pl.iren.interactor.AddObserver(
+            "MouseMoveEvent", _update_preview)
+        print(f"[鑽孔] 已進入鑽孔模式：把滑鼠移到模型上會出現紅色圓柱，"
+              f"Enter 確認、[ ] 調孔徑、H 取消")
+        _update_preview()
+    pl.add_key_event("h", toggle_drill)
+
+    def bump_radius(mul):
+        def _():
+            if not drill["on"]:
+                return
+            drill["radius"] = float(np.clip(drill["radius"] * mul,
+                                            _bbox_min() * 0.02,
+                                            _bbox_min() * 0.45))
+            _update_preview()
+        return _
+    pl.add_key_event("bracketright", bump_radius(1.25))
+    pl.add_key_event("bracketleft", bump_radius(1 / 1.25))
+
+    def do_drill():
+        """在預覽圓柱的位置實際鑽孔並重算。"""
+        if not drill["on"] or drill["hit"] is None:
+            print("[鑽孔] 請先按 H 進入鑽孔模式，把滑鼠移到模型上再按 Enter")
+            return
+        p_world = drill["hit"]
+        axis = drill["axis"]
         bbox = st["pts"].max(axis=0) - st["pts"].min(axis=0)
         L = float(np.linalg.norm(bbox))
-        radius = float(np.clip(bbox.min() * 0.12, 0.0005, 0.005))
+        radius = drill["radius"]
         p0, p1 = p_world - axis * L, p_world + axis * L
+        toggle_drill()                       # 先離開鑽孔模式再重算
         try:
             tets_n, _, n_rm = drill_hole(st["pts"], st["tets"], p0, p1, radius)
             if n_rm == 0:
@@ -624,7 +849,7 @@ def main():
             refresh()
         except Exception as ex:
             print(f"[鑽孔] 失敗：{ex}")
-    pl.add_key_event("h", do_drill)
+    pl.add_key_event("Return", do_drill)
 
     def undo():
         if not st["history"]:
@@ -660,29 +885,13 @@ def main():
         except Exception:
             pass
 
-    # ★★ 不使用 enable_point_picking ★★
-    #   它會在 interactor 上掛一個**常駐觀察者**，滑鼠事件都會觸發拾取運算——
-    #   包含「旋轉拖曳」。在 16 萬個表面三角形 × 3 個連動面板上，
-    #   每次拖曳都在做大量射線求交，實測會在轉動幾秒後直接閃退。
-    #   （使用者回報：「轉動一下子就當掉閃退」。）
-    #   改成按 P 時才做**單次**拾取，平時完全不介入滑鼠事件。
-    def do_pick():
-        try:
-            pos = pl.pick_mouse_position()
-        except Exception as ex:
-            print(f"[選點] 失敗：{ex}")
-            return
-        if pos is None:
-            print("[選點] 請把滑鼠移到零件上再按 P")
-            return
-        st["pick"] = np.array(pos, float)
-        print(f"[選點] {np.round(st['pick'], 2)} mm，按 H 在此鑽孔")
-    pl.add_key_event("p", do_pick)
+    # 選點已由「鑽孔模式的即時圓柱預覽」取代，不再需要獨立的 P 鍵選點。
 
     pl.link_views()          # 三個面板共用相機，轉一個全部同步
     refresh()
     pl.subplot(0, 1)
     pl.reset_camera()
+    pl.camera.zoom(_CAM_ZOOM)   # 留出上下文字帶，模型不被遮住
     # 關閉反鋸齒：部分顯示卡驅動在多視埠 + 大網格下容易不穩，
     # 且對本工具的判讀沒有幫助。
     try:
