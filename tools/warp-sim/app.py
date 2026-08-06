@@ -125,7 +125,7 @@ def ask_settings(default_stl=None):
 
     root = tk.Tk()
     root.title("SLA 後固化變形模擬 — 設定")
-    root.geometry("640x440")
+    root.geometry("680x520")
     state = {"ok": False}
 
     tk.Label(root, text="STL 檔案").grid(row=0, column=0, sticky="w", padx=10, pady=(12, 2))
@@ -185,13 +185,47 @@ def ask_settings(default_stl=None):
 
     tk.Label(root, text="哪一面放在轉盤上").grid(row=8, column=1, sticky="w",
                                               padx=10, pady=(10, 2))
-    _CLICK = "▶ 在 3D 預覽中點選面（推薦）"
-    v_or = tk.StringVar(value=_CLICK)
-    ttk.Combobox(root, textvariable=v_or, values=[_CLICK] + list(ORIENTATIONS),
+    v_or = tk.StringVar(value=list(ORIENTATIONS)[0])
+    ttk.Combobox(root, textvariable=v_or, values=list(ORIENTATIONS),
                  width=24, state="readonly").grid(row=9, column=1, sticky="w", padx=10)
+
+    # ★ 「點選面」在**按下開始模擬之前**就完成，不打斷後續流程。
+    #   只讀 STL 表面即可（<1 秒），不必等四面體網格化（數十秒）。
+    picked = {"down": None}
+    lbl_or = tk.Label(root, text="", fg="#0a0", justify="left", wraplength=300)
+    lbl_or.grid(row=11, column=1, sticky="w", padx=10)
+
+    def pick_face():
+        path = v_file.get().strip()
+        if not path:
+            lbl_or.config(text="請先選擇 STL 檔案", fg="#c00")
+            return
+        try:
+            import pyvista as pv
+            from meshing import read_stl, check_surface
+            verts, tri = read_stl(path)
+            ok, _info, msg = check_surface(verts, tri)
+            if not ok:
+                lbl_or.config(text=msg.splitlines()[0], fg="#c00")
+                return
+            root.withdraw()                     # 收起設定視窗避免兩個事件迴圈打架
+            try:
+                d = choose_orientation_by_click(pv, verts, tri)
+            finally:
+                root.deiconify()
+            picked["down"] = np.asarray(d, float)
+            lbl_or.config(
+                text=f"已選定朝下方向 ({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})",
+                fg="#0a0")
+        except Exception as ex:
+            lbl_or.config(text=f"選面失敗：{ex}", fg="#c00")
+
+    tk.Button(root, text="▶ 在 3D 中點選面…", command=pick_face,
+              bg="#0e7", fg="black").grid(row=10, column=1, sticky="w",
+                                          padx=10, pady=(4, 0))
     v_grav = tk.BooleanVar(value=True)
     tk.Checkbutton(root, text="計入自重（零件平放於轉盤，承受自身重量）",
-                   variable=v_grav).grid(row=10, column=1, sticky="w", padx=8)
+                   variable=v_grav).grid(row=12, column=1, sticky="w", padx=8)
 
     tk.Label(root, text="網格密度").grid(row=8, column=0, sticky="w",
                                        padx=10, pady=(10, 2))
@@ -208,12 +242,12 @@ def ask_settings(default_stl=None):
                      profile=v_prof.get(), shrink=v_sh.get(),
                      recommended=v_prof.get().startswith("原廠建議"),
                      density=MESH_PRESETS[v_dens.get()],
-                     orient=("__click__" if v_or.get() == _CLICK else v_or.get()),
+                     orient=v_or.get(), down_vec=picked["down"],
                      gravity=bool(v_grav.get()))
         root.destroy()
 
     tk.Button(root, text="開始模擬", command=go, width=16,
-              bg="#2563eb", fg="white").grid(row=11, column=0, pady=14, padx=10, sticky="w")
+              bg="#2563eb", fg="white").grid(row=13, column=0, pady=14, padx=10, sticky="w")
     root.mainloop()
     return state
 
@@ -221,8 +255,12 @@ def ask_settings(default_stl=None):
 # ════════════════════════════════════════════════════════════
 # 擺放方向：讓使用者直接點模型上的面
 # ════════════════════════════════════════════════════════════
-def choose_orientation_by_click(pv, pts_m, surf, default_down=(0, 0, -1)):
+def choose_orientation_by_click(pv, verts_mm, tri, default_down=(0, 0, -1)):
     """開一個預覽視窗，讓使用者點選「要貼在轉盤上的那一面」。
+
+    verts_mm/tri 直接來自 read_stl()，**不需要先做四面體網格化**——
+    只是看外觀選面而已，讀 STL 表面不到一秒，而網格化要數十秒。
+    這讓這個步驟可以放在「開始模擬」之前的設定階段完成。
 
     回傳該面的朝外法向（模型座標）；使用者取消時回傳 default_down。
 
@@ -232,8 +270,8 @@ def choose_orientation_by_click(pv, pts_m, surf, default_down=(0, 0, -1)):
     """
     from picking import RayPicker
 
-    faces = np.hstack([np.full((len(surf), 1), 3), surf]).ravel()
-    poly = pv.PolyData(pts_m * 1000.0, faces)
+    faces = np.hstack([np.full((len(tri), 1), 3), tri]).ravel()
+    poly = pv.PolyData(np.asarray(verts_mm, float), faces)
     rp = RayPicker(poly)
     normals = rp.face_normals()
 
@@ -641,15 +679,9 @@ def main():
               f"（TetGen 開關 {info['switches']}）")
         # ★ 依使用者選的擺放方向旋轉：把「貼在轉盤上的面」轉到 −Z，
         #   重力即為 (0,0,−1)、底面節點視為受轉盤支撐。
-        if cfg.get("orient") == "__click__":
-            prog.close()
-            print("[擺放] 請在預覽視窗中點選要貼在轉盤上的面…")
-            down = choose_orientation_by_click(
-                pv, pts, surf, default_down=(0, 0, -1))
-            prog = Progress()
-            prog.stage("已選定擺放方向，繼續計算…")
-        else:
-            down = ORIENTATIONS[cfg["orient"]]
+        # 擺放方向在設定階段就已決定（下拉選單或 3D 點選），此處不再打斷流程
+        down = (cfg["down_vec"] if cfg.get("down_vec") is not None
+                else ORIENTATIONS[cfg["orient"]])
         pts, _R = orient_to_turntable(pts, down)
         support = turntable_nodes(pts) if cfg["gravity"] else None
         if cfg["gravity"]:

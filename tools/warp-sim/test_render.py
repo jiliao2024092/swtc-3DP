@@ -141,5 +141,48 @@ if cl is not None:
 chk(app._clim(np.zeros(100)) is None, "完全均勻的場回傳 None（交給 VTK 自動處理）")
 chk(app._clim(np.array([])) is None, "空陣列不會炸")
 
+print("\n══ 7. 擺放方向：點選面的資料流 ══")
+# 設定視窗的「在 3D 中點選面」直接吃 read_stl() 的輸出（不做四面體網格化），
+# 這裡驗證那條資料流能正確建出 PolyData 與 RayPicker、且法向可用。
+from meshing import read_stl
+from picking import RayPicker
+verts, tri = read_stl(f)
+chk(verts.ndim == 2 and verts.shape[1] == 3, f"read_stl 頂點 {verts.shape}")
+chk(tri.ndim == 2 and tri.shape[1] == 3, f"read_stl 三角形 {tri.shape}")
+faces = np.hstack([np.full((len(tri), 1), 3), tri]).ravel()
+poly = pv.PolyData(np.asarray(verts, float), faces)
+chk(poly.n_cells == len(tri), "PolyData 面數一致")
+rp = RayPicker(poly)
+nrm = rp.face_normals()
+chk(nrm.shape == (len(tri), 3), f"每個面都有法向 {nrm.shape}")
+chk(np.allclose(np.linalg.norm(nrm, axis=1), 1.0, atol=1e-5), "法向皆為單位向量")
+
+# 從正上方拾取應打到頂面，法向約為 +Z
+pl = pv.Plotter(off_screen=True, window_size=(400, 300))
+pl.add_mesh(poly)
+pl.camera_position = "xy"
+pl.camera.position = (30, 20, 500)
+pl.camera.focal_point = (30, 20, 0)
+pl.camera.up = (0, 1, 0)
+pl.render()
+hit, cid = rp.pick(pl.renderer, 200, 150)
+chk(hit is not None, "★ 由上方拾取有打到模型", hit)
+if cid is not None:
+    n = nrm[cid]
+    chk(abs(n[2]) > 0.9, f"★ 打到的面法向接近 ±Z（{np.round(n,3)}）")
+chk(rp.pick(pl.renderer, 2, 2)[0] is None, "模型外拾取回傳 None")
+pl.close()
+
+# 選定的法向要能被 orient_to_turntable 接受
+from meshing import orient_to_turntable
+for n in (nrm[0], nrm[len(nrm)//2], np.array([0.3, -0.5, 0.81])):
+    try:
+        _p, R = orient_to_turntable(np.asarray(verts, float) / 1000.0, n)
+        got = R @ (n / np.linalg.norm(n))
+        chk(np.allclose(got, [0, 0, -1], atol=1e-8),
+            f"法向 {np.round(n,2)} 可轉到 −Z")
+    except Exception as ex:
+        chk(False, f"法向 {np.round(n,2)} 轉換失敗", ex)
+
 print(f"\n{'='*56}\n通過 {PASS} 項，失敗 {FAIL} 項")
 sys.exit(1 if FAIL else 0)
