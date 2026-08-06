@@ -426,10 +426,10 @@ def render_panels(pv, pl, st, resin, profile):
                    f"（{pct:+.1f}%）")
     _txt(pl, summary_text(resin, profile, r, st["info"],
                           (st["extra"] + "\n" + cmp_txt).strip()),
-         position=_P_SUMM, viewport=True, font_size=8, color="black")
-    _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　D 變形開關　3 切換右圖\n"
-             "P 選點 → H 鑽孔　U 復原　S 存圖　Q 離開",
-         position=_P_HINT, viewport=True, font_size=9, color="#333333")
+         position=_P_SUMM, viewport=True, font_size=6, color="#222222")
+    _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　+ - 變形倍率　D 變形開關\n"
+             "3 切換右圖　P 選點 → H 鑽孔　U 復原　S 存圖　Q 離開",
+         position=_P_HINT, viewport=True, font_size=7, color="#333333")
 
     # ── 中：翹曲量 ──
     pl.subplot(0, 1)
@@ -636,12 +636,29 @@ def main():
         print("[復原] 已回到上一步")
     pl.add_key_event("u", undo)
 
-    pl.subplot(0, 1)
-    pl.add_slider_widget(
-        lambda v: (st.update(scale=v), refresh())[-1],
-        [1.0, 200.0], value=st["scale"], title="變形放大倍率",
-        pointa=(0.10, 0.90), pointb=(0.90, 0.90),
-        style="modern", color="black")
+    # ★★ 不使用 add_slider_widget ★★
+    #   滑桿的回呼會在**widget 互動進行中**呼叫 refresh()，
+    #   而 refresh() 會 clear_actors()、切換 subplot、重新 add_mesh——
+    #   在 VTK 的 widget 回呼裡改動場景結構是典型的崩潰來源，
+    #   而且滑桿橫跨面板上方，隨手一點就可能碰到。
+    #   （使用者回報「一點擊就閃退」。）
+    #   改用鍵盤調整倍率：互動與重繪完全分離，不會在回呼中動場景。
+    def bump_scale(mul):
+        def _():
+            st["scale"] = float(np.clip(st["scale"] * mul, 1.0, 500.0))
+            print(f"[變形放大] ×{st['scale']:.0f}")
+            refresh()
+        return _
+    for k in ("plus", "equal", "+", "="):
+        try:
+            pl.add_key_event(k, bump_scale(1.5))
+        except Exception:
+            pass
+    for k in ("minus", "-"):
+        try:
+            pl.add_key_event(k, bump_scale(1 / 1.5))
+        except Exception:
+            pass
 
     # ★★ 不使用 enable_point_picking ★★
     #   它會在 interactor 上掛一個**常駐觀察者**，滑鼠事件都會觸發拾取運算——
