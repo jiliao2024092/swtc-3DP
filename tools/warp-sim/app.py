@@ -338,23 +338,25 @@ def settings_flow(default_stl=None):
 
 
 # ════════════════════════════════════════════════════════════
-# 3D 預覽：點選「貼在轉盤上的面」
+# 3D 預覽：選擇「貼在轉盤上的面」
 # ════════════════════════════════════════════════════════════
-def choose_orientation_by_click(pv, verts_mm, tri, default_down=(0, 0, -1)):
-    """開預覽視窗讓使用者**用滑鼠點**選要貼在轉盤上的面。
+def choose_orientation_by_click(pv, verts_mm, tri, default_down=(0, 0, -1),
+                                _probe=None):
+    """開預覽視窗選取要貼在轉盤上的面。回傳朝外法向；取消回傳 None。
 
-    回傳該面的朝外法向；取消則回傳 None（呼叫端沿用下拉選單的選擇）。
+    _probe：測試用接縫。給定時以 _probe(pl, S, on_click, set_axis) 取代
+    pl.show()，讓自動測試能在離屏環境直接驗證點擊與軸向鍵的行為
+    （先前兩次「點不到面」都是因為互動層沒有任何測試涵蓋）。
 
-    ★ 為什麼能安全地用「左鍵點擊」拾取：
-      先前在結果視窗用 enable_point_picking 會崩潰，是因為它掛**常駐**
-      觀察者、每個滑鼠事件都運算，而且場景有 3 個連動面板與 16 萬三角形。
-      這裡是**單一面板、單一網格、無純量場**的簡單場景，而且我們自己
-      在 LeftButtonRelease 時才做**一次**射線求交。
+    ★★ 拾取必須用 PyVista 的 track_click_position，不可自行 AddObserver ★★
+      先前兩次「點不到面」都是同一個原因：把原生觀察者掛在
+      pl.iren.interactor 上，而且是在 show() **之前**掛的——
+      那時 interactor 尚未初始化，觀察者等於掛在之後會被取代的物件上。
+      track_click_position 由 PyVista 在正確時機接線，
+      而且它內部已處理「點擊 vs 拖曳」的判別（_MAX_CLICK_DELTA/DELAY），
+      所以左鍵仍可正常旋轉。
 
-      關鍵是要區分「點擊」與「拖曳旋轉」：按下與放開的位移小於門檻才算點擊，
-      否則視為旋轉、不拾取。這樣左鍵同時能旋轉又能選面。
-
-    verts_mm/tri 直接來自 read_stl()，不需要四面體網格化。
+    另外提供 1–6 鍵直接指定六個軸向，作為拾取失效時的備援途徑。
     """
     from picking import RayPicker
 
@@ -364,106 +366,107 @@ def choose_orientation_by_click(pv, verts_mm, tri, default_down=(0, 0, -1)):
     normals = rp.face_normals()
     bb = poly.bounds
     span = max(bb[1] - bb[0], bb[3] - bb[2], bb[5] - bb[4])
+    centre = np.array([(bb[0] + bb[1]) / 2, (bb[2] + bb[3]) / 2,
+                       (bb[4] + bb[5]) / 2])
 
-    S = {"down": None, "press": None, "marker": None, "lbl": None,
-         "arrow": None, "ok": False}
+    AXES = [((0, 0, -1), "Z− 底面"), ((0, 0, 1), "Z+ 頂面"),
+            ((-1, 0, 0), "X− 左面"), ((1, 0, 0), "X+ 右面"),
+            ((0, -1, 0), "Y− 前面"), ((0, 1, 0), "Y+ 後面")]
 
-    pl = pv.Plotter(title="選擇貼在轉盤上的面", window_size=_window_size(0.68))
-    pl.set_background("#eef2f6")
-    pl.add_mesh(poly, color="#c8d3de", show_edges=False, lighting=True,
-                smooth_shading=False, specular=0.25)
+    S = {"down": None, "src": "", "ok": False, "actors": []}
+
+    pl = pv.Plotter(title="選擇貼在轉盤上的面", window_size=_window_size(0.72))
+    pl.set_background("#f7f9fb")
+    pl.add_mesh(poly, color="#b7c7d8", show_edges=False, lighting=True,
+                specular=0.3, specular_power=18, ambient=0.25)
     try:
         pl.add_axes(line_width=3)
     except Exception:
         pass
 
-    def _status():
-        if S["down"] is None:
-            return "尚未選擇　→　用滑鼠左鍵**點一下**要貼在轉盤上的面"
-        d = S["down"]
-        return (f"已選定　朝下方向 = ({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})"
-                "　→　按 Enter 確認")
-
-    def _redraw_status():
-        if S["lbl"] is not None:
+    def _clear():
+        for a in S["actors"]:
             try:
-                pl.remove_actor(S["lbl"], render=False)
+                pl.remove_actor(a, render=False)
             except Exception:
                 pass
-        S["lbl"] = _txt(pl, _status(), position=(0.02, 0.055), viewport=True,
-                        font_size=13,
-                        color=("#047857" if S["down"] is not None else "#b45309"))
+        S["actors"] = []
+
+    def _show(down, src, hit=None):
+        S["down"] = np.asarray(down, float)
+        S["down"] /= max(np.linalg.norm(S["down"]), 1e-12)
+        S["src"] = src
+        _clear()
+        anchor = centre if hit is None else np.asarray(hit, float)
+        if hit is not None:
+            S["actors"].append(pl.add_mesh(
+                pv.Sphere(radius=span * 0.02, center=anchor),
+                color="#dc2626", render=False))
+        # 箭頭：從零件指向「會朝下」的方向
+        S["actors"].append(pl.add_mesh(
+            pv.Arrow(start=anchor, direction=S["down"], scale=span * 0.35),
+            color="#dc2626", render=False))
+        d = S["down"]
+        S["actors"].append(_txt(
+            pl, f"✔ 已選定（{src}）　朝下方向 = "
+                f"({d[0]:+.2f}, {d[1]:+.2f}, {d[2]:+.2f})　→　按 Enter 確認",
+            position=(0.02, 0.045), viewport=True, font_size=_fs(pl, 15),
+            color="#047857"))
         pl.render()
+        print(f"[選面] {src}：{np.round(d, 3)} 會朝下")
 
-    def _mark(hit, nrm):
-        for k in ("marker", "arrow"):
-            if S[k] is not None:
-                try:
-                    pl.remove_actor(S[k], render=False)
-                except Exception:
-                    pass
-                S[k] = None
-        S["marker"] = pl.add_mesh(
-            pv.Sphere(radius=span * 0.018, center=hit), color="#dc2626",
-            render=False)
-        # 箭頭指出「這一面會朝下」
-        S["arrow"] = pl.add_mesh(
-            pv.Arrow(start=hit, direction=nrm, scale=span * 0.28),
-            color="#dc2626", render=False)
-
-    def _do_pick(x, y):
-        hit, cid = rp.pick(pl.renderer, x, y)
+    def on_click(pos):
+        """track_click_position 的回呼，pos 為 (x, y) 顯示座標。"""
+        try:
+            x, y = int(pos[0]), int(pos[1])
+            hit, cid = rp.pick(pl.renderer, x, y)
+        except Exception as ex:
+            print(f"[選面] 拾取失敗：{ex}")
+            return
         if cid is None:
-            print("[選面] 沒點到模型，請點在模型表面上")
+            print("[選面] 沒點到模型，請點在模型表面上（或用 1–6 鍵指定軸向）")
             return
-        S["down"] = normals[cid].astype(float)
-        _mark(hit, S["down"])
-        print(f"[選面] 已選：法向 {np.round(S['down'], 3)} 會朝下")
-        _redraw_status()
+        _show(normals[cid], "點選面", hit)
 
-    # ── 點擊 vs 拖曳 ──
-    def on_press(obj, evt):
-        S["press"] = pl.iren.interactor.GetEventPosition()
+    pl.track_click_position(callback=on_click, side="left")
 
-    def on_release(obj, evt):
-        p0 = S["press"]
-        S["press"] = None
-        if p0 is None:
-            return
-        x, y = pl.iren.interactor.GetEventPosition()
-        if abs(x - p0[0]) + abs(y - p0[1]) > 4:      # 移動過多 ⇒ 是旋轉
-            return
-        _do_pick(x, y)
-
-    pl.iren.interactor.AddObserver("LeftButtonPressEvent", on_press, 1.0)
-    pl.iren.interactor.AddObserver("LeftButtonReleaseEvent", on_release, -1.0)
+    for i, (vec, name) in enumerate(AXES, start=1):
+        pl.add_key_event(str(i), (lambda v, n: (lambda: _show(v, n)))(vec, name))
 
     def confirm():
         if S["down"] is None:
-            print("[選面] 尚未選擇任何面；如要沿用下拉選單設定請按 Q 離開")
+            print("[選面] 尚未選擇；按 1–6 可直接指定軸向，或按 Q 取消")
             return
         S["ok"] = True
         pl.close()
     pl.add_key_event("Return", confirm)
 
     _txt(pl, "選擇「要貼在固化機轉盤上」的那一面",
-         position=(0.02, 0.955), viewport=True, font_size=16, color="#0f172a")
-    _txt(pl, "左鍵拖曳＝旋轉　　左鍵單擊模型＝選取該面（出現紅點與箭頭）\n"
-             "滾輪＝縮放　　Enter＝確認並返回　　Q＝取消（沿用下拉選單）",
-         position=(0.02, 0.885), viewport=True, font_size=11, color="#334155")
-    _redraw_status()
+         position=(0.02, 0.955), viewport=True, font_size=_fs(pl, 19),
+         color="#0f172a")
+    _txt(pl, "左鍵拖曳＝旋轉　滾輪＝縮放\n"
+             "左鍵單擊模型表面＝選取該面　（也可按 1–6 直接指定：\n"
+             "  1 Z−底　2 Z+頂　3 X−左　4 X+右　5 Y−前　6 Y+後）\n"
+             "Enter＝確認　Q＝取消",
+         position=(0.02, 0.775), viewport=True, font_size=_fs(pl, 13),
+         color="#334155")
+    _txt(pl, "尚未選擇　→　點一下模型上要朝下的那一面，或按 1–6",
+         position=(0.02, 0.045), viewport=True, font_size=_fs(pl, 15),
+         color="#b45309")
     pl.reset_camera()
-    pl.camera.zoom(0.85)
+    pl.camera.zoom(0.8)
     try:
         pl.disable_anti_aliasing()
     except Exception:
         pass
+    if _probe is not None:
+        _probe(pl, S, on_click, _show)
+        pl.close()
+        return S["down"] if S["ok"] else None
     pl.show()
     return S["down"] if S["ok"] else None
 
 
-# ════════════════════════════════════════════════════════════
-# 進度視窗
 # ════════════════════════════════════════════════════════════
 class Progress:
     """網格化與求解期間的進度顯示。
@@ -653,6 +656,20 @@ def auto_scale(pts, u_shape, target_frac=0.06):
     return float(np.clip(target_frac * diag / dmax, 1.0, 100000.0))
 
 
+def _fs(pl, base):
+    """字級隨視窗高度縮放。
+
+    ★ VTK 的 font_size 是**像素**，不會隨視窗大小改變——
+      視窗放大時文字看起來相對變小、縮小時又會擠成一團或蓋住模型。
+      以 900 px 高為基準等比例縮放，版面在任何解析度下才一致。
+    """
+    try:
+        h = int(pl.window_size[1])
+    except Exception:
+        h = 900
+    return max(6, int(round(base * h / 900.0)))
+
+
 def _clim(vals, lo=2.0, hi=98.0):
     """用百分位數決定色階範圍。
 
@@ -705,11 +722,11 @@ def render_panels(pv, pl, st, resin, profile):
     pl.add_mesh(_make_grid(pv, st, 0.0), color="#b9c4d0", show_edges=False,
                 opacity=1.0, lighting=True)
     _txt(pl, "① 原始模型（比對基準）", position=_P_TITLE, viewport=True,
-         font_size=12, color="black")
+         font_size=_fs(pl, 15), color="#0f172a")
     _txt(pl, "你匯入的原始形狀，完全未變形。", position=_P_DESC, viewport=True,
-         font_size=9, color="#444444")
+         font_size=_fs(pl, 11), color="#3f4a57")
     _txt(pl, "與中／右面板對照，即可看出哪裡跑掉。", position=_P_NOTE,
-         viewport=True, font_size=9, color="#444444")
+         viewport=True, font_size=_fs(pl, 11), color="#3f4a57")
     cmp_txt = ""
     if st["history"]:
         pct = ((r["max_warp_mm"] - st["baseline_warp"])
@@ -719,11 +736,11 @@ def render_panels(pv, pl, st, resin, profile):
                    f"（{pct:+.1f}%）")
     _txt(pl, summary_text(resin, profile, r, st["info"],
                           (st["extra"] + "\n" + cmp_txt).strip()),
-         position=_P_SUMM, viewport=True, font_size=6, color="#222222")
+         position=_P_SUMM, viewport=True, font_size=_fs(pl, 8), color="#334155")
     _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　＋－ 變形倍率　Ｄ 變形開關\n"
              "３ 切換右圖　　Ｈ 進入鑽孔模式 → 移動滑鼠 → Enter 確認　"
              "Ｕ 復原　Ｓ 存圖　Ｑ 離開",
-         position=_P_HINT, viewport=True, font_size=7, color="#333333")
+         position=_P_HINT, viewport=True, font_size=_fs(pl, 9), color="#475569")
 
     # ── 中：翹曲量 ──
     pl.subplot(0, 1)
@@ -734,18 +751,18 @@ def render_panels(pv, pl, st, resin, profile):
     pl.add_mesh(g, scalars="翹曲", cmap="turbo", clim=_clim(warp_vals),
                 below_color="#2b2b6b", above_color="#7a0000",
                 scalar_bar_args={"title": "翹曲量 (mm)", "color": "black",
-                                 "title_font_size": 13, "label_font_size": 10,
+                                 "title_font_size": _fs(pl, 15), "label_font_size": _fs(pl, 12),
                                  "position_x": 0.08, "position_y": 0.035,
                                  "width": 0.84, "height": 0.045})
     _txt(pl, f"② 翹曲量（形狀跑掉多少）　最大 {r['max_warp_mm']:.4f} mm",
-         position=_P_TITLE, viewport=True, font_size=12, color="black")
+         position=_P_TITLE, viewport=True, font_size=_fs(pl, 15), color="#0f172a")
     _txt(pl, "各點偏離原位的距離，已扣掉均勻收縮與整體位移。",
-         position=_P_DESC, viewport=True, font_size=9, color="#444444")
+         position=_P_DESC, viewport=True, font_size=_fs(pl, 11), color="#3f4a57")
     _txt(pl, ("紅＝變形最大　藍＝幾乎沒動　"
               + (f"（形狀已放大 ×{st['scale']:.0f} 以便觀察）"
                  if st["deformed"] else "（變形放大已關閉，按 D 開啟）")),
-         position=_P_NOTE, viewport=True, font_size=9,
-         color=("#aa6600" if st["deformed"] else "#666666"))
+         position=_P_NOTE, viewport=True, font_size=_fs(pl, 11),
+         color=("#b45309" if st["deformed"] else "#666666"))
 
     # ── 右：殘留應力／最高溫度 ──
     pl.subplot(0, 2)
@@ -769,14 +786,14 @@ def render_panels(pv, pl, st, resin, profile):
                 clim=_clim(g2.point_data["值"]),
                 below_color="#2b2b6b", above_color="#7a0000",
                 scalar_bar_args={"title": bar, "color": "black",
-                                 "title_font_size": 13, "label_font_size": 10,
+                                 "title_font_size": _fs(pl, 15), "label_font_size": _fs(pl, 12),
                                  "position_x": 0.08, "position_y": 0.035,
                                  "width": 0.84, "height": 0.045})
-    _txt(pl, head, position=_P_TITLE, viewport=True, font_size=12, color="black")
+    _txt(pl, head, position=_P_TITLE, viewport=True, font_size=_fs(pl, 15), color="#0f172a")
     _txt(pl, sub_desc[0], position=_P_DESC, viewport=True,
-         font_size=9, color="#444444")
+         font_size=_fs(pl, 11), color="#3f4a57")
     _txt(pl, sub_desc[1] + "　（按 3 切換 應力／溫度）", position=_P_NOTE,
-         viewport=True, font_size=9, color="#444444")
+         viewport=True, font_size=_fs(pl, 11), color="#3f4a57")
     pl.render()
 
 

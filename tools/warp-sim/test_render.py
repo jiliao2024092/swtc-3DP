@@ -184,5 +184,60 @@ for n in (nrm[0], nrm[len(nrm)//2], np.array([0.3, -0.5, 0.81])):
     except Exception as ex:
         chk(False, f"法向 {np.round(n,2)} 轉換失敗", ex)
 
+print("\n══ 8. ★ 選面預覽視窗的互動行為 ══")
+# 先前兩次「點不到面」都是因為互動層完全沒有測試涵蓋。
+# 這裡用 _probe 接縫在離屏環境直接驗證點擊回呼與軸向鍵。
+probe_log = {}
+
+def _probe(pl, S, on_click, set_axis):
+    probe_log["click_cbs"] = sum(
+        len(v) for d in pl.iren._click_event_callbacks.values() for v in d.values())
+    # 相機拉到正上方，畫面中心必定打到頂面
+    pl.camera.position = (30, 20, 800)
+    pl.camera.focal_point = (30, 20, 0)
+    pl.camera.up = (0, 1, 0)
+    pl.render()
+    w, h = pl.window_size
+    on_click((w // 2, h // 2))
+    probe_log["after_click"] = None if S["down"] is None else S["down"].copy()
+    probe_log["src_click"] = S["src"]
+    on_click((2, 2))                       # 模型外，不應改變選擇
+    probe_log["after_miss"] = None if S["down"] is None else S["down"].copy()
+    set_axis((1, 0, 0), "X+ 右面")          # 軸向鍵備援
+    probe_log["after_axis"] = S["down"].copy()
+    probe_log["src_axis"] = S["src"]
+    S["ok"] = True
+
+verts2, tri2 = read_stl(f)
+out = app.choose_orientation_by_click(pv, verts2, tri2, _probe=_probe)
+
+chk(probe_log.get("click_cbs", 0) > 0,
+    f"★ track_click_position 已註冊點擊回呼（{probe_log.get('click_cbs')} 個）")
+ac = probe_log.get("after_click")
+chk(ac is not None, "★ 點畫面中心有選到面（先前兩次就是這裡失敗）", ac)
+if ac is not None:
+    chk(abs(ac[2]) > 0.9, f"★ 由上方點擊選到的面法向接近 ±Z（{np.round(ac,3)}）")
+    chk(probe_log["src_click"] == "點選面", "來源標記為「點選面」")
+am = probe_log.get("after_miss")
+chk(am is not None and np.allclose(am, ac),
+    "★ 點在模型外不會清掉先前的選擇")
+aa = probe_log.get("after_axis")
+chk(aa is not None and np.allclose(aa, [1, 0, 0]),
+    f"★ 軸向鍵備援可用（{np.round(aa,2)}）")
+chk(probe_log["src_axis"] == "X+ 右面", "來源標記為軸向名稱")
+chk(out is not None and np.allclose(out, [1, 0, 0]),
+    "★ 確認後回傳最後選定的方向", out)
+
+print("\n══ 9. 字級隨視窗高度縮放 ══")
+sizes = []
+for hh in (600, 900, 1800):
+    pp = pv.Plotter(off_screen=True, window_size=(1200, hh))
+    sizes.append(app._fs(pp, 15)); pp.close()
+chk(sizes[0] < sizes[1] < sizes[2], f"★ 視窗越高字越大（{sizes}）")
+chk(sizes[1] == 15, "900 px 為基準時字級不變")
+pp = pv.Plotter(off_screen=True, window_size=(1200, 200))
+chk(app._fs(pp, 8) >= 6, "極小視窗仍有下限，不會縮到看不見")
+pp.close()
+
 print(f"\n{'='*56}\n通過 {PASS} 項，失敗 {FAIL} 項")
 sys.exit(1 if FAIL else 0)
