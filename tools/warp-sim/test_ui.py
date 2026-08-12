@@ -40,7 +40,7 @@ try:
     import numpy as _np
     carry = {"stl": "x.stl", "resin": "Rigid 4000",
              "down_vec": _np.array([0.0, 1.0, 0.0]), "gravity": False,
-             "density_label": "快速（保留原表面，厚度解析度低）"}
+             "density_label": list(__import__("meshing").MESH_PRESETS)[0]}
     st2 = app.ask_settings(initial=carry)
     chk(True, "★ 帶 initial 重建設定視窗不出錯")
     chk(st2.get("action") == "cancel", "重建後預設仍為 cancel")
@@ -75,6 +75,74 @@ pa = M.recommended_profile("Clear V5")
 if pw:
     chk(pw.h_heat > pa.h_heat * 10,
         f"★ 隔水固化 h={pw.h_heat:.0f} 遠高於空氣 h={pa.h_heat:.0f}")
+
+print("\n══ 5. ★ 按下「開始模擬」後，設定值真的傳得出去 ══")
+#   前面幾節只驗證視窗「建得起來」，不驗證欄位有沒有接到 _collect()。
+#   新增一個設定欄位卻忘了加進 _collect()，或 main() 用錯 key，
+#   都要等使用者真的按下按鈕才會炸——這一節就是補這個縫。
+def _walk(w):
+    yield w
+    for c in w.winfo_children():
+        yield from _walk(c)
+
+
+def _press(self):
+    """取代 mainloop：找到「開始模擬」按鈕並按下去。"""
+    for w in _walk(self):
+        try:
+            if str(w.cget("text")) == "開始模擬":
+                w.invoke()
+                return
+        except Exception:
+            pass
+
+
+tk.Misc.mainloop = _press
+try:
+    cfg = app.ask_settings("dummy.stl")
+    chk(cfg.get("action") == "run", "★ 按鈕確實觸發 go_run", cfg.get("action"))
+    for k in ("ambient", "uv_transmit", "contact_h", "unilateral",
+              "resin", "profile", "shrink", "gravity", "density"):
+        chk(k in cfg, f"_collect() 有帶出 {k}",
+            f"缺少 {k}（新增欄位時忘了加進 _collect）")
+
+    # main() 會拿這些值組出 CureProfile 與 Turntable —— 直接跑一次同樣的組法
+    from dataclasses import replace as _replace
+    import materials as _M
+    prof = _M.recommended_profile(cfg["resin"]) if cfg["recommended"] \
+        else _M.CURE_PRESETS[cfg["profile"]]
+    prof = _replace(prof, ambient_temp=float(cfg["ambient"]))
+    tt = _M.Turntable(uv_transmit=float(cfg["uv_transmit"]),
+                      contact_h=float(cfg["contact_h"]),
+                      unilateral=bool(cfg["unilateral"]))
+    chk(abs(prof.ambient_temp - cfg["ambient"]) < 1e-9,
+        f"★ 室溫傳進 CureProfile（{prof.ambient_temp:.0f}°C）")
+    chk(0.0 <= tt.uv_transmit <= 1.0 and tt.contact_h > 0,
+        f"★ 轉盤參數合理（τ={tt.uv_transmit:.2f}、h={tt.contact_h:.0f}）")
+    chk(_M.CURE_PRESETS["Form Cure 60°C 30min"].ambient_temp == 30.0,
+        "★ replace() 沒有污染共用的預設物件")
+
+    # ── 結果頁按「返回設定」後，設定要原封不動帶回來 ──
+    #   否則使用者每次返回都得把材料、固化條件、轉盤參數重選一次。
+    tweaked = dict(cfg)
+    tweaked.pop("action", None)
+    tweaked.update(ambient=22.0, uv_transmit=0.30, contact_h=250.0,
+                   unilateral=False, gravity=False)
+    cfg2 = app.ask_settings("dummy.stl", initial=tweaked)
+    chk(cfg2.get("action") == "run", "重建後再按開始模擬仍可送出")
+    for k, v in [("ambient", 22.0), ("uv_transmit", 0.30),
+                 ("contact_h", 250.0), ("unilateral", False),
+                 ("gravity", False), ("resin", tweaked["resin"]),
+                 ("shrink", tweaked["shrink"])]:
+        got = cfg2.get(k)
+        ok = (abs(got - v) < 1e-9) if isinstance(v, float) else (got == v)
+        chk(ok, f"★ 返回設定後 {k} 保留為 {v}", f"實際 {got!r}")
+    chk(tweaked["ambient"] == 22.0,
+        "★ ask_settings 沒有反過來改動傳進去的 initial 字典")
+except Exception as ex:
+    chk(False, "★ 按下開始模擬的完整流程", f"{type(ex).__name__}: {ex}")
+finally:
+    tk.Misc.mainloop = orig_mainloop
 
 print(f"\n{'='*56}\n通過 {PASS} 項，失敗 {FAIL} 項")
 sys.exit(1 if FAIL else 0)

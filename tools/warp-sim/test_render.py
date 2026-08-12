@@ -228,7 +228,171 @@ chk(probe_log["src_axis"] == "X+ 右面", "來源標記為軸向名稱")
 chk(out is not None and np.allclose(out, [1, 0, 0]),
     "★ 確認後回傳最後選定的方向", out)
 
-print("\n══ 9. 字級隨視窗高度縮放 ══")
+print("\n══ 9. ★ 轉盤盤面視圖（按 T）══")
+st_t = dict(st); st_t["table"] = True
+try:
+    pl = pv.Plotter(off_screen=True, shape=(1, 3), window_size=(1200, 420))
+    pl.set_background("white")
+    app.render_panels(pv, pl, st_t, resin, profile)
+    counts_t = []
+    for i in range(3):
+        pl.subplot(0, i)
+        counts_t.append(len(pl.renderer.actors))
+    pl.screenshot(str(tmp / "table.png")); pl.close()
+    chk(all(c > 0 for c in counts_t), f"★ 開啟轉盤後三面板仍都有內容（{counts_t}）")
+    chk(all(a >= b for a, b in zip(counts_t, counts)),
+        f"★ 每個面板都多了盤面 actor（{counts}→{counts_t}）")
+except Exception as ex:
+    chk(False, "★ 轉盤盤面可繪製", f"{type(ex).__name__}: {ex}")
+
+zt = app.table_z(st)
+chk(abs(zt - st["pts"][:, 2].min()) < 1e-15, "盤面高度＝模型最低點")
+
+# 「落回盤面」：形狀不變、只有整體高度對齊
+g_free = app._make_grid(pv, st, 20.0, drop_to_table=False)
+g_drop = app._make_grid(pv, st, 20.0, drop_to_table=True)
+d = g_drop.points - g_free.points
+chk(np.allclose(d[:, :2], 0.0, atol=1e-12), "★ 落回盤面只動 z，不動 x/y")
+chk(np.allclose(d[:, 2], d[0, 2], atol=1e-9),
+    "★ 是剛體平移（每個點位移相同）——形狀完全沒被改動")
+chk(abs(g_drop.points[:, 2].min() - zt * 1000.0) < 1e-6,
+    f"★ 放大 ×20 後最低點正好落在盤面"
+    f"（{g_drop.points[:,2].min():.6f} vs {zt*1000:.6f} mm）")
+g_drop2 = app._make_grid(pv, st, 200.0, drop_to_table=True)
+chk(abs(g_drop2.points[:, 2].min() - zt * 1000.0) < 1e-6,
+    "★ 換成 ×200 仍貼齊盤面（不會因放大而陷進盤裡或浮起來）")
+chk(g_drop2.points[:, 2].max() > g_drop.points[:, 2].max(),
+    "★ 放大倍率越高，翹起的高度越明顯")
+
+disc = app.turntable_disc(pv, st)
+chk(disc.n_points > 0, f"轉盤圓盤建得出來（{disc.n_points} 點）")
+chk(abs(disc.points[:, 2].max() - disc.points[:, 2].min()) < 1e-9,
+    "轉盤是水平平面")
+import materials as _M
+part_r = float(np.linalg.norm(
+    (st["pts"].max(axis=0) - st["pts"].min(axis=0))[:2])) / 2.0
+want = max(_M.FORM_CURE_2["turntable_dia_m"] / 2.0, part_r * 1.15) * 1000.0
+got = float(np.abs(disc.points[:, :2] - disc.points[:, :2].mean(axis=0)).max())
+chk(abs(got - want) / want < 0.05,
+    f"★ 盤面直徑採 Form Cure 規格 23.5 cm（半徑 {got:.0f} vs {want:.0f} mm）")
+
+print("\n══ 10. ★ 鑽孔預覽：面板判定 ══")
+# 使用者回報「按 H 沒反應」。舊版 _update_preview 寫死 pl.subplot(0,1)，
+# 滑鼠在左／右面板時射線用錯相機、pick 回 None 後**靜默 return**，
+# 畫面與訊息都沒有任何變化。這裡驗證「哪個面板」的判定確實可用。
+from picking import RayPicker
+W2, H2 = 1500, 520
+pl = pv.Plotter(off_screen=True, shape=(1, 3), window_size=(W2, H2))
+pl.set_background("white")
+app.render_panels(pv, pl, st, resin, profile)
+pl.link_views()
+# ★ 離屏時一定要自己 reset_camera：不做的話三個 renderer 都停在預設相機
+#   (0,0,1)→(0,0,0)，射線根本沒對準模型，測出來的結果毫無意義
+#   （第一版就是這樣，panel 0/1 只是剛好擦到角點 (0,0,0) 才「通過」）。
+#   真實 app 由 pl.show() 觸發 reset，不受影響。
+pl.reset_camera()
+pl.render()
+
+iren = pl.iren.interactor
+found = []
+for name, (px, py) in [("左", (W2 // 6, H2 // 2)), ("中", (W2 // 2, H2 // 2)),
+                       ("右", (5 * W2 // 6, H2 // 2))]:
+    ren = iren.FindPokedRenderer(int(px), int(py))
+    idx = next((i for i, r_ in enumerate(pl.renderers) if r_ is ren), None)
+    found.append(idx)
+chk(found == [0, 1, 2],
+    f"★ FindPokedRenderer 能正確分辨三個面板（{found}）"
+    "——這是修好「滑鼠不在中間面板就沒反應」的關鍵", found)
+
+faces_p = np.hstack([np.full((len(st["surf"]), 1), 3), st["surf"]]).ravel()
+picker = RayPicker(pv.PolyData(st["pts"] * 1000.0, faces_p))
+hits = []
+for i, (px, py) in enumerate([(W2 // 6, H2 // 2), (W2 // 2, H2 // 2),
+                              (5 * W2 // 6, H2 // 2)]):
+    pl.subplot(0, i)                       # 用滑鼠所在面板的相機
+    hits.append(picker.pick(pl.renderer, px, py)[0] is not None)
+chk(all(hits), f"★ 三個面板都拾取得到（{hits}）——修好後不論滑鼠在哪一格都有反應")
+
+pl.subplot(0, 1)
+wrong = picker.pick(pl.renderer, W2 // 6, H2 // 2)[0]
+chk(wrong is None,
+    "★ 反證：拿中間面板的相機去算左面板的座標，確實打不到（舊版的失效路徑）")
+pl.close()
+
+print("\n══ 10b. ★ 放大變形後的拾取點要換算回未變形模型 ══")
+# 面板②③畫的是放大 ×N 的形狀；直接拿拾取到的世界座標當鑽孔位置，
+# 會有「翹曲 × 倍率」那麼大的偏差（實際案例 0.145 mm × 94 ≈ 13.6 mm）。
+surf_t = st["surf"]
+for sc in (0.0, 20.0, 94.0, 300.0):
+    disp = st["res"]["u_shape"] * sc
+    cid = len(surf_t) // 2
+    tri = surf_t[cid]
+    # 在變形三角形上取一個已知重心座標的點，換算回去必須落在原三角形同一位置
+    w_true = np.array([0.2, 0.5, 0.3])
+    hit_mm = (w_true @ ((st["pts"][tri] + disp[tri]) * 1000.0))
+    want = (w_true @ (st["pts"][tri] * 1000.0)) / 1000.0
+    got = app.map_to_original(st["pts"], surf_t, disp, cid, hit_mm)
+    err_mm = float(np.linalg.norm(got - want)) * 1000.0
+    chk(err_mm < 1e-9, f"★ ×{sc:.0f} 換算誤差 {err_mm:.2e} mm")
+
+# 反證：不做換算的話偏差有多大。
+#   本測試的箱子翹曲近乎為零（×94 之後還是零），量不出差異，
+#   所以改用**合成位移**重現使用者實際遇到的量級：翹曲 0.145 mm、倍率 ×94。
+warp_m, sc = 0.145e-3, 94.0
+u_fake = np.zeros_like(st["pts"])
+u_fake[:, 2] = warp_m * (st["pts"][:, 0] - st["pts"][:, 0].mean()) \
+    / max(np.ptp(st["pts"][:, 0]), 1e-30)
+disp = u_fake * sc
+cid = int(np.argmax(np.abs(disp[surf_t].mean(axis=1)[:, 2])))
+tri = surf_t[cid]
+w_true = np.array([1 / 3, 1 / 3, 1 / 3])
+hit_mm = w_true @ ((st["pts"][tri] + disp[tri]) * 1000.0)
+naive = np.asarray(hit_mm) / 1000.0
+good = app.map_to_original(st["pts"], surf_t, disp, cid, hit_mm)
+gap_mm = float(np.linalg.norm(naive - good)) * 1000.0
+chk(gap_mm > 1.0,
+    f"★ 反證：翹曲 {warp_m*1000:.3f} mm × ×{sc:.0f} 時，不換算會偏掉 "
+    f"{gap_mm:.2f} mm——圓柱會出現在離游標很遠的地方", gap_mm)
+err = float(np.linalg.norm(
+    good - (w_true @ (st["pts"][tri] * 1000.0)) / 1000.0)) * 1000.0
+chk(err < 1e-9, f"★ 同一個點換算後誤差仍為 {err:.2e} mm")
+
+print("\n══ 10c. ★ 結果頁「返回設定」按鈕 ══")
+# ★ 不用 VTK button widget（README：widget 回呼在互動中執行，會重繪就閃退），
+#   改成畫一段文字 + track_click_position 判斷點擊是否落在它的矩形內。
+#   命中判定抽成模組層函式，才有辦法在這裡直接驗證。
+for wsz in [(1500, 520), (900, 320), (3840, 1400)]:
+    x0, y0, x1, y1 = app.back_button_rect(wsz)
+    chk(0 < x0 < x1 < wsz[0] / 3,
+        f"{wsz} 按鈕落在面板①內（x {x0:.0f}–{x1:.0f} < {wsz[0]/3:.0f}）")
+    chk(0 < y0 < y1 < wsz[1], f"{wsz} 按鈕 y 範圍合理（{y0:.0f}–{y1:.0f}）")
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    chk(app.hit_back_button((cx, cy), wsz), f"{wsz} 按鈕中心判定為命中")
+    chk(not app.hit_back_button((cx, y1 + 30), wsz), f"{wsz} 按鈕上方不算命中")
+    chk(not app.hit_back_button((x1 + 50, cy), wsz), f"{wsz} 按鈕右側不算命中")
+    chk(not app.hit_back_button((wsz[0] / 2, wsz[1] / 2), wsz),
+        f"{wsz} 畫面正中央（模型上）不算命中——不能誤觸")
+
+# 按鈕文字要真的被畫出來（不然點得到卻看不到）
+pl = pv.Plotter(off_screen=True, shape=(1, 3), window_size=(1500, 520))
+pl.set_background("white")
+app.render_panels(pv, pl, st, resin, profile)
+pl.subplot(0, 0)
+texts = [a for a in pl.renderer.actors.values()
+         if type(a).__name__ == "Text"]
+pl.close()
+# 面板①原有 5 段文字（標題／說明／註記／摘要／操作提示），加上返回按鈕 = 6
+chk(len(texts) >= 6,
+    f"★ 面板①的文字 actor 數 {len(texts)} ≥ 6——返回按鈕真的畫出來了"
+    "（點得到卻看不到就等於沒有）", len(texts))
+
+chk("initial" in __import__("inspect").signature(app.settings_flow).parameters,
+    "★ settings_flow 收得下 initial（返回設定時帶回上次的設定）")
+chk(callable(getattr(app, "_run_once", None)),
+    "★ _run_once 存在——結果頁關閉後由外層 main() 再開設定視窗，"
+    "不會在 VTK 回呼裡開 tkinter（巢狀事件迴圈）")
+
+print("\n══ 11. 字級隨視窗高度縮放 ══")
 sizes = []
 for hh in (600, 900, 1800):
     pp = pv.Plotter(off_screen=True, window_size=(1200, hh))

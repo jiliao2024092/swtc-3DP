@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>SLA 後固化變形模擬</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- ══════════ 設定畫面 ══════════ -->
+<section id="scr-setup" class="screen">
+  <header class="hd">
+    <div>
+      <h1>SLA 後固化變形模擬</h1>
+      <p class="sub" id="machine-line"></p>
+    </div>
+    <button class="theme-btn js-theme" type="button"></button>
+  </header>
+
+  <div class="grid">
+    <fieldset>
+      <legend>1. 模型檔案</legend>
+      <div class="row">
+        <button id="btn-pick" class="btn">選擇 STL…</button>
+        <span id="file-path" class="path muted">尚未選擇</span>
+      </div>
+      <p id="file-diag" class="note"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. 材料與後固化條件</legend>
+      <div class="row">
+        <label for="f-resin">樹脂材料</label>
+        <select id="f-resin"></select>
+        <span id="resin-note" class="note"></span>
+      </div>
+      <p id="warp-drivers" class="note"></p>
+      <div class="row">
+        <label for="f-profile">後固化條件</label>
+        <select id="f-profile"></select>
+      </div>
+      <div class="row custom-row hidden" id="row-cp">
+        <label for="cp-temp">　自訂 爐溫 °C</label>
+        <input id="cp-temp" type="number" min="20" max="150" step="1">
+        <label for="cp-minutes">時間 分鐘</label>
+        <input id="cp-minutes" type="number" min="1" max="600" step="1">
+        <span class="note" id="cp-note"></span>
+      </div>
+
+      <div class="row">
+        <label for="f-shrink">光固化收縮</label>
+        <select id="f-shrink" class="wide"></select>
+      </div>
+      <div class="row custom-row hidden" id="row-cs">
+        <label for="cs-pct">　自訂 收縮率 %</label>
+        <input id="cs-pct" type="number" min="0" max="5" step="0.05">
+        <label for="cs-pen">UV 穿透 mm</label>
+        <input id="cs-pen" type="number" min="0.05" max="50" step="0.1">
+        <span class="note" id="cs-note"></span>
+      </div>
+      <p class="note warn">⚠ 收縮率為估計值（非 Formlabs 官方資料），絕對變形量需以實測校正；
+        設計 A vs B 的相對比較才可靠。</p>
+      <div class="row">
+        <label for="f-ambient">室溫 °C</label>
+        <input id="f-ambient" type="number" min="5" max="45" step="1">
+        <span class="note">起始溫度與取出後冷卻的環境溫度</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. 在固化機中的擺放</legend>
+      <div class="row">
+        <label for="f-orient">哪一面貼在轉盤上</label>
+        <select id="f-orient"></select>
+        <button id="btn-pickface" class="btn" disabled>▶ 在 3D 中點選承靠面…</button>
+      </div>
+      <p id="orient-note" class="note">（未使用 3D 點選，將採用左側下拉選單）</p>
+      <div class="row">
+        <label><input id="f-gravity" type="checkbox"> 計入自重（零件平放於轉盤）</label>
+      </div>
+      <div class="row">
+        <label for="f-tau">轉盤 UV 穿透率</label>
+        <input id="f-tau" type="range" min="0" max="1" step="0.05">
+        <output id="f-tau-out" class="mono"></output>
+      </div>
+      <p class="note warn" id="tau-note"></p>
+      <div class="row">
+        <label for="f-ch">接觸熱傳 W/m²K</label>
+        <input id="f-ch" type="number" min="1" max="1000" step="10">
+        <span class="note">玻璃轉盤的固體接觸傳導（只作用於加熱階段）</span>
+      </div>
+      <div class="row">
+        <label><input id="f-uni" type="checkbox"> 單向接觸（零件可翹離盤面）</label>
+        <span class="note">取消勾選＝底面雙向鎖死的舊行為，只供對照</span>
+      </div>
+
+      <div class="row">
+        <label><input id="f-jig" type="checkbox"> 上方加治具壓住</label>
+        <label for="f-jig-kg">重量 kg</label>
+        <input id="f-jig-kg" type="number" min="0" max="50" step="0.5" value="1">
+        <label for="f-jig-uv">壓板透光</label>
+        <select id="f-jig-uv">
+          <option value="0">不透光（金屬板）</option>
+          <option value="0.9">透光（玻璃／壓克力板）</option>
+        </select>
+      </div>
+      <p class="note" id="jig-note"></p>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. 網格密度</legend>
+      <div class="row">
+        <select id="f-density" class="wide"></select>
+      </div>
+      <p class="note" id="mesh-plan">選好 STL 後會顯示預估規模。</p>
+      <p class="note">密度以「厚度方向要幾層元素」定義。
+        <b>層數不足 4 層時，光固化收縮的深度梯度解析不出來，翹曲量會嚴重低估甚至算出 0</b>
+        ——那不是求解器壞掉，是網格太粗。</p>
+    </fieldset>
+  </div>
+
+  <div class="actions">
+    <button id="btn-run" class="btn primary" disabled>開始模擬</button>
+    <span id="run-hint" class="note"></span>
+  </div>
+</section>
+
+<!-- ══════════ 點選承靠面 ══════════ -->
+<section id="scr-pick" class="screen hidden">
+  <aside class="side">
+    <h2 class="pick-h">選擇「要貼在固化機轉盤上」的那一面</h2>
+    <p class="note">這一面會被轉到朝下（−Z），重力與轉盤接觸都以此為準。</p>
+
+    <div class="ctl">
+      <h3>操作方式（與估價介面一致）</h3>
+      <table class="keys">
+        <tr><td>右鍵拖曳</td><td>旋轉視角</td></tr>
+        <tr><td>中鍵拖曳</td><td>平移</td></tr>
+        <tr><td>滾輪</td><td>縮放</td></tr>
+        <tr><td><b>左鍵單擊</b></td><td><b>選取該面</b></td></tr>
+      </table>
+    </div>
+
+    <div class="ctl">
+      <h3>或直接指定軸向</h3>
+      <div class="axes" id="axes"></div>
+    </div>
+
+    <div class="ctl">
+      <p id="pick-state" class="pick-state">尚未選擇 —— 點一下模型上要朝下的那一面</p>
+      <p id="pick-msg" class="note warn"></p>
+    </div>
+
+    <div class="ctl">
+      <button id="btn-pick-ok" class="btn primary" disabled>✔ 確認並回到設定</button>
+      <button id="btn-pick-cancel" class="btn">取消</button>
+    </div>
+
+    <div class="ctl">
+      <button class="theme-btn js-theme" type="button"></button>
+    </div>
+  </aside>
+  <main class="view"><div id="pick-wrap"></div></main>
+</section>
+
+<!-- ══════════ 進度畫面 ══════════ -->
+<section id="scr-progress" class="screen hidden">
+  <div class="prog-box">
+    <h2 id="pg-stage">準備中…</h2>
+    <p id="pg-detail" class="muted"></p>
+    <div class="bar"><div id="pg-fill"></div></div>
+    <p id="pg-pct" class="mono muted"></p>
+    <p class="note">求解在背景執行緒進行，視窗保持可回應。</p>
+  </div>
+</section>
+
+<!-- ══════════ 結果畫面 ══════════ -->
+<section id="scr-result" class="screen hidden">
+  <aside class="side">
+    <button id="btn-back" class="btn">⟲ 返回設定 · 換檔案或改參數</button>
+
+    <div class="tiles" id="tiles"></div>
+
+    <div class="ctl">
+      <h3>顯示</h3>
+      <div class="seg" id="seg-field">
+        <button data-f="warp" class="on">翹曲量</button>
+        <button data-f="stress">殘留應力</button>
+        <button data-f="temp">最高溫度</button>
+      </div>
+      <label class="ck"><input id="c-deform" type="checkbox" checked> 顯示變形</label>
+      <div class="row">
+        <label for="c-scale">變形放大</label>
+        <input id="c-scale" type="range" min="1" max="500" step="1">
+        <output id="c-scale-out" class="mono"></output>
+      </div>
+      <label class="ck"><input id="c-edges" type="checkbox" checked> 外輪廓邊框</label>
+      <label class="ck"><input id="c-table" type="checkbox"> 轉盤盤面</label>
+      <p class="note" id="table-note"></p>
+      <button class="theme-btn js-theme" type="button"></button>
+    </div>
+
+    <div class="ctl">
+      <h3>鑽孔（改設計 → 再驗證）</h3>
+      <label class="ck"><input id="c-drill" type="checkbox"> 鑽孔模式</label>
+      <div class="row">
+        <label for="c-radius">孔徑 ⌀mm</label>
+        <input id="c-radius" type="number" min="0.2" max="60" step="0.5" value="4">
+      </div>
+      <p class="note" id="drill-note">勾選後，在模型上點一下就會在該處鑽孔並重算。</p>
+      <button id="btn-undo" class="btn" disabled>復原上一個孔</button>
+      <p class="note" id="cmp-note"></p>
+    </div>
+
+    <div class="ctl warns" id="warns"></div>
+
+    <div class="ctl">
+      <h3>模型限制</h3>
+      <p class="note">已計入：熱梯度凍結、光固化收縮（含轉盤遮蔽）、自重與單向接觸。<br>
+        未計入：列印逐層殘留應力、黏彈鬆弛、Tg 以上潛變下垂。<br>
+        ⇒ 絕對值需以實測校正；設計 A vs B 的相對比較最為可靠。</p>
+    </div>
+  </aside>
+
+  <main class="view">
+    <div id="canvas-wrap"></div>
+    <div class="legend">
+      <span id="lg-title" class="lg-t"></span>
+      <span id="lg-lo" class="mono"></span>
+      <div id="lg-bar"></div>
+      <span id="lg-hi" class="mono"></span>
+    </div>
+    <div class="hint">右鍵拖曳＝旋轉　中鍵拖曳＝平移　滾輪＝縮放　左鍵單擊＝鑽孔（需先勾選鑽孔模式）</div>
+  </main>
+</section>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="viewer.js"></script>
+<script src="picker.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

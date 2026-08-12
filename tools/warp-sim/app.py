@@ -24,13 +24,15 @@
 """
 import sys
 import pathlib
+from dataclasses import replace
 import numpy as np
 
 import materials
 from materials import RESINS, CURE_PRESETS, warn_profile_vs_resin
 from meshing import (load_stl_to_tets, drill_hole, compact_mesh,
-                     _surface_from_tets, MESH_PRESETS, ORIENTATIONS,
-                     orient_to_turntable, turntable_nodes)
+                     _surface_from_tets, MESH_PRESETS, DEFAULT_DENSITY_LABEL,
+                     ORIENTATIONS,
+                     orient_to_turntable, turntable_nodes, turntable_faces)
 from fea import solve_transient_thermal
 from mechanics import compute_warpage, sag_check
 
@@ -40,8 +42,10 @@ from mechanics import compute_warpage, sag_check
 # ════════════════════════════════════════════════════════════
 def run_simulation(pts, tets, surf, resin, profile, shrink=None,
                    n_heat=25, n_cool=40, log=print, prog=None,
-                   support_nodes=None, gravity=False):
+                   support_nodes=None, gravity=False, turntable=None):
     big = len(tets) > 200_000
+    # 貼在玻璃轉盤上的面：UV 較弱（透光但打折）、熱傳較強（固體接觸傳導）
+    cfaces = turntable_faces(pts, surf) if turntable is not None else None
     if prog:
         prog.stage("步驟 2/3　計算溫度歷程",
                    "暫態熱傳導；大網格的第一次矩陣分解需數十秒，畫面會暫時凍結")
@@ -49,16 +53,19 @@ def run_simulation(pts, tets, surf, resin, profile, shrink=None,
     times, T_hist = solve_transient_thermal(
         pts, tets, surf, resin, profile,
         n_steps_heat=n_heat, n_steps_cool=n_cool,
-        progress=(prog.frac if prog else None))
+        progress=(prog.frac if prog else None),
+        contact_faces=cfaces,
+        contact_h=(turntable.contact_h if turntable is not None else None))
     if prog:
         prog.stage("步驟 3/3　逐步熱彈性積分",
-                   ("這是最花時間的一步（約 2–4 分鐘）" if big
+                   ("這是最花時間的一步（約 3–8 分鐘，單向接觸需反覆求解）" if big
                     else "計算變形與殘留應力"))
-    log("  逐步熱彈性積分…")
+    log("  逐步熱彈性積分（含單向接觸迭代）…")
     res = compute_warpage(pts, tets, T_hist, resin, profile,
                           shrink=shrink, surf_faces=surf, n_uv_steps=n_heat,
                           progress=(prog.frac if prog else None),
-                          support_nodes=support_nodes, gravity=gravity)
+                          support_nodes=support_nodes, gravity=gravity,
+                          turntable=turntable)
     res["T_hist"] = T_hist
     res["times"] = times
     res["T_peak_elem"] = res["T_elem"].max(axis=0)
@@ -87,11 +94,22 @@ def summary_text(resin, profile, res, info, extra=""):
         f"{profile.duration_min:.0f} min   Tg = {resin.tg.value:.0f}°C",
         f"網格：{info['n_tet']} 元素 / {info['n_node']} 節點",
         "",
+        f"弓形量　　　 {res.get('bow_mm', 0.0):+.4f} mm   "
+        f"（正＝四周上翹；卡尺量得到的那個數字）",
         f"最大翹曲量　 {res['max_warp_mm']:.4f} mm   （已扣除均勻收縮）",
+        f"　其中面外 {res.get('warp_out_mm', 0.0):.4f} / "
+        f"面內 {res.get('warp_in_mm', 0.0):.4f} mm"
+        f"（面外佔 {res.get('out_of_plane_frac', 0.0)*100:.0f}%）",
         f"均勻收縮　　 {res['uniform_shrink']*100:+.3f} %",
         f"最大殘留應力 {res['max_vm_MPa']:.2f} MPa",
         f"超過 Tg 的體積比例 {res['frac_crossed']*100:.0f} %",
     ]
+    c = res.get("contact")
+    if c:
+        lines.append(
+            f"轉盤接觸　　 {c['n_active']}/{c['n_candidate']} 點"
+            f"（單向接觸，其餘已翹離盤面）"
+            + ("" if c["converged"] else "　⚠ 接觸迭代未收斂"))
     if res["frac_crossed"] < 1e-9 and not res.get("cure_enabled"):
         lines += ["", "※ 沒有任何區域超過 Tg，且未啟用光固化收縮，",
                   "  本模型預測「無後固化翹曲」。若實際有翹曲，",
@@ -107,6 +125,8 @@ def summary_text(resin, profile, res, info, extra=""):
         lines += ["", w]
     if res.get("resolution_warning"):
         lines += ["", res["resolution_warning"]]
+    if res.get("cure_warning"):
+        lines += ["", res["cure_warning"]]
     if extra:
         lines += ["", extra]
     lines += ["", "── 模型限制（務必知悉）──",
@@ -208,6 +228,16 @@ def ask_settings(default_stl=None, initial=None):
               style="Warn.TLabel", wraplength=620, justify="left").grid(
         row=3, column=0, columnspan=4, sticky="w", padx=10, pady=(0, 6))
 
+    # 室溫：同時是起始溫度與取出後的冷卻環境溫度
+    ttk.Label(f2, text="室溫 °C").grid(row=4, column=0, sticky="w", **PAD)
+    v_amb = tk.DoubleVar(value=float(ini.get("ambient", 30.0)))
+    ttk.Spinbox(f2, textvariable=v_amb, from_=5.0, to=45.0, increment=1.0,
+                width=8, format="%.0f").grid(row=4, column=1, sticky="w", **PAD)
+    ttk.Label(f2, text="起始溫度與取出後冷卻的環境溫度（Form Cure 規格操作環境"
+                      " 18–28°C，現場實測 30°C）",
+              style="Hint.TLabel", wraplength=420, justify="left").grid(
+        row=4, column=2, columnspan=2, sticky="w", padx=6)
+
     def on_res(*_):
         name = v_res.get()
         r = RESINS[name]
@@ -261,13 +291,39 @@ def ask_settings(default_stl=None, initial=None):
     v_grav = tk.BooleanVar(value=ini.get("gravity", True))
     ttk.Checkbutton(f3, text="計入自重（零件平放於轉盤，承受自身重量）",
                     variable=v_grav).grid(row=2, column=0, columnspan=3,
-                                          sticky="w", padx=8, pady=(2, 8))
+                                          sticky="w", padx=8, pady=(2, 2))
+
+    # ── 玻璃轉盤（Form Cure 二代）──
+    #   這三個參數決定「算不算得出弓形」，是本工具最敏感的一組設定。
+    tt_def = materials.Turntable()
+    ttk.Label(f3, text="轉盤 UV 穿透率").grid(row=3, column=0, sticky="w", **PAD)
+    v_tau = tk.DoubleVar(value=float(ini.get("uv_transmit",
+                                             tt_def.uv_transmit)))
+    ttk.Spinbox(f3, textvariable=v_tau, from_=0.0, to=1.0, increment=0.05,
+                width=8, format="%.2f").grid(row=3, column=1, sticky="w", **PAD)
+
+    ttk.Label(f3, text="接觸熱傳 W/m²K").grid(row=3, column=2, sticky="w", **PAD)
+    v_ch = tk.DoubleVar(value=float(ini.get("contact_h", tt_def.contact_h)))
+    ttk.Spinbox(f3, textvariable=v_ch, from_=1.0, to=1000.0, increment=10.0,
+                width=8, format="%.0f").grid(row=3, column=3, sticky="w", **PAD)
+
+    ttk.Label(f3, text="透明玻璃轉盤：底面仍照得到 UV 但強度較低（1.00 = 與頂面相同）。"
+                      "\n⚠ 設為 1.00 時上下收縮對稱、彎矩相消，弓形量會趨近於零"
+                      "——這是模型的數學結果，不是程式壞掉。",
+              style="Warn.TLabel", wraplength=620, justify="left").grid(
+        row=4, column=0, columnspan=4, sticky="w", padx=10, pady=(0, 2))
+
+    v_uni = tk.BooleanVar(value=bool(ini.get("unilateral", tt_def.unilateral)))
+    ttk.Checkbutton(f3, text="單向接觸（零件可翹離盤面）—— 取消勾選會回到"
+                            "底面雙向鎖死的舊行為，只供對照",
+                    variable=v_uni).grid(row=5, column=0, columnspan=4,
+                                         sticky="w", padx=8, pady=(0, 8))
 
     # ── 4. 網格 ──
     f4 = ttk.LabelFrame(root, text=" 4. 網格密度 ")
     f4.grid(row=3, column=0, sticky="ew", padx=12, pady=6)
     f4.columnconfigure(2, weight=1)
-    v_dens = tk.StringVar(value=ini.get("density_label", "標準（建議）"))
+    v_dens = tk.StringVar(value=ini.get("density_label", DEFAULT_DENSITY_LABEL))
     ttk.Combobox(f4, textvariable=v_dens, values=list(MESH_PRESETS), width=26,
                  state="readonly").grid(row=0, column=0, sticky="w", **PAD)
     ttk.Label(f4, text="標準約需 1–4 分鐘；快速僅數秒但厚度方向解析度低，"
@@ -281,7 +337,11 @@ def ask_settings(default_stl=None, initial=None):
                     down_vec=picked["down"], gravity=bool(v_grav.get()),
                     density_label=v_dens.get(),
                     density=MESH_PRESETS[v_dens.get()],
-                    recommended=v_prof.get().startswith("原廠建議"))
+                    recommended=v_prof.get().startswith("原廠建議"),
+                    ambient=float(v_amb.get()),
+                    uv_transmit=float(v_tau.get()),
+                    contact_h=float(v_ch.get()),
+                    unilateral=bool(v_uni.get()))
 
     def go_run():
         if not v_file.get().strip():
@@ -307,15 +367,18 @@ def ask_settings(default_stl=None, initial=None):
     return state
 
 
-def settings_flow(default_stl=None):
+def settings_flow(default_stl=None, initial=None):
     """設定 →（可選）3D 選面 → 設定 的完整流程。回傳最終設定或 None。
+
+    initial：帶回上一輪的設定值（結果頁按「返回設定」時用），
+    使用者不必把材料、固化條件、轉盤參數重新選一次。
 
     ★ 每一步都是**獨立**的事件迴圈，不會巢狀。
     """
     import pyvista as pv
     from meshing import read_stl, check_surface
 
-    carry = {}
+    carry = dict(initial) if initial else {}
     while True:
         st = ask_settings(default_stl, initial=carry)
         act = st.get("action")
@@ -541,19 +604,77 @@ class Progress:
 #     語法檢查完全抓不到。抽出來後 test_render.py 可以用 off_screen
 #     真的把三個面板畫出來，任何繪圖參數錯誤都會當場現形。
 # ════════════════════════════════════════════════════════════
-def _make_grid(pv, st, deform_scale):
+def table_z(st):
+    """轉盤盤面的高度（公尺）＝未變形模型的最低點。"""
+    return float(st["pts"][:, 2].min())
+
+
+def _make_grid(pv, st, deform_scale, drop_to_table=False):
     """建立顯示用網格；deform_scale=0 表示原始未變形形狀。
 
     ★ 只送**表面**給 VTK，不要送整包四面體。
       渲染只看得到表面，把 53 萬個四面體丟進去（而且三個面板各一份）
       會吃掉數 GB 記憶體並拖垮互動，實測會直接閃退。
       表面三角形數量約為四面體的 1/3 以下，且完全不影響外觀。
+
+    drop_to_table：把放大後的形狀整體平移，讓最低點落回盤面高度。
+
+      ★ 為什麼需要這個平移 ★
+      畫面上的形狀是 `u_shape`——**剛體平移與旋轉已被刻意扣掉**
+      （否則零件朝錨點收縮的那個平移會被誤算成翹曲，見 mechanics 的說明）。
+      所以這個形狀根本不帶「零件停在轉盤上的哪個高度」這個資訊，
+      直接在它下面畫一塊盤面只會得到「浮在半空」或「陷進盤裡」的假象。
+      而且變形是放大 ×N 顯示的，放大後更不可能自然落在盤面上。
+
+      正確作法是把放大後的形狀**當成一個剛體放回盤面**：形狀本身
+      （哪裡凸、哪裡凹、翹起多少）完全不變，只是整體高度對齊。
+      這樣「哪裡貼著盤面、哪裡翹起來」就看得出來，而且翹起的間隙
+      與形狀用同一個倍率放大，比例是一致的。
     """
     r, p = st["res"], st["pts"]
     surf = st["surf"]
     disp = r["u_shape"] * deform_scale if deform_scale else 0.0
+    q = p + disp
+    if drop_to_table:
+        q = q.copy()
+        q[:, 2] -= (q[:, 2].min() - table_z(st))
     faces = np.hstack([np.full((len(surf), 1), 3), surf]).ravel()
-    return pv.PolyData((p + disp) * 1000.0, faces)
+    return pv.PolyData(q * 1000.0, faces)
+
+
+def map_to_original(pts, surf, disp, cid, hit_mm):
+    """把「畫面上（放大變形後）的拾取點」換算回未變形模型上的位置（公尺）。
+
+    拾取點落在顯示網格的第 cid 個三角形上，取它在該三角形內的**重心座標**，
+    再把同一組重心座標套到未變形的同一個三角形。
+
+    ★ 為什麼需要：面板②③顯示的是放大 ×N 的變形形狀（倍率自動計算，
+      實際出現過 ×94）。直接把拾取到的世界座標當成鑽孔位置，會有
+      「翹曲量 × 倍率」那麼大的偏差——0.145 mm × 94 ≈ 13.6 mm。
+      重心座標與放大倍率無關，換算後完全沒有這個誤差。
+
+    ★ 抽成模組層函式（而非留在 main 的閉包裡）是為了能被測試涵蓋：
+      這個工具的 GUI 錯誤沒有一個是語法檢查抓得到的。
+    """
+    tri = surf[cid]
+    Pd = (pts[tri] + disp[tri]) * 1000.0
+    P0 = pts[tri] * 1000.0
+    A = np.stack([Pd[1] - Pd[0], Pd[2] - Pd[0]], axis=1)          # (3,2)
+    uv, *_ = np.linalg.lstsq(A, np.asarray(hit_mm, float) - Pd[0], rcond=None)
+    w = np.array([1.0 - uv[0] - uv[1], uv[0], uv[1]])
+    return (w @ P0) / 1000.0
+
+
+def turntable_disc(pv, st):
+    """轉盤示意圓盤（mm）。直徑取 Form Cure 二代規格的 23.5 cm，
+    零件更大時才跟著放大。"""
+    p = st["pts"]
+    ctr = (p.max(axis=0) + p.min(axis=0)) / 2.0
+    part_r = float(np.linalg.norm((p.max(axis=0) - p.min(axis=0))[:2])) / 2.0
+    r_m = max(materials.FORM_CURE_2["turntable_dia_m"] / 2.0, part_r * 1.15)
+    return pv.Disc(center=(ctr[0] * 1000.0, ctr[1] * 1000.0,
+                           table_z(st) * 1000.0),
+                   inner=0.0, outer=r_m * 1000.0, normal=(0, 0, 1), c_res=64)
 
 
 # ★★ VTK 預設字型不支援中日韓文字 ★★
@@ -701,6 +822,35 @@ _P_DESC  = (0.02, 0.895)
 _P_NOTE  = (0.02, 0.850)
 _P_SUMM  = (0.02, 0.135)
 _P_HINT  = (0.02, 0.015)
+_P_TABLE = (0.02, 0.775)      # 轉盤說明（在 _P_NOTE 下方，色階條上方）
+
+# 「返回設定」按鈕：面板①的 viewport 分數 (x0, y0, x1, y1)
+#   ★ 為什麼不用 VTK 的 button widget：README 已記錄過，VTK widget 的回呼
+#     在互動進行中執行，而按鈕要做的事（關視窗、之後重建場景）正是先前
+#     讓變形倍率滑桿「一點擊就閃退」的那一類操作。
+#     這裡改成「畫一段文字 + 用 track_click_position 判斷點擊是否落在它的
+#     矩形內」——track_click_position 是本專案唯一驗證過安全的拾取途徑，
+#     而且回呼裡只設一個旗標並 pl.close()，完全不動場景結構。
+_P_BACK = (0.02, 0.062)
+_BTN_BACK_RECT = (0.015, 0.052, 0.335, 0.098)
+
+
+def back_button_rect(window_size, n_panels=3):
+    """「返回設定」按鈕在**整個視窗**中的像素矩形 (x0, y0, x1, y1)。
+
+    座標原點在左下角（與 VTK 的顯示座標一致）。按鈕畫在面板①，
+    故 x 方向只佔視窗寬度的 1/n_panels。
+    """
+    w, h = float(window_size[0]), float(window_size[1])
+    pw = w / float(n_panels)
+    x0, y0, x1, y1 = _BTN_BACK_RECT
+    return (x0 * pw, y0 * h, x1 * pw, y1 * h)
+
+
+def hit_back_button(pos, window_size, n_panels=3):
+    """點擊位置是否落在「返回設定」按鈕上。pos 為 (x, y) 顯示座標。"""
+    x0, y0, x1, y1 = back_button_rect(window_size, n_panels)
+    return bool(x0 <= float(pos[0]) <= x1 and y0 <= float(pos[1]) <= y1)
 #   相機縮放：<1 表示把模型拉遠、留出上下邊界。
 #   ★ 不縮放的話 reset_camera() 會讓模型填滿整個視埠，直接被上下文字蓋住
 #     （使用者回報「文字遮擋到模型」）。
@@ -711,6 +861,14 @@ def render_panels(pv, pl, st, resin, profile):
     r = st["res"]
     scale = st["scale"] if st["deformed"] else 0.0
     third = st["third"]
+    table = bool(st.get("table", False))
+
+    def _add_table():
+        """在目前面板畫出轉盤示意盤面。"""
+        if not table:
+            return
+        pl.add_mesh(turntable_disc(pv, st), color="#8fa3b8", opacity=0.55,
+                    lighting=False, show_edges=False)
 
     # ── 左：原始模型 ──
     pl.subplot(0, 0)
@@ -721,6 +879,7 @@ def render_panels(pv, pl, st, resin, profile):
     pl.renderer.clear_actors()
     pl.add_mesh(_make_grid(pv, st, 0.0), color="#b9c4d0", show_edges=False,
                 opacity=1.0, lighting=True)
+    _add_table()
     _txt(pl, "① 原始模型（比對基準）", position=_P_TITLE, viewport=True,
          font_size=_fs(pl, 15), color="#0f172a")
     _txt(pl, "你匯入的原始形狀，完全未變形。", position=_P_DESC, viewport=True,
@@ -737,15 +896,18 @@ def render_panels(pv, pl, st, resin, profile):
     _txt(pl, summary_text(resin, profile, r, st["info"],
                           (st["extra"] + "\n" + cmp_txt).strip()),
          position=_P_SUMM, viewport=True, font_size=_fs(pl, 8), color="#334155")
+    _txt(pl, "［　⟲　返回設定 · 換檔案或改參數　］　（也可按 Ｒ）",
+         position=_P_BACK, viewport=True, font_size=_fs(pl, 13),
+         color="#1d4ed8")
     _txt(pl, "左鍵拖曳旋轉（三視圖連動）　滾輪縮放　＋－ 變形倍率　Ｄ 變形開關\n"
-             "３ 切換右圖　　Ｈ 進入鑽孔模式 → 移動滑鼠 → Enter 確認　"
+             "３ 切換右圖　Ｔ 轉盤盤面　Ｈ 進入鑽孔模式 → 移動滑鼠 → Enter 確認　"
              "Ｕ 復原　Ｓ 存圖　Ｑ 離開",
          position=_P_HINT, viewport=True, font_size=_fs(pl, 9), color="#475569")
 
     # ── 中：翹曲量 ──
     pl.subplot(0, 1)
     pl.renderer.clear_actors()
-    g = _make_grid(pv, st, scale)
+    g = _make_grid(pv, st, scale, drop_to_table=table)
     warp_vals = np.linalg.norm(r["u_shape"], axis=1) * 1000.0
     g.point_data["翹曲"] = warp_vals
     pl.add_mesh(g, scalars="翹曲", cmap="turbo", clim=_clim(warp_vals),
@@ -763,11 +925,22 @@ def render_panels(pv, pl, st, resin, profile):
                  if st["deformed"] else "（變形放大已關閉，按 D 開啟）")),
          position=_P_NOTE, viewport=True, font_size=_fs(pl, 11),
          color=("#b45309" if st["deformed"] else "#666666"))
+    _add_table()
+    if table:
+        c = r.get("contact")
+        _txt(pl, ("轉盤盤面已顯示（按 T 關閉）。形狀放大 ×"
+                  f"{st['scale']:.0f} 後整體落回盤面——"
+                  "貼著的地方就是接觸點，離開的地方就是翹起。\n"
+                  "零件只是「放」在盤上，不是黏住的"
+                  + (f"：{c['n_active']}/{c['n_candidate']} 個候選點實際接觸。"
+                     if c else "。")),
+             position=_P_TABLE, viewport=True, font_size=_fs(pl, 10),
+             color="#0f766e")
 
     # ── 右：殘留應力／最高溫度 ──
     pl.subplot(0, 2)
     pl.renderer.clear_actors()
-    g2 = _make_grid(pv, st, scale)
+    g2 = _make_grid(pv, st, scale, drop_to_table=table)
     if third == "stress":
         g2.point_data["值"] = elem_to_point(st["pts"], st["tets"],
                                             r["von_mises"]) / 1e6
@@ -801,18 +974,35 @@ def render_panels(pv, pl, st, resin, profile):
 # ════════════════════════════════════════════════════════════
 # 主程式
 # ════════════════════════════════════════════════════════════
-def main():
+def _run_once(arg, carry):
+    """跑完整的一輪：設定 → 網格 → 求解 → 結果視圖。
+
+    回傳 (action, carry)：
+      action ∈ {"quit", "error", "restart"}；"restart" 代表使用者在結果頁
+      按了「返回設定」，外層 main() 會帶著 carry 再跑一輪。
+
+    ★ 為什麼是「一輪一個函式」而不是在結果頁直接開設定視窗：
+      README 已記錄——**不可在 VTK 回呼裡開 tkinter 視窗**（反之亦然），
+      那會形成巢狀事件迴圈，實測會出現視窗開不起來、點擊無反應。
+      正確作法是「結果視窗先關閉 → 回到這個函式外面 → 再開設定視窗」，
+      全程同一時間只有一個事件迴圈在跑。
+    """
     import pyvista as pv
 
-    arg = sys.argv[1] if len(sys.argv) > 1 else None
-    cfg = settings_flow(arg)
+    cfg = settings_flow(arg, initial=carry)
     if cfg is None:
-        return 0
+        return "quit", carry
 
     resin = RESINS[cfg["resin"]]
     profile = (materials.recommended_profile(cfg["resin"]) if cfg["recommended"]
                else CURE_PRESETS[cfg["profile"]])
+    # 室溫由 UI 指定（起始溫度＋冷卻環境溫度）；預設組是共用物件，複製後再改
+    profile = replace(profile, ambient_temp=float(cfg.get("ambient", 30.0)))
     shrink = materials.CURE_PRESETS_SHRINK[cfg["shrink"]]
+    turntable = materials.Turntable(
+        uv_transmit=float(cfg.get("uv_transmit", 0.65)),
+        contact_h=float(cfg.get("contact_h", 100.0)),
+        unilateral=bool(cfg.get("unilateral", True)))
 
     prog = Progress()
     try:
@@ -840,8 +1030,10 @@ def main():
                        "　網格較大，求解需數分鐘")
 
         base = run_simulation(pts, tets, surf, resin, profile, shrink, prog=prog,
-                              support_nodes=support, gravity=cfg["gravity"])
-        print(f"[結果] 翹曲 {base['max_warp_mm']:.4f} mm、"
+                              support_nodes=support, gravity=cfg["gravity"],
+                              turntable=turntable)
+        print(f"[結果] 弓形 {base['bow_mm']:+.4f} mm、"
+              f"翹曲 {base['max_warp_mm']:.4f} mm、"
               f"應力 {base['max_vm_MPa']:.2f} MPa")
 
         sg = sag_check(pts, tets, resin, profile)
@@ -859,14 +1051,16 @@ def main():
             r.destroy()
         except Exception:
             pass
-        return 1
+        # 失敗時把設定帶回去，讓使用者改參數重試而不是整個程式結束
+        return "restart", cfg
     finally:
         prog.close()
 
     # ── 狀態 ──
     st = {"pts": pts, "tets": tets, "surf": surf, "res": base, "info": info,
           "third": "stress", "scale": auto_scale(pts, base["u_shape"]),
-          "deformed": True, "pick": None, "drill": None,
+          "deformed": True, "pick": None, "drill": None, "table": False,
+          "restart": False,
           "history": [], "baseline_warp": base["max_warp_mm"], "extra": extra}
 
     # ── 三面板連動視圖 ──
@@ -878,6 +1072,11 @@ def main():
 
     def refresh():
         render_panels(pv, pl, st, resin, profile)
+        # 變形倍率／變形開關／轉盤顯示都會改動畫面上的形狀，
+        # 鑽孔中的話拾取器必須跟著重建，否則圓柱會對不到游標
+        if drill.get("on"):
+            drill.update(actor=None, hint=None, banner=None)
+            _rebuild_picker()
 
     # ── 互動 ──
     def toggle_third():
@@ -888,6 +1087,28 @@ def main():
     def toggle_def():
         st["deformed"] = not st["deformed"]; refresh()
     pl.add_key_event("d", toggle_def)
+
+    def go_back():
+        """回到設定視窗。只設旗標並關閉視窗，不在回呼裡動任何場景結構。"""
+        if st["restart"]:
+            return
+        st["restart"] = True
+        print("[返回] 關閉結果視窗，回到設定…")
+        pl.close()
+    pl.add_key_event("r", go_back)
+
+    def on_result_click(pos):
+        if hit_back_button(pos, pl.window_size):
+            go_back()
+    pl.track_click_position(callback=on_result_click, side="left")
+
+    def toggle_table():
+        st["table"] = not st["table"]
+        print(f"[轉盤] 盤面顯示{'開啟' if st['table'] else '關閉'}"
+              + ("　（形狀已整體落回盤面，看得出哪裡貼著、哪裡翹起）"
+                 if st["table"] else ""))
+        refresh()
+    pl.add_key_event("t", toggle_table)
 
     def save_png():
         out = pathlib.Path(cfg["stl"]).with_suffix("").name + "_warp.png"
@@ -901,17 +1122,36 @@ def main():
     #   ★ 觀察者只更新「一個預覽 actor」，不做 clear_actors／subplot 切換，
     #     與先前造成閃退的做法（在回呼中重建整個場景）本質不同。
     from picking import RayPicker
-    drill = {"on": False, "picker": None, "actor": None, "hint": None,
-             "radius": None, "hit": None, "axis": None, "obs": None}
+    drill = {"on": False, "picker0": None, "pickerD": None, "disp": None,
+             "actor": None, "hint": None, "radius": None, "hit": None,
+             "axis": None, "obs": None, "banner": None, "missed": 0}
 
     def _bbox_min():
         b = st["pts"].max(axis=0) - st["pts"].min(axis=0)
         return float(b.min())
 
     def _rebuild_picker():
+        """建立兩套拾取器：未變形（面板①）與畫面上的變形形狀（面板②③）。
+
+        ★ 舊版只建未變形那一套，卻拿去對面板②③做拾取——但那兩格顯示的是
+          **放大 ×N 的變形形狀**。放大倍率是自動算的（目標為零件尺寸的 6%），
+          實際案例出現過 ×94：翹曲 0.145 mm × 94 ≈ 13.6 mm 的顯示偏移，
+          紅色圓柱會跑到離游標很遠的地方，或整個打空。
+        """
         faces = np.hstack([np.full((len(st["surf"]), 1), 3), st["surf"]]).ravel()
-        poly = pv.PolyData(st["pts"] * 1000.0, faces)
-        drill["picker"] = RayPicker(poly)
+        drill["picker0"] = RayPicker(pv.PolyData(st["pts"] * 1000.0, faces))
+        sc = st["scale"] if st["deformed"] else 0.0
+        drill["disp"] = st["res"]["u_shape"] * sc if sc else np.zeros_like(st["pts"])
+        q = st["pts"] + drill["disp"]
+        if st.get("table"):
+            q = q.copy()
+            q[:, 2] -= (q[:, 2].min() - table_z(st))
+            drill["disp"] = q - st["pts"]
+        drill["pickerD"] = RayPicker(pv.PolyData(q * 1000.0, faces))
+
+    def _to_original(cid, hit_mm):
+        return map_to_original(st["pts"], st["surf"], drill["disp"],
+                               cid, hit_mm)
 
     def _clear_preview():
         for k in ("actor", "hint"):
@@ -922,20 +1162,67 @@ def main():
                     pass
                 drill[k] = None
 
+    def _set_banner(text):
+        """一進入鑽孔模式就在畫面上掛一條橫幅。
+
+        ★ 為什麼非有不可：預覽圓柱要「滑鼠正好在模型上」才會出現，
+          在那之前畫面完全沒有變化，使用者無從判斷模式有沒有進去
+          （回報「按 H 沒反應」）。橫幅與滑鼠位置無關，按下去就看得到。
+        """
+        if drill["banner"] is not None:
+            try:
+                pl.remove_actor(drill["banner"], render=False)
+            except Exception:
+                pass
+            drill["banner"] = None
+        if text:
+            pl.subplot(0, 0)
+            drill["banner"] = _txt(pl, text, position=(0.02, 0.10),
+                                   viewport=True, font_size=_fs(pl, 12),
+                                   color="#cc0000")
+
+    def _poked_panel(x, y):
+        """滑鼠目前在哪個面板。找不到回 None。
+
+        ★ 舊版寫死 `pl.subplot(0, 1)`，只認中間面板：滑鼠在左或右面板時
+          射線是拿中間面板的相機去算的，`pick()` 回 None，函式**靜默 return**
+          ——畫面沒動、也沒有任何訊息，使用者只會看到「按 H 沒反應」。
+        """
+        try:
+            ren = pl.iren.interactor.FindPokedRenderer(int(x), int(y))
+        except Exception:
+            return None
+        for i, r_ in enumerate(pl.renderers):
+            if r_ is ren:
+                return i
+        return None
+
     def _update_preview(*_):
         """滑鼠移動時把預覽圓柱貼到模型表面。只更新單一 actor。"""
         if not drill["on"]:
             return
         try:
             x, y = pl.iren.interactor.GetEventPosition()
-            pl.subplot(0, 1)
-            hit, cid = drill["picker"].pick(pl.renderer, x, y)
-        except Exception:
+            idx = _poked_panel(x, y)
+            if idx is None:
+                return
+            pl.subplot(0, idx)
+            pk = drill["picker0"] if idx == 0 else drill["pickerD"]
+            hit, cid = pk.pick(pl.renderer, x, y)
+        except Exception as ex:
+            # 靜默吞例外是先前這個功能「沒反應」卻查不出原因的主因
+            print(f"[鑽孔] 預覽失敗：{type(ex).__name__}: {ex}")
             return
         if hit is None:
+            if drill["missed"] < 1:
+                print("[鑽孔] 滑鼠不在模型上——請把游標移到零件表面")
+            drill["missed"] += 1
             return
-        axis = drill["picker"].view_direction(pl.renderer, x, y)
-        drill["hit"] = np.array(hit, float) / 1000.0
+        drill["missed"] = 0
+        axis = pk.view_direction(pl.renderer, x, y)
+        # 圓柱畫在「看到的位置」，但實際鑽孔要用未變形模型上的對應點
+        drill["hit"] = (np.array(hit, float) / 1000.0 if idx == 0 or cid is None
+                        else _to_original(cid, hit))
         drill["axis"] = axis
         bbox_mm = (st["pts"].max(axis=0) - st["pts"].min(axis=0)) * 1000.0
         L = float(np.linalg.norm(bbox_mm))
@@ -952,27 +1239,39 @@ def main():
         pl.render()
 
     def toggle_drill():
-        if drill["on"]:
-            drill["on"] = False
-            if drill["obs"] is not None:
-                try:
-                    pl.iren.interactor.RemoveObserver(drill["obs"])
-                except Exception:
-                    pass
-                drill["obs"] = None
-            _clear_preview()
+        try:
+            if drill["on"]:
+                drill["on"] = False
+                if drill["obs"] is not None:
+                    try:
+                        pl.iren.interactor.RemoveObserver(drill["obs"])
+                    except Exception:
+                        pass
+                    drill["obs"] = None
+                _clear_preview()
+                _set_banner(None)
+                pl.render()
+                print("[鑽孔] 已離開鑽孔模式")
+                return
+            drill["on"] = True
+            drill["missed"] = 0
+            if drill["radius"] is None:
+                drill["radius"] = float(np.clip(_bbox_min() * 0.12,
+                                                0.0005, 0.005))
+            _rebuild_picker()
+            drill["obs"] = pl.iren.interactor.AddObserver(
+                "MouseMoveEvent", _update_preview)
+            _set_banner(f"● 鑽孔模式　⌀{drill['radius']*2000:.2f} mm　"
+                        "把滑鼠移到零件上會出現紅色圓柱　"
+                        "[ ] 調孔徑　Enter 確認　H 取消")
             pl.render()
-            print("[鑽孔] 已離開鑽孔模式")
-            return
-        drill["on"] = True
-        if drill["radius"] is None:
-            drill["radius"] = float(np.clip(_bbox_min() * 0.12, 0.0005, 0.005))
-        _rebuild_picker()
-        drill["obs"] = pl.iren.interactor.AddObserver(
-            "MouseMoveEvent", _update_preview)
-        print(f"[鑽孔] 已進入鑽孔模式：把滑鼠移到模型上會出現紅色圓柱，"
-              f"Enter 確認、[ ] 調孔徑、H 取消")
-        _update_preview()
+            print("[鑽孔] 已進入鑽孔模式：把滑鼠移到模型上會出現紅色圓柱，"
+                  "Enter 確認、[ ] 調孔徑、H 取消")
+            _update_preview()
+        except Exception as ex:
+            # ★ 例外若逸出到 VTK 回呼會被吞掉，症狀正是「按 H 完全沒反應」
+            drill["on"] = False
+            print(f"[鑽孔] 進入鑽孔模式失敗：{type(ex).__name__}: {ex}")
     pl.add_key_event("h", toggle_drill)
 
     def bump_radius(mul):
@@ -982,7 +1281,12 @@ def main():
             drill["radius"] = float(np.clip(drill["radius"] * mul,
                                             _bbox_min() * 0.02,
                                             _bbox_min() * 0.45))
+            _set_banner(f"● 鑽孔模式　⌀{drill['radius']*2000:.2f} mm　"
+                        "把滑鼠移到零件上會出現紅色圓柱　"
+                        "[ ] 調孔徑　Enter 確認　H 取消")
+            print(f"[鑽孔] 孔徑 ⌀{drill['radius']*2000:.2f} mm")
             _update_preview()
+            pl.render()
         return _
     pl.add_key_event("bracketright", bump_radius(1.25))
     pl.add_key_event("bracketleft", bump_radius(1 / 1.25))
@@ -1019,11 +1323,15 @@ def main():
                 st["res"] = run_simulation(p_new, t_new, s_new, resin, profile,
                                            shrink, prog=pg,
                                            support_nodes=sup_new,
-                                           gravity=cfg["gravity"])
+                                           gravity=cfg["gravity"],
+                                           turntable=turntable)
             finally:
                 pg.close()
             print(f"[鑽孔] 翹曲 {st['baseline_warp']:.4f} → "
                   f"{st['res']['max_warp_mm']:.4f} mm")
+            # refresh() 會 clear_actors()，橫幅與預覽的 actor 都已失效，
+            # 這裡要把參考清掉，否則之後 remove_actor 會操作到死物件
+            drill.update(actor=None, hint=None, banner=None, hit=None)
             refresh()
         except Exception as ex:
             print(f"[鑽孔] 失敗：{ex}")
@@ -1077,7 +1385,18 @@ def main():
     except Exception:
         pass
     pl.show()
-    return 0
+    return ("restart" if st["restart"] else "quit"), cfg
+
+
+def main():
+    arg = sys.argv[1] if len(sys.argv) > 1 else None
+    carry = {}
+    while True:
+        action, carry = _run_once(arg, carry)
+        if action != "restart":
+            return 0 if action == "quit" else 1
+        # 下一輪沿用上次的檔案當預設值；使用者可在設定視窗換掉
+        arg = (carry or {}).get("stl") or arg
 
 
 if __name__ == "__main__":

@@ -95,7 +95,8 @@ def freeze_reference_temp(T_elem, tg, T_final):
 
 def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
                     rubber_ratio=1e-3, shrink=None, surf_faces=None,
-                    n_uv_steps=None, support_nodes=None, gravity=False):
+                    n_uv_steps=None, support_nodes=None, gravity=False,
+                    turntable=None, jig=None):
     """完整流程：溫度歷程 → 逐步熱彈性積分 → 永久位移／殘留應力。
 
     pts 單位為公尺。回傳 dict。
@@ -111,22 +112,48 @@ def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
     alpha = resin.cte.value
     E0, nu = resin.E.value, resin.nu.value
 
+    jig_on = jig is not None and jig.enabled and jig.mass_kg > 0
+    jnodes = None
+    if jig_on:
+        from meshing import jig_nodes as _jig_nodes
+        jnodes = _jig_nodes(pts)
     solver = IncrementalSolver(
         pts, tets, nu, rubber_ratio,
         support_nodes=support_nodes,
         gravity_dir=((0.0, 0.0, -1.0) if gravity else None),
-        rho=(resin.rho.value if gravity else None))
+        rho=(resin.rho.value if gravity else None),
+        unilateral=(turntable.unilateral if turntable is not None else True),
+        jig_nodes=jnodes,
+        jig_force=(jig.force_N() if jig_on else 0.0))
     D_unit = elastic_D(1.0, nu)
 
     # ── 光固化收縮（見 materials.CureShrink）──
     #   Formlabs 多數樹脂的 Tg 高於 Form Cure 爐溫，熱凍結機制幾乎不作用；
     #   實務上的後固化翹曲主要來自這裡：UV 隨深度衰減 ⇒ 表面比內部多收縮。
+    #
+    # ★ 照度必須有方向性，否則算不出弓形。
+    #   平板的上下兩面若照度相同，厚度方向的收縮分布上下對稱，
+    #   合力矩恆為零 —— 不是「翹得很小」，是**數學上恆等於零**。
+    #   真實情況是底面貼在轉盤上：使用者現場的 Form Cure 二代轉盤是透明玻璃，
+    #   底面仍照得到光但強度較低（見 materials.Turntable.uv_transmit）。
     cure_eps_total = np.zeros(n_elem)
+    dose = None
     if shrink is not None and shrink.enabled and surf_faces is not None:
-        from meshing import depth_from_surface
-        d = depth_from_surface(pts, tets, surf_faces)       # 公尺
+        from meshing import cure_dose, turntable_faces, jig_faces
         pen = max(shrink.penetration_mm, 1e-6) / 1000.0
-        cure_eps_total = shrink.surface_strain * np.exp(-d / pen)
+        tau = 1.0 if turntable is None else float(turntable.uv_transmit)
+        w = np.ones(len(surf_faces))
+        # 用 != 而非 < ：τ>1（例如鏡面轉盤把光反射回底面）也要生效。
+        # 寫成 `if tau < 1.0` 會讓 τ>1 被**靜默忽略**，使用者調了參數卻毫無反應。
+        if tau != 1.0:
+            w[turntable_faces(pts, surf_faces)] = tau
+        # ★ 壓板除了力學拘束，還會**擋住從上方照下來的 UV**。
+        #   這對翹曲的影響可能比力學拘束還大：頂面被遮住之後，
+        #   上下表面的照度差反轉，弓形方向可能整個翻過來。
+        if jig_on and jig.uv_block < 1.0:
+            w[jig_faces(pts, surf_faces)] *= float(jig.uv_block)
+        dose = cure_dose(pts, tets, surf_faces, pen, w)
+        cure_eps_total = shrink.surface_strain * dose
     # 收縮發生在 UV 照射期間（＝升溫階段），平均分配到那些時間步
     if n_uv_steps is None:
         n_uv_steps = max(1, (n_step - 1) // 2)
@@ -208,6 +235,32 @@ def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
     # 均勻收縮率（線應變）：把振幅換算回無因次
     scale = scale_amp / nrm if nrm > 1e-30 else 0.0
 
+    # ── 弓形量：使用者真正在意的「板子翹起多少」──
+    #   `max_warp_mm` 是位移向量的長度，會把**面內**的殘留收縮差一起算進去；
+    #   平板案例中面內分量可佔 2/3，導致熱圖畫成「中心藍、四周紅」的放射狀，
+    #   而不是一眼看得出的弓形。這裡把面外（垂直轉盤方向）分量單獨拆出來，
+    #   並用二次曲面擬合求弓高——這才是拿卡尺量得到的那個數字。
+    x, y = centered[:, 0], centered[:, 1]
+    M = np.stack([np.ones_like(x), x, y, x * x, y * y, x * y], axis=1)
+    cf, *_ = np.linalg.lstsq(M, u_shape[:, 2], rcond=None)
+    quad = M[:, 3:] @ cf[3:]                       # 只留純二次項（線性項屬剛體）
+    bow = float(quad.max() - quad.min())
+    r2 = x * x + y * y
+    # 正值＝四周相對中心上翹（凹面朝上，卡尺量得到的典型後固化弓形）
+    bow_signed = bow * (1.0 if quad[np.argmax(r2)] >= quad[np.argmin(r2)] else -1.0)
+
+    in_plane = np.linalg.norm(u_shape[:, :2], axis=1)
+    out_plane = np.abs(u_shape[:, 2])
+
+    cure_warning = None
+    if (turntable is not None and shrink is not None and shrink.enabled
+            and float(turntable.uv_transmit) >= 0.999):
+        cure_warning = (
+            "⚠ 轉盤 UV 穿透率設為 1.0（上下表面照度相同）：厚度方向的收縮分布"
+            "上下對稱，主要彎矩相消，**弓形量會趨近於零**（只剩側面照射造成的"
+            "邊緣效應）。這是模型的數學結果、不是程式錯誤。"
+            "要看到弓形請把穿透率調到 1 以下。")
+
     return {
         "u": u_total,
         "u_shape": u_shape,
@@ -225,8 +278,19 @@ def compute_warpage(pts, tets, T_hist, resin, profile, progress=None,
         "freeze_transition_steps": trans_steps,
         "resolution_warning": resolution_warning,
         "cure_eps": cure_eps_total,
+        "cure_dose": dose,
         "cure_enabled": bool(shrink is not None and shrink.enabled
                              and surf_faces is not None),
+        "cure_warning": cure_warning,
+        # ── 弓形／面內外分解 ──
+        "bow_mm": float(bow_signed * 1000.0),             # 正＝四周上翹
+        "warp_out_mm": float(out_plane.max() * 1000.0),   # 面外（垂直轉盤）
+        "warp_in_mm": float(in_plane.max() * 1000.0),     # 面內
+        "out_of_plane_frac": float(
+            out_plane.max() / max(out_plane.max() + in_plane.max(), 1e-30)),
+        # ── 單向接觸診斷 ──
+        "contact": solver.contact_stats,
+        "jig": solver.jig_report(),
     }
 
 

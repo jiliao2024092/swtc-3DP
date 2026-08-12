@@ -1,0 +1,223 @@
+/* SLA 後固化變形模擬 — 瀏覽器介面樣式
+   ★ 文字一律用 ink token，不套資料色——顏色只由色塊/熱圖承載識別。
+   ★ 明暗主題走 :root[data-theme="dark"] 覆寫變數，與 quote-studio.html／
+     portal／inventory 同一套架構，不要另立門戶。
+   ★ 暗色不是把淺色反相：每個 token 都各自挑過，並確保
+     ink/muted 對 surface 的對比度在暗色下仍然足夠。 */
+
+:root {
+  /* ★ color-scheme 一定要設：<select> 的下拉清單、數字微調鈕、捲軸這些
+     原生元件不吃 CSS 變數，只吃 color-scheme。漏掉的話暗色模式下
+     下拉選單會是白底白字，整個看不到。 */
+  color-scheme: light;
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --line: #dfe4ea;
+  --ink: #1f2d3d;          /* 主要文字 */
+  --ink-2: #3f4a57;        /* 次要文字 */
+  --muted: #6b7684;        /* 弱化文字 */
+  --warn: #b45309;
+  --good: #047857;
+  --accent: #1d4ed8;
+  --accent-ink: #ffffff;   /* 疊在 accent 上的文字 */
+  --view-bg: #eef1f4;      /* 3D 檢視底色，需與 viewer.js 的 THEME.bg 一致 */
+  --bar-bg: #e6eaef;
+  --legend-bg: rgba(255,255,255,.88);
+  --radius: 8px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1319;
+  --surface: #171c24;
+  --line: #2a323d;
+  --ink: #e8edf3;
+  --ink-2: #c0c9d5;
+  --muted: #8b95a3;
+  --warn: #e0a848;
+  --good: #4bcf8b;
+  --accent: #4c8ef7;
+  --accent-ink: #0b1220;
+  --view-bg: #161a21;
+  --bar-bg: #232b36;
+  --legend-bg: rgba(23,28,36,.9);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--bg); color: var(--ink);
+  font-family: "Microsoft JhengHei UI", "Microsoft JhengHei",
+               "Segoe UI", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6;
+}
+
+.mono { font-family: Consolas, "Cascadia Mono", monospace; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.note { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+.note.warn { color: var(--warn); }
+.note.ok-note { color: var(--good); font-weight: 700; }
+
+/* ── 設定畫面 ─────────────────────────────── */
+.screen { height: 100%; overflow: auto; }
+#scr-setup { padding: 20px 24px 32px; }
+
+.hd h1 { font-size: 20px; margin: 0 0 2px; }
+.hd .sub { margin: 0 0 16px; color: var(--muted); font-size: 12px; }
+
+.grid { display: grid; gap: 14px; max-width: 880px; }
+
+fieldset {
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); padding: 12px 16px 14px; margin: 0;
+}
+legend { font-weight: 700; padding: 0 6px; color: var(--ink); }
+
+.row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.row > label:first-child { min-width: 128px; color: var(--ink-2); }
+
+select, input[type="number"], input[type="text"] {
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 13px;
+}
+select { min-width: 200px; }
+select.wide { min-width: 380px; }
+input[type="number"] { width: 88px; }
+input[type="range"] { width: 200px; accent-color: var(--accent); }
+input[type="checkbox"] { accent-color: var(--accent); margin-right: 6px; }
+
+.path { font-size: 12px; word-break: break-all; }
+
+/* 自訂條件列：靠左內縮並加一條軸線，一眼看出是隸屬上一列的下層設定 */
+.custom-row {
+  margin-left: 6px; padding-left: 10px;
+  border-left: 2px solid var(--accent);
+}
+.custom-row > label { min-width: auto !important; font-size: 12px;
+                      color: var(--ink-2); }
+.custom-row input[type="number"] { width: 82px; }
+
+.btn {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  color: var(--ink); font: inherit; font-size: 13px;
+  padding: 6px 14px; cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--accent-ink); font-weight: 700; padding: 8px 22px; font-size: 15px;
+}
+.btn.primary:hover:not(:disabled) { filter: brightness(1.15); color: var(--accent-ink); }
+
+.actions { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
+
+/* ── 進度畫面 ─────────────────────────────── */
+#scr-progress { display: grid; place-items: center; }
+.prog-box {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 28px 34px; min-width: 460px;
+}
+.prog-box h2 { margin: 0 0 4px; font-size: 17px; }
+.bar {
+  height: 8px; border-radius: 4px; background: var(--bar-bg);
+  overflow: hidden; margin: 14px 0 6px;
+}
+#pg-fill { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+
+/* ── 結果畫面 ─────────────────────────────── */
+#scr-result { display: grid; grid-template-columns: 330px 1fr; height: 100%; }
+
+.side {
+  overflow: auto; padding: 14px; background: var(--surface);
+  border-right: 1px solid var(--line); display: flex;
+  flex-direction: column; gap: 12px;
+}
+
+/* 數值卡片：標籤弱化、數值放大，不加任何裝飾線條 */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile {
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+}
+.tile .k { font-size: 11px; color: var(--muted); }
+.tile .v { font-size: 19px; font-weight: 700;
+           font-family: Consolas, "Cascadia Mono", monospace; }
+.tile .u { font-size: 11px; color: var(--muted); margin-left: 3px; }
+.tile.wide { grid-column: 1 / -1; }
+
+.ctl { border-top: 1px solid var(--line); padding-top: 10px; }
+.ctl h3 { font-size: 13px; margin: 0 0 8px; color: var(--ink-2); }
+.ctl .row > label:first-child { min-width: 76px; font-size: 12px; }
+.ck { display: block; margin: 6px 0; font-size: 13px; color: var(--ink-2); }
+
+.seg { display: flex; gap: 0; margin-bottom: 8px; }
+.seg button {
+  flex: 1; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+  font: inherit; font-size: 12px; padding: 5px 0; cursor: pointer;
+}
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.seg button + button { border-left: none; }
+.seg button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.warns:empty { display: none; }
+.warns p { color: var(--warn); font-size: 12px; margin: 0 0 8px; }
+
+/* ── 3D 檢視 ─────────────────────────────── */
+.view { position: relative; overflow: hidden; background: var(--view-bg); }
+#canvas-wrap { position: absolute; inset: 0; }
+#canvas-wrap canvas { display: block; }
+
+/* 圖例：色階必備（≥2 個層級就一定要有識別依據） */
+.legend {
+  position: absolute; left: 16px; right: 16px; bottom: 34px;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--legend-bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px;
+}
+.lg-t { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.legend .mono { font-size: 11px; color: var(--muted); }
+#lg-bar { flex: 1; height: 10px; border-radius: 3px; border: 1px solid var(--line); }
+
+.hint {
+  position: absolute; left: 16px; bottom: 10px;
+  font-size: 11px; color: var(--muted);
+}
+
+.crosshair #canvas-wrap { cursor: crosshair; }
+
+/* ── 點選承靠面 ─────────────────────────── */
+#scr-pick { display: grid; grid-template-columns: 330px 1fr; height: 100%; }
+#pick-wrap { position: absolute; inset: 0; cursor: crosshair; }
+#pick-wrap canvas { display: block; }
+.pick-h { font-size: 16px; margin: 0; }
+
+/* 操作說明：左欄鍵名、右欄動作，不用色塊承載資訊 */
+.keys { border-collapse: collapse; font-size: 12px; }
+.keys td { padding: 2px 10px 2px 0; color: var(--ink-2); vertical-align: top; }
+.keys td:first-child { color: var(--muted); white-space: nowrap; }
+
+.axes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.axes button {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: 12px;
+  padding: 5px 0; cursor: pointer;
+}
+.axes button:hover { border-color: var(--accent); color: var(--accent); }
+.axes button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.pick-state { font-size: 13px; color: var(--warn); margin: 0; }
+.pick-state.ok { color: var(--good); font-weight: 700; }
+
+/* ── 明暗切換 ─────────────────────────────── */
+.hd { display: flex; align-items: flex-start; gap: 12px; }
+.hd > div { flex: 1; }
+.theme-btn {
+  border: 1px solid var(--line); border-radius: 6px; background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: 13px;
+  padding: 6px 12px; cursor: pointer; white-space: nowrap;
+}
+.theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+#scr-result .theme-btn, #scr-pick .theme-btn { width: 100%; }
