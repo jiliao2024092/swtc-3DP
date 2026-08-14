@@ -594,9 +594,9 @@
                         <option value="其他">其他</option>
                         <option value="未分類">未分類（備註不符格式）</option>
                     </select>
-                    <input type="date" id="history-filter-from" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="起始日期">
+                    <input type="date" id="history-filter-from" onchange="applyHistoryDateRange()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="起始日期（早於目前載入範圍時會自動補撈）">
                     <span class="text-xs text-[var(--ink-5)]">～</span>
-                    <input type="date" id="history-filter-to" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="結束日期">
+                    <input type="date" id="history-filter-to" onchange="applyHistoryDateRange()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="結束日期">
                     <button onclick="resetHistoryFilters()" class="text-xs text-[var(--ink-4)] hover:text-[var(--accent)] underline ml-1">清除</button>
                 </div>
                 <!-- 載入範圍指示 -->
@@ -4012,6 +4012,35 @@ async function fetchHistoryRange(lowerBound, upperBound) {
     return added.length;
 }
 
+// 日期區間篩選：選定的起始日若早於「目前已載入的最早日期」，先從 Firestore 補撈缺口
+// [起始日, 已載入最早日) 再渲染。訂閱預設只有近 30 天，不補撈的話使用者選更早的區間
+// 只會看到空白，看起來像資料遺失（實際上只是沒載入）。
+// 補撈範圍以「起始日」為準；結束日只做前端過濾（未來的日期沒有資料可載）。
+async function applyHistoryDateRange() {
+    const fFrom = document.getElementById('history-filter-from').value;
+    if (!fFrom || !historySinceDate) { renderHistory(); return; }
+    const from = new Date(fFrom + 'T00:00:00');
+    if (Number.isNaN(from.getTime())) { renderHistory(); return; }
+
+    const earliest = extraHistorySinceDate || historySinceDate;
+    if (from >= earliest) { renderHistory(); return; }   // 已涵蓋在已載入範圍內，不用再撈
+
+    const loadIcon = document.getElementById('history-loading');
+    if (loadIcon) loadIcon.classList.remove('hidden');
+    try {
+        const addedCount = await fetchHistoryRange(from, earliest);
+        showToast(`✓ 已載入 ${from.toLocaleDateString('zh-TW')} 起的資料：新增 ${addedCount} 筆（本次 session 暫存）`, 'success');
+    } catch (err) {
+        console.error('applyHistoryDateRange 失敗:', err);
+        showToast('載入區間資料失敗：' + err.message, 'error');
+    } finally {
+        if (loadIcon) loadIcon.classList.add('hidden');
+    }
+    renderHistory();
+    renderOverview();
+    if (currentTab === 'monthly') renderMonthly();
+}
+
 async function loadEarlierMonth() {
     if (!historySinceDate) return;
     // 計算新範圍：從 extraHistorySinceDate（或 historySinceDate，首次點擊時）往前推一個月
@@ -4067,6 +4096,22 @@ function updateHistorySortIndicators(){
             el.className = 'ml-1 text-[var(--accent)] font-bold';
         } else { el.textContent=''; el.className='ml-1 text-[var(--ink-6)]'; }
     });
+}
+
+// 「未扣庫存」標籤的 tooltip：把判斷依據直接攤開（原始代碼、家族已知最新版本），
+// 否則使用者看到標籤只能猜，要開 Firebase Console 才知道為什麼沒扣。
+// 這兩個值就是 Cloud Function 的 is_outdated_version() 實際比較的東西。
+function deductSkipTitle(h) {
+    const raw = h.material_raw ? `原始代碼 ${h.material_raw}` : '原始代碼未紀錄（舊資料，此欄位在 v2.2 才新增）';
+    if (h.deduct_skip_reason === 'outdated_version') {
+        const fam = matCode(h.material);
+        const latest = (inv.family_latest_version || {})[fam];
+        return `${raw}\n家族 ${fam} 已知最新版本：${latest || '（未知）'}\n→ 判定為舊版本，消耗以最新版本計算，此筆不扣備料庫存。\n若這筆其實就是最新版本（同版本不同代碼），請回報以便加入版本對照特例。`;
+    }
+    if (h.deduct_skip_reason === 'backfill') {
+        return `${raw}\n此筆由 backfill 重建，當初就沒有扣除備料庫存（刪除時也不會回補）。`;
+    }
+    return `${raw}\n此筆未扣除備料庫存（未記錄原因）。`;
 }
 
 function renderHistory() {
@@ -4145,7 +4190,10 @@ function renderHistory() {
             <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
             <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}${
                 isConsumeLike && h.stock_deducted === false
-                ? `<span class="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)] border border-[var(--warn-border)] font-normal" title="${h.deduct_skip_reason==='outdated_version'?'舊版本代碼（家族已有更新版本）→ 消耗以最新版本計算，此筆不扣備料庫存':'此筆未扣除備料庫存'}">未扣庫存</span>`
+                ? `<span class="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)] border border-[var(--warn-border)] font-normal cursor-help" title="${escHtml(deductSkipTitle(h))}">未扣庫存</span>`
+                  + (isAdminUser() && (h.ml||0) > 0
+                    ? `<button onclick="fixHistoryDeduction('${h.id}')" title="這筆其實應該扣庫存 → 立即補扣（僅 admin）" class="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--accent-border)] text-[var(--accent)] hover:bg-[var(--accent-soft)] font-normal">補扣</button>`
+                    : '')
                 : ''}</td>
             <td class="p-3 text-xs text-[var(--ink-5)]">
                 <div class="flex items-center gap-1.5">
@@ -4818,6 +4866,69 @@ async function deleteHistoryEntry(id) {
     }
 }
 
+// ══ 補扣庫存 (admin) ══
+// 修正「當初被判成不該扣、實際上應該扣」的消耗紀錄。已知情境：同一個實際產品版本卻有
+// 兩種代碼（如 Rigid 10K 的 FLRG1002 / FLRG1011），Cloud Function 的 is_outdated_version()
+// 只看代碼末 2 碼，會把其中一個誤判成舊版本而跳過扣帳。
+// 動作：標記為已扣 → 從同家族備料庫存扣掉對應 mL → 補一筆 manual 紀錄留痕。
+// ★ 只有 admin 能做：firestore.rules 的 inventory_history update 只放行 isAdmin()。
+// ★ 這只修「既有的那幾筆」。根因要在 functions/main.py 的 VERSION_ALIAS 補上對照，
+//   否則之後同步進來的新紀錄仍會被判成舊版本而不扣。
+// ★ 重複執行會重複扣（動作本身不是冪等的），所以要先確認 stock_deducted === false。
+async function fixHistoryDeduction(id) {
+    if (!isAdminUser()) { showToast('僅 admin 可執行此操作', 'error'); return; }
+    if (!id) return;
+    const h = inv.history.find(x => x.id === id);
+    if (!h) return;
+    const ml = Number(h.ml) || 0;
+    if (!(ml > 0) || h.stock_deducted !== false || h.type === 'manual') {
+        showToast('此筆不需補扣（未標示「未扣庫存」或無用量）', 'error');
+        return;
+    }
+    const name = matName(h.material);
+    const fam  = matCode(h.material);
+    const cur  = (inv.stock[fam] && inv.stock[fam].total_ml) || 0;
+    const rawLine = h.material_raw ? `原始代碼：${h.material_raw}\n` : '';
+    if (!confirm(
+        `補扣庫存？\n\n${name} · ${printerDisplay(h.printer)||''} · ${h.note||''}\n${rawLine}\n` +
+        `會把這筆標記為「已扣庫存」，並從「${name}」備料庫存扣掉 ${ml.toFixed(1)} mL。\n` +
+        `目前備料 ${cur.toFixed(1)} mL → 補扣後 ${(cur - ml).toFixed(1)} mL\n\n` +
+        `僅適用於「當初被誤判、實際上應該扣」的紀錄。`
+    )) return;
+
+    try {
+        await updateDoc(doc(db, 'inventory_history', id), {
+            stock_deducted:     true,
+            deduct_skip_reason: null,
+            deduct_fixed_by:    currentUser.email,
+            deduct_fixed_at:    new Date().toISOString(),
+        });
+        // 本地先更新，畫面立即反應（onSnapshot 稍後會再蓋一次，結果相同）
+        [historyFromSubscription, extraHistory].forEach(arr => {
+            const t = arr.find(x => x.id === id);
+            if (t) { t.stock_deducted = true; t.deduct_skip_reason = null; }
+        });
+        rebuildInvHistory();
+
+        if (!inv.stock[fam]) inv.stock[fam] = { bottles: 0, total_ml: 0 };
+        inv.stock[fam].total_ml = Math.round(((inv.stock[fam].total_ml || 0) - ml) * 10) / 10;
+        inv.stock[fam].updated_at = new Date().toISOString();
+        inv.stock[fam].updated_by = currentUser.displayName;
+        await saveAll(`補扣庫存：${name} -${ml.toFixed(1)}mL（${currentUser.displayName}）`);
+        addHistory({ type:'manual', material: h.material, printer:'備料庫存',
+            ml: -ml, note: `補扣庫存（原判定未扣：${h.note||h.print_guid||id}）` });
+
+        renderHistory();
+        renderOverview();
+        renderStockTable();
+        if (currentTab === 'monthly') renderMonthly();
+        showToast(`✓ 已補扣 ${name} ${ml.toFixed(1)} mL`, 'success');
+    } catch (err) {
+        console.error('[fixHistoryDeduction] 失敗:', err);
+        showToast('補扣失敗：' + err.message, 'error');
+    }
+}
+
 // ══ 編輯單筆消耗/歷史紀錄的備註 (editor/admin) ══
 // 備註建議格式：客戶簡稱-工作類別-EF單號（例：鑫元鴻-代工-202607020001），
 // 用於「工作類別」篩選與月度分析的解析依據；不影響庫存數字，僅修正顯示文字
@@ -4951,6 +5062,7 @@ window.toggleOverviewCards = toggleOverviewCards;
 window.reloadData = reloadData;
 window.deleteHistoryEntry = deleteHistoryEntry;
 window.editHistoryNote = editHistoryNote;
+window.fixHistoryDeduction = fixHistoryDeduction;
 // ══ 去除重複紀錄 (admin only) ══
 async function deduplicateHistory() {
     if (!currentUser || currentUser.role !== 'admin') {
@@ -5026,6 +5138,7 @@ async function deduplicateHistory() {
 
 window.deduplicateHistory = deduplicateHistory;
 window.loadEarlierMonth = loadEarlierMonth;
+window.applyHistoryDateRange = applyHistoryDateRange;
 window.showDisabledMaterialsModal = showDisabledMaterialsModal;
 window.closeDisabledMaterialsModal = closeDisabledMaterialsModal;
 window.restoreMaterial = restoreMaterial;

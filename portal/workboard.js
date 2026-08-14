@@ -10,12 +10,17 @@
   // 「客戶簡稱-工作類別-EF單號」（見 inventory.html 的 editHistoryNote），
   // 工作類別為 代工/評估 時才計入，EF單號需與工單的 EF 單號（form.id）完全相同，
   // 同一單號可能有多筆消耗紀錄（分次列印），全部加總。
+  // ★ 同一個 EF 單號可能橫跨多種樹脂（同一案子分別用不同材料列印），只比對單號會把
+  //   不同材料的用量加在一起、灌進工單唯一的「實際消耗量」欄位。故改成「單號相同後
+  //   再依材料分組」，回填時只取與工單「樹脂材料」同家族的那一份（見 pickByResin）。
+  //   材料比對走 window.matName（家族正規化），紀錄存的是家族代碼、工單存的是顯示名稱。
   // Firestore 沒有可查「note 內含某字串」的索引，只能抓一段時間內的紀錄再前端解析比對，
   // 故限制筆數（最近1000筆）並僅在開啟工單/EF單號變更時查一次，不做常駐訂閱以免耗用讀取額度。
   async function fetchConsumptionForEF(efNo) {
     if (!efNo || !window.fbDb) return null;
     try {
       const snap = await window.fbDb.collection('inventory_history').orderBy('tsDate', 'desc').limit(1000).get();
+      const byMat = new Map();   // 材料顯示名稱 → { name, sum, count }
       let sum = 0, count = 0;
       snap.forEach(doc => {
         const d = doc.data();
@@ -23,15 +28,38 @@
         if (parts.length < 3) return;
         const category = parts[1].trim();
         const ef = parts.slice(2).join('-').trim();
-        if ((category === '代工' || category === '評估') && ef === efNo) {
-          sum += Number(d.ml) || 0; count++;
-        }
+        if ((category !== '代工' && category !== '評估') || ef !== efNo) return;
+        const ml = Number(d.ml) || 0;
+        const name = matDisplay(d.material) || '未指定材料';
+        const cur = byMat.get(name) || { name, sum: 0, count: 0 };
+        cur.sum += ml; cur.count++;
+        byMat.set(name, cur);
+        sum += ml; count++;
       });
-      return count > 0 ? { sum: Math.round(sum * 10) / 10, count } : null;
+      if (!count) return null;
+      const r1 = v => Math.round(v * 10) / 10;
+      return {
+        sum: r1(sum), count,
+        byMaterial: [...byMat.values()].map(m => ({ ...m, sum: r1(m.sum) }))
+                                       .sort((a, b) => b.sum - a.sum),
+      };
     } catch (e) {
       console.error('[fetchConsumptionForEF] 查詢失敗', e);
       return null;
     }
+  }
+
+  // 材料顯示名稱正規化（firebase-service.js 的 matName；未載入時原樣回傳）
+  function matDisplay(m) {
+    if (!m) return '';
+    return (window.matName ? window.matName(m) : m) || '';
+  }
+
+  // 從消耗紀錄的材料分組中，挑出與工單「樹脂材料」同一家族的那一筆
+  function pickByResin(info, resin) {
+    if (!info || !resin) return null;
+    const key = matDisplay(resin);
+    return info.byMaterial.find(m => m.name === key) || null;
   }
 
   // ── 訂單 Modal ──
@@ -59,7 +87,10 @@
     const [consumeInfo, setConsumeInfo] = useState(null);   // INVENTORY 消耗紀錄查詢結果 {sum, count}
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-    // EF 單號變更時，自動查詢 INVENTORY 消耗紀錄合計；首次開啟若「實際消耗量」尚未填寫，直接帶入
+    // EF 單號變更時，自動查詢 INVENTORY 消耗紀錄；首次開啟若「實際消耗量」尚未填寫才自動帶入。
+    // 帶入的是「與工單樹脂材料相符」的那一份，不是全部加總（同單號可能有多種材料）。
+    // 工單還沒指定樹脂、而該單號的消耗紀錄剛好只有一種材料時，連樹脂一起帶入；
+    // 有多種材料又沒指定樹脂則不猜，由使用者在下方明細點選。
     useEffect(() => {
       let cancelled = false;
       setConsumeInfo(null);
@@ -67,7 +98,15 @@
       fetchConsumptionForEF(form.id).then(info => {
         if (cancelled || !info) return;
         setConsumeInfo(info);
-        setForm(f => (f.actUsage === '' || f.actUsage == null) ? { ...f, actUsage: info.sum } : f);
+        setForm(f => {
+          if (f.actUsage !== '' && f.actUsage != null) return f;
+          const pick = pickByResin(info, f.resin);
+          if (pick) return { ...f, actUsage: pick.sum };
+          if (!f.resin && info.byMaterial.length === 1) {
+            return { ...f, resin: info.byMaterial[0].name, actUsage: info.byMaterial[0].sum };
+          }
+          return f;
+        });
       });
       return () => { cancelled = true; };
     }, [form.id]);
@@ -132,15 +171,39 @@
                 <input style={INP} type="number" min="0" step="1" value={form.estUsage??''} onChange={e=>set('estUsage',e.target.value===''?'':+e.target.value)} placeholder="例：120"/></div>
               <div className="m-field"><label style={LBL}>實際消耗量 (mL)</label>
                 <input style={INP} type="number" min="0" step="1" value={form.actUsage??''} onChange={e=>set('actUsage',e.target.value===''?'':+e.target.value)} placeholder="超過預估將於總表標記"/>
-                {consumeInfo && (
-                  <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4,display:'flex',alignItems:'center',gap:6}}>
-                    📊 消耗紀錄合計 {consumeInfo.sum}mL（{consumeInfo.count}筆）
-                    {(+form.actUsage||0)!==consumeInfo.sum && (
-                      <button type="button" onClick={()=>set('actUsage',consumeInfo.sum)}
-                        style={{border:'1px solid var(--accent)',color:'var(--accent)',background:'var(--accent-soft)',borderRadius:4,padding:'1px 7px',fontSize:10.5,cursor:'pointer'}}>套用</button>
-                    )}
-                  </div>
-                )}</div>
+                {consumeInfo && (() => {
+                  const matched = pickByResin(consumeInfo, form.resin);
+                  const others  = consumeInfo.byMaterial.filter(m => !matched || m.name !== matched.name);
+                  const applyBtn = { border:'1px solid var(--accent)', color:'var(--accent)', background:'var(--accent-soft)', borderRadius:4, padding:'1px 7px', fontSize:10.5, cursor:'pointer', fontFamily:'inherit' };
+                  const otherBtn = { border:'1px solid var(--line)', color:'var(--ink-3)', background:'var(--bg)', borderRadius:4, padding:'1px 7px', fontSize:10.5, cursor:'pointer', fontFamily:'inherit' };
+                  return (
+                    <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4,display:'flex',flexDirection:'column',gap:4}}>
+                      {matched ? (
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          📊 {matched.name} 消耗合計 {matched.sum}mL（{matched.count}筆）
+                          {(+form.actUsage||0)!==matched.sum && (
+                            <button type="button" onClick={()=>set('actUsage',matched.sum)} style={applyBtn}>套用</button>
+                          )}
+                        </div>
+                      ) : form.resin ? (
+                        <div>📊 此單號共 {consumeInfo.sum}mL（{consumeInfo.count}筆），但沒有「{form.resin}」的消耗紀錄</div>
+                      ) : (
+                        <div>📊 此單號共 {consumeInfo.sum}mL（{consumeInfo.count}筆）；請先選「樹脂材料」以帶入對應數量</div>
+                      )}
+                      {others.length > 0 && (
+                        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          <span style={{color:'var(--ink-5)'}}>其他材料：</span>
+                          {others.map(m => (
+                            <button key={m.name} type="button" title={`改用此材料並帶入 ${m.sum}mL`} style={otherBtn}
+                              onClick={()=>{ set('resin', m.name); set('actUsage', m.sum); }}>
+                              {m.name} {m.sum}mL（{m.count}筆）
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}</div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>期望交期 *</label>
