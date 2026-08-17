@@ -159,7 +159,13 @@ def material_display_name(code: Optional[str]) -> Optional[str]:
 # 直接比會把 FLRG1002 判成舊版而不扣庫存 → 這裡把它拉平成跟 FLRG1002 同一個版本號。
 VERSION_ALIAS = {
     "FLRG1011": 2,   # = FLRG1002，同為 Rigid 10K V1.1
+    "FLTO2011": 2,   # = FLTO2002，同為 Tough 2000 V2
 }
+# 2026-08-17 追加 FLTO2011：使用者回報一筆 Tough 2000 被標成「未扣庫存」，但那次列印
+# 用的就是 V2。查 inventory/main.family_latest_version 得 FLTO20 = "FLTO2011"，末 2 碼 11
+# 直接壓過 FLTO2002 的 02 → FLTO2002 被誤判成舊版。與 Rigid 10K 完全同一個模式。
+# 判讀方式：消耗紀錄「未扣庫存」標籤的 tooltip 會列出 material_raw 與該家族已知最新版本，
+# 兩者若是同一個產品版本就加進這張表，不要去改比較邏輯。
 
 
 def raw_version_num(code: Optional[str]) -> Optional[int]:

@@ -76,12 +76,25 @@ button{font-family:inherit}
 .brandSwitch button{border:0;background:transparent;border-radius:5px;padding:3px 9px;cursor:pointer;
   font:inherit;font-size:calc(10.5px * var(--fs));font-weight:600;color:var(--ink4)}
 .brandSwitch button.on{background:var(--panelBg);color:var(--ink);box-shadow:var(--shadowSm)}
-#viewbar{display:flex;gap:5px;border-radius:8px;padding:5px;align-items:center}
-.vtab{padding:4px 10px;border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs));font-weight:600;
+/* 視角/顯示工具列：一律不換行，塞不下就整條縮小（見 JS 的 fitViewbar）。
+   原本沒設 white-space，寬度不夠時 flex 會把按鈕壓得比文字還窄，「懸垂」「支撐」
+   「剖層」「全螢幕」就被拆成兩行、整條工具列變兩倍高。大字模式（body.big）下
+   尤其容易踩到。
+   --vbs 是這條工具列專用的縮放倍率，由 fitViewbar() 依實際可用寬度量測後設定；
+   字級與內距都乘上它，所以縮小時比例不會跑掉。 */
+/* min-width:0 + overflow-x:auto —— 視窗窄到連 0.7 倍都塞不下時（fitViewbar 的下限），
+   讓工具列自己橫向捲動，而不是溢出去蓋到左邊標題或右邊視角方塊。捲軸隱藏，滑鼠/觸控板
+   仍可橫向滑。這是最後的退路，一般桌機寬度不會走到這裡。 */
+#viewbar{--vbs:1;display:flex;gap:calc(5px * var(--vbs));border-radius:8px;padding:calc(5px * var(--vbs));align-items:center;flex-wrap:nowrap;
+  min-width:0;overflow-x:auto;scrollbar-width:none}
+#viewbar::-webkit-scrollbar{display:none}
+/* flex:0 0 auto —— 不准被壓縮到比內容窄，否則 nowrap 的文字會溢出按鈕邊框 */
+.vtab,.abtn{white-space:nowrap;flex:0 0 auto}
+.vtab{padding:calc(4px * var(--vbs)) calc(10px * var(--vbs));border-radius:5px;border:1px solid transparent;font-size:calc(11px * var(--fs) * var(--vbs));font-weight:600;
   color:var(--ink4);cursor:pointer;background:transparent}
 .vtab.on{border-color:var(--line);color:var(--ink);background:var(--panelBg)}
 .vsep{width:1px;background:var(--line);align-self:stretch;margin:2px 2px}
-.abtn{padding:4px 9px;border-radius:5px;border:1px solid var(--line);font-size:calc(11px * var(--fs));cursor:pointer;background:var(--panelBg);color:var(--ink3)}
+.abtn{padding:calc(4px * var(--vbs)) calc(9px * var(--vbs));border-radius:5px;border:1px solid var(--line);font-size:calc(11px * var(--fs) * var(--vbs));cursor:pointer;background:var(--panelBg);color:var(--ink3)}
 .abtn.warnb{border-color:var(--warn);color:var(--warn)}
 .abtn.warnb.on{background:var(--warnBg)}
 .abtn.purpleb{border-color:var(--purple);color:var(--purple);background:var(--purpleBg)}
@@ -1173,9 +1186,33 @@ function initViewer(){
   canvas.addEventListener('wheel', e=>{ e.preventDefault(); V.radius=Math.min(1200,Math.max(60,V.radius+e.deltaY*0.4)); updateCam(); }, {passive:false});
 
   const resize = () => { const w=innerWidth,h=innerHeight;
-    V.renderer.setSize(w,h,false); V.camera.aspect=w/h; V.camera.updateProjectionMatrix(); };
+    V.renderer.setSize(w,h,false); V.camera.aspect=w/h; V.camera.updateProjectionMatrix();
+    fitViewbar(); };
   addEventListener('resize', resize); resize();
   (function loop(){ requestAnimationFrame(loop); updateGizmoScreenScale(); V.renderer.render(V.scene, V.camera); })();
+}
+/* 視角工具列自動縮放：寧可字小也不要跳行（使用者明確要求）。
+   #topbar 是 flex，#viewbar 兩側各有一個 flex:1 的彈性空白，所以可用寬度 =
+   topbar 內寬 − brand 寬 − 右側視角方塊寬 − gap。按鈕已設 flex:0 0 auto，
+   bar.scrollWidth 就是「不換行時需要的自然寬度」，拿它跟可用寬度比即可。
+   從 1 往下每次減 4%，找到第一個塞得下的倍率；最低 0.7（再小就看不清了，
+   此時允許稍微溢出，總比字小到不能讀或跳行好）。
+   ★ 為什麼不用 media query：實際可用寬度同時受視窗寬、瀏覽器縮放、螢幕 DPR 與
+     大字模式（body.big → --fs:1.16）影響，寫死斷點在使用者的機器上對不上
+     （實測 1514px 在標準 DPI 下不會跳行，但使用者那邊會）。 */
+function fitViewbar(){
+  const bar = $('#viewbar'), top = $('#topbar');
+  if (!bar || !top) return;
+  const brand = $('#brand'), cube = $('#cubeWrap');
+  const GAP = 8 * 2 + 6;   // #topbar 的 gap 8px ×2，再留 6px 寬容
+  const avail = top.clientWidth - (brand ? brand.offsetWidth : 0) - (cube ? cube.offsetWidth : 0) - GAP;
+  if (avail <= 0) return;
+  let s = 1;
+  for (; s > 0.7; s -= 0.04){
+    bar.style.setProperty('--vbs', s.toFixed(2));
+    if (bar.scrollWidth <= avail) break;
+  }
+  bar.style.setProperty('--vbs', Math.max(0.7, s).toFixed(2));
 }
 function buildPlatform(){
   while(V.platGroup.children.length){ const c=V.platGroup.children[0]; V.platGroup.remove(c); if(c.geometry)c.geometry.dispose(); }
@@ -3640,6 +3677,7 @@ function bindEvents(){
     S.fontBig = !S.fontBig;
     document.body.classList.toggle('big', S.fontBig);
     $('#btnFs').classList.toggle('on', S.fontBig);
+    fitViewbar();   // 字級變了，工具列的自然寬度跟著變，要重算縮放倍率
     try { localStorage.setItem('aps_fontBig', S.fontBig?'1':'0'); } catch(e){}
     toast(S.fontBig ? 'Ａ 大字模式' : 'A 小字模式','ok');
   });
@@ -3705,6 +3743,8 @@ function boot(){
   renderStep();
   updateAllUI();
   initFirebaseSync();   // 非阻塞：連線成功後 onSnapshot 會自動更新工單/歷史 UI
+  // 字型載入完成會改變工具列的自然寬度，要再算一次（initViewer 的 resize 已先算過一輪）
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitViewbar).catch(()=>{});
   toast('AI Print Studio 已就緒 — 拖曳 STL/OBJ/3MF/STEP 或載入示範模型','ok');
 }
 boot();
