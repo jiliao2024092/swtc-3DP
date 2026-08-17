@@ -140,11 +140,13 @@ Firebase Console → **Authentication** → **Settings** → **Authorized domain
 | Collection | 欄位 | 程式碼設定的期限 | 內容 |
 |---|---|---|---|
 | `print_history` | `expireAt` | **30 天** | 估價過程的操作痕跡（分析、修復、擺放…） |
-| `print_orders` | `expireAt` | **365 天** | 實際的估價工單（客戶、品名、金額） |
+| `print_orders` | `expireAt` | **14 天** | 實際的估價工單（客戶、品名、金額） |
 
-> ⚠️ `print_orders` 的 365 天是**我先填的預設值，還沒經你確認**。這是歷史報價紀錄，
-> 刪掉不可復原。確認要幾天後再改 `quote-studio.html` 的 `TTL_DAYS.orders`，
-> **然後才建 policy**。
+> ⚠️ `print_orders` 的 14 天是使用者指定的，對齊報價單上印的「報價有效期 14 天」。
+> **實務影響**：雲端工單清單只會留最近 14 天，更早的工單會被永久刪除、無法復原。
+> 如果之後有人問「上個月的報價呢」，答案是沒有了 —— 需要長期保存的報價請自行
+> 「列印 / PDF」存檔。要改期限就改 `quote-studio.html` 的 `TTL_DAYS.orders`
+> （只影響改動後新建的工單，已寫入的 `expireAt` 不會回頭調整）。
 
 **建立 policy（每個 collection 各一條）**
 

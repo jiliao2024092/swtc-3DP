@@ -722,7 +722,9 @@ function subscribeCloud(){
    ★ 光寫 expireAt 不會刪任何東西 —— 要在 GCP Console 對 print_history / print_orders
      各建一條 TTL policy 指向這個欄位才會生效（步驟見 docs/security-hardening.md）。
    ★ TTL 只作用在「有這個欄位」的文件，既有舊文件不會被清掉，需另外一次性處理。 */
-const TTL_DAYS = { history: 30, orders: 365 };
+// orders 的 14 天對齊報價單上印的「報價有效期 14 天」——過期的報價本來就不該再被引用。
+// ⚠ 這代表雲端工單清單只會留最近 14 天，更早的會被 TTL 永久刪除且無法復原。
+const TTL_DAYS = { history: 30, orders: 14 };
 function expireAt(days){
   return firebase.firestore.Timestamp.fromDate(new Date(Date.now() + days * 86400000));
 }
