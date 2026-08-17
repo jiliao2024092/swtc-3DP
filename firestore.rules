@@ -239,9 +239,17 @@ service cloud.firestore {
       allow update: if isLegacyEditorOrAdmin();
       allow delete: if isAdmin();
     }
+    // 估價操作歷史。建立工單後，quote-studio 會刪掉該次 session 自己寫的那幾筆
+    // （clearSessionHistory），所以刪除不能只放行 admin。用文件裡的 uid 認人：
+    //   - create 必須把 uid 寫成自己，否則可以冒名寫紀錄、也就能反過來刪別人的
+    //   - 舊紀錄沒有 uid 欄位 → .get('uid','') 取到空字串，只有 admin 刪得掉
     match /print_history/{id} {
-      allow read, create: if isLoggedIn();
-      allow update, delete: if isAdmin();
+      allow read: if isLoggedIn();
+      allow create: if isLoggedIn()
+        && request.resource.data.get('uid', '') == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin()
+        || (isLoggedIn() && resource.data.get('uid', '') == request.auth.uid);
     }
 
     match /{document=**} {

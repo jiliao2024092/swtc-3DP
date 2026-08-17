@@ -36,6 +36,7 @@ portal.html 是 React 外殼（React18 + Babel CDN + Firebase compat SDK），�
 - 前端（根目錄檔或 portal 檔）：`git push` → GitHub Actions 自動部署 → 使用者 **Ctrl+Shift+R**（iframe cache 頑固，建議關分頁重開）
 - **改 portal 本地 js（issues.js/workboard.js/firebase-*.js）後，務必升 portal.html 對應那支 `.js` 的 `?v=` cache 版本號**（每支各自獨立編號，只升有改動的那支；版本號會持續往上升，實際數值請直接看 `portal/portal.html` 內對應 `<script src="...?v=...">`，不要照抄這裡的舊範例）。只改 portal.html 自身（CSS/元件）不需升號
 - Cloud Function：`git push`（functions/ 變動觸發），或 `firebase deploy --only functions --project swtc-3dp-poc`
+- **有使用者看得到的改動時，要更新 `portal/portal.html` 的 `CHANGELOG` 陣列**（標題欄右下角 `?` 圓鈕的「版本更新說明」）。新的放最前面、維持 10 筆，`hash` 填該次的 commit short hash。這是純手動維護，沒人補就會停住（實際踩過：停在 2026-08-03 整整兩週，使用者回報「版本更新說明沒顯示」）。用**使用者看得懂的話**寫，不要貼 commit title
 - `firestore.rules`：`git push` 即自動部署；**新增權限保護某個 collection/doc 時，務必檢查有沒有更泛用的萬用字元規則（如 `match /settings/{docId}`）會先蓋過具體路徑規則**——Firestore rules 是「最具體路徑優先」，不是疊加 OR，泛用規則若寫在前面且路徑更廣，會讓新權限完全不生效（實際踩過：`manage_quote_pricing`、`inventory_history` 主管刪除權限，都要在泛用規則之前另外寫具體路徑）
 
 ## 驗證指令（改完必跑；於 repo 根目錄執行）

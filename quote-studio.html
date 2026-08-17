@@ -716,23 +716,72 @@ function subscribeCloud(){
       if (S.openMod==='cloud') openModule('cloud');
     }, e=>{ console.error('[FB] history 監聽失敗', e); });
 }
-/* 寫入歷史紀錄（雲端優先，離線時退回本機陣列） */
-function cloudAddHistory(act, sum){
+/* ── 雲端資料保留期限 ──────────────────────────────────────────────
+   兩個 collection 都寫入 expireAt，交給 Firestore 的 TTL policy 自動刪除。
+   TTL 的刪除不計入寫入配額，比用 Cloud Function 排程掃描＋刪除便宜得多。
+   ★ 光寫 expireAt 不會刪任何東西 —— 要在 GCP Console 對 print_history / print_orders
+     各建一條 TTL policy 指向這個欄位才會生效（步驟見 docs/security-hardening.md）。
+   ★ TTL 只作用在「有這個欄位」的文件，既有舊文件不會被清掉，需另外一次性處理。 */
+const TTL_DAYS = { history: 30, orders: 365 };
+function expireAt(days){
+  return firebase.firestore.Timestamp.fromDate(new Date(Date.now() + days * 86400000));
+}
+
+/* 本次瀏覽器 session 寫進 print_history 的 doc id：建立工單後用來清掉過程紀錄 */
+FB.sessionHistIds = [];
+
+/* 寫入歷史紀錄（雲端優先，離線時退回本機陣列）
+   cloud=false → 只留本機不寫雲端。給「旋轉／手動擺放／單位縮放／以此面為底」這種
+   高頻操作用：一次估價可能觸發幾十筆，每筆都是一次 Firestore 寫入（免費額度 2 萬/天，
+   這個專案有過寫入爆量的前例）。這些操作的痕跡對事後追查沒有價值，畫面上照樣看得到。 */
+function cloudAddHistory(act, sum, cloud){
   const t = new Date().toLocaleString('zh-TW',{hour12:false});
-  if (FB.ready){
-    FB.db.collection('print_history').add({ t, act, sum, createdAt: firebase.firestore.FieldValue.serverTimestamp() })
+  if (FB.ready && cloud !== false){
+    FB.db.collection('print_history').add({
+      t, act, sum,
+      uid: FB.uid || null,            // 供 rules 判斷「刪自己的紀錄」
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      expireAt:  expireAt(TTL_DAYS.history),
+    })
+      .then(ref => { FB.sessionHistIds.push(ref.id); })
       .catch(e=>console.error('[FB] history 寫入失敗', e));
   } else {
-    S.history.unshift({ t, act, sum });
-    if (S.history.length > 120) S.history.pop();
-    persist();
+    // 本機紀錄：雲端模式下 S.history 由 onSnapshot 整個覆寫，所以另存一份再合併顯示
+    S.localHist.unshift({ t, act, sum });
+    if (S.localHist.length > 120) S.localHist.pop();
+    if (!FB.ready) persist();
   }
 }
+
+/* 顯示用的歷史紀錄：雲端 + 本機（僅存在於這個分頁）合併，依時間新到舊 */
+function allHistory(){
+  return [...S.history, ...S.localHist].sort((a,b)=>(b.t||'').localeCompare(a.t||''));
+}
+
+/* 建立工單後清掉這次 session 的過程紀錄（工單本身已經存進 print_orders）。
+   只刪「這個分頁自己寫的」那幾筆 —— print_history 是所有人共用的 collection，
+   照時間或整批刪會把別人的紀錄一起清掉。 */
+async function clearSessionHistory(){
+  if (!FB.ready || !FB.sessionHistIds.length) return;
+  const ids = FB.sessionHistIds.splice(0);   // 先取走再刪，避免重複送出
+  try {
+    const batch = FB.db.batch();
+    ids.forEach(id => batch.delete(FB.db.collection('print_history').doc(id)));
+    await batch.commit();
+  } catch(e){
+    console.error('[FB] 清除動作紀錄失敗', e);
+    FB.sessionHistIds.push(...ids);          // 失敗就放回去，下次建立工單再試
+  }
+}
+
 /* 寫入工單（雲端優先，離線時退回本機陣列） */
 async function cloudAddOrder(order){
   if (FB.ready){
     try {
-      await FB.db.collection('print_orders').add(Object.assign({}, order, { createdAt: firebase.firestore.FieldValue.serverTimestamp() }));
+      await FB.db.collection('print_orders').add(Object.assign({}, order, {
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        expireAt:  expireAt(TTL_DAYS.orders),
+      }));
       return true;
     } catch(e){ console.error('[FB] order 寫入失敗', e); toast('✕ 雲端儲存失敗，已改存本機','err'); }
   }
@@ -824,6 +873,9 @@ const S = {
   multipliers: { '代工':1, '評估':1 },   // 由 admin 於「材料與價格設定」設定，Firestore settings/quote_studio_pricing
   isAdmin: false,
   orders: [], history: [],
+  // 只存在於這個分頁的動作紀錄（高頻操作不寫雲端，見 cloudAddHistory 的 cloud 參數）。
+  // 雲端模式下 S.history 由 onSnapshot 整個覆寫，混在一起會被蓋掉，所以分開存。
+  localHist: [],
   cloudStatus: 'connecting',   // connecting | online | offline
 };
 function activeModel(){ return S.models.find(m=>m.id===S.activeId) || null; }
@@ -856,6 +908,10 @@ async function busy(msg, fn){
 }
 function logHist(act, sum){
   cloudAddHistory(act, sum);   // 雲端優先；離線時內部會退回本機陣列
+}
+/* 只留本機、不寫雲端的動作紀錄（高頻操作用，見 cloudAddHistory 的說明） */
+function logHistLocal(act, sum){
+  cloudAddHistory(act, sum, false);
 }
 function persist(){
   // 僅作離線備援：雲端連線時工單/歷史由 Firestore onSnapshot 驅動，不寫 localStorage
@@ -3322,9 +3378,10 @@ function openModule(mod){
     B.appendChild(btn('📝 產生 AI 報告', async ()=>{ await genReport(); openModule('cloud'); }, false));
 
     B.appendChild(el('div','lbl','歷史紀錄'));
-    if (!S.history.length) B.appendChild(el('div','mnote','尚無紀錄。'));
+    const hist = allHistory();
+    if (!hist.length) B.appendChild(el('div','mnote','尚無紀錄。'));
     const hw = el('div',''); hw.style.maxHeight='150px'; hw.style.overflowY='auto';
-    for (const h of S.history.slice(0,30)) hw.appendChild(el('div','histRow',`<span class="ht">${h.t}</span> · <b style="font-weight:600">${h.act}</b> — ${h.sum}`));
+    for (const h of hist.slice(0,30)) hw.appendChild(el('div','histRow',`<span class="ht">${h.t}</span> · <b style="font-weight:600">${h.act}</b> — ${h.sum}`));
     B.appendChild(hw);
 
     B.appendChild(el('div','lbl','API · 運算引擎'));
@@ -3478,7 +3535,14 @@ function saveOrder(customer){
     resinML:C.resinML, timeS:timeStr(C.time), total:C.total, workType:C.workType, status:'pend',
     t:new Date().toLocaleString('zh-TW',{hour12:false}) };
   cloudAddOrder(order);
-  logHist('建立工單', `${no} · ${itemLabel} · ${NTD(C.total)}`);
+  // 工單存好之後，把這次估價過程的動作紀錄清掉 —— 工單本身已在 print_orders，
+  // 過程痕跡（分析/修復/擺放…）留著只是佔空間。順序很重要：先清舊的，再寫
+  // 「建立工單」這一筆，才不會把剛寫的這筆也一起刪掉。
+  clearSessionHistory().finally(() => {
+    logHist('建立工單', `${no} · ${itemLabel} · ${NTD(C.total)}`);
+    S.localHist = [];
+    if (S.openMod==='cloud') openModule('cloud');
+  });
   toast(`✓ 已建立工單 ${no}${FB.ready?'（已同步雲端）':'（本機暫存,雲端離線）'}`,'ok');
   if (S.openMod==='cloud') openModule('cloud');
 }
@@ -3945,7 +4009,7 @@ async function applyUnitScale(k){
   computeWorld(m); clampModelPos(m);
   await rebuildScene(true);
   toast(`✓ 已縮放 ×${k}（${k>1?'inch→mm':'mm←inch 修正'}）— 重新檢查中`,'ok');
-  logHist('單位縮放', `×${k}`);
+  logHistLocal('單位縮放', `×${k}`);
   await runFileCheck(m);
   renderStep();
 }
@@ -4210,7 +4274,7 @@ async function commitGizmo(axis, delta){
   await rebuildScene(true);
   selectModel();
   toast(`↻ 繞 ${axis.toUpperCase()} 軸旋轉 ${(delta*57.2958).toFixed(1)}°（Ctrl+Z 可復原）`,'ok');
-  logHist('旋轉', `${axis.toUpperCase()} ${(delta*57.2958).toFixed(1)}° → 傾X ${m.orient.tiltX}/側Y ${m.orient.yaw}/傾Z ${m.orient.tiltZ}`);
+  logHistLocal('旋轉', `${axis.toUpperCase()} ${(delta*57.2958).toFixed(1)}° → 傾X ${m.orient.tiltX}/側Y ${m.orient.yaw}/傾Z ${m.orient.tiltZ}`);
 }
 /* ---------- 自動夾回列印範圍 ---------- */
 function clampModelPos(m){
@@ -4308,7 +4372,7 @@ async function duplicateModel(sourceId, count){
   if (!placedCount){ toast('列印範圍已滿，放不下任何複製件','err'); return; }
   await rebuildScene(true);
   renderStep();
-  logHist('複製模型', `${src.name} ×${placedCount}`);
+  logHistLocal('複製模型', `${src.name} ×${placedCount}`);
   if (placedCount < count) toast(`僅能放入 ${placedCount}/${count} 份，列印範圍已滿`,'warn');
   else toast(`✓ 已複製 ${placedCount} 份`,'ok');
 }
@@ -4384,7 +4448,7 @@ async function commitModelDrag(){
   delete m.results.islands; delete m.results.cols; delete m.results.cupping;
   await rebuildScene(true);
   selectModel();
-  logHist('手動擺放', `X ${F(m.pos.x,1)} / Y ${F(m.pos.z,1)} mm`);
+  logHistLocal('手動擺放', `X ${F(m.pos.x,1)} / Y ${F(m.pos.z,1)} mm`);
 }
 /* 以此面為底：hit.face.normal（世界向）→ 額外旋轉使其朝下 */
 async function applyFaceDown(hit){
@@ -4417,7 +4481,7 @@ async function applyFaceDown(hit){
   await rebuildScene(true);
   selectModel();
   toast('✓ 已將選取面轉向平台（以此面為底）','ok');
-  logHist('以此面為底', `→ 傾X ${m.orient.tiltX}° / 側Y ${m.orient.yaw}° / 傾Z ${m.orient.tiltZ}°`);
+  logHistLocal('以此面為底', `→ 傾X ${m.orient.tiltX}° / 側Y ${m.orient.yaw}° / 傾Z ${m.orient.tiltZ}°`);
 }
 /* 範圍框顏色與拖曳即時回饋 */
 function modelFits(m, offX=0, offZ=0){

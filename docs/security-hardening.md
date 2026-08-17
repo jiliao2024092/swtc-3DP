@@ -132,7 +132,53 @@ Firebase Console → **Authentication** → **Settings** → **Authorized domain
 > 那是治標 —— 下次新增 Secret 或輪替金鑰仍會失敗。根治方式是給 CI 的 service account
 > 補上該權限。
 
-### B-7. 相依版本更新（原清單第 9 項）
+### B-7. 資料保留期限：Firestore TTL policy（省費用）
+
+`quote-studio.html` 已經開始在寫入時附上 `expireAt` 欄位，但**光有欄位不會刪任何東西** ——
+要在 Console 建立 TTL policy 指向它才會生效。
+
+| Collection | 欄位 | 程式碼設定的期限 | 內容 |
+|---|---|---|---|
+| `print_history` | `expireAt` | **30 天** | 估價過程的操作痕跡（分析、修復、擺放…） |
+| `print_orders` | `expireAt` | **365 天** | 實際的估價工單（客戶、品名、金額） |
+
+> ⚠️ `print_orders` 的 365 天是**我先填的預設值，還沒經你確認**。這是歷史報價紀錄，
+> 刪掉不可復原。確認要幾天後再改 `quote-studio.html` 的 `TTL_DAYS.orders`，
+> **然後才建 policy**。
+
+**建立 policy（每個 collection 各一條）**
+
+```bash
+gcloud firestore fields ttls update expireAt \
+  --collection-group=print_history --project=swtc-3dp-poc --enable-ttl
+```
+
+```bash
+gcloud firestore fields ttls update expireAt \
+  --collection-group=print_orders --project=swtc-3dp-poc --enable-ttl
+```
+
+或走介面：[GCP Console → Firestore → 時間點還原/TTL](https://console.cloud.google.com/firestore)
+→ **Time-to-live** → **Create policy** → 集合群組填 `print_history`、欄位填 `expireAt`。
+
+**三個要知道的性質**
+
+1. **TTL 刪除不計入寫入配額**，這是它比「Cloud Function 排程掃描＋刪除」便宜的原因 ——
+   後者要先付讀取、再付刪除。
+2. 到期後的實際刪除**不是即時的**，Google 通常在 24 小時內處理完。
+3. **TTL 只作用在「有 `expireAt` 欄位」的文件。** 既有的舊文件沒有這個欄位，
+   永遠不會被清掉 → 需要另外一次性處理（見下）。
+
+**既有舊資料的一次性清理**
+
+`print_history` 是可拋棄的操作痕跡，最省事的做法是在 Firestore Console 直接刪整個
+集合（Console 的集合列表右側 ⋮ → **Delete collection**）。刪完之後新寫入的都會帶
+`expireAt`，就交給 policy 自動維持。
+
+`print_orders` **不要**這樣做，那是歷史報價紀錄。若要讓舊工單也納入 TTL，需要寫一次性
+腳本補 `expireAt` 欄位 —— 這件事還沒做，需要時再說。
+
+### B-8. 相依版本更新（原清單第 9 項）
 
 | 相依 | 目前 | 備註 |
 |---|---|---|
