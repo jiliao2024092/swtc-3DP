@@ -1069,6 +1069,8 @@
     </div>
 </div>
 
+<!-- App Check 設定（classic script，會先於下方 module 執行；未填 site key 時為 no-op）-->
+<script src="appcheck.js"></script>
 <script type="module">
 // ══ 設定 ══
 const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
@@ -1188,6 +1190,7 @@ const firebaseConfig = {
     appId: "1:1074210451221:web:30e84a3f501e90e612831c"
 };
 const app = initializeApp(firebaseConfig);
+if (window.initAppCheckModular) window.initAppCheckModular(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 

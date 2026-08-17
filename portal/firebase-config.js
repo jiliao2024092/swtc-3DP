@@ -14,6 +14,9 @@ const firebaseConfig = {
 // 初始化（compat）
 firebase.initializeApp(firebaseConfig);
 
+// App Check（appcheck.js 未填 site key 時為 no-op）
+if (window.initAppCheckCompat) window.initAppCheckCompat();
+
 // 對外暴露
 window.fbAuth = firebase.auth();
 window.fbDb   = firebase.firestore();

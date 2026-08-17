@@ -498,7 +498,9 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.10/babel.min.js"></script>
 
 <!-- Firebase 設定 -->
-<script src="firebase-config.js?v=20260708f"></script>
+<!-- App Check 設定（在 portal/ 子目錄，檔案在 repo 根目錄；未填 site key 時為 no-op）-->
+<script src="../appcheck.js?v=20260814a"></script>
+<script src="firebase-config.js?v=20260814a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
 <script src="firebase-service.js?v=20260708j"></script>
@@ -1653,7 +1655,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260814a"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260814b"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260803a"></script>
 
 <!-- ⑦ 主 App -->
@@ -2161,7 +2163,10 @@ function AdminPanel({ user, isAdmin }) {
 
   useEff(()=>{
     // 使用者清單改為即時訂閱（儲存後自動更新，免 F5）
-    const unsubUsers = FBAuth.onUsersSnapshot(us => { setUsers(us); });
+    // ★ 只在有 manage_users 時才訂閱：firestore.rules 已把 users 讀取收緊成
+    //   「自己 / admin / manage_users」，只有 manage_announcements 的人也進得來這個
+    //   後台頁（canAdminPage 是兩者的聯集），無條件訂閱會被規則擋下並跳錯誤 toast。
+    const unsubUsers = canUsers ? FBAuth.onUsersSnapshot(us => { setUsers(us); }) : null;
     (async()=>{
       const st = await FBSettings.get();
       if(st){

@@ -61,28 +61,83 @@ service cloud.firestore {
     //   2) 寫入後的 permissions「不能」含 admin（不可把別人升級成管理員）
     // 個別權限勾選限制（只能套角色預設、不能勾細項）是前端 UserModal 的 UI 限制，
     // 規則層只把關「不能造出/異動 admin」這條硬邊界，避免過度複雜難以維護。
+    // ★ 一律用 .get(欄位, 預設值)：舊資料可能只有 role 沒有 permissions，直接取欄位
+    //   會讓整條規則求值失敗（結果是拒絕），造成「明明有權限卻寫不進去」的難查問題。
     function canManageOtherUser() {
       return hasPerm('manage_users')
-        && !('admin' in resource.data.permissions)
-        && !('admin' in request.resource.data.permissions);
+        && !('admin' in resource.data.get('permissions', []))
+        && !('admin' in request.resource.data.get('permissions', []));
     }
     function canCreateOtherUser() {
-      return hasPerm('manage_users') && !('admin' in request.resource.data.permissions);
+      return hasPerm('manage_users') && !('admin' in request.resource.data.get('permissions', []));
     }
+
+    // 首次登入時前端會自助建立自己的 users 文件（3DP-BK.html / inventory.html 的
+    // onAuthStateChanged）。原本 create 只檢查 uid 相符、完全不看內容，任何能登入的人
+    // 都可以繞過前端、直接呼叫 Firestore API 寫 { role:'admin' } 或
+    // { permissions:['admin'] } 把自己變成管理員。這裡把自助建立限制成非 admin；
+    // 保底管理員帳號本身首次登入要寫 role:'admin'，用 isDefaultAdmin() 放行。
+    function selfCreateIsNotAdmin() {
+      return !('admin' in request.resource.data.get('permissions', []))
+        && request.resource.data.get('role', 'viewer') != 'admin';
+    }
+
+    // 保底管理員：保證系統永遠至少有一位 admin。
+    // Firestore rules 沒辦法「數文件」，所以不去數 admin 有幾個，改成守住指定的那一個
+    // 帳號 —— 它不能被降權、停用或刪除；其他 admin 帳號仍可自由增減。
+    // 前端 AdminPanel 也擋了「最後一位 admin」，但那只是 UI，直接打 API 可以繞過。
+    // ⚠ 這個 email 換人時，這裡要一起改，否則會擋掉正當的異動。
+    function isProtectedAdminDoc() {
+      return resource != null && resource.data.get('email', '') == 'jiliao@swtc.com';
+    }
+    function keepsProtectedAdmin() {
+      return !isProtectedAdminDoc()
+        || ('admin' in request.resource.data.get('permissions', [])
+            && request.resource.data.get('active', true) == true);
+    }
+
     match /users/{userId} {
-      allow read: if isLoggedIn();
+      // 讀取收緊：原本任一登入者可讀「所有人」的 email / permissions，屬內部資訊揭露。
+      // 現在只放行：自己、admin、有 manage_users 的主管（後台使用者管理需要列出全部）。
+      // ★ 已確認前端相依：只有 portal 的 AdminPanel 與 3DP-BK 的使用者管理 Modal
+      //   會列出全部使用者，兩者本來就限 admin/manage_users；其餘頁面
+      //   （quote-studio / quote-markforged / inventory / 3DP-BK 登入流程）都只讀自己那份。
+      // ★ 規則內部的 get() 不受讀取規則限制，所以 hasPerm() 仍查得到別人的文件。
+      allow read: if isLoggedIn() && (
+        request.auth.uid == userId
+        || isAdmin()
+        || hasPerm('manage_users')
+      );
       allow create: if isLoggedIn() && (
-        (request.auth.uid == userId)
+        (request.auth.uid == userId && (selfCreateIsNotAdmin() || isDefaultAdmin()))
         || isAdmin()
         || canCreateOtherUser()
       );
-      allow update: if isAdmin() || canManageOtherUser();
-      allow delete: if isAdmin();
+      allow update: if (isAdmin() || canManageOtherUser()) && keepsProtectedAdmin();
+      allow delete: if isAdmin() && !isProtectedAdminDoc();
     }
 
+    // 預約讀取：原本對所有登入者開放，收斂成「有 view_booking 分頁權限者」。
+    // ★ 相容判斷刻意與前端 canSeeTab()（firebase-service.js）逐字對應：舊帳號的
+    //   permissions 還沒有 view_booking / view_inventory 這兩個分頁權限時，維持可讀，
+    //   否則升級規則會讓既有帳號突然看不到預約。
+    function canSeeBookings() {
+      return isLoggedIn() && (
+        hasPerm('view_booking')
+        || !perms().hasAny(['view_booking','view_inventory'])
+      );
+    }
     match /bookings/{bookingId} {
-      allow read: if isLoggedIn();
+      allow read: if canSeeBookings();
       allow create, update, delete: if isLegacyEditorOrAdmin();
+    }
+
+    // 預約刪除稽核：誰、何時、刪了哪一筆（比照 inventory_history 已有的留痕作法）。
+    // 由前端在刪除成功後補寫；寫進去就不能再改或刪，避免稽核紀錄本身被竄改。
+    match /bookings_audit/{id} {
+      allow read:   if isAdmin();
+      allow create: if isLegacyEditorOrAdmin();
+      allow update, delete: if false;
     }
 
     match /inventory/{docId} {

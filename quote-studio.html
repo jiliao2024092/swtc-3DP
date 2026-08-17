@@ -557,6 +557,8 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- App Check 設定（未填 site key 時為 no-op）-->
+<script src="appcheck.js"></script>
 <script>
 "use strict";
 /* =========================================================================
@@ -608,6 +610,7 @@ async function initFirebaseSync(){
   }
   try {
     firebase.initializeApp(FIREBASE_CONFIG);
+    if (window.initAppCheckCompat) window.initAppCheckCompat();
     FB.db = firebase.firestore();
     // 沿用入口網站(portal)的登入 session（同網域自動共用），不做匿名登入。
     // 未登入＝整頁擋下，與 quote.html 相同模式。

@@ -16,14 +16,38 @@
   //   材料比對走 window.matName（家族正規化），紀錄存的是家族代碼、工單存的是顯示名稱。
   // Firestore 沒有可查「note 內含某字串」的索引，只能抓一段時間內的紀錄再前端解析比對，
   // 故限制筆數（最近1000筆）並僅在開啟工單/EF單號變更時查一次，不做常駐訂閱以免耗用讀取額度。
+  // 這支查詢的內容與 efNo 無關（每次都是「最近 1000 筆」，比對是在前端做的），
+  // 所以每開一張工單就重抓一次是純浪費讀取額度 —— 連開 10 張 = 10,000 次文件讀取。
+  // 改成整個分頁共用一份快取：TTL 內重用，並用 in-flight promise 讓同時觸發的查詢共用一次。
+  // Cloud Function 是每 30 分同步一次，5 分鐘的新鮮度綽綽有餘。
+  const HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
+  let _historyCache = null;          // { at, rows }
+  let _historyCachePromise = null;   // 進行中的查詢（避免同時打多次）
+
+  async function loadRecentHistory() {
+    if (_historyCache && (Date.now() - _historyCache.at) < HISTORY_CACHE_TTL_MS) return _historyCache.rows;
+    if (_historyCachePromise) return _historyCachePromise;
+    _historyCachePromise = window.fbDb.collection('inventory_history')
+      .orderBy('tsDate', 'desc').limit(1000).get()
+      .then(snap => {
+        const rows = snap.docs.map(d => {
+          const x = d.data();
+          return { note: x.note || '', ml: Number(x.ml) || 0, material: x.material };
+        });
+        _historyCache = { at: Date.now(), rows };
+        return rows;
+      })
+      .finally(() => { _historyCachePromise = null; });
+    return _historyCachePromise;
+  }
+
   async function fetchConsumptionForEF(efNo) {
     if (!efNo || !window.fbDb) return null;
     try {
-      const snap = await window.fbDb.collection('inventory_history').orderBy('tsDate', 'desc').limit(1000).get();
+      const rows = await loadRecentHistory();
       const byMat = new Map();   // 材料顯示名稱 → { name, sum, count }
       let sum = 0, count = 0;
-      snap.forEach(doc => {
-        const d = doc.data();
+      rows.forEach(d => {
         const parts = (d.note || '').split('-');
         if (parts.length < 3) return;
         const category = parts[1].trim();

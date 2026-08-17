@@ -494,6 +494,8 @@
 </div>
 
 <!-- ══ Firebase + 應用程式 JS ══════════════════════ -->
+<!-- App Check 設定（classic script，會先於下方 module 執行；未填 site key 時為 no-op）-->
+<script src="appcheck.js"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
@@ -518,6 +520,7 @@ const firebaseConfig = {
 
 // 主 app 用於登入/讀寫資料
 const app = initializeApp(firebaseConfig);
+if (window.initAppCheckModular) window.initAppCheckModular(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 // secondary app 用於 admin 新增使用者（避免覆蓋自己的 session）
@@ -1518,6 +1521,31 @@ window.updateStatus = async function(id, newStatus){
     } catch(err){ showToast('更新狀態失敗：'+err.message,'error'); }
 };
 
+// 預約刪除稽核：把被刪掉的那筆完整內容留一份到 bookings_audit（誰、何時、刪了什麼）。
+// 預約刪除原本完全沒留痕，誤刪或惡意刪除事後無從追查。稽核紀錄寫入即不可改不可刪
+// （見 firestore.rules 的 bookings_audit），admin 才讀得到。
+// ★ 稽核寫入失敗不擋刪除也不回滾 —— 刪除已經送出去了，這時再丟錯只會讓使用者以為
+//   沒刪成功而重按。改成留 console 錯誤並提示，資料本身仍以 bookings 為準。
+async function writeBookingAudit(action, b) {
+    try {
+        await addDoc(collection(db, 'bookings_audit'), {
+            action,                       // 目前只有 'delete'
+            bookingId:   b.id || null,
+            booking:     { date:b.date||null, endDate:b.endDate||null, slot:b.slot||null,
+                           endSlot:b.endSlot||null, printer:b.printer||null, sales:b.sales||null,
+                           engineer:b.engineer||null, category:b.category||null,
+                           purpose:b.purpose||null, status:b.status||null },
+            actorUid:    currentUser?.uid   || null,
+            actorEmail:  currentUser?.email || null,
+            actorName:   currentUser?.displayName || null,
+            at:          serverTimestamp(),
+        });
+    } catch (err) {
+        console.error('[bookings_audit] 稽核紀錄寫入失敗（刪除本身已完成）:', err);
+        showToast('已刪除，但稽核紀錄寫入失敗：' + err.message, 'error');
+    }
+}
+
 window.deleteBooking = async function(id){
     const b = bookings.find(x=>x.id===id);
     if(!b) return;
@@ -1525,6 +1553,7 @@ window.deleteBooking = async function(id){
     try {
         await deleteDoc(doc(db,'bookings',id));
         showToast('✓ 已刪除','success');
+        await writeBookingAudit('delete', b);
     } catch(err){ showToast('刪除失敗：'+err.message,'error'); }
 };
 

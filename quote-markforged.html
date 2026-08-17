@@ -299,6 +299,8 @@ button{font-family:inherit}
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- App Check 設定（未填 site key 時為 no-op）-->
+<script src="appcheck.js"></script>
 <script>
 /* ============================================================================
    Markforged 估價（Beta）
@@ -426,6 +428,7 @@ async function initFirebase(){
   try{
     if (!window.firebase || !firebase.initializeApp) return;
     firebase.initializeApp(FIREBASE_CONFIG);
+    if (window.initAppCheckCompat) window.initAppCheckCompat();
     FB.db = firebase.firestore();
     FB.ready = true;
     firebase.auth().onAuthStateChanged(async u => {
