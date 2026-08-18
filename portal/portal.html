@@ -1714,8 +1714,14 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }
   const INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const LBL = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
-  const empty = { displayName:'', email:'', password:'', permissions:['view_board','view_issues','view_booking','view_inventory','view_quote'], active:true };
-  const [form, setForm] = React.useState(item ? {...item, password:''} : empty);
+  // 地區：新帳號預設中區（既有資料全部歸中，新人多半也在中區）。
+  // ★ 決策 E 的防呆之一 —— 這裡是單選且不允許空值；沒設地區的人之後會什麼都看不到，
+  //   所以寧可給一個預設值，也不要放行空白。
+  const REGION_OPTS = window.REGIONS || [{key:'central',label:'中部'}];
+  const empty = { displayName:'', email:'', password:'', permissions:['view_board','view_issues','view_booking','view_inventory','view_quote'], active:true, region:'central' };
+  // 既有帳號沒有 region 欄位 → 開啟編輯視窗時就補成中區，存檔後這個人就「明確」歸中區
+  // （regions.js 的 hasExplicitRegion 會據此判斷要不要在列表標紅）
+  const [form, setForm] = React.useState(item ? {...item, password:'', region:(window.normRegion ? window.normRegion(item.region) : (item.region||'central'))} : empty);
   const [busy, setBusy] = React.useState(false);
   const set = (k,v) => setForm(f=>({...f,[k]:v}));
   const togglePerm = p => set('permissions', form.permissions.includes(p) ? form.permissions.filter(x=>x!==p) : [...form.permissions,p]);
@@ -1726,16 +1732,19 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }
     if (!callerIsAdmin && form.permissions.includes('admin')) { showToast('主管無法將使用者設為管理員','err'); return; }
     if (!form.displayName || !form.email) { showToast('請填姓名與 Email','err'); return; }
     if (!item && !form.password) { showToast('請設定密碼','err'); return; }
+    // 決策 E 的防呆：地區必填且必須是合法區碼。沒設地區的人在分區上線後會看不到任何資料，
+    // 而且是靜默的（不會報錯），所以在寫入前就擋下來。
+    if (!window.isRegion || !window.isRegion(form.region)) { showToast('請選擇地區','err'); return; }
     if (item && (item.permissions||[]).includes('admin') && !form.permissions.includes('admin') && otherAdmins===0) {
       showToast('至少需保留一位管理員，無法移除此帳號的管理員權限','err'); return;
     }
     setBusy(true);
     try {
       if (item) {
-        await FBAuth.updateUser(item._id, { displayName:form.displayName, permissions:form.permissions, active:form.active });
+        await FBAuth.updateUser(item._id, { displayName:form.displayName, permissions:form.permissions, active:form.active, region:form.region });
         showToast('已更新 ✓');
       } else {
-        await FBAuth.createUser(form.email, form.password, { displayName:form.displayName, email:form.email, permissions:form.permissions, active:form.active });
+        await FBAuth.createUser(form.email, form.password, { displayName:form.displayName, email:form.email, permissions:form.permissions, active:form.active, region:form.region });
         showToast('已新增 ✓');
       }
       onSaved && onSaved();
@@ -1760,10 +1769,21 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }
             <div className="m-field"><label style={LBL}>電子郵件 *</label><input style={INP} type="email" value={form.email} onChange={e=>set('email',e.target.value)} disabled={!!item}/></div>
           </div>
           {!item && <div className="m-field"><label style={LBL}>初始密碼 *</label><input style={INP} type="password" value={form.password} onChange={e=>set('password',e.target.value)}/></div>}
-          <div className="m-field">
-            <label style={LBL}>啟用狀態</label>
-            <div className="seg" style={{marginTop:4}}>
-              {[true,false].map(v=><button key={String(v)} className={`seg-btn${form.active===v?' active':''}`} onClick={()=>set('active',v)}>{v?'✅ 啟用':'⛔ 停用'}</button>)}
+          <div className="m-row">
+            <div className="m-field">
+              <label style={LBL}>啟用狀態</label>
+              <div className="seg" style={{marginTop:4}}>
+                {[true,false].map(v=><button key={String(v)} className={`seg-btn${form.active===v?' active':''}`} onClick={()=>set('active',v)}>{v?'✅ 啟用':'⛔ 停用'}</button>)}
+              </div>
+            </div>
+            <div className="m-field">
+              <label style={LBL}>地區 *</label>
+              <div className="seg" style={{marginTop:4}}>
+                {REGION_OPTS.map(r=><button key={r.key} className={`seg-btn${form.region===r.key?' active':''}`} onClick={()=>set('region',r.key)}>{r.label}</button>)}
+              </div>
+              <div style={{fontSize:11,color:'var(--ink-4)',marginTop:5,lineHeight:1.6}}>
+                每人只能屬於一個地區。主管可檢視全部地區，但只能編輯自己所屬地區的資料。
+              </div>
             </div>
           </div>
           {blockedForManager ? (
@@ -2116,6 +2136,13 @@ function AdminPanel({ user, isAdmin }) {
   // 角色分頁權限（可編輯的角色預設；儲存於 settings.role_presets）
   const DEF_ROLE_PRESETS = window.DEFAULT_ROLE_PRESETS || {};
   const [rolePresets, setRolePresets] = useSt(JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)));
+  // 地區設定（存於 settings.region_mode / settings.machine_regions）
+  //   regionMode    分區功能對誰生效的總開關（off/alpha/beta/on），見 regions.js
+  //   machineRegions 實體機台 alias → 區。這跟上面「機台清單」是兩種不同的東西：
+  //     機台清單存的是機型（Form4/Form4L…，預約與工單用），這裡存的是 Formlabs/Eiger
+  //     回報的實體機台代號（AluminumBowfin…，即時狀態卡與消耗紀錄用）
+  const [regionMode, setRegionMode] = useSt('off');
+  const [machineRegions, setMachineRegions] = useSt([]);   // [{alias, region}]
 
   const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none',background:'var(--bg)',color:'var(--ink)'};
   const DEF_ENG  = K.ENG_ORDER.map(k=>({key:k,label:K.ENG_LABEL[k]||k}));
@@ -2143,6 +2170,12 @@ function AdminPanel({ user, isAdmin }) {
     if(sortKey==='name')       r = (a.displayName||'').localeCompare(b.displayName||'', 'zh-Hant');
     else if(sortKey==='email') r = (a.email||'').localeCompare(b.email||'');
     else if(sortKey==='role')  r = roleRank(a) - roleRank(b);
+    // 地區排序：未設定的排最前面，方便 admin 一次補完（而不是散在清單各處）
+    else if(sortKey==='region'){
+      const rank = u => window.hasExplicitRegion && window.hasExplicitRegion(u)
+        ? 1 + (window.REGIONS||[]).findIndex(x=>x.key===u.region) : 0;
+      r = rank(a) - rank(b);
+    }
     else if(sortKey==='status') r = (a.active===false?1:0) - (b.active===false?1:0); // 啟用在前
     return sortDir==='asc' ? r : -r;
   });
@@ -2153,6 +2186,7 @@ function AdminPanel({ user, isAdmin }) {
       '姓名': u.displayName||'',
       'Email': u.email||'',
       '權限': ROLE_TIER_LABEL[roleTierOf(u)],
+      '地區': (window.hasExplicitRegion && window.hasExplicitRegion(u)) ? window.regionLabel(u.region) : '未設定',
       '個別權限清單': (u.permissions||[]).join(', '),
       '狀態': u.active?'啟用':'停用',
     }));
@@ -2161,6 +2195,22 @@ function AdminPanel({ user, isAdmin }) {
     const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
     XLSX.writeFile(wb, `使用者清單_${today}.xlsx`);
     showToast('已匯出 Excel ✓');
+  };
+
+  // 實體機台的地區歸屬：把 regions.js 的種子對照與已存設定合併成可編輯的陣列。
+  // 種子提供「機台有哪些」的預設清單，已存設定覆蓋其區別；設定裡若有種子沒有的機台
+  // （日後新增的機器）也一併帶出來，不要吃掉。
+  const mergeMachineRegions = (saved) => {
+    const seed = window.SEED_MACHINE_REGION || {};
+    const out = Object.keys(seed).map(alias => ({ alias, region: seed[alias] }));
+    if (saved && typeof saved === 'object') {
+      Object.keys(saved).forEach(alias => {
+        const hit = out.find(x => x.alias === alias);
+        if (hit) hit.region = window.normRegion ? window.normRegion(saved[alias]) : saved[alias];
+        else out.push({ alias, region: window.normRegion ? window.normRegion(saved[alias]) : saved[alias] });
+      });
+    }
+    return out;
   };
 
   useEff(()=>{
@@ -2188,11 +2238,15 @@ function AdminPanel({ user, isAdmin }) {
         setBkCategories(st.bk_categories || DEF_CATEGORIES);
         // 角色分頁權限：合併原廠預設與已存設定
         setRolePresets({ ...JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)), ...(st.role_presets||{}) });
+        // 地區設定
+        setRegionMode(st.region_mode || 'off');
+        setMachineRegions(mergeMachineRegions(st.machine_regions));
       } else {
         setWbEng(DEF_ENG); setWbMach(DEF_MACH);
         setIsEng(DEF_ENG); setIsMach(DEF_MACH);
         setBorrowers(DEF_BORR);
         setBkEng(DEF_ENG); setBkMach(DEF_MACH); setBkSales(DEF_SALES); setBkCategories(DEF_CATEGORIES);
+        setMachineRegions(mergeMachineRegions(null));
       }
       setLoading(false);
     })();
@@ -2232,6 +2286,15 @@ function AdminPanel({ user, isAdmin }) {
       bk_categories: bkCategories,
       role_presets: rolePresets,
     };
+    // 地區設定只有 admin 能編（SETTING_TABS 已把分頁藏起來）。主管儲存時不要送出這兩個
+    // 欄位——他們畫面上沒有這個分頁，state 是初始值，送出去會把 admin 設好的內容洗掉。
+    if (isAdmin) {
+      s.region_mode = regionMode;
+      s.machine_regions = machineRegions.reduce((acc, m) => {
+        if (m.alias && m.alias.trim()) acc[m.alias.trim()] = window.normRegion ? window.normRegion(m.region) : m.region;
+        return acc;
+      }, {});
+    }
     // ★ 這裡原本沒有 try/catch：主管進得了這個分頁、按鈕也沒被 disabled，但 firestore.rules
     //   對 settings/{docId} 的 catch-all 規則只允許 isAdmin() 寫入。主管按下儲存會在
     //   FBSettings.save 拋出 permission-denied，之後所有程式碼（含 setSaving(false)）
@@ -2252,17 +2315,29 @@ function AdminPanel({ user, isAdmin }) {
     }
   };
 
-  const ListEditor = ({label, list, setList, keyField=false}) => (
+  // regionField=true 時每一列多一個地區下拉（機台清單用）。
+  // ★ 名稱欄原本寫 l[i]={name:...}，是「整個換掉」而不是合併，會把同一筆的其他欄位
+  //   （現在的 region）默默吃掉——改名字就掉地區，而且不會有任何錯誤。改成展開合併。
+  const ListEditor = ({label, list, setList, keyField=false, regionField=false}) => (
     <div style={{marginBottom:24}}>
       <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>{label}</div>
       {list.map((item,i)=>(
         <div key={i} style={{display:'flex',gap:8,marginBottom:7,alignItems:'center'}}>
           {keyField && <input style={{...INP,width:110}} placeholder="Key (英文)" value={item.key||''} onChange={ev=>{const l=[...list];l[i]={...l[i],key:ev.target.value};setList(l);}}/>}
-          <input style={{...INP,flex:1}} placeholder={keyField?'顯示名稱':'名稱'} value={keyField?item.label||'':item.name||item} onChange={ev=>{const l=[...list];l[i]=keyField?{...l[i],label:ev.target.value}:{name:ev.target.value};setList(l);}}/>
+          <input style={{...INP,flex:1}} placeholder={keyField?'顯示名稱':'名稱'} value={keyField?item.label||'':(item.name!==undefined?item.name:item)} onChange={ev=>{const l=[...list];l[i]=keyField?{...l[i],label:ev.target.value}:{...(typeof l[i]==='object'?l[i]:{}),name:ev.target.value};setList(l);}}/>
+          {regionField && (
+            <select style={{...INP,width:96}} value={(item&&item.region)||''} onChange={ev=>{const l=[...list];l[i]={...(typeof l[i]==='object'?l[i]:{name:l[i]}),region:ev.target.value||undefined};setList(l);}}>
+              <option value="">全區</option>
+              {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+            </select>
+          )}
           <button className="kt-actbtn danger" title="刪除" onClick={()=>setList(list.filter((_,j)=>j!==i))}>✕</button>
         </div>
       ))}
       <button className="btn-cancel" style={{marginTop:2,fontSize:12}} onClick={()=>setList([...list, keyField?{key:'',label:''}:{name:''}])}>＋ 新增</button>
+      {regionField && <div style={{fontSize:11,color:'var(--ink-4)',marginTop:6,lineHeight:1.6}}>
+        地區留「全區」＝所有地區都看得到這個機型（例如共用的「Other」）。設定了地區的機型，分區啟用後只有該區的人看得到。
+      </div>}
     </div>
   );
 
@@ -2311,6 +2386,8 @@ function AdminPanel({ user, isAdmin }) {
     {key:'issues',    label:'異常與資源'},
     {key:'booking',   label:'機台預約'},
     {key:'samples',   label:'3D列印樣品'},
+    // 地區設定僅開放 admin：它同時控制「分區功能對誰生效」與機台歸屬，屬於全系統層級的開關
+    ...(isAdmin ? [{key:'regions', label:'地區'}] : []),
     ...(isAdmin ? [{key:'roles', label:'角色權限'}] : []),  // 角色權限僅開放 admin，主管不可見
   ];
 
@@ -2356,6 +2433,7 @@ function AdminPanel({ user, isAdmin }) {
                 <th onClick={()=>toggleSort('name')} style={{cursor:'pointer',userSelect:'none'}}>使用者 <span style={{opacity:sortKey==='name'?.9:.3,fontSize:10}}>{sortKey==='name'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
                 <th onClick={()=>toggleSort('email')} style={{cursor:'pointer',userSelect:'none'}}>Email <span style={{opacity:sortKey==='email'?.9:.3,fontSize:10}}>{sortKey==='email'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
                 <th onClick={()=>toggleSort('role')} style={{cursor:'pointer',userSelect:'none'}}>權限 <span style={{opacity:sortKey==='role'?.9:.3,fontSize:10}}>{sortKey==='role'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
+                <th onClick={()=>toggleSort('region')} style={{cursor:'pointer',userSelect:'none'}}>地區 <span style={{opacity:sortKey==='region'?.9:.3,fontSize:10}}>{sortKey==='region'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th>
                 <th onClick={()=>toggleSort('status')} style={{cursor:'pointer',userSelect:'none'}}>狀態 <span style={{opacity:sortKey==='status'?.9:.3,fontSize:10}}>{sortKey==='status'?(sortDir==='asc'?'▲':'▼'):'↕'}</span></th><th>操作</th>
               </tr></thead>
               <tbody>
@@ -2363,7 +2441,12 @@ function AdminPanel({ user, isAdmin }) {
                   <tr key={u._id}>
                     <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{(u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
                     <td style={{color:'var(--ink-3)',fontSize:12}}>{u.email}</td>
-                    <td><span className={`role-chip ${roleTierOf(u)}`}>{ROLE_TIER_LABEL[roleTierOf(u)]}</span></td>
+                    <td>{window.hasExplicitRegion && window.hasExplicitRegion(u)
+                      ? <span style={{fontSize:12,color:'var(--ink-2)'}}>{window.regionLabel(u.region)}</span>
+                      /* 未設定地區 → 標紅。分區上線後這些人會靜默地被當成中區，
+                         不會報錯也不會有畫面壞掉，只能靠這裡讓 admin 一眼看到（決策 E 防呆之三）*/
+                      : <span title="尚未設定地區：分區功能啟用後，此帳號會被視為中部"
+                              style={{fontSize:11.5,fontWeight:600,color:'var(--danger)',background:'var(--danger-soft)',border:'1px solid var(--danger)',borderRadius:999,padding:'1px 8px'}}>未設定</span>}</td>
                     <td><span className={`st-dot${u.active?' on':' off'}`}>{u.active?'● 啟用':'● 停用'}</span></td>
                     <td><span className="kt-act">
                       {(isAdmin || !(u.permissions||[]).includes('admin')) &&
@@ -2404,7 +2487,7 @@ function AdminPanel({ user, isAdmin }) {
             {settingTab==='workboard'&&(
               <div>
                 {ListEditor({label:"工程師清單", list:wbEng,  setList:setWbEngSync,  keyField:true})}
-                {ListEditor({label:"機台清單",   list:wbMach, setList:setWbMachSync, keyField:false})}
+                {ListEditor({label:"機台清單",   list:wbMach, setList:setWbMachSync, keyField:false, regionField:true})}
               </div>
             )}
 
@@ -2429,7 +2512,7 @@ function AdminPanel({ user, isAdmin }) {
                   ? <div style={{padding:'16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center'}}>目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
                       {ListEditor({label:"工程師清單（獨立）", list:isEng,  setList:setIsEng,  keyField:true})}
-                      {ListEditor({label:"機台清單（獨立）",   list:isMach, setList:setIsMach, keyField:false})}
+                      {ListEditor({label:"機台清單（獨立）",   list:isMach, setList:setIsMach, keyField:false, regionField:true})}
                     </>
                 }
               </div>
@@ -2466,13 +2549,71 @@ function AdminPanel({ user, isAdmin }) {
                   ? <div style={{padding:'16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center',marginBottom:20}}>工程師與機台目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
                       {ListEditor({label:"工程師清單（獨立）", list:bkEng,  setList:setBkEng,  keyField:true})}
-                      {ListEditor({label:"機台清單（獨立）",   list:bkMach, setList:setBkMach, keyField:false})}
+                      {ListEditor({label:"機台清單（獨立）",   list:bkMach, setList:setBkMach, keyField:false, regionField:true})}
                     </>
                 }
                 {/* 業務清單（獨立，含中英文） */}
                 {SalesEditor()}
                 {ListEditor({label:"用途類別清單", list:bkCategories, setList:setBkCategories, keyField:false})}
                 <div style={{fontSize:11,color:'var(--ink-4)',marginTop:-16,marginBottom:20}}>「其他」選項固定保留（選擇後可自行輸入說明），不需列在此清單中</div>
+              </div>
+            )}
+
+            {/* 地區設定（admin 專屬）*/}
+            {settingTab==='regions'&&isAdmin&&(
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>分區功能啟用範圍</div>
+                <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.75,marginBottom:12}}>
+                  分階段開放，確認沒問題再往下一級。<b style={{color:'var(--ink-2)'}}>切換立即生效、不需重新部署</b>，
+                  出狀況改回「關閉」即可還原。
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:7,marginBottom:10}}>
+                  {[
+                    ['off',   '關閉',  '所有人維持現況，看不到任何分區差異（預設）'],
+                    ['alpha', 'Alpha', '只有管理員套用分區顯示，其他同事完全無感'],
+                    ['beta',  'Beta',  '管理員 + 主管，供各區主管試用回報'],
+                    ['on',    '正式',  '所有人套用分區顯示'],
+                  ].map(([v,label,desc])=>(
+                    <label key={v} style={{display:'flex',alignItems:'flex-start',gap:9,padding:'9px 12px',border:'1.5px solid',borderColor:regionMode===v?'var(--accent)':'var(--line)',background:regionMode===v?'var(--accent-soft)':'var(--bg)',borderRadius:7,cursor:'pointer'}}>
+                      <input type="radio" name="regionMode" checked={regionMode===v} onChange={()=>setRegionMode(v)} style={{marginTop:2}}/>
+                      <span>
+                        <span style={{fontSize:13,fontWeight:600,color:regionMode===v?'var(--accent)':'var(--ink-2)'}}>{label}</span>
+                        <span style={{display:'block',fontSize:11.5,color:'var(--ink-4)',marginTop:2}}>{desc}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{padding:'10px 12px',background:'var(--warn-soft)',border:'1px solid var(--warn-border)',borderRadius:7,fontSize:11.5,color:'var(--warn)',lineHeight:1.7,marginBottom:26}}>
+                  ⚠ 這個開關只控制「畫面顯示」。資料層的隔離（Firestore 安全規則）是另一階段的事，
+                  一旦收緊就對所有人生效、不受此開關影響。
+                </div>
+
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:6}}>列印機地區歸屬</div>
+                <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.75,marginBottom:12}}>
+                  這裡設定的是 <b style={{color:'var(--ink-2)'}}>Formlabs / Eiger 回報的實體機台</b>（即時狀態卡、消耗紀錄用），
+                  與上面各分頁的「機台清單」不同 —— 那裡存的是機型名稱（Form4、Form4L…），預約與工單用。
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 110px 28px',gap:'0 8px',marginBottom:4}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>機台代號</div>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>地區</div>
+                  <div/>
+                </div>
+                {machineRegions.map((m,i)=>(
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 110px 28px',gap:'0 8px',marginBottom:7,alignItems:'center'}}>
+                    <input style={{...INP,width:'100%'}} placeholder="例：AluminumBowfin" value={m.alias||''}
+                      onChange={ev=>{const l=[...machineRegions];l[i]={...l[i],alias:ev.target.value};setMachineRegions(l);}}/>
+                    <select style={{...INP,width:'100%'}} value={m.region||'central'}
+                      onChange={ev=>{const l=[...machineRegions];l[i]={...l[i],region:ev.target.value};setMachineRegions(l);}}>
+                      {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+                    </select>
+                    <button className="kt-actbtn danger" title="刪除" onClick={()=>setMachineRegions(machineRegions.filter((_,j)=>j!==i))}>✕</button>
+                  </div>
+                ))}
+                <button className="btn-cancel" style={{marginTop:2,fontSize:12}} onClick={()=>setMachineRegions([...machineRegions,{alias:'',region:'central'}])}>＋ 新增機台</button>
+                <div style={{fontSize:11,color:'var(--ink-4)',marginTop:8,lineHeight:1.7}}>
+                  機台代號可填完整 serial 或代號片段，系統以「包含」比對（Formlabs 有時回報 <code>Form4-AluminumBowfin</code>、有時只回 <code>AluminumBowfin</code>）。
+                  沒列在這裡的機台一律歸中部。
+                </div>
               </div>
             )}
 

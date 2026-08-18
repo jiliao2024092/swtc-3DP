@@ -82,6 +82,16 @@ service cloud.firestore {
         && request.resource.data.get('role', 'viewer') != 'admin';
     }
 
+    // 地區（北中南）不可自助變更：分區上線後 region 決定看得到哪一區的資料，
+    // 等同於一種權限。只有 admin 或有 manage_users 的主管能透過後台改別人的 region。
+    // 這裡擋的是「自己改自己」——update 規則本來就只放行 admin/manage_users，
+    // 但一般使用者仍能 create 自己的文件（首次登入），所以要在 create 端也守住：
+    // 自助建立時只能寫合法區碼，不能藉此把自己塞進別區。
+    function selfCreateRegionOk() {
+      return !('region' in request.resource.data)
+        || request.resource.data.region in ['north', 'central', 'south'];
+    }
+
     // 保底管理員：保證系統永遠至少有一位 admin。
     // Firestore rules 沒辦法「數文件」，所以不去數 admin 有幾個，改成守住指定的那一個
     // 帳號 —— 它不能被降權、停用或刪除；其他 admin 帳號仍可自由增減。
@@ -109,7 +119,7 @@ service cloud.firestore {
         || hasPerm('manage_users')
       );
       allow create: if isLoggedIn() && (
-        (request.auth.uid == userId && (selfCreateIsNotAdmin() || isDefaultAdmin()))
+        (request.auth.uid == userId && selfCreateRegionOk() && (selfCreateIsNotAdmin() || isDefaultAdmin()))
         || isAdmin()
         || canCreateOtherUser()
       );
