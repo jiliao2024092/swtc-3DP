@@ -619,7 +619,16 @@ window.showToast = window.showToast || function (msg, type) {
       window._settings_is_engineers = window._settings_engineers;
     }
     if (mch && Array.isArray(mch)) {
-      window._settings_machines = mch.map(m => m.name);
+      // 分區：機台清單依登入者所屬地區過濾（機型項目沒設 region ＝ 全區可見）。
+      // 分區未啟用、或使用者可跨區檢視時不過濾，行為與改動前相同。
+      // ★ 這裡拿的是「機型清單」（Form4/Form4L…）不是實體機台，兩者不同，見 regions.js。
+      const u = window._portalUser;
+      const active = window.regionActiveFor && window.regionActiveFor(u, settings.region_mode);
+      const scope = !active ? null
+        : (window.canViewAllRegions(u) ? (window.REGIONS||[]).map(r=>r.key) : [window.regionOf(u)]);
+      window._settings_machines = mch
+        .filter(m => !scope || !m.region || scope.includes(m.region))
+        .map(m => m.name);
     }
     if (window._onSettingsUpdated) window._onSettingsUpdated();
   };

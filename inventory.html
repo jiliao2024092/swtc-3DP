@@ -1076,6 +1076,52 @@
 <script type="module">
 // ══ 設定 ══
 const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+
+// ══ 北中南分區（與 3DP-BK.html 同一套判斷，定義在 regions.js）══════════
+// settings/workspace 的兩個欄位，由 subscribeWorkspaceSettings() 填入。
+let REGION_MODE = 'off';        // off / alpha / beta / on
+let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
+// 「檢視地區」切換的當前值（'all' 或區碼）。純前端顯示用，不寫入任何設定。
+let invRegionView = 'all';
+
+// 這個使用者「該看到哪些區」：null ＝ 不過濾（分區未啟用）
+function regionScopeFilter(){
+    if (!window.regionActiveFor || !window.regionActiveFor(currentUser, REGION_MODE)) return null;
+    if (window.canViewAllRegions(currentUser)) return (window.REGIONS||[]).map(r=>r.key);
+    return [window.regionOf(currentUser)];
+}
+// 套用「檢視地區」切換後的實際範圍（只有可跨區的人能切）
+function effectiveRegionScope(){
+    let scope = regionScopeFilter();
+    const canCross = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
+    if (canCross && invRegionView !== 'all') scope = [invRegionView];
+    return scope;
+}
+// 機台的區：優先用 Cloud Function 寫進來的 region 欄位，沒有才用前端對照推導
+function regionOfMachine(p){
+    if (p && window.isRegion && window.isRegion(p.region)) return p.region;
+    const key = (typeof p === 'string') ? p : ((p && (p.alias || p.serial || p.display)) || '');
+    return window.machineRegion ? window.machineRegion(key, MACHINE_REGIONS) : 'central';
+}
+// 可跨區者專用的「檢視地區」切換列（回傳 HTML 字串；不可跨區時回空字串）
+function regionViewBarHTML(){
+    if (!window.canViewAllRegions || !window.canViewAllRegions(currentUser)) return '';
+    const btn = (v, label) => {
+        const on = invRegionView === v;
+        return `<button onclick="setInvRegionView('${v}')" class="px-2.5 py-1 rounded-md border transition-colors ${on
+            ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+            : 'border-[var(--line-strong)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]'}">${label}</button>`;
+    };
+    return `<div class="flex items-center gap-2 flex-wrap text-xs mb-3">
+        <span class="text-[var(--ink-5)]">檢視地區</span>${btn('all','全部')}${
+        (window.REGIONS||[]).map(r=>btn(r.key,r.label)).join('')}${
+        invRegionView!=='all' ? '<span class="text-[var(--ink-5)]">（僅切換顯示範圍，不影響你的權限）</span>' : ''}</div>`;
+}
+window.setInvRegionView = function(v){
+    invRegionView = v;
+    renderCartridges();
+    if (currentTab === 'mf') renderMfPanel();
+};
 const DEFAULT_CARTRIDGE_ML = 1000;
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
 
@@ -1141,6 +1187,7 @@ let unsubscribeMf = null;
 // 與 mfHistory（inventory_history 的消耗紀錄）是完全不同的東西，切勿混用。
 let mfObservations = [];
 let unsubscribeMfObs = null;
+let unsubscribeWs = null;   // settings/workspace（分區設定）
 // Markforged 消耗紀錄：與 Formlabs 共用 inventory_history collection，靠 source 欄位區分。
 // rebuildInvHistory() 會把兩者拆開 —— inv.history 只留 Formlabs，既有統計邏輯完全不受影響。
 let mfHistory = [];
@@ -1239,6 +1286,7 @@ onAuthStateChanged(auth, async (user) => {
         if (unsubscribeInv)  { unsubscribeInv();  unsubscribeInv  = null; }
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
         if (unsubscribeMf)   { unsubscribeMf();   unsubscribeMf   = null; }
+        if (unsubscribeWs)   { unsubscribeWs();   unsubscribeWs   = null; }
         if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
         showLogin();
     }
@@ -1424,6 +1472,18 @@ function subscribeAll() {
     if (unsubscribeHist) unsubscribeHist();
     if (unsubscribeMf)   unsubscribeMf();
     if (unsubscribeMfObs) unsubscribeMfObs();
+
+    // 訂閱 settings/workspace（只為了拿分區設定：region_mode 與 machine_regions）。
+    // 這頁歷來不需要 settings，所以沒有現成訂閱；分區要靠它才知道總開關與機台歸屬。
+    if (unsubscribeWs) unsubscribeWs();
+    unsubscribeWs = onSnapshot(doc(db, 'settings', 'workspace'), (snap) => {
+        const s = snap.exists() ? snap.data() : {};
+        REGION_MODE     = s.region_mode || 'off';
+        MACHINE_REGIONS = s.machine_regions || null;
+        // 設定是後到的，先前已用預設值 off 渲染過一次，要重畫才會套用
+        renderCartridges();
+        if (currentTab === 'mf') renderMfPanel();
+    }, (err) => console.error('[settings/workspace] 訂閱失敗:', err));
 
     // 訂閱 mf_material_log（材料餘量觀測，觀測模式不扣庫存）
     // 只取最近 200 筆：這個 collection 會隨時間累積，不設上限會讓讀取量無限成長
@@ -2254,7 +2314,21 @@ function setOverviewCols(cols) {
 function renderCartridges() {
     const grid=document.getElementById('cartridges-grid');
     grid.innerHTML='';
-    TRACKED_PRINTERS.forEach(printer=>{
+    // 分區過濾：目前納入消耗追蹤的兩台都在中部，所以北/南的人會看到空的 ——
+    // 那是正確的（他們的機台還沒納入消耗追蹤），不是資料掉了，故另外給訊息。
+    const scope = effectiveRegionScope();
+    const shown = TRACKED_PRINTERS.filter(p => !scope || scope.includes(regionOfMachine(p)));
+    const bar = regionViewBarHTML();
+    if (bar) { const d=document.createElement('div'); d.className='col-span-full'; d.innerHTML=bar; grid.appendChild(d); }
+    if (!shown.length) {
+        const d=document.createElement('div');
+        d.className='col-span-full text-center text-[var(--ink-5)] text-sm py-6';
+        d.textContent = scope ? '此地區目前沒有納入消耗追蹤的列印機' : '尚無列印機資料';
+        grid.appendChild(d);
+        lucide.createIcons();
+        return;
+    }
+    shown.forEach(printer=>{
         const slots=inv.cartridges[printer]||[];
         // 依列印機狀態決定卡片邊框色與狀態標籤
         const status = (printerStatus[printer] || '').toUpperCase();
@@ -2879,7 +2953,8 @@ function renderMfLoaded() {
     const grid = document.getElementById('mf-loaded-grid');
     if (!grid) return;
     // 有同步資料時以 mf_printers 為準；還沒同步過才顯示佔位卡片
-    const machines = mfPrinters.length
+    const scope = effectiveRegionScope();
+    const machines = (mfPrinters.length
         ? mfPrinters.map(p => ({
             key:     p.display || p.name,
             display: p.display || p.name,
@@ -2887,10 +2962,15 @@ function renderMfLoaded() {
             state:   p.state,
             online:  !!p.online,
             synced:  true,
+            region:  regionOfMachine(p),
           }))
-        : MF_MACHINES.map(m => ({ ...m, slots: [], state: null, online: false, synced: false }));
+        : MF_MACHINES.map(m => ({ ...m, slots: [], state: null, online: false, synced: false,
+                                  region: regionOfMachine(m.key || m.display) }))
+      ).filter(m => !scope || scope.includes(m.region));
 
-    grid.innerHTML = machines.map(({ key, display, slots, state, online, synced }) => {
+    // 地區標籤直接掛在卡片上：這個 grid 是單層排版（沒有像預約頁那樣的分組區塊），
+    // 七台機台散在一起時，不標地區看不出哪台在哪裡。
+    const cards = machines.map(({ key, display, slots, state, online, synced, region }) => {
         // 三種狀態要分清楚，否則會把「機台離線」誤顯示成「還沒接 API」：
         //  未同步 → 尚未連接 API／已同步但離線 → 離線（Eiger 在離線時根本不回材料欄位）
         //  ／已同步且上線 → 已連接
@@ -2930,12 +3010,19 @@ function renderMfLoaded() {
                         ? `<img src="${img}" alt="${escHtml(display)}" loading="lazy" class="w-10 h-10 object-contain flex-shrink-0 rounded-md bg-[var(--bg)]">`
                         : '<i data-lucide="printer" class="w-4 h-4 text-[var(--accent2)]"></i>'}
                     <span class="font-semibold text-[var(--ink)]">${escHtml(display)}</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-[var(--ink-4)]">${window.regionLabel ? window.regionLabel(region) : ''}</span>
                     ${badge}
                 </div>
             </div>
             <div class="p-4">${rows}</div>
         </div>`;
     }).join('');
+    const emptyRegion = !machines.length
+        ? `<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-6">${
+            scope ? '此地區目前沒有 Markforged 機台' : '尚無機台資料'}</div>`
+        : '';
+    const bar = regionViewBarHTML();
+    grid.innerHTML = (bar ? `<div class="col-span-full">${bar}</div>` : '') + cards + emptyRegion;
     lucide.createIcons();
 }
 
