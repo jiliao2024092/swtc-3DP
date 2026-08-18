@@ -2102,27 +2102,21 @@ function renderStatusPanel(printers) {
         ? p.region
         : (window.machineRegion ? window.machineRegion((p&&(p.alias||p.serial||p.display))||'', MACHINE_REGIONS) : 'central');
 
-    let groups;
-    if (!scope) {
-        // 分區未啟用 → 維持原本的「台中 / 其他」分組，畫面與改動前完全相同
-        const TAICHUNG_PRINTERS = ['AdroitSauropod','AluminumBowfin'];
-        const isTaichung = p => TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n));
-        groups = [
-            { name: '台中', printers: printers.filter(isTaichung),  mf },
-            { name: '其他', printers: printers.filter(p=>!isTaichung(p)), mf: [] },
-        ];
-    } else {
-        // 分區啟用 → 依北/中/南分組，只顯示這個使用者看得到的區。
-        // 一般角色只有一區，等於「只顯示該地區的機台」（第 7 項）；
-        // admin/主管拿到三區，就是「分區顯示且可展開收合」（第 8 項）。
-        groups = (window.REGIONS||[])
-            .filter(r => scope.includes(r.key))
-            .map(r => ({
-                name: r.label,
-                printers: printers.filter(p => regionOfPrinter(p) === r.key),
-                mf:       mf.filter(p => regionOfPrinter(p) === r.key),
-            }));
-    }
+    // ★ 分組「永遠」依北/中/南，不受 region_mode 控制；region_mode 只控制「過濾」。
+    //   原本分區未啟用時會退回寫死的「台中 / 其他」，但那份對照只認得 AdroitSauropod /
+    //   AluminumBowfin，而且把「全部」Markforged 都塞進台中組。機隊擴充後，台中組裡會
+    //   裝著 FX10 Taipei、X7 Taipei、Mark Two Tainan —— 標籤與事實不符。
+    //   分組只是把正確資訊分類顯示，不需要分階段放行；真正需要 Alpha/Beta 控管的是
+    //   「看不到別區」這個行為改變。scope === null ＝ 不過濾（三區都顯示）。
+    const groups = (window.REGIONS||[])
+        .filter(r => !scope || scope.includes(r.key))
+        .map(r => ({
+            name: r.label,
+            printers: printers.filter(p => regionOfPrinter(p) === r.key),
+            mf:       mf.filter(p => regionOfPrinter(p) === r.key),
+        }));
+    // 過濾生效時：一般角色只剩自己那一區，等於「只顯示該地區的機台」（第 7 項）；
+    // admin/主管拿到三區，就是「分區顯示且可展開收合」（第 8 項）。
 
     groups.forEach(g => {
         const count = g.printers.length + g.mf.length;
