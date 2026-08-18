@@ -985,13 +985,20 @@
     useEffect(() => {
       let n=0;
       const chk = () => { if(++n>=3) setLoading(false); };
-      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); });
-      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); });
-      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); });
+      // 分區過濾在訂閱回呼就做，之後所有畫面與匯出都吃同一份資料，
+      // 不必逐個地方各自過濾（漏一個就會從那裡外洩別區資料）。
+      // 舊資料沒有 region 欄位 → 視為中區（見 regions.js 的 filterRowsByRegion）。
+      const byRegion = r => window.filterRowsByRegion
+        ? window.filterRowsByRegion(r, user, window._regionMode) : r;
+      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(byRegion(r)); chk(); });
+      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(byRegion(r));       chk(); });
+      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(byRegion(r)); chk(); });
+      // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
+      // 所以刻意不過濾。日後要分區再另議。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
       const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
       return () => { u1(); u2(); u3(); u4(); u5(); };
-    }, []);
+    }, [user]);
 
     const nextSeq = arr => arr.length ? Math.max(...arr.map(d=>d.seq||0))+1 : 1;
 

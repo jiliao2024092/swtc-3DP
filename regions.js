@@ -176,6 +176,29 @@
     }
   }
 
+  // ── 資料列的分區過濾（bookings / workboard_orders / issues_* 共用）──────
+  // 回傳這個使用者看得到的區清單；null ＝ 不過濾（分區未啟用）。
+  // 各頁面的機台過濾也是同一套判斷，只是機台的區來自 machine_regions 而非文件欄位。
+  function regionScopeOf(user, mode) {
+    if (!regionActiveFor(user, mode)) return null;
+    if (canViewAllRegions(user)) return REGIONS.map(r => r.key);
+    return [regionOf(user)];
+  }
+
+  // 依 region 欄位過濾資料列。
+  // ★ 舊資料沒有 region 欄位 → normRegion(undefined) ＝ 中區，正好等於先前定案的
+  //   「現有資料全部歸中區」，所以顯示過濾不需要先做資料遷移。
+  //   （階段 5 的 Rules 收緊才需要真的補欄位，因為 where('region','==') 查不到缺欄位的文件。）
+  function filterRowsByRegion(rows, user, mode, viewOverride) {
+    let scope = regionScopeOf(user, mode);
+    // 可跨區者的「檢視地區」切換：純顯示用，不改權限
+    if (scope && viewOverride && isRegion(viewOverride) && canViewAllRegions(user)) {
+      scope = [viewOverride];
+    }
+    if (!scope) return rows || [];
+    return (rows || []).filter(r => scope.indexOf(normRegion(r && r.region)) >= 0);
+  }
+
   // 跨區檢視（決策 D：主管看得到全部三區）
   function canViewAllRegions(user) {
     const tier = roleTier(user);
@@ -205,6 +228,8 @@
   window.tracksConsumption  = tracksConsumption;
   window.regionRoleTier     = roleTier;
   window.regionActiveFor    = regionActiveFor;
+  window.regionScopeOf      = regionScopeOf;
+  window.filterRowsByRegion = filterRowsByRegion;
   window.canViewAllRegions  = canViewAllRegions;
   window.canEditInRegion    = canEditInRegion;
 })();

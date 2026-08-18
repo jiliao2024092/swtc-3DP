@@ -501,7 +501,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <!-- App Check 設定（在 portal/ 子目錄，檔案在 repo 根目錄；未填 site key 時為 no-op）-->
 <script src="../appcheck.js?v=20260814a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="../regions.js?v=20260818c"></script>
+<script src="../regions.js?v=20260818d"></script>
 <script src="firebase-config.js?v=20260814a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
@@ -590,6 +590,8 @@ window.showToast = window.showToast || function (msg, type) {
 
   window.applySettings = function(settings) {
     if (!settings) return;
+    // 分區總開關：workboard / issues 的資料過濾要用，存成全域省得層層傳遞
+    window._regionMode = settings.region_mode || 'off';
     // 角色分頁權限：以後台設定覆蓋原廠角色預設
     if (window.applyRolePresets) window.applyRolePresets(settings.role_presets);
     const eng = settings.engineers;
@@ -1666,8 +1668,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260814b"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260803a"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260818a"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260818a"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">

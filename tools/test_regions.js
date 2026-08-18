@@ -143,6 +143,31 @@ eq(regionActiveFor(manager,  'beta'), true,  'beta：主管加入');
 eq(regionActiveFor(operator, 'beta'), false, 'beta：一般使用者仍看不到');
 eq(regionActiveFor(operator, 'on'), true, 'on：全面生效');
 
+// ── 資料列過濾（bookings / workboard_orders / issues_*）────────────
+const { filterRowsByRegion } = win;
+const rows = [
+  { id:1, region:'north' },
+  { id:2, region:'central' },
+  { id:3, region:'south' },
+  { id:4 },              // 舊資料沒有 region 欄位 → 視為中區
+  { id:5, region:'亂填' } // 無效值同樣視為中區，不可整筆消失
+];
+const ids = rs => rs.map(r => r.id);
+const engN = { permissions:['edit_board'], region:'north' };
+const engC = { permissions:['edit_board'], region:'central' };
+const mgrN = { permissions:['delete_board'], region:'north' };
+
+eq(ids(filterRowsByRegion(rows, engN, 'off')), [1,2,3,4,5], 'off：完全不過濾');
+eq(ids(filterRowsByRegion(rows, engN, 'on')),  [1],         'on：北部工程師只看得到北部');
+eq(ids(filterRowsByRegion(rows, engC, 'on')),  [2,4,5],     '★ 中部工程師看得到沒有 region 的舊資料');
+eq(ids(filterRowsByRegion(rows, mgrN, 'on')),  [1,2,3,4,5], '主管跨區看得到全部');
+eq(ids(filterRowsByRegion(rows, engN, 'alpha')), [1,2,3,4,5], 'alpha：工程師不在範圍內 → 不過濾');
+// 「檢視地區」切換只對可跨區的人有效，不能被一般使用者拿來偷看別區
+eq(ids(filterRowsByRegion(rows, mgrN, 'on', 'south')), [3], '主管切到南部');
+eq(ids(filterRowsByRegion(rows, engN, 'on', 'south')), [1], '★ 工程師切別區無效，仍只有自己那區');
+eq(ids(filterRowsByRegion(rows, mgrN, 'on', '亂填')),  [1,2,3,4,5], '無效的切換值 → 視同全部');
+eq(ids(filterRowsByRegion(null, engN, 'on')), [], 'null 不可拋錯');
+
 // ── 跨區檢視 / 編輯（決策 D：主管只能看）────────────────────────
 eq(canViewAllRegions(admin), true,     'admin 可跨區檢視');
 eq(canViewAllRegions(manager), true,   '主管可跨區檢視');

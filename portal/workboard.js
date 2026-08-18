@@ -312,9 +312,17 @@
     const canDel  = window.hasPerm(user, 'delete_board');
 
     useEffect(() => {
-      const unsub = FBOrders.onSnapshot(rows => { setData(rows); setLoading(false); });
+      // 分區過濾在訂閱回呼就做，之後所有東西（表格/看板/甘特/儀表板/匯出Excel）
+      // 都吃同一份 data，不必逐個畫面各自過濾——漏一個就會從那裡外洩別區資料。
+      // 舊資料沒有 region 欄位 → 視為中區（見 regions.js 的 filterRowsByRegion）。
+      const unsub = FBOrders.onSnapshot(rows => {
+        setData(window.filterRowsByRegion
+          ? window.filterRowsByRegion(rows, user, window._regionMode)
+          : rows);
+        setLoading(false);
+      });
       return () => unsub();
-    }, []);
+    }, [user]);
 
     const nextSeq = () => data.length ? Math.max(...data.map(d => d.seq || 0)) + 1 : 1;
 
