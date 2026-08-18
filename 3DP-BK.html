@@ -1988,6 +1988,12 @@ function regionScopeFilter(){
     return [window.regionOf(currentUser)];
 }
 const printerGroupCollapsed = {};  // 分組摺疊狀態，key 是組名
+// 「檢視地區」切換的當前值（'all' 或區碼）。純前端顯示用，不寫入任何設定。
+let statusRegionView = 'all';
+window.setStatusRegionView = function(v){
+    statusRegionView = v;
+    renderStatusPanel(cachedPrinters || []);
+};
 
 function buildStatusCard(p) {
     const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
@@ -2094,7 +2100,20 @@ function renderStatusPanel(printers) {
     grid.className = 'p-4 space-y-4';
 
     const mf = cachedMfPrinters || [];
-    const scope = regionScopeFilter();
+    let scope = regionScopeFilter();
+
+    // ★「檢視地區」切換（只有可跨區的人看得到）。
+    //   為什麼需要：決策 D 讓 admin 與主管永遠可跨區檢視，但 region_mode 的 alpha/beta
+    //   納入的正好就是這兩種角色 —— 他們本來就看得到全部，畫面毫無變化。結果「唯一會被
+    //   過濾影響的人（一般使用者）正好是 alpha/beta 排除掉的那群」，分階段機制對驗證
+    //   過濾是否正確完全沒有幫助。這個切換讓 admin 不必把開關切到「正式」影響所有同事，
+    //   就能看到某一區的人實際會看到的畫面。
+    //   ⚠ 這純粹是前端顯示過濾，不是權限：切到某一區不會讓他失去任何權限，
+    //     也不會寫進任何設定，重新整理就回到「全部」。
+    const canCrossRegion = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
+    if (canCrossRegion && statusRegionView !== 'all') {
+        scope = [statusRegionView];
+    }
 
     // 機台的區：優先用 Cloud Function 寫進來的 region 欄位；舊資料（同步還沒跑過）
     // 沒有這個欄位時，前端自己用 regions.js 的對照推導，不要顯示成「未分區」。
@@ -2117,6 +2136,26 @@ function renderStatusPanel(printers) {
         }));
     // 過濾生效時：一般角色只剩自己那一區，等於「只顯示該地區的機台」（第 7 項）；
     // admin/主管拿到三區，就是「分區顯示且可展開收合」（第 8 項）。
+
+    if (canCrossRegion) {
+        const bar = document.createElement('div');
+        bar.className = 'flex items-center gap-2 flex-wrap text-xs';
+        const btn = (v, label) => {
+            const on = statusRegionView === v;
+            return `<button onclick="setStatusRegionView('${v}')"
+                class="px-2.5 py-1 rounded-md border transition-colors ${on
+                    ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+                    : 'border-[var(--line-strong)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]'}">${label}</button>`;
+        };
+        bar.innerHTML =
+            `<span class="text-[var(--ink-5)]">檢視地區</span>`
+            + btn('all', '全部')
+            + (window.REGIONS||[]).map(r => btn(r.key, r.label)).join('')
+            + (statusRegionView !== 'all'
+                ? `<span class="text-[var(--ink-5)]">（僅切換顯示範圍，不影響你的權限）</span>`
+                : '');
+        grid.appendChild(bar);
+    }
 
     groups.forEach(g => {
         const count = g.printers.length + g.mf.length;
@@ -2157,10 +2196,17 @@ function renderStatusPanel(printers) {
     // 一台都沒渲染出來才顯示空狀態。分區啟用時「該區真的沒機台」也會走到這裡，
     // 訊息要講清楚是哪一種，否則使用者會以為系統壞了。
     if (!groups.some(g => g.printers.length + g.mf.length > 0)) {
-        const msg = scope
-            ? '你所屬的地區目前沒有列印機資料'
-            : '尚無列印機資料';
-        grid.innerHTML = `<div class="text-center text-[var(--ink-5)] text-sm py-6">${msg}</div>`;
+        // ★ 用 appendChild 不用 innerHTML：直接覆寫會把上面的「檢視地區」切換列一起洗掉，
+        //   使用者切到空的一區後就再也切不回來。
+        const msg = !scope
+            ? '尚無列印機資料'
+            : (canCrossRegion && statusRegionView !== 'all')
+                ? `${window.regionLabel(statusRegionView)}目前沒有列印機資料`
+                : '你所屬的地區目前沒有列印機資料';
+        const empty = document.createElement('div');
+        empty.className = 'text-center text-[var(--ink-5)] text-sm py-6';
+        empty.textContent = msg;
+        grid.appendChild(empty);
     }
 }
 
