@@ -47,7 +47,6 @@
     FX20:           'north',
     MarkTwoGEN2:    'north',
     MetalX:         'north',
-    Sinter1:        'north',
     X7:             'north',
     MarkTwo:        'central',  // Mark Two Taichung
     MarkTwoTainan:  'south',

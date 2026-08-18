@@ -62,7 +62,6 @@ EIGER_TRACKED_DEVICES = {
     "245acd64-68cf-4e6f-a5a8-b88a5d26b378": "FX20",           # FX20
     "b151e2a9-6994-48c0-8969-175408ba0ea4": "MarkTwoGEN2",    # Mark TWO(GEN2)
     "e048a450-fc71-4561-a1d1-2c52d4f2ffc8": "MetalX",         # Metal X_Taipei
-    "99f3c70c-a097-4421-ab87-df2bff6cfd4a": "Sinter1",        # sinter-1
     "f97f5a85-5b54-491e-ae98-410deeda2072": "X7",             # X7 Taipei
     "94716b11-430c-427c-8d37-1d99bf9f7fdb": "MarkTwo",        # Mark Two Taichung
     "e78034b9-7f7e-4a1a-8d9a-9a4fa59d65ca": "MarkTwoTainan",  # Mark Two Tainan
@@ -202,7 +201,6 @@ SEED_MACHINE_REGION = {
     "FX20":           "north",
     "MarkTwoGEN2":    "north",
     "MetalX":         "north",
-    "Sinter1":        "north",
     "X7":             "north",
     "MarkTwo":        "central",  # Mark Two Taichung
     "MarkTwoTainan":  "south",

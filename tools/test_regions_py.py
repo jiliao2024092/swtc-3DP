@@ -73,7 +73,7 @@ eq(machine_region("MarkTwoTainan"), "south", "★ 子字串碰撞：Tainan 不�
 eq(machine_region("FX10"), "north", "Markforged FX10（北）")
 eq(machine_region("FX20"), "north", "Markforged FX20（北）")
 eq(machine_region("MetalX"), "north", "Markforged Metal X（北）")
-eq(machine_region("Sinter1"), "north", "Markforged sinter-1（北）")
+eq(machine_region("Sinter1"), "central", "sinter-1 不納管 → 未知機台，退回中區")
 eq(machine_region("X7"), "north", "Markforged X7 Taipei（北）")
 eq(machine_region("MarkTwoGEN2", {"MarkTwo": "south", "MarkTwoGEN2": "north"}), "north",
    "★ 後台設定的子字串碰撞：取完全相同的鍵")

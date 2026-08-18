@@ -63,7 +63,7 @@ eq(machineRegion('MarkTwoTainan'),  'south',   '★ 子字串碰撞：Tainan 不
 eq(machineRegion('FX10'),           'north',   'Markforged FX10（北）');
 eq(machineRegion('FX20'),           'north',   'Markforged FX20（北）');
 eq(machineRegion('MetalX'),         'north',   'Markforged Metal X（北）');
-eq(machineRegion('Sinter1'),        'north',   'Markforged sinter-1（北）');
+eq(machineRegion('Sinter1'),        'central', 'sinter-1 不納管 → 未知機台，退回中區');
 eq(machineRegion('X7'),             'north',   'Markforged X7 Taipei（北）');
 // 後台設定裡也可能出現互為子字串的鍵，同樣要取最長的那個
 eq(machineRegion('MarkTwoGEN2', { MarkTwo:'south', MarkTwoGEN2:'north' }), 'north',

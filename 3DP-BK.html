@@ -1960,8 +1960,22 @@ async function loadPrinterStatus() {
 }
 
 // 台中組機台（其餘歸「其他」組）
-const TAICHUNG_PRINTERS = ['AdroitSauropod','AluminumBowfin'];
-const printerGroupCollapsed = {};  // { 台中:false, 其他:false }
+// ══ 分區（階段 4）══════════════════════════════════════════════════
+// settings/workspace 的兩個欄位，由 subscribeSettings 填入。
+let REGION_MODE = 'off';        // off / alpha / beta / on（見 regions.js）
+let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
+
+// 這個使用者「該看到哪些區」：
+//   null  ＝ 不過濾（分區未啟用，維持改動前的行為）
+//   陣列  ＝ 只看這幾區（admin/主管拿到全部三區，一般角色只有自己那一區）
+// ★ 回傳 null 而不是「全部三區」是刻意的：呼叫端據此決定要不要分組，
+//   分區未啟用時要維持原本的「台中/其他」分組，不能變成北中南。
+function regionScopeFilter(){
+    if (!window.regionActiveFor || !window.regionActiveFor(currentUser, REGION_MODE)) return null;
+    if (window.canViewAllRegions(currentUser)) return (window.REGIONS||[]).map(r=>r.key);
+    return [window.regionOf(currentUser)];
+}
+const printerGroupCollapsed = {};  // 分組摺疊狀態，key 是組名
 
 function buildStatusCard(p) {
     const s = PRINTER_STATUS_MAP[p.status] || PRINTER_STATUS_MAP['UNKNOWN'];
@@ -2067,16 +2081,36 @@ function renderStatusPanel(printers) {
     // 取消 grid 的格線排版，改由各組自行排版
     grid.className = 'p-4 space-y-4';
 
-    // 分組：台中 / 其他
-    const taichung = printers.filter(p => TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n)));
-    const others   = printers.filter(p => !TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n)));
-    // Markforged 目前只納管 Mark Two Taichung 一台，歸台中組（後端已用 device id 白名單過濾）
     const mf = cachedMfPrinters || [];
+    const scope = regionScopeFilter();
 
-    const groups = [
-        { name: '台中', printers: taichung, mf },
-        { name: '其他', printers: others,   mf: [] },
-    ];
+    // 機台的區：優先用 Cloud Function 寫進來的 region 欄位；舊資料（同步還沒跑過）
+    // 沒有這個欄位時，前端自己用 regions.js 的對照推導，不要顯示成「未分區」。
+    const regionOfPrinter = p => (p && window.isRegion && window.isRegion(p.region))
+        ? p.region
+        : (window.machineRegion ? window.machineRegion((p&&(p.alias||p.serial||p.display))||'', MACHINE_REGIONS) : 'central');
+
+    let groups;
+    if (!scope) {
+        // 分區未啟用 → 維持原本的「台中 / 其他」分組，畫面與改動前完全相同
+        const TAICHUNG_PRINTERS = ['AdroitSauropod','AluminumBowfin'];
+        const isTaichung = p => TAICHUNG_PRINTERS.some(n => (p.alias||'').includes(n));
+        groups = [
+            { name: '台中', printers: printers.filter(isTaichung),  mf },
+            { name: '其他', printers: printers.filter(p=>!isTaichung(p)), mf: [] },
+        ];
+    } else {
+        // 分區啟用 → 依北/中/南分組，只顯示這個使用者看得到的區。
+        // 一般角色只有一區，等於「只顯示該地區的機台」（第 7 項）；
+        // admin/主管拿到三區，就是「分區顯示且可展開收合」（第 8 項）。
+        groups = (window.REGIONS||[])
+            .filter(r => scope.includes(r.key))
+            .map(r => ({
+                name: r.label,
+                printers: printers.filter(p => regionOfPrinter(p) === r.key),
+                mf:       mf.filter(p => regionOfPrinter(p) === r.key),
+            }));
+    }
 
     groups.forEach(g => {
         const count = g.printers.length + g.mf.length;
@@ -2114,8 +2148,13 @@ function renderStatusPanel(printers) {
         grid.appendChild(section);
     });
 
-    if (!taichung.length && !others.length && !mf.length) {
-        grid.innerHTML = '<div class="text-center text-[var(--ink-5)] text-sm py-6">尚無列印機資料</div>';
+    // 一台都沒渲染出來才顯示空狀態。分區啟用時「該區真的沒機台」也會走到這裡，
+    // 訊息要講清楚是哪一種，否則使用者會以為系統壞了。
+    if (!groups.some(g => g.printers.length + g.mf.length > 0)) {
+        const msg = scope
+            ? '你所屬的地區目前沒有列印機資料'
+            : '尚無列印機資料';
+        grid.innerHTML = `<div class="text-center text-[var(--ink-5)] text-sm py-6">${msg}</div>`;
     }
 }
 
@@ -2275,8 +2314,17 @@ function subscribeSettings(){
         populateSalesSelects();
         // 機台清單：與 admin 後台「3D列印機預約設定」機台清單(bk_machines)同源；
         // admin 新增機台後這裡會自動重填下拉選單、甘特圖也會自動多出一列，不用改程式碼
+        // 分區設定（階段 4）：region_mode 是總開關、machine_regions 是實體機台歸屬。
+        // 兩者都可能不存在（後台還沒設定過），此時 regionActiveFor 會回 false ＝ 維持現況。
+        REGION_MODE = (s && s.region_mode) || 'off';
+        MACHINE_REGIONS = (s && s.machine_regions) || null;
         if (s && Array.isArray(s.bk_machines) && s.bk_machines.length){
-            PRINTERS = s.bk_machines.map(m=>m.name||m).filter(Boolean);
+            // 機型清單依地區過濾：留空 region 的機型＝全區可見（如「Other」）。
+            // 分區未啟用（或使用者可跨區檢視）時不過濾，行為與改動前完全相同。
+            const mine = regionScopeFilter();
+            PRINTERS = s.bk_machines
+                .filter(m => !mine || !m.region || mine.includes(m.region))
+                .map(m=>m.name||m).filter(Boolean);
             GANTT_PRINTERS = PRINTERS.filter(p=>p!=='Other');   // 甘特圖排除「Other」這種非實體機台的選項
         } else {
             PRINTERS = DEFAULT_PRINTERS.slice();
@@ -2288,7 +2336,9 @@ function subscribeSettings(){
             ? s.bk_categories.map(c=>c.name||c).filter(Boolean)
             : DEFAULT_CATEGORIES.slice();
         populateCategorySelects();
-        if (currentUser){ renderTable(); renderGantt(); }
+        // 分區設定是從這裡載入的，載到之前狀態卡已經渲染過一次（用預設的 off），
+        // 所以要重畫一次，否則要等下一次 printer_status 推送才會套用分組
+        if (currentUser){ renderTable(); renderGantt(); renderStatusPanel(cachedPrinters || []); }
     }, (err)=>console.error('讀取 settings/workspace 失敗', err));
 }
 
