@@ -972,6 +972,18 @@
 
     const canE = window.hasPerm(user, 'edit_issues');
     const canD = window.hasPerm(user, 'delete_issues');
+    // 決策 D：admin 可跨區編輯；主管可跨區「檢視」但只能編輯自己那區。
+    // 舊資料沒有 region → 視為中區。★ UI 層把關，伺服器端硬邊界待階段 5 的 rules。
+    const inMyRegion = it => !window.canEditInRegion || window.canEditInRegion(user, it && it.region);
+    const canERow = it => canE && inMyRegion(it);
+    const canDRow = it => canD && inMyRegion(it);
+    // 跨區時顯示「◯部·唯讀」，讓主管知道為什麼沒有編輯鈕（而不是以為壞了）
+    const roChip = it => (canE || canD) && !inMyRegion(it)
+      ? <span title="其他地區的資料，僅能檢視"
+              style={{fontSize:10.5,color:'var(--ink-5)',border:'1px solid var(--line)',borderRadius:999,padding:'1px 7px',whiteSpace:'nowrap'}}>
+          {window.regionLabel ? window.regionLabel(it.region) : ''}·唯讀
+        </span>
+      : null;
     const isAdmin = window.hasPerm(user, 'admin');   // 樣品清冊(項目本身)新增/刪除限 admin
 
     useEffect(() => {
@@ -1003,11 +1015,11 @@
     const nextSeq = arr => arr.length ? Math.max(...arr.map(d=>d.seq||0))+1 : 1;
 
     const saveA = async f => { if(editItem){await FBAnomalies.update(editItem._id,f);showToast('已更新 ✓');}else{await FBAnomalies.add({...f,seq:nextSeq(anomalies)});showToast('已新增 ✓');}setModal(null); };
-    const delA  = async it => { if(!confirm('刪除？'))return; await FBAnomalies.del(it._id); showToast('已刪除','inf'); };
+    const delA  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBAnomalies.del(it._id); showToast('已刪除','inf'); };
     const saveI = async f => { if(editItem){await FBIPA.update(editItem._id,f);showToast('已更新 ✓');}else{await FBIPA.add({...f,seq:nextSeq(ipa)});showToast('已新增 ✓');}setModal(null); };
-    const delI  = async it => { if(!confirm('刪除？'))return; await FBIPA.del(it._id); showToast('已刪除','inf'); };
+    const delI  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBIPA.del(it._id); showToast('已刪除','inf'); };
     const saveE = async f => { if(editItem){await FBEquipment.update(editItem._id,f);showToast('已更新 ✓');}else{await FBEquipment.add({...f,seq:nextSeq(equipment)});showToast('已新增 ✓');}setModal(null); };
-    const delE  = async it => { if(!confirm('刪除？'))return; await FBEquipment.del(it._id); showToast('已刪除','inf'); };
+    const delE  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBEquipment.del(it._id); showToast('已刪除','inf'); };
 
     // 匯出 Excel：客戶異常（含後續進度展開為多列）
     const exportAnomalies = () => {
@@ -1339,8 +1351,9 @@
                       <td>{it.cause||'—'}</td>
                       <td>{first.status}{hasSub&&!isExp&&<span className="case-more">+{rest.length}</span>}</td>
                       {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
-                        {canE&&<button className="kt-actbtn" title="編輯" onClick={e=>{e.stopPropagation();setEditItem(it);setModal('a');}}>✎</button>}
-                        {canD&&<button className="kt-actbtn danger" title="刪除" onClick={e=>{e.stopPropagation();delA(it);}}>✕</button>}
+                        {canERow(it)&&<button className="kt-actbtn" title="編輯" onClick={e=>{e.stopPropagation();setEditItem(it);setModal('a');}}>✎</button>}
+                        {canDRow(it)&&<button className="kt-actbtn danger" title="刪除" onClick={e=>{e.stopPropagation();delA(it);}}>✕</button>}
+                        {roChip(it)}
                       </span></td>}
                     </tr>
                     {hasSub&&isExp&&rest.map((p,i)=>(
@@ -1391,8 +1404,9 @@
                     <td style={{whiteSpace:'nowrap'}}>{K.ENG_FULLLABEL[it.person]||K.ENG_LABEL[it.person]||it.person}</td>
                     <td style={{color:'var(--ink-3)'}}>{it.remark||'—'}</td>
                     {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
-                      {canE&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('i');}}>✎</button>}
-                      {canD&&<button className="kt-actbtn danger" onClick={()=>delI(it)}>✕</button>}
+                      {canERow(it)&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('i');}}>✎</button>}
+                      {canDRow(it)&&<button className="kt-actbtn danger" onClick={()=>delI(it)}>✕</button>}
+                      {roChip(it)}
                     </span></td>}
                   </tr>);
                 })}
@@ -1431,8 +1445,9 @@
                   <td style={{color:'var(--ink-3)'}}>{it.remark||'—'}</td>
                   <td className="kt-money">NT$ {(Number(it.price||0)*Number(it.quantity||1)).toLocaleString()}</td>
                   {editMode&&<td className="col-actions"><span className="kt-act" style={{opacity:1,pointerEvents:'all'}}>
-                    {canE&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('e');}}>✎</button>}
-                    {canD&&<button className="kt-actbtn danger" onClick={()=>delE(it)}>✕</button>}
+                    {canERow(it)&&<button className="kt-actbtn" onClick={()=>{setEditItem(it);setModal('e');}}>✎</button>}
+                    {canDRow(it)&&<button className="kt-actbtn danger" onClick={()=>delE(it)}>✕</button>}
+                    {roChip(it)}
                   </span></td>}
                 </tr>))}
                 {!filtT.length&&<tr><td colSpan={editMode?9:8}><div className="kt-empty">無設備</div></td></tr>}

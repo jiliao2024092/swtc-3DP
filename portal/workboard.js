@@ -310,6 +310,12 @@
 
     const canEdit = window.hasPerm(user, 'edit_board');
     const canDel  = window.hasPerm(user, 'delete_board');
+    // 決策 D：admin 可跨區編輯；主管可跨區「檢視」但只能編輯自己那區；
+    // 一般角色本來就只看得到自己那區。舊資料沒有 region → 視為中區。
+    // ★ 這是 UI 層把關，伺服器端的硬邊界要等階段 5 的 firestore.rules。
+    const inMyRegion = o => !window.canEditInRegion || window.canEditInRegion(user, o && o.region);
+    const canEditRow = o => canEdit && inMyRegion(o);
+    const canDelRow  = o => canDel  && inMyRegion(o);
 
     useEffect(() => {
       // 分區過濾在訂閱回呼就做，之後所有東西（表格/看板/甘特/儀表板/匯出Excel）
@@ -327,6 +333,8 @@
     const nextSeq = () => data.length ? Math.max(...data.map(d => d.seq || 0)) + 1 : 1;
 
     const handleSave = async form => {
+      // 防呆：跨區的資料不可寫入（按鈕已隱藏，這裡擋住其他觸發路徑，例如雙擊或鍵盤）
+      if (editO && !inMyRegion(editO)) { showToast('無法編輯其他地區的工單', 'err'); return; }
       if (editO) {
         await FBOrders.update(editO._id, form);
         showToast('列印工作已更新 ✓');
@@ -410,6 +418,8 @@
               editMode={editMode}
               canEdit={canEdit}
               canDel={canDel}
+              canEditRow={canEditRow}
+              canDelRow={canDelRow}
               onEdit={handleEdit}
               onDelete={handleDelete}
               labelVer={labelVer}
@@ -442,7 +452,10 @@
   }
 
   // ── 總表元件（自製，不依賴原版 TableView，支援 editMode） ──
-  function WorkTable({ data, editMode, canEdit, canDel, onEdit, onDelete, labelVer }) {
+  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer }) {
+    // 沒傳 predicate 時退回頁面層的布林值（其他呼叫端不受影響）
+    const rowEdit = canEditRow || (() => canEdit);
+    const rowDel  = canDelRow  || (() => canDel);
     const K = window.K;
     const [search,   setSearch]   = useState('');
     const [fEng,     setFEng]     = useState('');
@@ -643,9 +656,9 @@
                 const rowNo = (page-1)*PAGE_SIZE + idx + 1;   // 序號＝目前顯示清單的位置（1~N，不隨排序改變）
                 return (
                   <tr key={o._id || o.seq}
-                    onDoubleClick={() => canEdit && onEdit(o)}
-                    style={canEdit ? {cursor:'pointer'} : undefined}
-                    title={canEdit ? '雙擊編輯' : undefined}>
+                    onDoubleClick={() => rowEdit(o) && onEdit(o)}
+                    style={rowEdit(o) ? {cursor:'pointer'} : undefined}
+                    title={rowEdit(o) ? '雙擊編輯' : (canEdit ? '其他地區的資料，僅能檢視' : undefined)}>
                     <td className="col-seq">{rowNo}</td>
                     <td className="col-id" style={{fontFamily:'monospace',fontSize:11.5}}>
                       {(o.link && /^https?:\/\//i.test(o.link))
@@ -720,11 +733,17 @@
                     {editMode && (
                       <td className="col-actions">
                         <span className="kt-act">
-                          {canEdit && (
+                          {rowEdit(o) && (
                             <button className="kt-actbtn" title="編輯" onClick={() => onEdit(o)}>✎</button>
                           )}
-                          {canDel && (
+                          {rowDel(o) && (
                             <button className="kt-actbtn danger" title="刪除" onClick={() => onDelete(o)}>✕</button>
+                          )}
+                          {(canEdit || canDel) && !rowEdit(o) && !rowDel(o) && (
+                            <span title="其他地區的資料，僅能檢視"
+                                  style={{fontSize:10.5,color:'var(--ink-5)',border:'1px solid var(--line)',borderRadius:999,padding:'1px 7px',whiteSpace:'nowrap'}}>
+                              {window.regionLabel ? window.regionLabel(o.region) : ''}·唯讀
+                            </span>
                           )}
                         </span>
                       </td>

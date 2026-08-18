@@ -1101,8 +1101,8 @@ window.renderTable = function() {
             <td class="p-3"><span class="bg-[var(--indigo-soft)] text-[var(--indigo)] px-2 py-1 rounded-md text-xs font-medium border border-[var(--indigo-border)] whitespace-nowrap">${engDisplay(b.engineer)}</span></td>
             <td class="p-3">${purposeCell}</td>
             <td class="p-3">
-                <select ${canEdit?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
-                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit?'cursor-pointer':''} ${getStatusColor(dispStatus)}">
+                <select ${canEdit&&canEditBooking(b)?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
+                    class="px-2 py-1.5 rounded-md border text-sm font-medium outline-none ${canEdit&&canEditBooking(b)?'cursor-pointer':''} ${getStatusColor(dispStatus)}">
                     ${opts}
                 </select>
             </td>
@@ -1110,7 +1110,14 @@ window.renderTable = function() {
                 ${lastEdit}
                 ${lastByShort?`<div class="text-[var(--ink-5)]">by ${lastByShort}</div>`:''}
             </td>
-            ${canEdit ? `
+            ${canEdit && !canEditBooking(b) ? `
+            <td class="p-3 text-center">
+                <span title="其他地區的預約，僅能檢視"
+                      class="text-[10.5px] text-[var(--ink-5)] border border-[var(--line)] rounded-full px-2 py-0.5 whitespace-nowrap">
+                    ${window.regionLabel?window.regionLabel(b.region):''}·唯讀
+                </span>
+            </td>` : ''}
+            ${canEdit && canEditBooking(b) ? `
             <td class="p-3 text-center">
                 <div class="flex items-center justify-center gap-1">
                     <button onclick="openEditModal('${b.id}')" title="編輯" class="p-1.5 text-[var(--ink-5)] hover:text-[var(--accent)] hover:bg-[var(--accent-soft)] rounded-md">
@@ -1276,7 +1283,7 @@ function renderGantt() {
             const color = ganttStatusColor(effectiveStatus(b));
             const catTxt = b.category==='其他' ? (b.categoryOther||'其他') : (b.category||'—');
             const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-            return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
+            return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit&&canEditBooking(b)?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
                 ${catTxt}${allDayMark}
             </div>`;
         };
@@ -1395,7 +1402,7 @@ function renderGanttMonth() {
             const blocks = dayBookings.map(b=>{
                 const color   = ganttStatusColor(effectiveStatus(b));
                 const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':b.slot==='EV'?'晚上':'上午';
-                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${effectiveStatus(b)}" ${canEdit?`onclick="openEditModal('${b.id}')"`:''}></div>`;
+                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${effectiveStatus(b)}" ${canEdit&&canEditBooking(b)?`onclick="openEditModal('${b.id}')"`:''}></div>`;
             }).join('');
             html += `<td class="p-0.5 border border-[var(--line)] align-top ${bg}${ring}">${blocks}</td>`;
         });
@@ -1524,6 +1531,9 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
 });
 
 window.updateStatus = async function(id, newStatus){
+    // 藏掉按鈕不夠：這些是掛在 window 的函式，從 console 就能直接呼叫。
+    // 真正的伺服器端邊界要等階段 5 的 firestore.rules，這裡先擋住誤操作。
+    if (!canEditBooking(bookings.find(x=>x.id===id))) { showToast('無法修改其他地區的預約','error'); return; }
     try {
         await updateDoc(doc(db,'bookings',id), {
             status: newStatus,
@@ -1563,6 +1573,7 @@ async function writeBookingAudit(action, b) {
 window.deleteBooking = async function(id){
     const b = bookings.find(x=>x.id===id);
     if(!b) return;
+    if(!canEditBooking(b)){ showToast('無法刪除其他地區的預約','error'); return; }
     if(!confirm(`確定要刪除這筆預約？\n\n${b.date} · ${b.printer} · ${salesDisplay(b.sales)} · ${b.purpose||''}`)) return;
     try {
         await deleteDoc(doc(db,'bookings',id));
@@ -1575,6 +1586,7 @@ window.deleteBooking = async function(id){
 window.openEditModal = function(id){
     const b = bookings.find(x=>x.id===id);
     if(!b) return;
+    if(!canEditBooking(b)){ showToast('無法編輯其他地區的預約','error'); return; }
     editingId = id; editHasOrder = b.hasOrder ?? null;
     document.getElementById('edit-date').value = b.date || '';
     document.getElementById('edit-end-date').value = (b.endDate && b.endDate!==b.date) ? b.endDate : '';
@@ -1991,6 +2003,12 @@ function applyBookingRegionFilter(){
     bookings = window.filterRowsByRegion
         ? window.filterRowsByRegion(allBookings, currentUser, REGION_MODE, statusRegionView)
         : allBookings;
+}
+
+// 決策 D：admin 可跨區編輯；主管可跨區「檢視」但只能編輯自己那區。
+// 舊資料沒有 region → 視為中區。★ UI 層把關，伺服器端硬邊界待階段 5 的 rules。
+function canEditBooking(b){
+    return !window.canEditInRegion || window.canEditInRegion(currentUser, b && b.region);
 }
 
 function regionScopeFilter(){
