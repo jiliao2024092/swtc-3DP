@@ -1477,6 +1477,9 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     btn.innerHTML = '<span class="spinner"></span> 儲存中...';
     try {
         await addDoc(collection(db,'bookings'), {
+            // 建立者所屬地區。這頁不走 portal 的服務層，所以要自己帶。
+            // 沒載入 regions.js 或使用者沒設地區時皆為 'central'，與既有資料一致。
+            region: window.regionOf ? window.regionOf(currentUser) : 'central',
             date,
             endDate,
             slot,

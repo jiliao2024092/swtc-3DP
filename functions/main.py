@@ -168,6 +168,59 @@ VERSION_ALIAS = {
 # 兩者若是同一個產品版本就加進這張表，不要去改比較邏輯。
 
 
+# ── 北中南分區 ────────────────────────────────────────────────────────────
+# ★ 種子對照與前端 regions.js 的 SEED_MACHINE_REGION 必須一致。
+#   會有兩份是因為 Cloud Function 讀不到瀏覽器的 js —— 但兩邊都以
+#   settings/workspace.machine_regions（admin 在後台設定的那份）為優先，
+#   種子只是「後台還沒設定過」時的退路，所以不會出現兩個真相來源長期打架。
+REGION_CODES = ("north", "central", "south")
+DEFAULT_REGION = "central"
+SEED_MACHINE_REGION = {
+    "JasperGosling":  "north",    # Form 4L
+    "TealMoa":        "north",    # Fuse 1+（不記錄消耗庫存）
+    "AluminumBowfin": "central",  # Form 4
+    "AdroitSauropod": "central",  # Form 4L
+    "MarkTwo":        "central",  # Mark Two Taichung（Markforged）
+    "CreativeDragon": "south",    # Form 3+
+    "BoldSturgeon":   "south",    # Form 3L
+}
+
+
+def norm_region(v) -> str:
+    return v if v in REGION_CODES else DEFAULT_REGION
+
+
+def load_machine_regions(db) -> dict:
+    """讀 settings/workspace.machine_regions（admin 在後台設定的 實體機台 alias → 區）。
+    讀不到就回空 dict，machine_region() 會退回種子對照。"""
+    try:
+        snap = db.collection("settings").document("workspace").get()
+        data = snap.to_dict() if snap.exists else {}
+        mr = (data or {}).get("machine_regions")
+        return mr if isinstance(mr, dict) else {}
+    except Exception as e:
+        print(f"[region] 讀取 machine_regions 失敗，改用種子對照: {e}")
+        return {}
+
+
+def machine_region(alias: Optional[str], overrides: Optional[dict] = None) -> str:
+    """機台 alias → 區。比對用「包含」：Formlabs 的 printer 欄位有時是 serial
+    （Form4-AluminumBowfin）有時是 alias，兩種都要對得上（與 regions.js 同一套邏輯）。"""
+    if not alias:
+        return DEFAULT_REGION
+    a = str(alias)
+    if overrides:
+        if a in overrides:
+            return norm_region(overrides[a])
+        for k, v in overrides.items():
+            if k and k in a:
+                return norm_region(v)
+    for k, v in SEED_MACHINE_REGION.items():
+        if k in a:
+            return v
+    return DEFAULT_REGION
+
+
 def raw_version_num(code: Optional[str]) -> Optional[int]:
     """取 Formlabs 代碼末 2 碼當版本號（數字），供比較同家族的新舊版本。非標準代碼回傳 None。
     VERSION_ALIAS 中的代碼改用對照表指定的版本號（同版本不同代碼的特例）。"""
@@ -471,6 +524,9 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
                   f"state={_d.get('state')!r} "
                   f"tracked={_d.get('id') in EIGER_TRACKED_DEVICES}")
 
+        db_mr = get_db()
+        machine_regions = load_machine_regions(db_mr)
+
         mf_printers = []
         for d in devices:
             did = d.get("id")
@@ -485,6 +541,8 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
                 "device_id":   did,
                 "name":        d.get("name"),                      # Eiger 上的名稱
                 "display":     EIGER_TRACKED_DEVICES[did],         # 預約系統機台名
+                # 北中南分區：以後台設定的 display 名稱（如 MarkTwo）比對，其次種子對照
+                "region":      machine_region(EIGER_TRACKED_DEVICES[did], machine_regions),
                 "device_type":   d.get("device_type"),
                 "device_series": d.get("device_series"),
                 "state":       state,     # 原字串（"Offline"/"Ready"/"Printing"…），
@@ -618,6 +676,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                   f"cartridge_status type={type(cs).__name__}, "
                   f"sample={_j.dumps(cs, default=str)[:300] if cs else None}")
 
+        # 機台 → 區的對照（admin 在後台設定的那份；讀一次給整輪同步用）
+        machine_regions = load_machine_regions(db)
+
         # 簡化結構，寫入 printer_status/current 給前端用
         printers_summary = []
         for p in printers:
@@ -686,6 +747,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 "progress":   print_progress,
                 "machine_type_id":  p.get("machine_type_id"),
                 "cartridges": cartridges,
+                # 北中南分區：前端依此把狀態卡分組。以 admin 在後台設定的對照為準，
+                # 沒設定過就走種子對照；認不出來的機台一律歸中區（不會漏顯示）。
+                "region":     machine_region(alias or serial, machine_regions),
                 "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
             })
 
@@ -973,6 +1037,8 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         "stock_deducted":     actually_deducted,
                         "deduct_skip_reason": skip_reason,
                         "printer":     alias,
+                        # 北中南分區：消耗紀錄跟著機台走（哪一台印的就算哪一區的用量）
+                        "region":      machine_region(alias, machine_regions),
                         "ml":          volume_num,
                         "note":        pr.get("name", "") or f"列印 {guid[:8]}",
                         "print_guid":  guid,

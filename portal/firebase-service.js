@@ -108,6 +108,13 @@
   // ════════════════════════════════════════════════
   // 通用 collection helper：onSnapshot / add / update / del
   // ════════════════════════════════════════════════
+  // 新資料要蓋的 region 戳記＝目前登入者所屬地區（portal.html 維護 window._portalUser）。
+  // regions.js 沒載入或還沒登入時退回 'central'，與既有資料的預設一致。
+  function regionForNewDoc() {
+    if (window.regionOf) return window.regionOf(window._portalUser);
+    return 'central';
+  }
+
   function makeCollectionService(collName, orderField, orderDir) {
     const ref = () => db.collection(collName);
     return {
@@ -127,6 +134,10 @@
       },
       async add(data) {
         const doc = await ref().add({
+          // region 戳記蓋在服務層而不是各個 save handler：工作看板、異常、IPA、設備、
+          // 樣品全走這支 add()，集中一處才不會有人新增功能時忘記帶（漏帶的資料會被
+          // 當成中區，是靜默的錯）。呼叫端已自帶 region 時以呼叫端為準。
+          region: regionForNewDoc(),
           ...data,
           createdAt: firebase.firestore.FieldValue.serverTimestamp(),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),

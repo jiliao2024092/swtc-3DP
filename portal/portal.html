@@ -505,7 +505,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-config.js?v=20260814a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260708j"></script>
+<script src="firebase-service.js?v=20260818a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -2941,6 +2941,9 @@ function App() {
         const u = await FBAuth.getUser(fbUser.uid);
         if (u && u.active) {
           setUser(u);
+          // 目前登入者的全域參照：firebase-service.js 的 makeCollectionService.add()
+          // 需要它才能在新資料上蓋 region 戳記（服務層拿不到 React 的 state）
+          window._portalUser = u;
           // ★ settings/inventory 訂閱必須等確認登入成功才建立，不能在 App 掛載時就註冊：
           //   未登入時訂閱會被 Firestore rules 擋下 permission-denied，而 onSnapshot
           //   收到 permission-denied 後不會自動重試/重新訂閱——即使之後登入成功，這個
@@ -2960,11 +2963,12 @@ function App() {
               setUser(null);
             } else {
               setUser(fresh);
+              window._portalUser = fresh;   // 權限/地區被改時同步更新全域參照
             }
           });
         }
-        else { await FBAuth.signOut(); setUser(null); }
-      } else { setUser(null); }
+        else { await FBAuth.signOut(); setUser(null); window._portalUser = null; }
+      } else { setUser(null); window._portalUser = null; }
       setChecking(false);
     });
     return () => { unsubAuth(); teardownSession(); };
