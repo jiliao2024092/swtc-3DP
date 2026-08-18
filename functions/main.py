@@ -51,8 +51,21 @@ EIGER_API_BASE = "https://www.eiger.io/api/v3"   # 必須含 https 與 www，否
 #   Eiger 組織內另有 9 台屬其他據點（含東莞、上海）與金屬機（Metal X / sinter-1），
 #   絕不可整份 /devices 寫進 Firestore，否則會把非管轄範圍的機台資料一併帶進來。
 #   key = Eiger device id，value = 對應 3DP-BK.html DEFAULT_PRINTERS 的機台名
+# Eiger device id → 預約系統機台名（同時是 SEED_MACHINE_REGION 的鍵）。
+# ★ 白名單過濾，勿拿掉：沒列在這裡的機台完全不會寫入系統。中國廠的
+#   "Mark Two Dongguan"(bcaac500-…) 與 "X7 Shanghai"(7b0b2875-…) 刻意不納管。
+# ★ 機台名不可互為子字串以外的巧合命名 —— machine_region() 已改成「完全相同優先、
+#   包含取最長」，但取名時仍應避免歧義（MarkTwo / MarkTwoGEN2 / MarkTwoTainan 為此設計）。
+# 清單來源：[region-scan-mf] log（2026-08-18 實際掃描組織下 10 台）
 EIGER_TRACKED_DEVICES = {
-    "94716b11-430c-427c-8d37-1d99bf9f7fdb": "MarkTwo",   # Eiger 上名為 "Mark Two Taichung"
+    "8680e2df-23a0-4ab7-81df-d1bd2f4eb1ab": "FX10",           # FX10 Taipei
+    "245acd64-68cf-4e6f-a5a8-b88a5d26b378": "FX20",           # FX20
+    "b151e2a9-6994-48c0-8969-175408ba0ea4": "MarkTwoGEN2",    # Mark TWO(GEN2)
+    "e048a450-fc71-4561-a1d1-2c52d4f2ffc8": "MetalX",         # Metal X_Taipei
+    "99f3c70c-a097-4421-ab87-df2bff6cfd4a": "Sinter1",        # sinter-1
+    "f97f5a85-5b54-491e-ae98-410deeda2072": "X7",             # X7 Taipei
+    "94716b11-430c-427c-8d37-1d99bf9f7fdb": "MarkTwo",        # Mark Two Taichung
+    "e78034b9-7f7e-4a1a-8d9a-9a4fa59d65ca": "MarkTwoTainan",  # Mark Two Tainan
 }
 
 #   ★ 已確認案例：FC-118_壓輪支撐架 這類實際印完的 print，Formlabs API 回傳的 status
@@ -176,13 +189,23 @@ VERSION_ALIAS = {
 REGION_CODES = ("north", "central", "south")
 DEFAULT_REGION = "central"
 SEED_MACHINE_REGION = {
+    # Formlabs（alias 或 serial）
     "JasperGosling":  "north",    # Form 4L
     "TealMoa":        "north",    # Fuse 1+（不記錄消耗庫存）
     "AluminumBowfin": "central",  # Form 4
     "AdroitSauropod": "central",  # Form 4L
-    "MarkTwo":        "central",  # Mark Two Taichung（Markforged）
     "CreativeDragon": "south",    # Form 3+
     "BoldSturgeon":   "south",    # Form 3L
+    # Markforged（顯示名稱，與 EIGER_TRACKED_DEVICES 對齊）
+    # 中國廠的 Mark Two Dongguan / X7 Shanghai 刻意不列，也不在白名單內
+    "FX10":           "north",
+    "FX20":           "north",
+    "MarkTwoGEN2":    "north",
+    "MetalX":         "north",
+    "Sinter1":        "north",
+    "X7":             "north",
+    "MarkTwo":        "central",  # Mark Two Taichung
+    "MarkTwoTainan":  "south",
 }
 
 
@@ -203,21 +226,38 @@ def load_machine_regions(db) -> dict:
         return {}
 
 
+def _longest_contained_key(a: str, mapping: dict) -> Optional[str]:
+    """回傳 mapping 中「被 a 包含」且最長的鍵；沒有則 None。
+    取最長是為了避免短名稱搶先命中（MarkTwo ⊂ MarkTwoGEN2）。"""
+    best = None
+    for k in mapping:
+        if k and k in a and (best is None or len(k) > len(best)):
+            best = k
+    return best
+
+
 def machine_region(alias: Optional[str], overrides: Optional[dict] = None) -> str:
-    """機台 alias → 區。比對用「包含」：Formlabs 的 printer 欄位有時是 serial
-    （Form4-AluminumBowfin）有時是 alias，兩種都要對得上（與 regions.js 同一套邏輯）。"""
+    """機台 alias → 區（與 regions.js 的 machineRegion 同一套邏輯）。
+
+    ★ 一律「完全相同」優先、「包含」才是退路。有些機台名稱是另一個的子字串
+      （MarkTwo ⊂ MarkTwoGEN2），只用包含比對時誰先命中取決於 dict 的鍵順序，
+      會把北區的 MarkTwoGEN2 判成中區的 MarkTwo。包含比對存在的理由，是 Formlabs
+      的 printer 欄位有時回 serial（Form4-AluminumBowfin）而不是 alias。
+    """
     if not alias:
         return DEFAULT_REGION
     a = str(alias)
     if overrides:
         if a in overrides:
             return norm_region(overrides[a])
-        for k, v in overrides.items():
-            if k and k in a:
-                return norm_region(v)
-    for k, v in SEED_MACHINE_REGION.items():
-        if k in a:
-            return v
+        k = _longest_contained_key(a, overrides)
+        if k:
+            return norm_region(overrides[k])
+    if a in SEED_MACHINE_REGION:
+        return SEED_MACHINE_REGION[a]
+    k2 = _longest_contained_key(a, SEED_MACHINE_REGION)
+    if k2:
+        return SEED_MACHINE_REGION[k2]
     return DEFAULT_REGION
 
 

@@ -54,7 +54,22 @@ eq(machineRegion('JasperGosling'),  'north',   '北區 Form 4L');
 eq(machineRegion('TealMoa'),        'north',   '北區 Fuse 1+');
 eq(machineRegion('CreativeDragon'), 'south',   '南區 Form 3+');
 eq(machineRegion('BoldSturgeon'),   'south',   '南區 Form 3L');
-eq(machineRegion('MarkTwo'),        'central', 'Markforged 歸中區');
+eq(machineRegion('MarkTwo'),        'central', 'Mark Two Taichung');
+// ★ 子字串碰撞：'MarkTwo' 是 'MarkTwoGEN2' / 'MarkTwoTainan' 的前綴。
+//   若比對只用「包含」而不先試「完全相同」，命中誰取決於物件的鍵順序，
+//   會把北區的 GEN2 與南區的 Tainan 都判成中區。
+eq(machineRegion('MarkTwoGEN2'),    'north',   '★ 子字串碰撞：GEN2 不可被 MarkTwo 搶走');
+eq(machineRegion('MarkTwoTainan'),  'south',   '★ 子字串碰撞：Tainan 不可被 MarkTwo 搶走');
+eq(machineRegion('FX10'),           'north',   'Markforged FX10（北）');
+eq(machineRegion('FX20'),           'north',   'Markforged FX20（北）');
+eq(machineRegion('MetalX'),         'north',   'Markforged Metal X（北）');
+eq(machineRegion('Sinter1'),        'north',   'Markforged sinter-1（北）');
+eq(machineRegion('X7'),             'north',   'Markforged X7 Taipei（北）');
+// 後台設定裡也可能出現互為子字串的鍵，同樣要取最長的那個
+eq(machineRegion('MarkTwoGEN2', { MarkTwo:'south', MarkTwoGEN2:'north' }), 'north',
+   '★ 後台設定的子字串碰撞：取完全相同的鍵');
+eq(machineRegion('Form4L-JasperGosling', { JasperGosling:'south' }), 'south',
+   '後台設定 + serial 形式（包含比對仍要能用）');
 // Formlabs 的 printer 欄位有時是 serial 不是 alias，兩種都要能對上
 eq(machineRegion('Form4-AluminumBowfin'), 'central', 'serial 形式也要對得上');
 eq(machineRegion('Form4L-AdroitSauropod'), 'central', 'serial 形式（Form4L）');

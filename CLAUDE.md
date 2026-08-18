@@ -54,7 +54,7 @@ node --input-type=module --check < /tmp/x.js
 # Cloud Function
 python3 -m py_compile functions/main.py
 
-# 北中南分區邏輯：前端 61 項 + 後端 22 項（含前後端種子對照一致性比對）
+# 北中南分區邏輯：前端 70 項 + 後端 33 項（含前後端種子對照一致性比對）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 ```
@@ -64,7 +64,11 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - 看 log：`firebase functions:log --project swtc-3dp-poc`。常搜 `[sync]`、`DEBUG目標print`、`DEBUG列印中無檔名`
 - 主要 Firestore collection：`users`（`permissions` 陣列為主，`role` 是自動推導的舊系統相容值）、`bookings`（含跨天 `endDate`、用途 `category`）、`inventory/main`（含 `family_latest_version` 材料版本追蹤）、`inventory_history/{guid}`（doc_id=guid 防重複；刪除消耗類紀錄會自動回補庫存）、`printer_status/current`、`workboard_orders`（`actUsage` 可從 inventory_history 自動帶入）、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`、`settings/quote_materials`、`settings/quote_studio_pricing`、`print_orders`、`print_history`
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
-- 機台：`AluminumBowfin`(serial `Form4-AluminumBowfin`→Form4)、`AdroitSauropod`(serial `Form4L-AdroitSauropod`→Form4L)
+- 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃）：
+  - Formlabs 6 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4L·中)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
+  - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
+  - Markforged 納管 8 台（見 `EIGER_TRACKED_DEVICES`）；中國廠的 `Mark Two Dongguan`、`X7 Shanghai` **刻意排除**，白名單以外一律不寫入
+  - ⚠ 機台顯示名稱有互為子字串的情況（`MarkTwo` ⊂ `MarkTwoGEN2` / `MarkTwoTainan`）。`machine_region()` 必須「完全相同優先、包含取最長」，只用包含比對會依 dict 鍵順序判錯區，且完全沒有錯誤訊息（`tools/test_regions*` 有守）
 
 ## 領域邏輯地雷
 - **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示（曾詢問過使用者是否要改成樹脂罐也計入總庫存，明確回答**不要**，維持現狀）

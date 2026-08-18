@@ -31,7 +31,7 @@ for name in ("REGION_CODES", "DEFAULT_REGION", "SEED_MACHINE_REGION"):
     m = re.search(r"^%s = .*?$(?:\n(?!\n).*?$)*" % name, src, re.M)
     assert m, f"main.py 找不到常數 {name}"
     exec(m.group(0), ns)
-for fn in ("norm_region", "machine_region"):
+for fn in ("norm_region", "_longest_contained_key", "machine_region"):
     m = re.search(r"^def %s\(.*?(?=\n\ndef |\n\n# |\Z)" % fn, src, re.S | re.M)
     assert m, f"main.py 找不到函式 {fn}"
     exec(m.group(0), ns)
@@ -64,7 +64,19 @@ eq(machine_region("JasperGosling"), "north", "北區 Form 4L")
 eq(machine_region("TealMoa"), "north", "北區 Fuse 1+")
 eq(machine_region("CreativeDragon"), "south", "南區 Form 3+")
 eq(machine_region("BoldSturgeon"), "south", "南區 Form 3L")
-eq(machine_region("MarkTwo"), "central", "Markforged 歸中區")
+eq(machine_region("MarkTwo"), "central", "Mark Two Taichung")
+# ★ 子字串碰撞："MarkTwo" 是 "MarkTwoGEN2" / "MarkTwoTainan" 的前綴。
+#   若比對只用「包含」而不先試「完全相同」，命中誰取決於 dict 的鍵順序，
+#   會把北區的 GEN2 與南區的 Tainan 都判成中區。
+eq(machine_region("MarkTwoGEN2"), "north", "★ 子字串碰撞：GEN2 不可被 MarkTwo 搶走")
+eq(machine_region("MarkTwoTainan"), "south", "★ 子字串碰撞：Tainan 不可被 MarkTwo 搶走")
+eq(machine_region("FX10"), "north", "Markforged FX10（北）")
+eq(machine_region("FX20"), "north", "Markforged FX20（北）")
+eq(machine_region("MetalX"), "north", "Markforged Metal X（北）")
+eq(machine_region("Sinter1"), "north", "Markforged sinter-1（北）")
+eq(machine_region("X7"), "north", "Markforged X7 Taipei（北）")
+eq(machine_region("MarkTwoGEN2", {"MarkTwo": "south", "MarkTwoGEN2": "north"}), "north",
+   "★ 後台設定的子字串碰撞：取完全相同的鍵")
 # Formlabs 的 printer 欄位有時是 serial 而非 alias，兩種都要對得上
 eq(machine_region("Form4-AluminumBowfin"), "central", "serial 形式")
 eq(machine_region("Form4L-AdroitSauropod"), "central", "serial 形式（Form4L）")
@@ -92,6 +104,18 @@ eq(js_default.group(1) if js_default else None, ns["DEFAULT_REGION"],
 
 js_regions = re.findall(r"\{ key: '(\w+)',", js)
 eq(js_regions, list(ns["REGION_CODES"]), "★ 前後端的區碼清單不一致")
+
+# ── Markforged 白名單的每個顯示名稱都要在種子對照裡（否則該機台會被判成中區）──
+m = re.search(r"EIGER_TRACKED_DEVICES = \{(.*?)\n\}", src, re.S)
+assert m, "main.py 找不到 EIGER_TRACKED_DEVICES"
+tracked = re.findall(r'"[0-9a-f-]{36}":\s*"(\w+)"', m.group(1))
+missing = [d for d in tracked if d not in ns["SEED_MACHINE_REGION"]]
+eq(missing, [], "★ 有納管的 Markforged 機台不在種子對照裡（會被靜默判成中區）")
+
+# 中國廠的兩台一定要留在白名單外
+for bad_id in ("bcaac500-140f-47de-9a12-5c791a393dd7",   # Mark Two Dongguan
+               "7b0b2875-e329-4fb8-babe-0c3884890d31"):  # X7 Shanghai
+    eq(bad_id in m.group(1), False, f"★ 中國廠機台 {bad_id[:8]} 不可納管")
 
 print(f"\n{_pass + _fail} 項：{_pass} PASS / {_fail} FAIL")
 sys.exit(1 if _fail else 0)

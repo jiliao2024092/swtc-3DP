@@ -34,13 +34,23 @@
   // ★ 這裡放的是 Formlabs/Eiger 的實體機台代號，不是預約頁用的機型名稱 ——
   //   系統裡「機台」有兩種意思，別混用（docs/region-split-plan.md §0 發現二）。
   const SEED_MACHINE_REGION = {
+    // Formlabs（alias 或 serial）
     JasperGosling:  'north',    // Form 4L
     TealMoa:        'north',    // Fuse 1+ ── 不記錄消耗庫存（SLS 粉末，與樹脂體系不同）
     AluminumBowfin: 'central',  // Form 4
     AdroitSauropod: 'central',  // Form 4L
-    MarkTwo:        'central',  // Mark Two Taichung（Markforged，觀測模式）
     CreativeDragon: 'south',    // Form 3+
     BoldSturgeon:   'south',    // Form 3L
+    // Markforged（顯示名稱，與 main.py 的 EIGER_TRACKED_DEVICES 對齊）
+    // 中國廠的 Mark Two Dongguan / X7 Shanghai 刻意不列，也不在白名單內
+    FX10:           'north',
+    FX20:           'north',
+    MarkTwoGEN2:    'north',
+    MetalX:         'north',
+    Sinter1:        'north',
+    X7:             'north',
+    MarkTwo:        'central',  // Mark Two Taichung
+    MarkTwoTainan:  'south',
   };
 
   // 不納入消耗扣庫存的機台（決策 B：Fuse 1+ 只看狀態、不記消耗）
@@ -60,20 +70,31 @@
   // 機台 alias → 區。overrides 傳 settings/workspace.machine_regions（{alias: region}）。
   // 比對用 includes：Formlabs 回傳的 printer 欄位有時是 serial（Form4-AluminumBowfin）、
   // 有時是 alias，兩種都要能對上（沿用 main.py 既有的比對方式）。
+  // ★ 一律「完全相同」優先、「包含」才是退路。有些機台名稱是另一個的子字串
+  //   （MarkTwo ⊂ MarkTwoGEN2 ⊂ …），只用包含比對時誰先命中取決於物件的鍵順序，
+  //   會把北區的 MarkTwoGEN2 判成中區的 MarkTwo。包含比對只是為了吃下
+  //   Formlabs 有時回 serial（Form4-AluminumBowfin）而非 alias 的情況。
+  //   同理，包含比對時取「最長的那個鍵」，避免短名稱搶先命中。
+  function longestContainedKey(a, obj) {
+    let best = null;
+    for (const k in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, k) || !k) continue;
+      if (a.indexOf(k) >= 0 && (best === null || k.length > best.length)) best = k;
+    }
+    return best;
+  }
+
   function machineRegion(alias, overrides) {
     if (!alias) return DEFAULT_REGION;
     const a = String(alias);
     if (overrides && typeof overrides === 'object') {
       if (overrides[a]) return normRegion(overrides[a]);
-      for (const k in overrides) {
-        if (Object.prototype.hasOwnProperty.call(overrides, k) && k && a.indexOf(k) >= 0) {
-          return normRegion(overrides[k]);
-        }
-      }
+      const k = longestContainedKey(a, overrides);
+      if (k) return normRegion(overrides[k]);
     }
-    for (const k in SEED_MACHINE_REGION) {
-      if (a.indexOf(k) >= 0) return SEED_MACHINE_REGION[k];
-    }
+    if (Object.prototype.hasOwnProperty.call(SEED_MACHINE_REGION, a)) return SEED_MACHINE_REGION[a];
+    const k2 = longestContainedKey(a, SEED_MACHINE_REGION);
+    if (k2) return SEED_MACHINE_REGION[k2];
     return DEFAULT_REGION;
   }
 
