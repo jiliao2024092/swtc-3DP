@@ -53,6 +53,9 @@ node --input-type=module --check < /tmp/x.js
 
 # Cloud Function
 python3 -m py_compile functions/main.py
+
+# 北中南分區邏輯（regions.js）：61 項行為測試
+node tools/test_regions.js
 ```
 JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset-react `transformSync` 逐一編譯各 babel 區塊（能編譯＝語法正確）。
 

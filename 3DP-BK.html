@@ -496,6 +496,8 @@
 <!-- ══ Firebase + 應用程式 JS ══════════════════════ -->
 <!-- App Check 設定（classic script，會先於下方 module 執行；未填 site key 時為 no-op）-->
 <script src="appcheck.js"></script>
+<!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
+<script src="regions.js"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
@@ -593,7 +595,15 @@ onAuthStateChanged(auth, async (user) => {
                 displayName = d.displayName || user.email.split('@')[0];
             }
 
-            currentUser = { uid: user.uid, email: user.email, displayName, role };
+            // permissions / region 一併帶進 currentUser。
+            // 這頁歷來只吃舊的 role 欄位，但 role 只有 admin/editor/viewer 三級，分不出「主管」
+            // （主管的定義是持有 delete_board / delete_issues，見 firebase-service.js 的 roleTierOf），
+            // 之後分區要靠它判斷誰能跨區檢視。region 同理。
+            // ★ 階段 1 只是把值帶進來，目前沒有任何邏輯讀它 —— 畫面行為完全不變。
+            const _d = snap.exists() ? snap.data() : {};
+            const permissions = Array.isArray(_d.permissions) ? _d.permissions : [];
+            const region = _d.region || null;
+            currentUser = { uid: user.uid, email: user.email, displayName, role, permissions, region };
             showApp();
             subscribeBookings();
             subscribeSettings();

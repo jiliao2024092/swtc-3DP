@@ -1071,6 +1071,8 @@
 
 <!-- App Check 設定（classic script，會先於下方 module 執行；未填 site key 時為 no-op）-->
 <script src="appcheck.js"></script>
+<!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
+<script src="regions.js"></script>
 <script type="module">
 // ══ 設定 ══
 const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
@@ -1218,7 +1220,9 @@ onAuthStateChanged(auth, async (user) => {
                 displayName = d.displayName || user.email.split('@')[0];
             }
             const permissions = (snap.exists() && Array.isArray(snap.data().permissions)) ? snap.data().permissions : [];
-            currentUser = { uid: user.uid, email: user.email, displayName, role, permissions };
+            // region：階段 1 只是把值帶進來，目前沒有任何邏輯讀它（見 regions.js 與 docs/region-split-plan.md）
+            const region = (snap.exists() && snap.data().region) || null;
+            currentUser = { uid: user.uid, email: user.email, displayName, role, permissions, region };
             isEditor = (role === 'admin' || role === 'editor');
             showApp();
             subscribeAll();
