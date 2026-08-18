@@ -2441,6 +2441,7 @@ function AdminPanel({ user, isAdmin }) {
                   <tr key={u._id}>
                     <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{(u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
                     <td style={{color:'var(--ink-3)',fontSize:12}}>{u.email}</td>
+                    <td><span className={`role-chip ${roleTierOf(u)}`}>{ROLE_TIER_LABEL[roleTierOf(u)]}</span></td>
                     <td>{window.hasExplicitRegion && window.hasExplicitRegion(u)
                       ? <span style={{fontSize:12,color:'var(--ink-2)'}}>{window.regionLabel(u.region)}</span>
                       /* 未設定地區 → 標紅。分區上線後這些人會靜默地被當成中區，

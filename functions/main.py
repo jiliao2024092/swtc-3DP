@@ -460,6 +460,17 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
         devices = eiger_get_all("/devices", access_key, secret_key)
         stats["devices_seen"] = len(devices)
 
+        # 北中南分區用：印出組織底下「所有」Markforged 機台（不只白名單那台）。
+        # 使用者要把 Markforged 也納入分區，但要排除中國地區的機台，而目前程式碼裡
+        # 只有一台的 device id，其餘 9 台的名稱與所在地都不知道 —— 只能從 API 撈。
+        # 純 log、不影響任何行為；決定好納管範圍後可移除。
+        # 查看方式：firebase functions:log --project swtc-3dp-poc，搜 [region-scan-mf]
+        for _d in devices:
+            print(f"[region-scan-mf] id={_d.get('id')!r} name={_d.get('name')!r} "
+                  f"type={_d.get('device_type')!r} series={_d.get('device_series')!r} "
+                  f"state={_d.get('state')!r} "
+                  f"tracked={_d.get('id') in EIGER_TRACKED_DEVICES}")
+
         mf_printers = []
         for d in devices:
             did = d.get("id")
