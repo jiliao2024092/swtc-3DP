@@ -81,6 +81,35 @@ eq(machineRegion('Form4-AluminumBowfin', { AluminumBowfin: 'south' }), 'south', 
 eq(machineRegion('JasperGosling', { AluminumBowfin: 'south' }), 'north', '設定沒涵蓋到的機台仍走種子值');
 eq(machineRegion('AluminumBowfin', { AluminumBowfin: '亂填' }), 'central', '後台存了無效區碼 → 退回中區');
 
+// ── 機台 → 機型（圖示與顯示名稱的 key）─────────────────────────────
+const { machineModel } = win;
+// 同機型多台：兩台 Form 4L 都要對到同一個機型，否則 JasperGosling 會沒有圖
+eq(machineModel('AdroitSauropod'), 'Form4L', '中區 Form 4L');
+eq(machineModel('JasperGosling'),  'Form4L', '★ 北區也是 Form 4L，必須對到同一機型');
+eq(machineModel('AluminumBowfin'), 'Form4',  'Form 4');
+eq(machineModel('CreativeDragon'), 'Form3+', 'Form 3+');
+eq(machineModel('BoldSturgeon'),   'Form3L', 'Form 3L');
+eq(machineModel('TealMoa'),        'Fuse1+', 'Fuse 1+');
+// ★ 物件形式必須「優先」用 machine_type_id。
+//   ⚠ 測資要挑「machine_type_id 與 alias 會給出不同答案」的組合，否則就算實作根本
+//     沒看 machine_type_id、靠 alias 也能矇對，測試會是假綠燈（第一版就踩到）。
+eq(machineModel({ machine_type_id:'FRML-3-0', alias:'AluminumBowfin' }), 'Form3L',
+   '★ machine_type_id 必須勝過 alias（alias 會給出 Form4）');
+eq(machineModel({ machine_type_id:'FORM-4-0', alias:'BoldSturgeon' }), 'Form4',
+   '★ 反向再驗一次：alias 會給出 Form3L');
+// 真實情境：新機台的 alias 還沒進對照表，只能靠 machine_type_id 認出機型
+eq(machineModel({ machine_type_id:'FORM-3-2', alias:'BrandNewPrinter' }), 'Form3+',
+   '★ alias 不在對照表時，machine_type_id 仍要認得出機型');
+eq(machineModel({ machine_type_id:'FS30-1-0', alias:null, serial:'TealMoa' }), 'Fuse1+',
+   'alias 為 None 時（Fuse 1+ 實際如此）仍判得出');
+// machine_type_id 認不得時退回 alias 對照
+eq(machineModel({ machine_type_id:'UNKNOWN-9', alias:'AluminumBowfin' }), 'Form4',
+   '未知 machine_type_id → 退回 alias 對照');
+eq(machineModel({ alias:'Form4-AluminumBowfin' }), 'Form4', 'serial 形式也要對得上');
+eq(machineModel('沒看過的機台'), '', '認不出的機台回空字串（呼叫端原樣顯示代號）');
+eq(machineModel(''), '', '空字串不可拋錯');
+eq(machineModel(null), '', 'null 不可拋錯');
+
 // ── 消耗扣庫存 ────────────────────────────────────────────────────
 eq(tracksConsumption('AluminumBowfin'), true,  '樹脂機台要記消耗');
 eq(tracksConsumption('TealMoa'), false, 'Fuse 1+ 不記錄消耗庫存（決策 B）');

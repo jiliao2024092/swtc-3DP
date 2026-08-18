@@ -55,6 +55,44 @@
   // 不納入消耗扣庫存的機台（決策 B：Fuse 1+ 只看狀態、不記消耗）
   const NO_CONSUMPTION_ALIASES = ['TealMoa'];
 
+  // ── 機台 → 機型 ──────────────────────────────────────────────────
+  // 機型是圖示與顯示名稱的 key。原本兩個頁面各自用 alias 當 key（只有 Form4 /
+  // Form4L 兩台），機隊擴成 6 台後對不上：JasperGosling 同樣是 Form 4L 卻沒圖，
+  // 名稱也會直接顯示成代號。
+  // ★ 首選 machine_type_id：CreativeDragon / BoldSturgeon / TealMoa 的 alias 是 None、
+  //   serial 就是機台名，沒有 `Form3L-` 這種前綴，靠 serial 前綴判機型對它們無效
+  //   （實測見 [region-scan] log）。alias 對照只是給「只有字串、拿不到完整物件」的
+  //   呼叫端用（例如消耗紀錄只存 printer 名稱）。
+  const MACHINE_TYPE_MODEL = {
+    'FORM-4-0': 'Form4',
+    'FRML-4-0': 'Form4L',
+    'FORM-3-2': 'Form3+',
+    'FRML-3-0': 'Form3L',
+    'FS30-1-0': 'Fuse1+',
+  };
+  const SEED_MACHINE_MODEL = {
+    AluminumBowfin: 'Form4',
+    AdroitSauropod: 'Form4L',
+    JasperGosling:  'Form4L',
+    TealMoa:        'Fuse1+',
+    CreativeDragon: 'Form3+',
+    BoldSturgeon:   'Form3L',
+  };
+
+  // 傳 printer_status 的機台物件（有 machine_type_id）或單純的 alias/serial 字串
+  function machineModel(p) {
+    if (!p) return '';
+    if (typeof p === 'object') {
+      const t = p.machine_type_id;
+      if (t && MACHINE_TYPE_MODEL[t]) return MACHINE_TYPE_MODEL[t];
+      return machineModel(p.alias || p.serial || '');
+    }
+    const a = String(p);
+    if (Object.prototype.hasOwnProperty.call(SEED_MACHINE_MODEL, a)) return SEED_MACHINE_MODEL[a];
+    const k = longestContainedKey(a, SEED_MACHINE_MODEL);
+    return k ? SEED_MACHINE_MODEL[k] : '';
+  }
+
   // ── 基本正規化 ────────────────────────────────────────────────────
   function isRegion(v)    { return Object.prototype.hasOwnProperty.call(REGION_LABEL, v); }
   function normRegion(v)  { return isRegion(v) ? v : DEFAULT_REGION; }
@@ -161,6 +199,9 @@
   window.regionOf           = regionOf;
   window.hasExplicitRegion  = hasExplicitRegion;
   window.machineRegion      = machineRegion;
+  window.machineModel       = machineModel;
+  window.MACHINE_TYPE_MODEL = MACHINE_TYPE_MODEL;
+  window.SEED_MACHINE_MODEL = SEED_MACHINE_MODEL;
   window.tracksConsumption  = tracksConsumption;
   window.regionRoleTier     = roleTier;
   window.regionActiveFor    = regionActiveFor;
