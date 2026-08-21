@@ -57,7 +57,15 @@ python3 -m py_compile functions/main.py
 # 北中南分區邏輯：前端 94 項 + 後端 33 項（含前後端種子對照一致性比對）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
+
+# firestore.rules 安全規則：38 項（跑本機 Firestore 模擬器，不連任何真實專案）
+cd tools/rules-test && npm test
 ```
+⚠ 規則測試需要 **JDK 21+**（firebase-tools 已不支援更舊版本）。本機的 JDK 在
+`D:\web\swtc-3DP\jdk-21.0.12+8`（免安裝解壓版，未進版控）。若 `java -version` 不是 21+，
+跑之前先設 `$env:JAVA_HOME`／`export JAVA_HOME` 指到該路徑並把 `$JAVA_HOME/bin` 放進 PATH。
+模擬器設定在根目錄的 `firebase.emulator.json`——**刻意不併進 `firebase.json`**，
+因為那個檔名列在 `deploy-functions.yml` 的 paths 過濾裡，動它會白白重新部署一次 Cloud Function。
 JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset-react `transformSync` 逐一編譯各 babel 區塊（能編譯＝語法正確）。
 
 ## Firebase / 除錯

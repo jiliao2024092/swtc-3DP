@@ -1,0 +1,12 @@
+{
+  "_comment": "只給 tools/rules-test 的 Firestore 模擬器用。刻意獨立成一支、不併進 firebase.json —— 那個檔名列在 deploy-functions.yml 的 paths 過濾裡，動它會白白觸發一次 Cloud Function 重新部署。模擬器也不接受專案目錄以外的 rules 路徑，所以這支必須放在 repo 根目錄。",
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "firestore": { "port": 8080 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  }
+}

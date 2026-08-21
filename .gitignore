@@ -42,3 +42,7 @@ tools/warp-sim/*.spec
 # warp-sim 產生的預覽圖
 tools/warp-sim/preview*.png
 tools/warp-sim/*_warp.png
+
+# 規則測試的模擬器暫存（node_modules 已由上方涵蓋）
+tools/rules-test/.firebase/
+firestore-debug.log
