@@ -2003,6 +2003,25 @@ let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
 //   陣列  ＝ 只看這幾區（admin/主管拿到全部三區，一般角色只有自己那一區）
 // ★ 回傳 null 而不是「全部三區」是刻意的：呼叫端據此決定要不要分組，
 //   分區未啟用時要維持原本的「台中/其他」分組，不能變成北中南。
+// 機台清單（機型）的分區過濾。allBkMachines 保留 settings 原始清單，
+// PRINTERS / GANTT_PRINTERS 才是畫面用的那份 —— 分開存才能在「檢視地區」切換時重算。
+// ★ 原本這段寫在 subscribeSettings 裡只算一次，切換檢視地區時不會重算，
+//   導致狀態卡切到某一區了、甘特圖列與設備下拉卻還是全部（使用者回報的 bug）。
+let allBkMachines = null;
+function applyMachineRegionFilter(){
+    const scope = effectiveScope();
+    if (allBkMachines && allBkMachines.length) {
+        PRINTERS = allBkMachines
+            .filter(m => !scope || !m.region || scope.includes(m.region))
+            .map(m=>m.name||m).filter(Boolean);
+        GANTT_PRINTERS = PRINTERS.filter(p=>p!=='Other');   // 甘特圖排除「Other」這種非實體機台的選項
+    } else {
+        PRINTERS = DEFAULT_PRINTERS.slice();
+        GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
+    }
+    populatePrinterSelects();
+}
+
 // 預約資料的分區過濾。allBookings 保留訂閱到的完整資料，bookings 才是畫面用的那份 ——
 // 分開存是為了在「檢視地區」切換或設定變更時不必重新訂閱（重訂閱要再付一次讀取）。
 // ★ 甘特圖、表格、衝突檢查全都讀 bookings，所以只要在這裡過濾一次即可。
@@ -2024,12 +2043,21 @@ function regionScopeFilter(){
     if (window.canViewAllRegions(currentUser)) return (window.REGIONS||[]).map(r=>r.key);
     return [window.regionOf(currentUser)];
 }
+// 套用「檢視地區」切換之後的實際範圍。狀態卡、機台清單、預約資料都必須用同一個，
+// 否則會出現「卡片切到北部了，但甘特圖列與設備下拉還是全部」這種不一致（實際回報過）。
+function effectiveScope(){
+    let scope = regionScopeFilter();
+    const canCross = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
+    if (canCross && statusRegionView !== 'all') scope = [statusRegionView];
+    return scope;
+}
 const printerGroupCollapsed = {};  // 分組摺疊狀態，key 是組名
 // 「檢視地區」切換的當前值（'all' 或區碼）。純前端顯示用，不寫入任何設定。
 let statusRegionView = 'all';
 window.setStatusRegionView = function(v){
     statusRegionView = v;
-    applyBookingRegionFilter();          // 預約資料也跟著切
+    applyMachineRegionFilter();          // 機台清單（甘特圖列、設備下拉）
+    applyBookingRegionFilter();          // 預約資料
     renderStatusPanel(cachedPrinters || []);
     renderTable(); renderGantt();
 };
@@ -2139,7 +2167,7 @@ function renderStatusPanel(printers) {
     grid.className = 'p-4 space-y-4';
 
     const mf = cachedMfPrinters || [];
-    let scope = regionScopeFilter();
+    let scope = effectiveScope();
 
     // ★「檢視地區」切換（只有可跨區的人看得到）。
     //   為什麼需要：決策 D 讓 admin 與主管永遠可跨區檢視，但 region_mode 的 alpha/beta
@@ -2150,9 +2178,6 @@ function renderStatusPanel(printers) {
     //   ⚠ 這純粹是前端顯示過濾，不是權限：切到某一區不會讓他失去任何權限，
     //     也不會寫進任何設定，重新整理就回到「全部」。
     const canCrossRegion = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
-    if (canCrossRegion && statusRegionView !== 'all') {
-        scope = [statusRegionView];
-    }
 
     // 機台的區：優先用 Cloud Function 寫進來的 region 欄位；舊資料（同步還沒跑過）
     // 沒有這個欄位時，前端自己用 regions.js 的對照推導，不要顯示成「未分區」。
@@ -2169,6 +2194,7 @@ function renderStatusPanel(printers) {
     const groups = (window.REGIONS||[])
         .filter(r => !scope || scope.includes(r.key))
         .map(r => ({
+            key:  r.key,
             name: r.label,
             printers: printers.filter(p => regionOfPrinter(p) === r.key),
             mf:       mf.filter(p => regionOfPrinter(p) === r.key),
@@ -2196,9 +2222,15 @@ function renderStatusPanel(printers) {
         grid.appendChild(bar);
     }
 
+    const myRegion = window.regionOf ? window.regionOf(currentUser) : 'central';
     groups.forEach(g => {
         const count = g.printers.length + g.mf.length;
         if (!count) return;  // 該組沒有機台就不顯示
+        // 預設：自己那區展開、其餘收合。只在「使用者還沒手動動過這一組」時套用
+        // （undefined 才給預設值），之後就以他自己的展開/收合為準。
+        if (printerGroupCollapsed[g.name] === undefined) {
+            printerGroupCollapsed[g.name] = (g.key !== myRegion);
+        }
         const collapsed = !!printerGroupCollapsed[g.name];
 
         const section = document.createElement('div');
@@ -2412,15 +2444,11 @@ function subscribeSettings(){
         if (s && Array.isArray(s.bk_machines) && s.bk_machines.length){
             // 機型清單依地區過濾：留空 region 的機型＝全區可見（如「Other」）。
             // 分區未啟用（或使用者可跨區檢視）時不過濾，行為與改動前完全相同。
-            const mine = regionScopeFilter();
-            PRINTERS = s.bk_machines
-                .filter(m => !mine || !m.region || mine.includes(m.region))
-                .map(m=>m.name||m).filter(Boolean);
-            GANTT_PRINTERS = PRINTERS.filter(p=>p!=='Other');   // 甘特圖排除「Other」這種非實體機台的選項
+            allBkMachines = s.bk_machines;
         } else {
-            PRINTERS = DEFAULT_PRINTERS.slice();
-            GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
+            allBkMachines = null;
         }
+        applyMachineRegionFilter();
         populatePrinterSelects();
         // 用途類別清單：與 admin 後台「用途類別清單」(bk_categories)同源
         CATEGORY_ORDER = (s && Array.isArray(s.bk_categories) && s.bk_categories.length)

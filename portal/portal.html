@@ -1668,8 +1668,8 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260821b"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260821b"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260821c"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260821c"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -2125,7 +2125,9 @@ function AdminPanel({ user, isAdmin }) {
   const [userModal, setUserModal] = useSt(false);
   const [editUser, setEditUser] = useSt(null);
   const [saving, setSaving]     = useSt(false);
-  const [sortKey, setSortKey]   = useSt('name');   // name | email | role
+  const [sortKey, setSortKey]   = useSt('name');   // name | email | role | region
+  const [fRegion, setFRegion]   = useSt('');       // 地區濾器（'' ＝ 全部、'none' ＝ 未設定）
+  const [fTier,   setFTier]     = useSt('');       // 角色濾器
   const [sortDir, setSortDir]   = useSt('asc');    // asc | desc
 
   // 工作看板設定
@@ -2238,7 +2240,16 @@ function AdminPanel({ user, isAdmin }) {
   // 使用者排序：依姓名/Email 字母（localeCompare）、依權限等級（管理員>主管>工程師>查閱）
   const roleRank = u => ROLE_TIER_RANK[roleTierOf(u)];
   const toggleSort = k => { if(sortKey===k) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(k); setSortDir('asc'); } };
-  const sortedUsers = [...users].sort((a,b)=>{
+  // 使用者列表的濾器。地區另外提供「未設定」——那些帳號在分區啟用後會被當成中部，
+  // 是最需要被找出來處理的一群，所以要能單獨篩。
+  const shownUsers = users.filter(u => {
+    if (fTier && roleTierOf(u) !== fTier) return false;
+    if (fRegion === 'none') return !(window.hasExplicitRegion && window.hasExplicitRegion(u));
+    if (fRegion) return (window.normRegion ? window.normRegion(u.region) : u.region) === fRegion;
+    return true;
+  });
+
+  const sortedUsers = [...shownUsers].sort((a,b)=>{
     let r = 0;
     if(sortKey==='name')       r = (a.displayName||'').localeCompare(b.displayName||'', 'zh-Hant');
     else if(sortKey==='email') r = (a.email||'').localeCompare(b.email||'');
@@ -2496,8 +2507,18 @@ function AdminPanel({ user, isAdmin }) {
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
               <h2 style={{fontSize:16,fontWeight:700}}>使用者管理</h2>
-              <div style={{display:'flex',gap:8}}>
-                <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportUsers} title="匯出使用者清單為 Excel">⬇ 匯出Excel</button>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <select className="t-sel" value={fTier} onChange={e=>setFTier(e.target.value)} title="依角色篩選">
+                  <option value="">所有角色</option>
+                  {Object.entries(ROLE_TIER_LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+                </select>
+                <select className="t-sel" value={fRegion} onChange={e=>setFRegion(e.target.value)} title="依地區篩選">
+                  <option value="">所有地區</option>
+                  {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+                  <option value="none">未設定</option>
+                </select>
+                {(fTier||fRegion) && <span style={{fontSize:12,color:'var(--ink-4)'}}>共 {shownUsers.length} 人</span>}
+                <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportUsers} title="匯出使用者清單為 Excel（會套用目前的角色／地區篩選）">⬇ 匯出Excel</button>
                 <button className="btn-add" onClick={()=>{setEditUser(null);setUserModal(true);}}>+ 新增使用者</button>
               </div>
             </div>

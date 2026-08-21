@@ -955,6 +955,9 @@
     const [search3,   setSearch3]   = useState('');
     const [methodF,   setMethodF]   = useState('');
     const [search4,   setSearch4]   = useState('');   // 樣品搜尋
+    // 地區濾器（三個分頁共用一個值）。一般角色只會拿到自己那區的資料，濾器對他們
+    // 沒有意義，所以只在可跨區時顯示。
+    const [regionF,   setRegionF]   = useState('');
     const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
     const [ganttPrefill, setGanttPrefill] = useState(null); // 甘特圖雙擊帶入的 { loanDate }
     const [sampleView, setSampleView] = useState('list'); // 樣品分頁檢視：list 清冊 / gantt 甘特圖 / ledger 出借總表 / stats 借出統計
@@ -1190,22 +1193,35 @@
       showToast('已匯出 Excel ✓');
     };
 
+    // 地區比對：舊資料沒有 region 欄位 → normRegion 視為中部，與其他地方一致
+    const matchRegion = it => !regionF
+      || (window.normRegion ? window.normRegion(it.region) : it.region) === regionF;
+    const regionSelect = () => (window.canViewAllRegions && window.canViewAllRegions(user))
+      ? <select className="t-sel" value={regionF} onChange={e=>setRegionF(e.target.value)}>
+          <option value="">所有地區</option>
+          {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+        </select>
+      : null;
+
     const filtA = anomalies.filter(it=>{
       const s=search1.toLowerCase();
       if(s && !it.customer.toLowerCase().includes(s) && !it.product.toLowerCase().includes(s)) return false;
       if(statusF && it.status!==statusF) return false;
       if(hideDoneA && !statusF && it.status==='已完成') return false;
       if(engF    && it.engineer!==engF)  return false;
+      if(!matchRegion(it)) return false;
       return true;
     });
     const filtI = ipa.filter(it=>{
       if(search2 && !it.product.toLowerCase().includes(search2.toLowerCase())) return false;
       if(personF && it.person!==personF) return false;
+      if(!matchRegion(it)) return false;
       return true;
     });
     const filtT = equipment.filter(it=>{
       if(search3 && !it.product.toLowerCase().includes(search3.toLowerCase())) return false;
       if(methodF && it.method!==methodF) return false;
+      if(!matchRegion(it)) return false;
       return true;
     });
 
@@ -1322,6 +1338,7 @@
               </div>
               <select className="t-sel" value={statusF} onChange={e=>setStatusF(e.target.value)}><option value="">所有狀態</option><option>處理中</option><option>已完成</option><option>暫停</option></select>
               <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}><option value="">所有工程師</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
+              {regionSelect()}
               <button
                 onClick={()=>setHideDoneA(v=>!v)}
                 style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'var(--accent-soft)',color:hideDoneA?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
@@ -1398,6 +1415,7 @@
               </div>
               <span className="toolbar-sub">合計 <b style={{color:'var(--ink)'}}>{filtI.reduce((s,r)=>s+Number(r.quantity||0),0)}</b> 桶</span>
               <select className="t-sel" value={personF} onChange={e=>setPersonF(e.target.value)}><option value="">所有人員</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
+              {regionSelect()}
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportIPA} title="匯出 IPA 採購為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
@@ -1443,6 +1461,7 @@
               </div>
               <span className="toolbar-sub">合計 <b style={{color:'var(--ink)'}}>NT$ {filtT.reduce((s,r)=>s+(Number(r.price||0)*Number(r.quantity||1)),0).toLocaleString()}</b></span>
               <select className="t-sel" value={methodF} onChange={e=>setMethodF(e.target.value)}><option value="">所有方式</option><option>Easy Flow</option><option>零用金</option></select>
+              {regionSelect()}
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportTools} title="匯出設備清單為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>

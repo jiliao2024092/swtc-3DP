@@ -438,6 +438,7 @@
               canDel={canDel}
               canEditRow={canEditRow}
               canDelRow={canDelRow}
+              user={user}
               onEdit={handleEdit}
               onDelete={handleDelete}
               labelVer={labelVer}
@@ -470,7 +471,7 @@
   }
 
   // ── 總表元件（自製，不依賴原版 TableView，支援 editMode） ──
-  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer }) {
+  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer, user }) {
     // 沒傳 predicate 時退回頁面層的布林值（其他呼叫端不受影響）
     const rowEdit = canEditRow || (() => canEdit);
     const rowDel  = canDelRow  || (() => canDel);
@@ -481,6 +482,7 @@
     const [fStatus,  setFStatus]  = useState('');
     const [fResin,   setFResin]   = useState('');
     const [fCategory,setFCategory]= useState('');
+    const [fRegion,  setFRegion]  = useState('');   // 地區濾器（只有可跨區者用得到）
     const [sortKey,  setSortKey]  = useState('score');   // 預設依分數排序（交期越近＋類型加權，分數越低越前）
     const [sortDir,  setSortDir]  = useState('asc');
     const [page,     setPage]     = useState(1);
@@ -498,6 +500,9 @@
       if (s && !o.id.toLowerCase().includes(s) && !o.customer.toLowerCase().includes(s)) return false;
       if (fEng     && o.engineer !== fEng)     return false;
       if (fMachine && o.machine  !== fMachine) return false;
+      // 地區濾器：一般角色只會拿到自己那區的資料，濾器對他們沒有意義，所以只給可跨區者。
+      // 舊資料沒有 region 欄位 → normRegion 視為中部，與其他地方一致。
+      if (fRegion && (window.normRegion ? window.normRegion(o.region) : o.region) !== fRegion) return false;
       if (fResin    && (o.resin||'')    !== fResin)    return false;
       if (fCategory && (o.category||'') !== fCategory) return false;
       if (fStatus) {
@@ -610,6 +615,12 @@
             <option value="">所有機台</option>
             {machines.map(m=><option key={m}>{m}</option>)}
           </select>
+          {window.canViewAllRegions && window.canViewAllRegions(user) && (
+            <select className="t-sel" value={fRegion} onChange={e=>{setFRegion(e.target.value);setPage(1);}}>
+              <option value="">所有地區</option>
+              {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+            </select>
+          )}
           <select className="t-sel" value={fStatus} onChange={e=>{setFStatus(e.target.value);setPage(1);}}>
             <option value="">所有狀態</option>
             <option value="todo">待開始</option>
