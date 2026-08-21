@@ -936,9 +936,10 @@
 
   // ── IssuesApp 主元件 ──
   function IssuesApp({ user }) {
-    const [anomalies, setAnomalies] = useState([]);
-    const [ipa,       setIpa]       = useState([]);
-    const [equipment, setEquipment] = useState([]);
+    // 訂閱到的原始資料（未過濾）；分區過濾在下方渲染時才算，理由見該處註解
+    const [allAnomalies, setAnomalies] = useState([]);
+    const [allIpa,       setIpa]       = useState([]);
+    const [allEquipment, setEquipment] = useState([]);
     const [samples,   setSamples]   = useState([]);   // 樣品清冊
     const [loans,     setLoans]     = useState([]);   // 出借紀錄
     const [loading,   setLoading]   = useState(true);
@@ -997,28 +998,35 @@
     useEffect(() => {
       let n=0;
       const chk = () => { if(++n>=3) setLoading(false); };
-      // 分區過濾在訂閱回呼就做，之後所有畫面與匯出都吃同一份資料，
-      // 不必逐個地方各自過濾（漏一個就會從那裡外洩別區資料）。
-      // 舊資料沒有 region 欄位 → 視為中區（見 regions.js 的 filterRowsByRegion）。
-      const byRegion = r => window.filterRowsByRegion
-        ? window.filterRowsByRegion(r, user, window._regionMode) : r;
-      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(byRegion(r)); chk(); });
-      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(byRegion(r));       chk(); });
-      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(byRegion(r)); chk(); });
+      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); });
+      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); });
+      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); });
       // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
       // 所以刻意不過濾。日後要分區再另議。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
       const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
       return () => { u1(); u2(); u3(); u4(); u5(); };
-    }, [user]);
+    }, []);
+
+    // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
+    //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
+    //   Firestore 先送 issues_* 再送 settings 時，資料會以未過濾狀態存進 state 且永遠
+    //   不再重算（設定到達只 bump labelVer 觸發重繪，不會重跑回呼）——實際回報的
+    //   「issues 沒有分區」就是這個。放這裡算，任何重繪都會重新套用，
+    //   而且仍然只有這一個過濾點（所有畫面與匯出都吃它）。
+    const byRegion = rows => window.filterRowsByRegion
+      ? window.filterRowsByRegion(rows, user, window._regionMode) : rows;
+    const anomalies = React.useMemo(() => byRegion(allAnomalies), [allAnomalies, user, labelVer, window._regionMode]);
+    const ipa       = React.useMemo(() => byRegion(allIpa),       [allIpa,       user, labelVer, window._regionMode]);
+    const equipment = React.useMemo(() => byRegion(allEquipment), [allEquipment, user, labelVer, window._regionMode]);
 
     const nextSeq = arr => arr.length ? Math.max(...arr.map(d=>d.seq||0))+1 : 1;
 
-    const saveA = async f => { if(editItem){await FBAnomalies.update(editItem._id,f);showToast('已更新 ✓');}else{await FBAnomalies.add({...f,seq:nextSeq(anomalies)});showToast('已新增 ✓');}setModal(null); };
+    const saveA = async f => { if(editItem){await FBAnomalies.update(editItem._id,f);showToast('已更新 ✓');}else{await FBAnomalies.add({...f,seq:nextSeq(allAnomalies)});showToast('已新增 ✓');}setModal(null); };
     const delA  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBAnomalies.del(it._id); showToast('已刪除','inf'); };
-    const saveI = async f => { if(editItem){await FBIPA.update(editItem._id,f);showToast('已更新 ✓');}else{await FBIPA.add({...f,seq:nextSeq(ipa)});showToast('已新增 ✓');}setModal(null); };
+    const saveI = async f => { if(editItem){await FBIPA.update(editItem._id,f);showToast('已更新 ✓');}else{await FBIPA.add({...f,seq:nextSeq(allIpa)});showToast('已新增 ✓');}setModal(null); };
     const delI  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBIPA.del(it._id); showToast('已刪除','inf'); };
-    const saveE = async f => { if(editItem){await FBEquipment.update(editItem._id,f);showToast('已更新 ✓');}else{await FBEquipment.add({...f,seq:nextSeq(equipment)});showToast('已新增 ✓');}setModal(null); };
+    const saveE = async f => { if(editItem){await FBEquipment.update(editItem._id,f);showToast('已更新 ✓');}else{await FBEquipment.add({...f,seq:nextSeq(allEquipment)});showToast('已新增 ✓');}setModal(null); };
     const delE  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBEquipment.del(it._id); showToast('已刪除','inf'); };
 
     // 匯出 Excel：客戶異常（含後續進度展開為多列）

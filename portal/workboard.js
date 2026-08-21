@@ -293,7 +293,7 @@
   // ── WorkBoard 主元件 ──
   function WorkBoardApp({ user }) {
     const K = window.K;
-    const [data,      setData]      = useState([]);
+    const [allData,   setAllData]   = useState([]);   // 訂閱到的原始資料（未過濾）
     const [loading,   setLoading]   = useState(true);
     const [tab,       setTab]       = useState('table');
     const [modal,     setModal]     = useState(false);   // 新增/編輯 modal
@@ -318,19 +318,25 @@
     const canDelRow  = o => canDel  && inMyRegion(o);
 
     useEffect(() => {
-      // 分區過濾在訂閱回呼就做，之後所有東西（表格/看板/甘特/儀表板/匯出Excel）
-      // 都吃同一份 data，不必逐個畫面各自過濾——漏一個就會從那裡外洩別區資料。
-      // 舊資料沒有 region 欄位 → 視為中區（見 regions.js 的 filterRowsByRegion）。
-      const unsub = FBOrders.onSnapshot(rows => {
-        setData(window.filterRowsByRegion
-          ? window.filterRowsByRegion(rows, user, window._regionMode)
-          : rows);
-        setLoading(false);
-      });
+      const unsub = FBOrders.onSnapshot(rows => { setAllData(rows); setLoading(false); });
       return () => unsub();
-    }, [user]);
+    }, []);
 
-    const nextSeq = () => data.length ? Math.max(...data.map(d => d.seq || 0)) + 1 : 1;
+    // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
+    //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
+    //   Firestore 先送 workboard_orders 再送 settings 時，資料會以未過濾狀態存進 state
+    //   且永遠不再重算（設定到達只 bump labelVer 觸發重繪，不會重跑回呼）。
+    //   放在這裡算，任何重繪都會重新套用，而且仍然只有這一個過濾點。
+    //   labelVer 是設定更新時遞增的，列在相依裡讓設定到達後確實重算。
+    const data = React.useMemo(
+      () => (window.filterRowsByRegion ? window.filterRowsByRegion(allData, user, window._regionMode) : allData),
+      // _regionMode 也列入：labelVer 靠 window._onSettingsUpdated 鏈接，
+      // 頁面切換時那條鏈可能被清掉，直接看模式本身比較保險。
+      [allData, user, labelVer, window._regionMode]
+    );
+
+    // 序號取自「全部」資料而非過濾後的：否則各區會各自從 1 開始，序號互撞
+    const nextSeq = () => allData.length ? Math.max(...allData.map(d => d.seq || 0)) + 1 : 1;
 
     const handleSave = async form => {
       // 防呆：跨區的資料不可寫入（按鈕已隱藏，這裡擋住其他觸發路徑，例如雙擊或鍵盤）
