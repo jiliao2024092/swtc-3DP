@@ -302,9 +302,17 @@
     const [confirmDel,setConfirmDel]= useState(null);    // 待確認刪除的訂單
     const [labelVer,  setLabelVer]  = useState(0);       // 設定更新時遞增，強制重新渲染
 
+    // region_mode 必須進 state：查詢是在訂閱時建立的，而模式來自後到的 settings。
+    // 只放 window 上的話，訂閱會用「還不知道模式」時的條件建立，之後永遠不重建
+    // ——issues 的分區失效就是這個成因（見 18ae2cb）。
+    const [regionMode, setRegionMode] = useState(window._regionMode || 'off');
+
     // 監聽後台設定更新（工程師/機台名稱改變時觸發）
     useEffect(() => {
-      window._onSettingsUpdated = () => setLabelVer(v => v + 1);
+      window._onSettingsUpdated = () => {
+        setLabelVer(v => v + 1);
+        setRegionMode(window._regionMode || 'off');
+      };
       return () => { window._onSettingsUpdated = null; };
     }, []);
 
@@ -318,9 +326,12 @@
     const canDelRow  = o => canDel  && inMyRegion(o);
 
     useEffect(() => {
-      const unsub = FBOrders.onSnapshot(rows => { setAllData(rows); setLoading(false); });
+      // 帶 user/mode 進去 → 單一區的使用者會在查詢就加 where('region','==')，
+      // 過濾推到伺服器端（階段 5 的 Rules 收緊會要求如此）。
+      // 相依含 regionMode：模式變了要用新條件重新訂閱。
+      const unsub = FBOrders.onSnapshot(rows => { setAllData(rows); setLoading(false); }, user, regionMode);
       return () => unsub();
-    }, []);
+    }, [user, regionMode]);
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
@@ -329,10 +340,10 @@
     //   放在這裡算，任何重繪都會重新套用，而且仍然只有這一個過濾點。
     //   labelVer 是設定更新時遞增的，列在相依裡讓設定到達後確實重算。
     const data = React.useMemo(
-      () => (window.filterRowsByRegion ? window.filterRowsByRegion(allData, user, window._regionMode) : allData),
-      // _regionMode 也列入：labelVer 靠 window._onSettingsUpdated 鏈接，
-      // 頁面切換時那條鏈可能被清掉，直接看模式本身比較保險。
-      [allData, user, labelVer, window._regionMode]
+      () => (window.filterRowsByRegion ? window.filterRowsByRegion(allData, user, regionMode) : allData),
+      // 伺服器端已依 region 過濾過一輪，這裡仍保留客戶端過濾：
+      // 跨區者沒有 where 條件（讀得到三區），「檢視地區」切換要靠它才切得動。
+      [allData, user, labelVer, regionMode]
     );
 
     // 序號取自「全部」資料而非過濾後的：否則各區會各自從 1 開始，序號互撞

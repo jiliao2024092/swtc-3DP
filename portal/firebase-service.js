@@ -115,11 +115,24 @@
     return 'central';
   }
 
-  function makeCollectionService(collName, orderField, orderDir) {
+  // regional=true 的 collection 會在「使用者只屬於單一區」時，於查詢就加上
+  // where('region','==',該區)，把過濾推到伺服器端（階段 5 的 Rules 收緊會要求如此：
+  // 規則若比對 region，查詢沒帶對應條件會被整個拒絕，不是回空陣列而是讀不到）。
+  // ★ 跨區者（admin/主管）不加條件 —— 他們本來就該讀得到三區。
+  // ★ 加了 where 之後與既有的 orderBy 組合需要複合索引，已預先建在 firestore.indexes.json。
+  function makeCollectionService(collName, orderField, orderDir, opts) {
+    const regional = !!(opts && opts.regional);
     const ref = () => db.collection(collName);
     return {
-      onSnapshot(cb) {
+      // user / mode 由呼叫端傳入（服務層拿不到 React state）。沒傳＝不做伺服器端過濾，
+      // 維持舊行為，樣品清冊等不分區的 collection 就是這樣用。
+      onSnapshot(cb, user, mode) {
         let q = ref();
+        if (regional && window.regionScopeOf) {
+          const scope = window.regionScopeOf(user, mode);
+          // 只有「剛好一個區」才加條件；scope 為 null（未啟用）或三區（跨區者）都不加
+          if (scope && scope.length === 1) q = q.where('region', '==', scope[0]);
+        }
         if (orderField) q = q.orderBy(orderField, orderDir || 'asc');
         return q.onSnapshot(
           snap => {
@@ -160,19 +173,20 @@
   // 工作看板工單 → collection: workboard_orders
   //   （刻意不用 bookings，避免與 3DP-BK 預約系統的 bookings 撞名）
   // ════════════════════════════════════════════════
-  window.FBOrders = makeCollectionService('workboard_orders', 'seq', 'asc');
+  window.FBOrders = makeCollectionService('workboard_orders', 'seq', 'asc', { regional: true });
 
   // ════════════════════════════════════════════════
   // 異常與資源 → collections: issues_anomalies / issues_ipa / issues_equipment
   // ════════════════════════════════════════════════
-  window.FBAnomalies = makeCollectionService('issues_anomalies', 'seq', 'asc');
-  window.FBIPA       = makeCollectionService('issues_ipa',       'seq', 'asc');
-  window.FBEquipment = makeCollectionService('issues_equipment', 'seq', 'asc');
+  window.FBAnomalies = makeCollectionService('issues_anomalies', 'seq', 'asc', { regional: true });
+  window.FBIPA       = makeCollectionService('issues_ipa',       'seq', 'asc', { regional: true });
+  window.FBEquipment = makeCollectionService('issues_equipment', 'seq', 'asc', { regional: true });
 
   // ════════════════════════════════════════════════
   // 樣品出借 → collections: sample_items（樣品清冊）/ sample_loans（出借紀錄）
   //   出借紀錄開放 viewer 登記（見 firestore.rules）
   // ════════════════════════════════════════════════
+  // 樣品刻意「不」加 regional：全公司共用資產，借用人可能跨廠區借還
   window.FBSampleItems = makeCollectionService('sample_items', 'seq', 'asc');
   window.FBSampleLoans = makeCollectionService('sample_loans', 'loanDate', 'desc');
 

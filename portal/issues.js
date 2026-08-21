@@ -987,9 +987,17 @@
       : null;
     const isAdmin = window.hasPerm(user, 'admin');   // 樣品清冊(項目本身)新增/刪除限 admin
 
+    // region_mode 必須進 state：查詢是在訂閱時建立的，而模式來自後到的 settings。
+    // 只讀 window 的話，訂閱會用「還不知道模式」時的條件建立且永遠不重建（見 18ae2cb）。
+    const [regionMode, setRegionMode] = useState(window._regionMode || 'off');
+
     useEffect(() => {
       const prev = window._onSettingsUpdated;
-      window._onSettingsUpdated = () => { setLabelVer(v=>v+1); if(prev)prev(); };
+      window._onSettingsUpdated = () => {
+        setLabelVer(v=>v+1);
+        setRegionMode(window._regionMode || 'off');
+        if(prev)prev();
+      };
       return () => { window._onSettingsUpdated = prev; };
     }, []);
 
@@ -998,15 +1006,17 @@
     useEffect(() => {
       let n=0;
       const chk = () => { if(++n>=3) setLoading(false); };
-      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); });
-      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); });
-      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); });
+      // 帶 user/mode → 單一區的使用者在查詢就加 where('region','==')，過濾推到伺服器端。
+      // 相依含 regionMode：模式變了要用新條件重新訂閱。
+      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); }, user, regionMode);
+      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); }, user, regionMode);
+      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); }, user, regionMode);
       // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
       // 所以刻意不過濾。日後要分區再另議。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
       const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
       return () => { u1(); u2(); u3(); u4(); u5(); };
-    }, []);
+    }, [user, regionMode]);
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
@@ -1014,11 +1024,12 @@
     //   不再重算（設定到達只 bump labelVer 觸發重繪，不會重跑回呼）——實際回報的
     //   「issues 沒有分區」就是這個。放這裡算，任何重繪都會重新套用，
     //   而且仍然只有這一個過濾點（所有畫面與匯出都吃它）。
+    // 伺服器端已過濾過一輪；這裡保留客戶端過濾是為了跨區者的「檢視地區」切換
     const byRegion = rows => window.filterRowsByRegion
-      ? window.filterRowsByRegion(rows, user, window._regionMode) : rows;
-    const anomalies = React.useMemo(() => byRegion(allAnomalies), [allAnomalies, user, labelVer, window._regionMode]);
-    const ipa       = React.useMemo(() => byRegion(allIpa),       [allIpa,       user, labelVer, window._regionMode]);
-    const equipment = React.useMemo(() => byRegion(allEquipment), [allEquipment, user, labelVer, window._regionMode]);
+      ? window.filterRowsByRegion(rows, user, regionMode) : rows;
+    const anomalies = React.useMemo(() => byRegion(allAnomalies), [allAnomalies, user, labelVer, regionMode]);
+    const ipa       = React.useMemo(() => byRegion(allIpa),       [allIpa,       user, labelVer, regionMode]);
+    const equipment = React.useMemo(() => byRegion(allEquipment), [allEquipment, user, labelVer, regionMode]);
 
     const nextSeq = arr => arr.length ? Math.max(...arr.map(d=>d.seq||0))+1 : 1;
 

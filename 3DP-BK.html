@@ -507,7 +507,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
     getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-    getDoc, getDocs, onSnapshot, serverTimestamp, query, orderBy
+    getDoc, getDocs, onSnapshot, serverTimestamp, query, orderBy, where
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 // ══ Firebase 配置 ══════════════════════════════
@@ -876,7 +876,14 @@ addEventListener('click', e=>{
 // ══════════════════════════════════════════════
 function subscribeBookings() {
     if (unsubscribeBookings) unsubscribeBookings();
-    const q = query(collection(db, 'bookings'), orderBy('date', 'asc'));
+    // 單一區的使用者在查詢就加 where('region','==')，把過濾推到伺服器端
+    // （階段 5 的 Rules 收緊會要求如此：規則若比對 region，查詢沒帶條件會被整個拒絕）。
+    // 跨區者（admin/主管）不加條件，本來就該讀得到三區。
+    // ★ where + orderBy 需要複合索引，已預先建在 firestore.indexes.json。
+    const scope = window.regionScopeOf ? window.regionScopeOf(currentUser, REGION_MODE) : null;
+    const q = (scope && scope.length === 1)
+        ? query(collection(db, 'bookings'), where('region', '==', scope[0]), orderBy('date', 'asc'))
+        : query(collection(db, 'bookings'), orderBy('date', 'asc'));
     unsubscribeBookings = onSnapshot(q, (snap) => {
         allBookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         applyBookingRegionFilter();
@@ -1988,6 +1995,7 @@ async function loadPrinterStatus() {
 // ══ 分區（階段 4）══════════════════════════════════════════════════
 // settings/workspace 的兩個欄位，由 subscribeSettings 填入。
 let REGION_MODE = 'off';        // off / alpha / beta / on（見 regions.js）
+let prevRegionMode = 'off';     // 上次訂閱 bookings 時用的模式；變了就要重新訂閱
 let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
 
 // 這個使用者「該看到哪些區」：
@@ -2421,6 +2429,12 @@ function subscribeSettings(){
         populateCategorySelects();
         // 分區設定是從這裡載入的，載到之前狀態卡已經渲染過一次（用預設的 off），
         // 所以要重畫一次，否則要等下一次 printer_status 推送才會套用分組
+        // ★ 模式變了就得重新訂閱：查詢條件是在 subscribeBookings() 當下組出來的，
+        //   settings 是後到的，不重訂閱就會一直用「還不知道模式」時的查詢。
+        if (currentUser && prevRegionMode !== REGION_MODE) {
+            prevRegionMode = REGION_MODE;
+            subscribeBookings();
+        }
         if (currentUser){ applyBookingRegionFilter(); renderTable(); renderGantt(); renderStatusPanel(cachedPrinters || []); }
     }, (err)=>console.error('讀取 settings/workspace 失敗', err));
 }
