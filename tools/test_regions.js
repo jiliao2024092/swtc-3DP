@@ -183,9 +183,26 @@ eq(regionScopeOf(engN, 'off'), null, 'regionScopeOf：開關關閉 → null（�
 eq(regionQueryScopeOf(engN), ['north'], '★ regionQueryScopeOf：同一人、同樣關閉，仍限自己那區');
 
 // ── 跨區檢視 / 編輯（決策 D：主管只能看）────────────────────────
+// ★ 跨區能力由 view_all_regions / edit_all_regions 兩個權限控制（2026-08-21 改），
+//   不再綁死在角色上。誰能跨區改由 admin 在後台「角色權限設定」勾選。
 eq(canViewAllRegions(admin), true,     'admin 可跨區檢視');
-eq(canViewAllRegions(manager), true,   '主管可跨區檢視');
 eq(canViewAllRegions(operator), false, '工程師不可跨區檢視');
+eq(canViewAllRegions({permissions:['view_all_regions']}), true, '明確授予跨區檢視');
+eq(canViewAllRegions({permissions:['edit_all_regions']}), true, '有跨區編輯權一定看得到');
+// 相容：這兩個權限是後加的，既有主管的 permissions 還沒有 → 退回舊判斷（持有刪除權）
+eq(canViewAllRegions(manager), true,   '★ 舊主管（只有刪除權）靠相容判斷保留跨區檢視');
+// 但只要帳號上已有其中一個權限，就以設定為準，不再走相容判斷
+eq(canViewAllRegions({permissions:['delete_board','edit_all_regions']}), true,
+   '明確設定後以設定為準');
+
+eq(canEditInRegion({permissions:['edit_all_regions'],region:'north'}, 'south'), true,
+   '★ 有 edit_all_regions 可跨區編輯');
+eq(canEditInRegion({permissions:['view_all_regions'],region:'north'}, 'south'), false,
+   '★ 只有 view_all_regions：看得到但改不動');
+eq(canEditInRegion(manager, 'south'), false,
+   '★ 舊主管沒有明確的跨區編輯權 → 不可跨區編輯（此項不做相容）');
+eq(canEditInRegion({permissions:['edit_board','edit_all_regions']}, 'south'), true,
+   '★ 一般工程師被授予後也能跨區編輯（能力綁權限、非綁角色）');
 
 eq(canEditInRegion(admin, 'south'), true, 'admin 可編輯任一區');
 eq(canEditInRegion({ permissions: ['delete_board'], region: 'central' }, 'central'), true,

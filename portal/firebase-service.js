@@ -42,6 +42,11 @@
     manage_inventory: '設定材料庫存（安全庫存／L樹脂槽標記）',
     manage_users: '後台管理：使用者管理（僅可套用角色，不可個別授權、不可異動管理員）',
     manage_announcements: '後台管理：公告欄（發布／編輯公告）',
+    // 北中南分區：跨區權限做成可勾選的權限，而不是綁死在「主管」這個角色上，
+    // 這樣日後誰能跨區由 admin 在「角色權限設定」決定，不必改程式。
+    // 讀與寫刻意分開：只給檢視、不給編輯，是常見且合理的中間狀態。
+    view_all_regions: '跨區檢視（查看所有地區的資料）',
+    edit_all_regions: '跨區編輯（修改所有地區的資料）',
     admin:         '管理員（所有權限）',
   };
 
@@ -56,9 +61,10 @@
 
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','manage_announcements','admin'],
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','manage_announcements','view_all_regions','edit_all_regions','admin'],
     // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權、「後台使用者管理」權、「公告欄」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
-    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','manage_announcements'],
+    // 主管預設可跨區檢視「與編輯」（2026-08-21 決定：原本只給檢視，改成也能修改其他區）
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','manage_users','manage_announcements','view_all_regions','edit_all_regions'],
     operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
     viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote'],
   };

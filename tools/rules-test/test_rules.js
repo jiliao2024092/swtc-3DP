@@ -50,6 +50,17 @@ const USERS = {
   //   的人不可建立預約」變成假失敗。
   admin2:     { uid: 'u_admin2',  email: 'admin2@swtc.com',  permissions: ['admin'] },
   pureView:   { uid: 'u_view2',   email: 'view2@swtc.com',   permissions: ['view_board'] },
+  // 分區測試用：工程師綁北部、主管綁北部（主管可跨區「看」但只能編輯自己那區）
+  engN:       { uid: 'u_engN', email: 'engn@swtc.com', permissions: ['edit_board','view_board','view_issues','edit_issues'], region: 'north' },
+  engC:       { uid: 'u_engC', email: 'engc@swtc.com', permissions: ['edit_board','view_board','view_issues','edit_issues'], region: 'central' },
+  // 舊主管：只有刪除權、沒有新的跨區權限 → 靠相容判斷保留「跨區檢視」，但不可跨區編輯
+  mgrN:       { uid: 'u_mgrN', email: 'mgrn@swtc.com', permissions: ['edit_board','view_board','delete_board','view_issues','edit_issues','delete_issues'], region: 'north' },
+  // 新主管：明確授予兩個跨區權限 → 可跨區檢視「與編輯」
+  mgrFull:    { uid: 'u_mgrF', email: 'mgrf@swtc.com', permissions: ['edit_board','view_board','delete_board','view_all_regions','edit_all_regions'], region: 'north' },
+  // 只給檢視、不給編輯（權限拆兩個就是為了表達這個中間狀態）
+  mgrViewOnly:{ uid: 'u_mgrV', email: 'mgrv@swtc.com', permissions: ['edit_board','view_board','delete_board','view_all_regions'], region: 'north' },
+  // 一般工程師被單獨授予跨區編輯（證明跨區能力綁在權限、不是綁在角色）
+  engCross:   { uid: 'u_engX', email: 'engx@swtc.com', permissions: ['edit_board','view_board','view_all_regions','edit_all_regions'], region: 'north' },
 };
 
 async function main() {
@@ -67,11 +78,19 @@ async function main() {
         displayName: u.uid,
         ...(u.permissions ? { permissions: u.permissions } : {}),
         ...(u.role ? { role: u.role } : {}),
+        ...(u.region ? { region: u.region } : {}),
         active: true,
       });
     }
     await db.doc('bookings/b1').set({ printer: 'Form4', region: 'central', purpose: '測試' });
     await db.doc('workboard_orders/w1').set({ customer: '測試客戶A', region: 'central' });
+    // 分區用種子：三區各一筆，外加一筆「沒有 region 欄位」的舊資料
+    await db.doc('workboard_orders/w_north').set({ customer: '北部客戶', region: 'north', seq: 1 });
+    await db.doc('workboard_orders/w_south').set({ customer: '南部客戶', region: 'south', seq: 2 });
+    await db.doc('workboard_orders/w_legacy').set({ customer: '沒有地區欄位的舊資料', seq: 3 });
+    await db.doc('issues_anomalies/i_north').set({ title: '北部異常', region: 'north', seq: 1 });
+    await db.doc('issues_anomalies/i_south').set({ title: '南部異常', region: 'south', seq: 2 });
+    await db.doc('bookings/b_south').set({ printer: 'Form3L', region: 'south' });
     await db.doc('print_history/h_eng').set({ act: '旋轉', uid: USERS.engineer.uid });
     await db.doc('print_history/h_other').set({ act: '旋轉', uid: USERS.viewer.uid });
     await db.doc('print_history/h_legacy').set({ act: '舊紀錄沒有 uid 欄位' });
@@ -182,14 +201,93 @@ async function main() {
     as(USERS.engineer).doc('bookings/b1').get());
   await nok('未登入者不可讀預約',
     anon().doc('bookings/b1').get());
-  await ok('編輯者可建立預約',
-    as(USERS.legacyEd).doc('bookings/b2').set({ printer: 'Form4', region: 'north' }));
+  // legacyEd 只有舊 role 欄位、沒設 region → 視為中部。
+  // 初版這裡寫 region:'north' 而被規則擋下——那是測試資料錯，不是規則錯：
+  // 中部的人本來就不該建立北部的預約。順手把兩種情況都變成正式斷言。
+  await ok('編輯者可在自己那區（沒設地區＝中部）建立預約',
+    as(USERS.legacyEd).doc('bookings/b2').set({ printer: 'Form4', region: 'central' }));
+  await nok('★ 編輯者不可建立別區的預約',
+    as(USERS.legacyEd).doc('bookings/b_bad').set({ printer: 'Form4', region: 'north' }));
   await nok('★ 只有 view 權限的人不可建立預約',
     as(USERS.pureView).doc('bookings/b3').set({ printer: 'Form4' }));
 
   // ══ printer_status：只有 Cloud Function（admin SDK）能寫 ══════════
   await nok('★ 任何前端使用者都不可寫 printer_status（含 admin）',
     as(USERS.admin).doc('printer_status/current').set({ printers: [] }));
+
+  // ══ 北中南分區（階段 5 的目標狀態）════════════════════════════════
+  // 讀：一般角色只看自己那區；admin/主管可跨區
+  await ok('北部工程師可讀北部工單',
+    as(USERS.engN).doc('workboard_orders/w_north').get());
+  await nok('★ 北部工程師不可讀南部工單',
+    as(USERS.engN).doc('workboard_orders/w_south').get());
+  await nok('★ 北部工程師不可讀南部異常',
+    as(USERS.engN).doc('issues_anomalies/i_south').get());
+  await nok('★ 北部工程師不可讀南部預約',
+    as(USERS.engN).doc('bookings/b_south').get());
+  await ok('中部工程師可讀「沒有 region 欄位」的舊資料（缺欄位視為中部）',
+    as(USERS.engC).doc('workboard_orders/w_legacy').get());
+  await nok('★ 北部工程師不可讀「沒有 region 欄位」的舊資料（那是中部的）',
+    as(USERS.engN).doc('workboard_orders/w_legacy').get());
+  await ok('主管可跨區讀南部工單（決策 D：可看）',
+    as(USERS.mgrN).doc('workboard_orders/w_south').get());
+  await ok('admin 可跨區讀南部工單',
+    as(USERS.admin).doc('workboard_orders/w_south').get());
+
+  // 查詢（list）：一般角色必須帶 where('region','==')，否則整個查詢被拒
+  await ok('北部工程師帶 region 條件的查詢可通過',
+    as(USERS.engN).collection('workboard_orders').where('region','==','north').get());
+  await nok('★ 北部工程師不帶 region 條件的查詢應被整個拒絕',
+    as(USERS.engN).collection('workboard_orders').get());
+  await nok('★ 北部工程師不可查別區（條件帶南部也不行）',
+    as(USERS.engN).collection('workboard_orders').where('region','==','south').get());
+  // ★ 這題我事先不確定答案：規則寫成「跨區者 || 文件region==我的區」時，
+  //   Firestore 對 list 的靜態分析會不會因為 isCrossRegionViewer() 可短路成 true
+  //   而放行「不帶條件」的查詢。前端的 admin/主管就是這樣查的，所以答案很重要。
+  await ok('★ 主管不帶條件的查詢應通過（跨區者本來就該讀得到三區）',
+    as(USERS.mgrN).collection('workboard_orders').get());
+  await ok('★ admin 不帶條件的查詢應通過',
+    as(USERS.admin).collection('workboard_orders').get());
+
+  // 寫：決策 D —— 主管只能看，不能編輯其他區；admin 才能跨區編輯
+  await ok('北部工程師可編輯北部工單',
+    as(USERS.engN).doc('workboard_orders/w_north').set({ customer: '改過' }, { merge: true }));
+  await nok('★ 北部工程師不可編輯南部工單',
+    as(USERS.engN).doc('workboard_orders/w_south').set({ customer: '偷改' }, { merge: true }));
+  // ★ 跨區編輯改由 edit_all_regions 權限控制（2026-08-21），不再綁死在「主管」角色上
+  await nok('★ 沒有 edit_all_regions 的主管不可編輯其他區（舊帳號相容路徑）',
+    as(USERS.mgrN).doc('workboard_orders/w_south').set({ customer: '偷改' }, { merge: true }));
+  await ok('★ 有 edit_all_regions 的主管可編輯其他區',
+    as(USERS.mgrFull).doc('workboard_orders/w_south').set({ customer: '主管跨區改的' }, { merge: true }));
+  await nok('★ 只給 view_all_regions 的主管：看得到但改不動',
+    as(USERS.mgrViewOnly).doc('workboard_orders/w_south').set({ customer: '偷改' }, { merge: true }));
+  await ok('只給 view_all_regions 的主管仍可跨區「讀」',
+    as(USERS.mgrViewOnly).doc('workboard_orders/w_south').get());
+  await ok('★ 一般工程師被授予 edit_all_regions 後也能跨區編輯（權限綁能力、非綁角色）',
+    as(USERS.engCross).doc('workboard_orders/w_south').set({ customer: '工程師跨區改的' }, { merge: true }));
+  await ok('有跨區編輯權者可跨區刪除',
+    as(USERS.mgrFull).doc('workboard_orders/w1').delete());
+  await ok('主管可編輯自己那區的工單',
+    as(USERS.mgrN).doc('workboard_orders/w_north').set({ customer: '主管改的' }, { merge: true }));
+  await ok('admin 可跨區編輯',
+    as(USERS.admin).doc('workboard_orders/w_south').set({ customer: 'admin 改的' }, { merge: true }));
+  await ok('北部工程師可在自己那區新增',
+    as(USERS.engN).doc('workboard_orders/w_new_n').set({ customer: '新的', region: 'north', seq: 9 }));
+  await nok('★ 北部工程師不可新增到別區',
+    as(USERS.engN).doc('workboard_orders/w_new_s').set({ customer: '新的', region: 'south', seq: 9 }));
+  await nok('★ 不可把自己那區的資料「搬」到別區',
+    as(USERS.engN).doc('workboard_orders/w_north').set({ region: 'south' }, { merge: true }));
+  // ★ 反向更重要：把「別區的」資料搶到自己這區。
+  //   canWriteRegion() 除了檢查寫入後的 region，還必須檢查「原本」也是自己那區，
+  //   否則只要在更新時順手把 region 改成自己的，就能把別區的資料整筆接收過來。
+  //   這條是突變測試逼出來的——初版只測了「搬出去」，把原值檢查拿掉照樣全過。
+  await nok('★ 不可把別區的資料搶到自己這區（更新時順手改 region）',
+    as(USERS.engN).doc('workboard_orders/w_south')
+      .set({ region: 'north', customer: '搶過來' }, { merge: true }));
+  await nok('★ 北部主管不可刪除南部工單',
+    as(USERS.mgrN).doc('workboard_orders/w_south').delete());
+  await ok('北部主管可刪除北部工單',
+    as(USERS.mgrN).doc('workboard_orders/w_new_n').delete());
 
   await testEnv.cleanup();
 

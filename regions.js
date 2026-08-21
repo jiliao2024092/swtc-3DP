@@ -210,15 +210,35 @@
     return (rows || []).filter(r => scope.indexOf(normRegion(r && r.region)) >= 0);
   }
 
-  // 跨區檢視（決策 D：主管看得到全部三區）
-  function canViewAllRegions(user) {
-    const tier = roleTier(user);
-    return tier === 'admin' || tier === 'manager';
+  // ── 跨區權限 ──────────────────────────────────────────────────────
+  // 2026-08-21 改：原本把「誰能跨區」綁死在角色上（admin 或主管），改成兩個可在
+  // 後台「角色權限設定」勾選的權限。誰能跨區從此由 admin 決定，不必改程式。
+  // 讀與寫分開：只給檢視、不給編輯是常見的中間狀態，綁在一起就表達不了。
+  function permsOf(user) { return (user && user.permissions) || []; }
+  function hasRegionPerm(user, p) {
+    const list = permsOf(user);
+    return list.indexOf('admin') >= 0 || list.indexOf(p) >= 0 || (user && user.role === 'admin');
   }
 
-  // 跨區編輯（決策 D：主管只能看，不能編輯其他區；admin 才能跨區編輯）
+  // 跨區檢視
+  // ★ 相容既有帳號：view_all_regions / edit_all_regions 是後加的權限，既有主管的
+  //   permissions 陣列裡還沒有，直接改判斷會讓他們立刻失去跨區檢視。所以在「兩個
+  //   權限都尚未出現在該帳號上」時退回舊判斷（持有刪除權＝主管）。
+  //   admin 只要重新套用一次角色預設，該帳號就有明確的權限值，之後以設定為準。
+  //   （同樣的相容模式見 firebase-service.js 的 canSeeTab）
+  function canViewAllRegions(user) {
+    if (hasRegionPerm(user, 'view_all_regions')) return true;
+    if (hasRegionPerm(user, 'edit_all_regions')) return true;   // 能改一定能看
+    const list = permsOf(user);
+    const neverSet = list.indexOf('view_all_regions') < 0 && list.indexOf('edit_all_regions') < 0;
+    if (neverSet) return roleTier(user) === 'manager';          // 舊帳號相容
+    return false;
+  }
+
+  // 跨區編輯。★ 這個「不做」舊帳號相容 —— 它是新開放的能力（原本只有 admin 能跨區
+  //   編輯），沒有人會因為改判斷而失去既有權限，所以一律以明確設定為準。
   function canEditInRegion(user, targetRegion) {
-    if (roleTier(user) === 'admin') return true;
+    if (hasRegionPerm(user, 'edit_all_regions')) return true;
     return regionOf(user) === normRegion(targetRegion);
   }
 
