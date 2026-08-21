@@ -124,12 +124,15 @@
     const regional = !!(opts && opts.regional);
     const ref = () => db.collection(collName);
     return {
-      // user / mode 由呼叫端傳入（服務層拿不到 React state）。沒傳＝不做伺服器端過濾，
+      // user 由呼叫端傳入（服務層拿不到 React state）。沒傳＝不做伺服器端過濾，
       // 維持舊行為，樣品清冊等不分區的 collection 就是這樣用。
-      onSnapshot(cb, user, mode) {
+      onSnapshot(cb, user) {
         let q = ref();
-        if (regional && window.regionScopeOf) {
-          const scope = window.regionScopeOf(user, mode);
+        if (regional && window.regionQueryScopeOf) {
+          // ★ 用 regionQueryScopeOf（不看 region_mode）而不是 regionScopeOf：
+          //   規則是無條件比對 region 的，查詢若跟著開關走，開關關閉時會發出不帶條件
+          //   的查詢而被規則整個拒絕 —— 那個人會什麼都看不到。
+          const scope = window.regionQueryScopeOf(user);
           // 只有「剛好一個區」才加條件；scope 為 null（未啟用）或三區（跨區者）都不加
           if (scope && scope.length === 1) q = q.where('region', '==', scope[0]);
         }

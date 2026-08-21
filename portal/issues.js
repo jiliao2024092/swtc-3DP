@@ -1006,17 +1006,17 @@
     useEffect(() => {
       let n=0;
       const chk = () => { if(++n>=3) setLoading(false); };
-      // 帶 user/mode → 單一區的使用者在查詢就加 where('region','==')，過濾推到伺服器端。
-      // 相依含 regionMode：模式變了要用新條件重新訂閱。
-      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); }, user, regionMode);
-      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); }, user, regionMode);
-      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); }, user, regionMode);
+      // 帶 user → 單一區的使用者在查詢就加 where('region','==')，過濾推到伺服器端。
+      // ★ 相依「不含」regionMode：查詢範圍刻意不看開關（見 regions.js 的 regionQueryScopeOf）
+      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); }, user);
+      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); }, user);
+      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); }, user);
       // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
       // 所以刻意不過濾。日後要分區再另議。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
       const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
       return () => { u1(); u2(); u3(); u4(); u5(); };
-    }, [user, regionMode]);
+    }, [user]);
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：

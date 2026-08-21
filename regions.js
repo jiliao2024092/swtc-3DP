@@ -185,6 +185,17 @@
     return [regionOf(user)];
   }
 
+  // ★ 查詢用的範圍，刻意「不看 region_mode」。
+  //   firestore.rules 收緊後是無條件比對 region 的，規則不認識 region_mode 這個前端開關。
+  //   若查詢跟著開關走，開關關閉時一般使用者會發出「不帶條件」的查詢，而規則無法證明
+  //   它安全 → 整個查詢被拒絕 → 那個人什麼都看不到（不是少看到，是全空）。
+  //   所以查詢條件必須與規則一樣無條件。region_mode 之後只控制「顯示層」的差異
+  //   （分區分組、跨區者的檢視地區切換），不再控制資料範圍。
+  function regionQueryScopeOf(user) {
+    if (canViewAllRegions(user)) return REGIONS.map(r => r.key);
+    return [regionOf(user)];
+  }
+
   // 依 region 欄位過濾資料列。
   // ★ 舊資料沒有 region 欄位 → normRegion(undefined) ＝ 中區，正好等於先前定案的
   //   「現有資料全部歸中區」，所以顯示過濾不需要先做資料遷移。
@@ -229,6 +240,7 @@
   window.regionRoleTier     = roleTier;
   window.regionActiveFor    = regionActiveFor;
   window.regionScopeOf      = regionScopeOf;
+  window.regionQueryScopeOf = regionQueryScopeOf;
   window.filterRowsByRegion = filterRowsByRegion;
   window.canViewAllRegions  = canViewAllRegions;
   window.canEditInRegion    = canEditInRegion;

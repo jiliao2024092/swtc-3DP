@@ -154,6 +154,7 @@ const rows = [
 ];
 const ids = rs => rs.map(r => r.id);
 const engN = { permissions:['edit_board'], region:'north' };
+const regionScopeOf = win.regionScopeOf;
 const engC = { permissions:['edit_board'], region:'central' };
 const mgrN = { permissions:['delete_board'], region:'north' };
 
@@ -167,6 +168,19 @@ eq(ids(filterRowsByRegion(rows, mgrN, 'on', 'south')), [3], '主管切到南部'
 eq(ids(filterRowsByRegion(rows, engN, 'on', 'south')), [1], '★ 工程師切別區無效，仍只有自己那區');
 eq(ids(filterRowsByRegion(rows, mgrN, 'on', '亂填')),  [1,2,3,4,5], '無效的切換值 → 視同全部');
 eq(ids(filterRowsByRegion(null, engN, 'on')), [], 'null 不可拋錯');
+
+// ── 查詢範圍（regionQueryScopeOf）：刻意不看 region_mode ──────────
+// firestore.rules 收緊後是無條件比對 region 的。查詢範圍若跟著開關走，
+// 開關關閉時一般使用者會發出「不帶條件」的查詢而被規則整個拒絕 —— 全空，不是少看到。
+const { regionQueryScopeOf } = win;
+eq(regionQueryScopeOf(engN), ['north'], '★ 工程師的查詢範圍只有自己那區');
+eq(regionQueryScopeOf(engC), ['central'], '中部工程師');
+eq(regionQueryScopeOf({ permissions:['edit_board'] }), ['central'], '沒設地區者視為中部');
+eq(regionQueryScopeOf(mgrN), ['north','central','south'], '主管查得到三區');
+eq(regionQueryScopeOf(admin), ['north','central','south'], 'admin 查得到三區');
+// ★ 與 regionScopeOf 的關鍵差別：後者在開關關閉時回 null（不過濾），前者永遠有範圍
+eq(regionScopeOf(engN, 'off'), null, 'regionScopeOf：開關關閉 → null（顯示層不過濾）');
+eq(regionQueryScopeOf(engN), ['north'], '★ regionQueryScopeOf：同一人、同樣關閉，仍限自己那區');
 
 // ── 跨區檢視 / 編輯（決策 D：主管只能看）────────────────────────
 eq(canViewAllRegions(admin), true,     'admin 可跨區檢視');

@@ -54,11 +54,11 @@ node --input-type=module --check < /tmp/x.js
 # Cloud Function
 python3 -m py_compile functions/main.py
 
-# 北中南分區邏輯：前端 94 項 + 後端 33 項（含前後端種子對照一致性比對）
+# 北中南分區邏輯：前端 101 項 + 後端 33 項（含前後端種子對照一致性比對）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
-# firestore.rules 安全規則：38 項（跑本機 Firestore 模擬器，不連任何真實專案）
+# firestore.rules 安全規則：63 項（跑本機 Firestore 模擬器，不連任何真實專案）
 cd tools/rules-test && npm test
 ```
 ⚠ 規則測試需要 **JDK 21+**（firebase-tools 已不支援更舊版本）。本機的 JDK 在

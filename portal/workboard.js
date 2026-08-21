@@ -326,12 +326,13 @@
     const canDelRow  = o => canDel  && inMyRegion(o);
 
     useEffect(() => {
-      // 帶 user/mode 進去 → 單一區的使用者會在查詢就加 where('region','==')，
-      // 過濾推到伺服器端（階段 5 的 Rules 收緊會要求如此）。
-      // 相依含 regionMode：模式變了要用新條件重新訂閱。
-      const unsub = FBOrders.onSnapshot(rows => { setAllData(rows); setLoading(false); }, user, regionMode);
+      // 帶 user 進去 → 單一區的使用者會在查詢就加 where('region','==')，過濾推到伺服器端。
+      // ★ 相依「不含」regionMode：查詢範圍刻意不看開關（見 regions.js 的
+      //   regionQueryScopeOf），列進去只會讓 admin 每次切開關就把所有人的訂閱重建一次。
+      //   user 變動（含地區被改）仍會重新訂閱。
+      const unsub = FBOrders.onSnapshot(rows => { setAllData(rows); setLoading(false); }, user);
       return () => unsub();
-    }, [user, regionMode]);
+    }, [user]);
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
