@@ -2154,6 +2154,68 @@ function AdminPanel({ user, isAdmin }) {
   //     回報的實體機台代號（AluminumBowfin…，即時狀態卡與消耗紀錄用）
   const [regionMode, setRegionMode] = useSt('off');
   const [machineRegions, setMachineRegions] = useSt([]);   // [{alias, region}]
+  // 一次性遷移：替既有資料補 region 欄位（階段 5 的前置，見 docs/region-split-plan.md）
+  const [bfScan, setBfScan] = useSt(null);      // 掃描結果 { total, missing, perColl:[{name,total,missing}] }
+  const [bfBusy, setBfBusy] = useSt('');        // '' | 'scan' | 'write'
+  const [bfDone, setBfDone] = useSt(null);      // 寫入結果 { written }
+
+  // 需要補 region 的 collection。刻意不含 sample_items / sample_loans——
+  // 樣品是全公司共用資產（借用人可能跨廠區借還），先前已決定不分區。
+  // inventory_history 由 Cloud Function 寫入時就帶 region，不在這裡處理。
+  const BACKFILL_COLLS = ['bookings', 'workboard_orders', 'issues_anomalies', 'issues_ipa', 'issues_equipment'];
+
+  // 先掃描、後寫入，刻意分成兩個動作：直接寫的話使用者無從得知會動到幾筆。
+  const backfillScan = async () => {
+    setBfBusy('scan'); setBfDone(null);
+    try {
+      const perColl = [];
+      for (const name of BACKFILL_COLLS) {
+        const snap = await window.fbDb.collection(name).get();
+        // 沒有 region、或值不是合法區碼的都要補（前端一律當中區，補成中區＝維持現狀）
+        const missing = snap.docs.filter(d => !window.isRegion(d.data().region)).length;
+        perColl.push({ name, total: snap.size, missing });
+      }
+      setBfScan({
+        perColl,
+        total:   perColl.reduce((a, c) => a + c.total, 0),
+        missing: perColl.reduce((a, c) => a + c.missing, 0),
+      });
+    } catch (e) {
+      console.error('[backfill scan]', e);
+      showToast('掃描失敗：' + (e.message || e), 'err');
+    } finally { setBfBusy(''); }
+  };
+
+  const backfillApply = async () => {
+    if (!bfScan || !bfScan.missing) return;
+    if (!confirm(
+      `即將替 ${bfScan.missing} 筆缺少地區的既有資料補上「中部」。\n\n` +
+      `這與目前的顯示結果一致（沒有 region 的資料本來就被當成中部），\n` +
+      `所以補完畫面不會有任何變化。\n\n` +
+      `此動作只「新增」region 欄位，不會修改任何既有欄位值。`
+    )) return;
+    setBfBusy('write');
+    try {
+      let written = 0;
+      for (const name of BACKFILL_COLLS) {
+        const snap = await window.fbDb.collection(name).get();
+        const todo = snap.docs.filter(d => !window.isRegion(d.data().region));
+        // Firestore 單一 batch 上限 500，取 400 留餘裕
+        for (let i = 0; i < todo.length; i += 400) {
+          const batch = window.fbDb.batch();
+          todo.slice(i, i + 400).forEach(d => batch.update(d.ref, { region: 'central' }));
+          await batch.commit();
+          written += Math.min(400, todo.length - i);
+        }
+      }
+      setBfDone({ written });
+      await backfillScan();
+      showToast(`✓ 已補上 ${written} 筆的地區欄位`);
+    } catch (e) {
+      console.error('[backfill apply]', e);
+      showToast('寫入失敗：' + (e.message || e), 'err');
+    } finally { setBfBusy(''); }
+  };
 
   const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none',background:'var(--bg)',color:'var(--ink)'};
   const DEF_ENG  = K.ENG_ORDER.map(k=>({key:k,label:K.ENG_LABEL[k]||k}));
@@ -2625,6 +2687,60 @@ function AdminPanel({ user, isAdmin }) {
                 <div style={{fontSize:11,color:'var(--ink-4)',marginTop:8,lineHeight:1.7}}>
                   機台代號可填完整 serial 或代號片段，系統以「包含」比對（Formlabs 有時回報 <code>Form4-AluminumBowfin</code>、有時只回 <code>AluminumBowfin</code>）。
                   沒列在這裡的機台一律歸中部。
+                </div>
+
+                <div style={{marginTop:30,paddingTop:22,borderTop:'1px solid var(--line)'}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:6}}>一次性：補齊既有資料的地區欄位</div>
+                  <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.75,marginBottom:12}}>
+                    在分區功能上線前建立的資料沒有「地區」欄位。目前畫面把它們一律當成
+                    <b style={{color:'var(--ink-2)'}}>中部</b>，所以顯示是正確的；
+                    但之後若要把權限收緊到資料庫層（讓別區的人「連讀都讀不到」），
+                    查詢會用地區條件比對，<b style={{color:'var(--ink-2)'}}>沒有這個欄位的資料會整批查不到</b>。
+                    這個動作就是先把欄位補上。
+                  </div>
+                  <div style={{padding:'10px 12px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:7,fontSize:11.5,color:'var(--ink-4)',lineHeight:1.7,marginBottom:12}}>
+                    只<b style={{color:'var(--ink-2)'}}>新增</b> region 欄位，不修改任何既有欄位值；
+                    補完畫面不會有變化（本來就當成中部）。可以重複執行，已經有地區的資料會自動略過。
+                  </div>
+                  <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <button className="btn-cancel" style={{padding:'0 14px',fontSize:12}}
+                      onClick={backfillScan} disabled={!!bfBusy}>
+                      {bfBusy==='scan' ? '掃描中…' : '① 掃描（不寫入）'}
+                    </button>
+                    {bfScan && bfScan.missing > 0 && (
+                      <button className="btn-save" style={{padding:'0 14px',height:34,fontSize:12,opacity:bfBusy?.5:1}}
+                        onClick={backfillApply} disabled={!!bfBusy}>
+                        {bfBusy==='write' ? '寫入中…' : `② 補上 ${bfScan.missing} 筆`}
+                      </button>
+                    )}
+                  </div>
+                  {bfScan && (
+                    <div style={{marginTop:12,fontSize:12}}>
+                      <table style={{borderCollapse:'collapse',fontSize:12}}>
+                        <thead><tr style={{color:'var(--ink-4)'}}>
+                          <th style={{textAlign:'left',padding:'3px 14px 3px 0'}}>資料集</th>
+                          <th style={{textAlign:'right',padding:'3px 14px 3px 0'}}>總筆數</th>
+                          <th style={{textAlign:'right',padding:'3px 0'}}>缺地區</th>
+                        </tr></thead>
+                        <tbody>
+                          {bfScan.perColl.map(c => (
+                            <tr key={c.name}>
+                              <td style={{padding:'3px 14px 3px 0',fontFamily:'var(--mono, monospace)'}}>{c.name}</td>
+                              <td style={{textAlign:'right',padding:'3px 14px 3px 0',color:'var(--ink-3)'}}>{c.total}</td>
+                              <td style={{textAlign:'right',padding:'3px 0',fontWeight:600,
+                                          color:c.missing ? 'var(--warn)' : 'var(--ok)'}}>{c.missing}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div style={{marginTop:8,color: bfScan.missing ? 'var(--warn)' : 'var(--ok)'}}>
+                        {bfScan.missing
+                          ? `共 ${bfScan.missing} 筆缺少地區欄位（總計 ${bfScan.total} 筆）`
+                          : `✓ 全部 ${bfScan.total} 筆都有地區欄位，不需要補`}
+                      </div>
+                      {bfDone && <div style={{marginTop:4,color:'var(--ok)'}}>本次已補上 {bfDone.written} 筆</div>}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
