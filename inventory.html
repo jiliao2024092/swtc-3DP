@@ -1081,21 +1081,62 @@ const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
 // settings/workspace 的兩個欄位，由 subscribeWorkspaceSettings() 填入。
 let REGION_MODE = 'off';        // off / alpha / beta / on
 let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
-// 「檢視地區」切換的當前值（'all' 或區碼）。純前端顯示用，不寫入任何設定。
-let invRegionView = 'all';
+// ★ 庫存頁刻意「一次只看一區」（決策 A）：三個廠區的備料是三個獨立的實體庫存，
+//   台北的樹脂不可能給台南用，所以加總會誤導（「Tough 2000 還有 3000mL」，
+//   但其中 2000 在台北、台中根本領不到）。因此這裡沒有「全部」這個選項——
+//   activeRegion 永遠是「剛好一個區」，整頁（庫存數字、機台卡）都是那一區的視角。
+//   一般角色固定是自己那區；可跨區者才能切換。
+let activeRegion = 'central';   // 登入後由 currentUser 決定初始值
 
-// 這個使用者「該看到哪些區」：null ＝ 不過濾（分區未啟用）
-function regionScopeFilter(){
-    if (!window.regionActiveFor || !window.regionActiveFor(currentUser, REGION_MODE)) return null;
-    if (window.canViewAllRegions(currentUser)) return (window.REGIONS||[]).map(r=>r.key);
-    return [window.regionOf(currentUser)];
+// ── 分區庫存文件（inventory/{region}）────────────────────────────────
+// stock / safety / cartridges / stock_shortfalls 由這份供應；
+// inventory/main 只留全域帳務（去重用的 print guid、材料版本、產品層級設定）。
+// 這個切法與 Cloud Function 一致，理由見 functions/main.py 的 4b 段。
+let unsubscribeRegionInv = null;
+let regionInvData = null;      // 目前這一區的 { stock, safety, cartridges, stock_shortfalls }
+let regionInvLoaded = false;
+let mainLoaded = false;
+// 相容用：region 文件還沒被 Cloud Function 播種時，中區沿用 main 的值
+let mainStockFallback = {}, mainSafetyFallback = {}, mainCartFallback = {};
+
+function applyRegionInv(){
+    const d = regionInvData;
+    const seeded = !!d;
+    // ★ 只有「中區 且 region 文件還不存在」才退回 main —— 既有庫存本來就全歸中區。
+    //   北/南若還沒播種，正確答案就是「空的」，不可退回 main（那會把中區的量
+    //   顯示成北區的，是最糟的一種錯：看起來很正常但完全錯誤）。
+    const useFallback = !seeded && activeRegion === 'central';
+    if (useFallback) console.warn('[region-inv] inventory/' + activeRegion + ' 尚未建立，暫時沿用 inventory/main 的庫存');
+    inv.stock            = seeded ? (d.stock || {})            : (useFallback ? mainStockFallback : {});
+    inv.safety           = seeded ? (d.safety || {})           : (useFallback ? mainSafetyFallback : {});
+    inv.cartridges       = seeded ? (d.cartridges || {})       : (useFallback ? mainCartFallback : {});
+    inv.stock_shortfalls = seeded ? (d.stock_shortfalls || {}) : {};
 }
-// 套用「檢視地區」切換後的實際範圍（只有可跨區的人能切）
-function effectiveRegionScope(){
-    let scope = regionScopeFilter();
-    const canCross = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
-    if (canCross && invRegionView !== 'all') scope = [invRegionView];
-    return scope;
+
+function subscribeRegionInventory(){
+    if (unsubscribeRegionInv) { unsubscribeRegionInv(); unsubscribeRegionInv = null; }
+    regionInvLoaded = false;
+    console.log('[region-inv] 訂閱 inventory/' + activeRegion);
+    unsubscribeRegionInv = onSnapshot(doc(db, 'inventory', activeRegion), (snap) => {
+        regionInvData = snap.exists() ? snap.data() : null;
+        regionInvLoaded = true;
+        applyRegionInv();
+        invLoadedFromFirestore = regionInvLoaded || mainLoaded;
+        try {
+            mergeMaterialAliases();
+            renderAll();
+        } catch (err) { console.error('[region-inv] 渲染錯誤:', err); }
+    }, (err) => {
+        console.error('[region-inv] 訂閱失敗:', err.code, err.message);
+        if (err.code === 'permission-denied') showToast('沒有權限讀取該地區的庫存', 'error');
+    });
+}
+
+// 庫存頁一律只看 activeRegion 一區
+function effectiveRegionScope(){ return [activeRegion]; }
+// 目前檢視的是不是自己那一區（用來提醒「你正在編輯別區的庫存」）
+function viewingOwnRegion(){
+    return activeRegion === (window.regionOf ? window.regionOf(currentUser) : 'central');
 }
 // 機台的區：優先用 Cloud Function 寫進來的 region 欄位，沒有才用前端對照推導
 function regionOfMachine(p){
@@ -1107,20 +1148,24 @@ function regionOfMachine(p){
 function regionViewBarHTML(){
     if (!window.canViewAllRegions || !window.canViewAllRegions(currentUser)) return '';
     const btn = (v, label) => {
-        const on = invRegionView === v;
+        const on = activeRegion === v;
         return `<button onclick="setInvRegionView('${v}')" class="px-2.5 py-1 rounded-md border transition-colors ${on
             ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
             : 'border-[var(--line-strong)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]'}">${label}</button>`;
     };
+    // ★ 看別區時給明顯提醒：這一頁的「入庫／調整／安全庫存」都會寫進那一區的帳，
+    //   不講清楚很容易在錯的區改到數字，而且事後很難發現。
+    const warn = viewingOwnRegion() ? '' :
+        `<span class="text-[var(--warn)] font-medium">⚠ 目前檢視／編輯的是${
+            window.regionLabel(activeRegion)}的庫存，不是你所屬的地區</span>`;
     return `<div class="flex items-center gap-2 flex-wrap text-xs mb-3">
-        <span class="text-[var(--ink-5)]">檢視地區</span>${btn('all','全部')}${
-        (window.REGIONS||[]).map(r=>btn(r.key,r.label)).join('')}${
-        invRegionView!=='all' ? '<span class="text-[var(--ink-5)]">（僅切換顯示範圍，不影響你的權限）</span>' : ''}</div>`;
+        <span class="text-[var(--ink-5)]">庫存地區</span>${
+        (window.REGIONS||[]).map(r=>btn(r.key,r.label)).join('')}${warn}</div>`;
 }
 window.setInvRegionView = function(v){
-    invRegionView = v;
-    renderCartridges();
-    if (currentTab === 'mf') renderMfPanel();
+    if (!window.isRegion(v) || v === activeRegion) return;
+    activeRegion = v;
+    subscribeRegionInventory();   // 換一區＝換一份庫存文件，要重新訂閱
 };
 const DEFAULT_CARTRIDGE_ML = 1000;
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
@@ -1270,6 +1315,8 @@ onAuthStateChanged(auth, async (user) => {
             // region：階段 1 只是把值帶進來，目前沒有任何邏輯讀它（見 regions.js 與 docs/region-split-plan.md）
             const region = (snap.exists() && snap.data().region) || null;
             currentUser = { uid: user.uid, email: user.email, displayName, role, permissions, region };
+            // 庫存頁一次只看一區，預設是自己所屬的那一區（可跨區者之後可切換）
+            activeRegion = window.regionOf ? window.regionOf(currentUser) : 'central';
             isEditor = (role === 'admin' || role === 'editor');
             showApp();
             subscribeAll();
@@ -1287,6 +1334,7 @@ onAuthStateChanged(auth, async (user) => {
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
         if (unsubscribeMf)   { unsubscribeMf();   unsubscribeMf   = null; }
         if (unsubscribeWs)   { unsubscribeWs();   unsubscribeWs   = null; }
+        if (unsubscribeRegionInv) { unsubscribeRegionInv(); unsubscribeRegionInv = null; }
         if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
         showLogin();
     }
@@ -1510,7 +1558,10 @@ function subscribeAll() {
         if (currentBrand === 'markforged') renderAlerts();   // 線材缺料橫幅
     }, (err) => console.error('[markforged snapshot] 訂閱失敗:', err));
 
-    // 訂閱 inventory/main（單一文件）
+    // 訂閱目前檢視地區的庫存文件（stock/safety/cartridges/shortfalls）
+    subscribeRegionInventory();
+
+    // 訂閱 inventory/main（全域帳務與產品層級設定）
     console.log('[subscribeAll] 訂閱 inventory/main...');
     unsubscribeInv = onSnapshot(doc(db, 'inventory', 'main'), (snap) => {
         console.log('[inventory snapshot] 觸發，exists:', snap.exists());
@@ -1518,18 +1569,25 @@ function subscribeAll() {
             if (snap.exists()) {
                 const d = snap.data();
                 console.log('[inventory snapshot] 資料欄位:', Object.keys(d));
-                inv.cartridges = d.cartridges || {};
-                inv.stock      = d.stock      || {};
-                inv.safety     = d.safety     || {};
+                // ★ 分區後 stock / safety / cartridges / stock_shortfalls 改由
+                //   inventory/{activeRegion} 供應（見 subscribeRegionInventory），
+                //   這裡「不再」從 main 取，否則兩份會互相蓋掉。
+                //   main 只留全域帳務與產品層級設定。
+                //   相容：region 文件還沒被 Cloud Function 播種出來時，中區暫時沿用
+                //   main 的值，避免部署空窗期整頁庫存顯示成 0 嚇到人（見 applyRegionInv）。
+                mainStockFallback = d.stock || {};
+                mainSafetyFallback = d.safety || {};
+                mainCartFallback   = d.cartridges || {};
                 inv.partno     = d.partno     || {};
                 inv.matNames   = d.matNames   || {};
                 inv.last_processed_prints = d.last_processed_prints || [];
                 inv.disabled_materials    = d.disabled_materials    || [];
                 inv.disabled_overrides    = d.disabled_overrides    || [];
                 inv.family_latest_version = d.family_latest_version || {};
-                inv.stock_shortfalls      = d.stock_shortfalls      || {};
                 inv.l_tank_materials      = d.l_tank_materials      || [];
-                invLoadedFromFirestore = true;
+                mainLoaded = true;
+                applyRegionInv();
+                invLoadedFromFirestore = regionInvLoaded || mainLoaded;
             } else {
                 // 文件不存在（首次使用或還沒匯入）
                 console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
@@ -1766,16 +1824,30 @@ async function saveAll(reason) {
         // ★ 用 updateDoc 完整取代 map 欄位（不像 setDoc merge:true 會殘留已刪除的 key）
         //   這樣 mergeMaterialAliases 刪掉的別名 key 才會真正從 Firestore 消失，
         //   避免「別名殘留→每次 snapshot 重複累加」的無限迴圈
+        // ★ 分區後寫入要拆成兩份，對應 Cloud Function 的切法：
+        //   inventory/{activeRegion} ← 實體庫存（stock/safety/cartridges/shortfalls）
+        //   inventory/main           ← 全域帳務與產品層級設定
+        //   寫錯邊的後果是靜默的：例如把庫存寫進 main，前端讀 region 文件時看不到，
+        //   使用者會以為「存了但沒生效」。
+        // 用 setDoc(merge:false 的完整欄位取代) 而非 merge：mergeMaterialAliases 刪掉的
+        // 別名 key 要真的從 Firestore 消失，否則每次 snapshot 會重複累加（既有註解的理由）。
+        await updateDoc(doc(db, 'inventory', activeRegion), {
+            stock:            inv.stock            || {},
+            safety:           inv.safety           || {},
+            cartridges:       inv.cartridges       || {},
+            stock_shortfalls: inv.stock_shortfalls || {},   // 清除警示要能真的寫回空值
+            region:         activeRegion,
+            updatedAt:      serverTimestamp(),
+            updatedBy:      currentUser.uid,
+            updatedByEmail: currentUser.email,
+            lastReason:     reason || '',
+        });
         await updateDoc(doc(db, 'inventory', 'main'), {
-            cartridges: inv.cartridges || {},
-            stock:      inv.stock      || {},
-            safety:     inv.safety     || {},
             partno:     inv.partno     || {},
             matNames:   inv.matNames   || {},
             last_processed_prints: inv.last_processed_prints || [],
             disabled_materials: inv.disabled_materials || [],
             disabled_overrides: inv.disabled_overrides || [],
-            stock_shortfalls:   inv.stock_shortfalls   || {},   // 清除警示要能真的寫回空值
             l_tank_materials:   inv.l_tank_materials   || [],
             updatedAt:      serverTimestamp(),
             updatedBy:      currentUser.uid,

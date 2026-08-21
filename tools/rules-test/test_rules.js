@@ -289,6 +289,27 @@ async function main() {
   await ok('北部主管可刪除北部工單',
     as(USERS.mgrN).doc('workboard_orders/w_new_n').delete());
 
+  // ══ 分區庫存 inventory/{region} ═══════════════════════════════════
+  await ok('北部工程師可讀自己那區的庫存',
+    as(USERS.engN).doc('inventory/north').get());
+  await nok('★ 北部工程師不可讀南部的庫存（各廠區的備料是獨立的實體庫存）',
+    as(USERS.engN).doc('inventory/south').get());
+  await ok('北部工程師可寫自己那區的庫存',
+    as(USERS.engN).doc('inventory/north').set({ stock: { FLTO20: { total_ml: 100 } } }, { merge: true }));
+  await nok('★ 北部工程師不可寫南部的庫存',
+    as(USERS.engN).doc('inventory/south').set({ stock: {} }, { merge: true }));
+  await ok('只給 view_all_regions 者可跨區「讀」庫存',
+    as(USERS.mgrViewOnly).doc('inventory/south').get());
+  await nok('★ 只給 view_all_regions 者不可跨區「寫」庫存',
+    as(USERS.mgrViewOnly).doc('inventory/south').set({ stock: {} }, { merge: true }));
+  await ok('有 edit_all_regions 者可跨區寫庫存',
+    as(USERS.mgrFull).doc('inventory/south').set({ stock: {} }, { merge: true }));
+  // main 是全域帳務，不受地區限制（每個人都要讀得到材料版本、停用清單等產品設定）
+  await ok('★ inventory/main 不受地區限制，一般使用者仍讀得到',
+    as(USERS.engN).doc('inventory/main').get());
+  await ok('inventory/markforged 也不受地區限制',
+    as(USERS.engN).doc('inventory/markforged').get());
+
   await testEnv.cleanup();
 
   if (failures.length) {

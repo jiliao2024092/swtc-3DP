@@ -199,9 +199,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // inventory 底下有兩類文件：
+    //   north / central / south → 各廠區的實體庫存，要比對地區
+    //   main / markforged / markforged_watch → 全域帳務與 Markforged，維持原本判斷
+    // ★ 用 docId 判斷而不是文件裡的欄位：庫存文件的 id 就是區碼，這樣連「文件還沒
+    //   被建立出來」的情況也擋得住（用欄位判斷會在 resource 為 null 時求值失敗）。
+    function isRegionInvDoc(docId) {
+      return docId in ['north', 'central', 'south'];
+    }
     match /inventory/{docId} {
-      allow read: if isLoggedIn();
-      allow write: if isLegacyEditorOrAdmin();
+      allow read: if isLoggedIn()
+        && (!isRegionInvDoc(docId) || isCrossRegionViewer() || docId == myRegion());
+      allow write: if isLegacyEditorOrAdmin()
+        && (!isRegionInvDoc(docId) || isCrossRegionEditor() || docId == myRegion());
     }
 
     match /inventory_history/{logId} {

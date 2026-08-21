@@ -58,7 +58,7 @@ python3 -m py_compile functions/main.py
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
-# firestore.rules 安全規則：68 項（跑本機 Firestore 模擬器，不連任何真實專案）
+# firestore.rules 安全規則：77 項（跑本機 Firestore 模擬器，不連任何真實專案）
 cd tools/rules-test && npm test
 ```
 ⚠ 規則測試需要 **JDK 21+**（firebase-tools 已不支援更舊版本）。本機的 JDK 在
