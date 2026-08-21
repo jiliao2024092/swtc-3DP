@@ -7,6 +7,48 @@
         {"fieldPath": "date", "order": "DESCENDING"},
         {"fieldPath": "createdAt", "order": "DESCENDING"}
       ]
+    },
+
+    {
+      "_comment": "以下 5 個是北中南分區用：前端對非跨區使用者會加 where('region','==',自己那區)，與既有的 orderBy 組合起來需要複合索引。索引必須「先」建好，否則查詢會直接失敗（failed-precondition），不是回空陣列而是整個讀不到。",
+      "collectionGroup": "bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "workboard_orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_anomalies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_ipa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_equipment",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []
