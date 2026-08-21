@@ -27,11 +27,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ── 只把需要的常數與純函式抽出來執行，避免 import 整個 main.py（會拉 firebase_functions 相依）──
 src = open(os.path.join(ROOT, "functions", "main.py"), encoding="utf-8").read()
 ns = {"re": re, "Optional": Optional}
-for name in ("REGION_CODES", "DEFAULT_REGION", "SEED_MACHINE_REGION"):
+for name in ("REGION_CODES", "DEFAULT_REGION", "SEED_MACHINE_REGION",
+             "FAMILY_REMAP", "NAME_TO_CODE"):
     m = re.search(r"^%s = .*?$(?:\n(?!\n).*?$)*" % name, src, re.M)
     assert m, f"main.py 找不到常數 {name}"
     exec(m.group(0), ns)
-for fn in ("norm_region", "_longest_contained_key", "machine_region"):
+for fn in ("norm_region", "_longest_contained_key", "machine_region",
+           "family_code", "canon_material",
+           "apply_stock_deductions", "merge_shortfalls"):
     m = re.search(r"^def %s\(.*?(?=\n\ndef |\n\n# |\Z)" % fn, src, re.S | re.M)
     assert m, f"main.py 找不到函式 {fn}"
     exec(m.group(0), ns)
@@ -116,6 +119,45 @@ eq(missing, [], "★ 有納管的 Markforged 機台不在種子對照裡（會�
 for bad_id in ("bcaac500-140f-47de-9a12-5c791a393dd7",   # Mark Two Dongguan
                "7b0b2875-e329-4fb8-babe-0c3884890d31"):  # X7 Shanghai
     eq(bad_id in m.group(1), False, f"★ 中國廠機台 {bad_id[:8]} 不可納管")
+
+# ── 備料扣減（apply_stock_deductions）──────────────────────────────
+# 這支是「動到帳」的邏輯，而且 inventory/main 與 inventory/{region} 共用同一份，
+# 判錯的後果是庫存數字對不上、而且沒有任何錯誤訊息。
+apply = ns["apply_stock_deductions"]
+
+st = {"FLTO20": {"total_ml": 500, "bottles": 1}}
+eq(apply(st, {"FLTO2002": 200}, "now"), {}, "正常扣減不產生差額")
+eq(st["FLTO20"]["total_ml"], 300, "扣完剩 300")
+
+st = {"FLTO20": {"total_ml": 100}}
+eq(apply(st, {"FLTO2011": 40}, "now"), {}, "同家族的另一組代碼也扣得到")
+eq(st["FLTO20"]["total_ml"], 60, "扣到同一個 key")
+
+st = {"FLTO20": {"total_ml": 50}}
+sf = apply(st, {"FLTO2002": 130}, "now")
+eq(st["FLTO20"]["total_ml"], 0, "★ 扣到 0 為止，不可為負")
+eq(sf, {"FLTO20": 80.0}, "★ 扣不完的 80mL 要回報成差額")
+
+st = {}
+sf = apply(st, {"FLGPCL05": 25}, "now")
+eq(st["FLGPCL"]["total_ml"], 0, "沒有的材料會建 key 並停在 0")
+eq(sf, {"FLGPCL": 25.0}, "全額回報為差額")
+
+st = {"FLTO20": {"total_ml": 30}, "FLTO2002": {"total_ml": 50}}
+sf = apply(st, {"FLTO2002": 60}, "now")
+eq(sf, {}, "跨多個同家族 key 湊得出來就沒有差額")
+eq(st["FLTO20"]["total_ml"] + st["FLTO2002"]["total_ml"], 20, "兩個 key 合計剩 20")
+
+st = {"FLTO20": {"total_ml": 100}}
+sf = apply(st, {"FLGPCL05": 10}, "now")
+eq(st["FLTO20"]["total_ml"], 100, "★ 不同家族的庫存不可被扣到")
+eq(sf, {"FLGPCL": 10.0}, "不同家族 → 全額差額")
+
+merge = ns["merge_shortfalls"]
+acc = merge({}, {"FLTO20": 10.0}, "t1")
+acc = merge(acc, {"FLTO20": 5.0}, "t2")
+eq(acc["FLTO20"]["ml"], 15.0, "★ 差額要累計，不是覆寫")
+eq(acc["FLTO20"]["last_at"], "t2", "時間戳更新為最後一次")
 
 print(f"\n{_pass + _fail} 項：{_pass} PASS / {_fail} FAIL")
 sys.exit(1 if _fail else 0)

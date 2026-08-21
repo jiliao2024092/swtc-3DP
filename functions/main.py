@@ -6,13 +6,15 @@
 #
 # 寫入 Firestore:
 #   - printer_status/current       單一 doc，含所有 printers 陣列（前端顯示用）
-#   - inventory/main               原本就有；同步 cartridges 與 stock 扣減
+#   - inventory/main               全域帳務（去重用的 print guid、材料版本、產品層級設定）
+#   - inventory/{north|central|south}  各廠區的實體庫存（stock/safety/cartridges/shortfalls）
 #   - inventory_history/{guid}     新增消耗 / 中止紀錄（doc_id = print_guid 防重複）
 # ════════════════════════════════════════════════════════════════
 import os
 import sys
 import re
 import json
+import copy
 import datetime
 import traceback
 from typing import Optional
@@ -257,6 +259,50 @@ def machine_region(alias: Optional[str], overrides: Optional[dict] = None) -> st
     if k2:
         return SEED_MACHINE_REGION[k2]
     return DEFAULT_REGION
+
+
+def apply_stock_deductions(stock: dict, deductions: dict, now_iso: str) -> dict:
+    """把一批消耗扣到某一份備料庫存上，回傳「扣不完的差額」。
+
+    抽成函式是為了讓 inventory/main 與 inventory/{region} 用「同一套」扣減規則——
+    兩份各寫一次的話遲早會走偏，而症狀是庫存數字對不上、沒有任何錯誤訊息。
+
+    規則（沿用原本行為）：
+      - 從同家族的既有 key 依序扣，扣到 0 為止不會變負數
+      - 找不到同家族的 key 才建一個（不建立幽靈 key）
+      - 扣不完的差額回報出去，由呼叫端累計進 stock_shortfalls 讓前端跳警示
+        （以前這裡靜默丟棄，庫存卡在 0 但實際有一筆消耗沒被反映，完全看不出異常）
+    """
+    shortfalls = {}
+    for mat, amount in deductions.items():
+        fam = canon_material(mat)
+        matching = [k for k in stock if canon_material(k) == fam]
+        if not matching:
+            stock[fam] = {"total_ml": 0, "bottles": 0}
+            matching = [fam]
+        remaining = amount
+        for k in matching:
+            if remaining <= 0:
+                break
+            cur = stock[k].get("total_ml", 0) or 0
+            d = min(cur, remaining)
+            stock[k]["total_ml"] = round(cur - d, 1)
+            remaining -= d
+        if remaining > 0.05:
+            shortfalls[fam] = round(remaining, 1)
+    return shortfalls
+
+
+def merge_shortfalls(existing: dict, new: dict, now_iso: str) -> dict:
+    """把本輪的差額累計進既有紀錄（累計到使用者查明後從前端清除）。"""
+    existing = existing or {}
+    for fam, ml in new.items():
+        prev = existing.get(fam) or {}
+        existing[fam] = {
+            "ml":      round((prev.get("ml") or 0) + ml, 1),
+            "last_at": now_iso,
+        }
+    return existing
 
 
 def raw_version_num(code: Optional[str]) -> Optional[int]:
@@ -826,6 +872,37 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         inv.setdefault("stock_shortfalls", {})   # 消耗超過庫存的累計差額（使用者查明後可從前端清除）
         family_latest = inv["family_latest_version"]
 
+        # 4b. 北中南分區的庫存文件 inventory/{region}
+        # ★ inventory/main 的欄位「不是」全部都該分區，照抄成三份會出事：
+        #     last_processed_prints / deducted_prints 是去重用的 print guid 清單，
+        #     分成三份會讓同一筆列印被重複處理、重複扣庫存；
+        #     family_latest_version / disabled_* / partno / matNames 是產品層級的事實，
+        #     與廠區無關。
+        #   所以是「混合式」：main 留全域帳務，region 文件只放實體庫存相關的四個欄位。
+        # ★ 首次執行自動播種：中部承接 main 現有的 stock/safety/cartridges（既有庫存
+        #   全部歸中區，先前已定案），北部與南部從空的開始。播種是「複製」不是搬移，
+        #   main 完全不動，所以可以先觀察數字對不對再讓前端切過去。
+        REGION_INV_FIELDS = ("stock", "safety", "cartridges", "stock_shortfalls")
+        region_refs, region_invs, region_dirty = {}, {}, {}
+        for _rk in REGION_CODES:
+            _ref = db.collection("inventory").document(_rk)
+            _snap = _ref.get()
+            region_refs[_rk] = _ref
+            region_dirty[_rk] = False
+            if _snap.exists:
+                region_invs[_rk] = _snap.to_dict() or {}
+            else:
+                if _rk == DEFAULT_REGION:
+                    region_invs[_rk] = {f: copy.deepcopy(inv.get(f) or {}) for f in REGION_INV_FIELDS}
+                    print(f"[region-inv] 首次播種 inventory/{_rk}：承接 main 的 "
+                          f"{len(region_invs[_rk].get('stock') or {})} 種備料庫存")
+                else:
+                    region_invs[_rk] = {f: {} for f in REGION_INV_FIELDS}
+                    print(f"[region-inv] 首次播種 inventory/{_rk}：空白（該區尚無庫存資料）")
+                region_dirty[_rk] = True
+            for f in REGION_INV_FIELDS:
+                region_invs[_rk].setdefault(f, {})
+
         # backfill 模式：清空 history + last_processed_prints
         if backfill:
             print("[sync] BACKFILL: 清空 inventory_history...")
@@ -855,7 +932,8 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             # 首次啟用：把現有 last_processed_prints 視為「已扣」，避免一次扣掉 60 天歷史
             deducted = set(inv.get("last_processed_prints", []))
             print(f"[sync] 首次啟用消耗扣庫存：種子 {len(deducted)} 筆歷史 print 視為已扣")
-        stock_deductions = {}   # material(code) -> 本次要扣的 ml 總和
+        stock_deductions = {}   # material(code) -> 本次要扣的 ml 總和（main，過渡期相容用）
+        region_deductions = {}  # region -> { material(code): ml }（分區用）
 
         # 5. 同步機台樹脂罐到 inv.cartridges（給 inventory.html 用）
         # ★ 關鍵：cartridge 數值純粹以 API 為準（initial_ml - dispensed_ml），不再自行扣減
@@ -867,7 +945,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             for alias in TRACKED_ALIASES:
                 if alias not in (ps.get("alias") or ""):
                     continue
-                inv["cartridges"][alias] = [
+                _carts = [
                     {
                         "slot":         c.get("slot"),
                         "material":     c["material"],
@@ -880,6 +958,12 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     }
                     for c in ps["cartridges"]
                 ]
+                inv["cartridges"][alias] = _carts
+                # 分區：同一份也寫進該機台所屬區的文件（樹脂罐天然屬於某一區）
+                _crk = machine_region(alias, machine_regions)
+                if region_invs[_crk]["cartridges"].get(alias) != _carts:
+                    region_invs[_crk]["cartridges"][alias] = _carts
+                    region_dirty[_crk] = True
 
         # 6. 拉 prints — ★ 比照舊版可正常運作的做法：
         #    按機台 serial 過濾、不加 date 過濾、不加 sort，分頁抓每台追蹤機台的全部 prints
@@ -1091,6 +1175,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 # ── 消耗扣備料庫存：每筆 print 只扣一次（backfill 不扣、舊版本不扣）──
                 if will_deduct:
                     stock_deductions[material] = stock_deductions.get(material, 0.0) + volume_num
+                    # 分區：同一筆消耗另外依機台所屬區累加，供扣減 inventory/{region}
+                    _drk = machine_region(alias, machine_regions)
+                    region_deductions.setdefault(_drk, {})
+                    region_deductions[_drk][material] =                         region_deductions[_drk].get(material, 0.0) + volume_num
                     deducted.add(guid)
             except Exception as e:
                 print(f"[sync] 處理 guid={pr.get('guid','?')[:8]} 失敗: {e}")
@@ -1111,39 +1199,30 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         # 9. 套用消耗扣減到備料庫存（從實際存在的同家族 key 扣，不建立幽靈 key）
         if stock_deductions:
             print(f"[sync] 套用消耗扣備料庫存: {stock_deductions}")
-            shortfalls = {}   # 帳上庫存不足、扣不掉的差額 → 代表消耗紀錄與庫存對不上
-            for mat, amount in stock_deductions.items():
-                fam = canon_material(mat)
-                # 找出所有同家族的 stock key（可能是舊代碼/名稱/家族代碼）
-                matching = [k for k in inv["stock"] if canon_material(k) == fam]
-                if not matching:
-                    inv["stock"][fam] = {"total_ml": 0, "bottles": 0}
-                    matching = [fam]
-                # 從有量的 key 依序扣減（扣到 0 為止，不到負）
-                remaining = amount
-                for k in matching:
-                    if remaining <= 0:
-                        break
-                    cur = inv["stock"][k].get("total_ml", 0) or 0
-                    d = min(cur, remaining)
-                    inv["stock"][k]["total_ml"] = round(cur - d, 1)
-                    remaining -= d
-                # 扣不完 = 這批消耗超過帳上庫存。以前這裡靜默丟棄，前端完全看不出異常
-                # （庫存卡在 0，但實際上有一筆消耗沒被反映）→ 累計記錄下來讓前端跳警示。
-                if remaining > 0.05:
-                    shortfalls[fam] = round(remaining, 1)
-                    print(f"[sync][警示] 消耗超過庫存: {fam} 差額 {remaining:.1f} ml（庫存已扣至 0）")
+            # ★ 過渡期：main 的 stock 仍照舊全額扣減，因為前端目前還是讀 inventory/main。
+            #   等前端改讀 inventory/{region} 之後，這一段就可以拿掉。
+            #   目前所有納入追蹤的機台都在中部，所以 main 與 central 的數字會完全一致；
+            #   TRACKED_ALIASES 擴充到北/南機台時，「必須」同時把前端切過去，
+            #   否則那些消耗會被重複算進 main 這個單一池子。
+            shortfalls = apply_stock_deductions(inv["stock"], stock_deductions, now_iso)
+            for fam, ml in shortfalls.items():
+                print(f"[sync][警示] 消耗超過庫存: {fam} 差額 {ml:.1f} ml（庫存已扣至 0）")
             stats["stock_deducted"] = {m: round(v, 2) for m, v in stock_deductions.items()}
             if shortfalls:
                 stats["stock_shortfall"] = shortfalls
-                existing = inv.get("stock_shortfalls") or {}
-                for fam, ml in shortfalls.items():
-                    prev = existing.get(fam) or {}
-                    existing[fam] = {
-                        "ml":      round((prev.get("ml") or 0) + ml, 1),   # 累計，直到使用者查明後清除
-                        "last_at": now_iso,
-                    }
-                inv["stock_shortfalls"] = existing
+                inv["stock_shortfalls"] = merge_shortfalls(inv.get("stock_shortfalls"), shortfalls, now_iso)
+
+        # 9b. 同一批消耗，依機台所屬區扣到 inventory/{region}
+        if region_deductions:
+            for _rk, _ded in region_deductions.items():
+                _rinv = region_invs[_rk]
+                _sf = apply_stock_deductions(_rinv["stock"], _ded, now_iso)
+                region_dirty[_rk] = True
+                if _sf:
+                    _rinv["stock_shortfalls"] = merge_shortfalls(_rinv.get("stock_shortfalls"), _sf, now_iso)
+                    for fam, ml in _sf.items():
+                        print(f"[region-inv][警示] {_rk} 消耗超過庫存: {fam} 差額 {ml:.1f} ml")
+                print(f"[region-inv] {_rk} 扣減: {  {m: round(v,1) for m,v in _ded.items()} }")
 
         inv["last_processed_prints"] = list(processed)[-2000:]  # 保留最近 2000 個
         inv["deducted_prints"]       = list(deducted)[-2000:]   # 已扣庫存的 print
@@ -1167,6 +1246,26 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             "updatedByEmail":        "sync-formlabs@cloud-function",
             "lastReason":            f"Cloud Function 同步（{'BACKFILL' if backfill else 'INCREMENTAL'}）",
         }, merge=True)
+
+        # 10. 寫回 inventory/{region}
+        # ★ 只寫「這一輪真的有變動」的區。Firestore 的 .set() 即使內容完全相同也計費一筆
+        #   寫入——多三個 collection 每輪無條件重寫，一天就是額外 144 筆；這個專案有過
+        #   每天 11 萬寫入爆掉免費額度的前例（見 CLAUDE.md），不要重蹈覆轍。
+        _written = [rk for rk in REGION_CODES if region_dirty[rk]]
+        for _rk in _written:
+            region_refs[_rk].set({
+                "stock":            region_invs[_rk]["stock"],
+                "safety":           region_invs[_rk]["safety"],
+                "cartridges":       region_invs[_rk]["cartridges"],
+                "stock_shortfalls": region_invs[_rk].get("stock_shortfalls") or {},
+                "region":           _rk,
+                "updatedAt":        firestore.SERVER_TIMESTAMP,
+                "updatedBy":        "cloud-function",
+                "updatedByEmail":   "sync-formlabs@cloud-function",
+            }, merge=True)
+        if _written:
+            print(f"[region-inv] 已寫入 {_written}")
+            stats["region_inventory_written"] = _written
 
         stats["finished_at"] = datetime.datetime.utcnow().isoformat() + "Z"
         print(f"[sync] 完成: {json.dumps(stats, default=str, ensure_ascii=False)}")

@@ -54,7 +54,7 @@ node --input-type=module --check < /tmp/x.js
 # Cloud Function
 python3 -m py_compile functions/main.py
 
-# 北中南分區邏輯：前端 108 項 + 後端 33 項（含前後端種子對照一致性比對）
+# 北中南分區邏輯：前端 108 項 + 後端 47 項（含前後端種子對照一致性比對）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
