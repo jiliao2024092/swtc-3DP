@@ -56,6 +56,54 @@ service cloud.firestore {
       return isLoggedIn() && request.auth.token.email == 'jiliao@swtc.com';
     }
 
+    // ════════════════════════════════════════════════════════
+    // 北中南分區（決策見 docs/region-split-plan.md §2）
+    //   一般角色：只能讀寫自己所屬地區的資料
+    //   跨區檢視／跨區編輯：由 view_all_regions / edit_all_regions 兩個權限控制
+    //   （在後台「角色權限設定」勾選）；admin 一律視為兩者皆有
+    // ★ 沒有 region 欄位的舊資料一律視為中部，與前端 normRegion() 一致。
+    //   （既有資料已於 2026-08-21 由後台工具補上欄位，這裡的預設值是保險用的）
+    // ★ 這一層是伺服器端硬邊界，不受 settings.region_mode 那個前端開關控制。
+    // ════════════════════════════════════════════════════════
+    function myRegion() {
+      return isLoggedIn() ? userDoc().get('region', 'central') : 'central';
+    }
+    // 跨區權限做成「可勾選的權限」而不是綁死角色，誰能跨區由 admin 在後台
+    // 「角色權限設定」決定（2026-08-21 改）。讀與寫分開，才能表達「只能看不能改」。
+    // ★ 相容既有帳號：這兩個權限是後加的，既有主管的 permissions 還沒有，
+    //   直接改判斷會讓他們立刻失去跨區檢視。所以「兩個權限都還沒出現在該帳號上」
+    //   時退回舊判斷（持有刪除權＝主管）。admin 重新套用一次角色預設之後，
+    //   該帳號就有明確值，以設定為準。與前端 regions.js 的 canViewAllRegions 一致。
+    function isCrossRegionViewer() {
+      return isAdmin()
+        || perms().hasAny(['view_all_regions', 'edit_all_regions'])
+        || (!perms().hasAny(['view_all_regions', 'edit_all_regions'])
+            && perms().hasAny(['delete_board', 'delete_issues']));
+    }
+    // 跨區編輯「不做」舊帳號相容——它是新開放的能力（原本只有 admin 能跨區編輯），
+    // 沒有人會因為改判斷而失去既有權限，所以一律以明確設定為準。
+    function isCrossRegionEditor() {
+      return isAdmin() || perms().hasAny(['edit_all_regions']);
+    }
+    // 讀：跨區者放行；其餘比對文件的 region
+    // ★ isCrossRegionViewer() 不依賴 resource，可短路成 true —— 這讓跨區者的
+    //   「不帶條件查詢」也能通過 Firestore 對 list 的靜態分析（已由測試證實）。
+    function canReadRegion() {
+      return isCrossRegionViewer()
+        || resource.data.get('region', 'central') == myRegion();
+    }
+    // 寫（create/update）：有跨區編輯權者不受限；其餘寫入後的 region 必須是自己那區。
+    // update 另外要求「原本」也是自己那區，否則等於可以把別區的資料搬過來改。
+    function canWriteRegion() {
+      return isCrossRegionEditor()
+        || (request.resource.data.get('region', 'central') == myRegion()
+            && (resource == null || resource.data.get('region', 'central') == myRegion()));
+    }
+    // 刪除：沒有 request.resource，只看既有文件的 region
+    function canDeleteRegion() {
+      return isCrossRegionEditor() || resource.data.get('region', 'central') == myRegion();
+    }
+
     // 主管（有 manage_users 權限）可代其他使用者套用角色/停用帳號，但兩道防線都要過：
     //   1) 目標使用者「原本」不能是 admin（不可異動管理員本人）
     //   2) 寫入後的 permissions「不能」含 admin（不可把別人升級成管理員）
@@ -138,8 +186,9 @@ service cloud.firestore {
       );
     }
     match /bookings/{bookingId} {
-      allow read: if canSeeBookings();
-      allow create, update, delete: if isLegacyEditorOrAdmin();
+      allow read: if canSeeBookings() && canReadRegion();
+      allow create, update: if isLegacyEditorOrAdmin() && canWriteRegion();
+      allow delete:         if isLegacyEditorOrAdmin() && canDeleteRegion();
     }
 
     // 預約刪除稽核：誰、何時、刪了哪一筆（比照 inventory_history 已有的留痕作法）。
@@ -177,25 +226,25 @@ service cloud.firestore {
     }
 
     match /workboard_orders/{orderId} {
-      allow read: if hasPerm('view_board');
-      allow create, update: if hasPerm('edit_board');
-      allow delete: if hasPerm('delete_board');
+      allow read: if hasPerm('view_board') && canReadRegion();
+      allow create, update: if hasPerm('edit_board') && canWriteRegion();
+      allow delete: if hasPerm('delete_board') && canDeleteRegion();
     }
 
     match /issues_anomalies/{id} {
-      allow read: if hasPerm('view_issues');
-      allow create, update: if hasPerm('edit_issues');
-      allow delete: if hasPerm('delete_issues');
+      allow read: if hasPerm('view_issues') && canReadRegion();
+      allow create, update: if hasPerm('edit_issues') && canWriteRegion();
+      allow delete: if hasPerm('delete_issues') && canDeleteRegion();
     }
     match /issues_ipa/{id} {
-      allow read: if hasPerm('view_issues');
-      allow create, update: if hasPerm('edit_issues');
-      allow delete: if hasPerm('delete_issues');
+      allow read: if hasPerm('view_issues') && canReadRegion();
+      allow create, update: if hasPerm('edit_issues') && canWriteRegion();
+      allow delete: if hasPerm('delete_issues') && canDeleteRegion();
     }
     match /issues_equipment/{id} {
-      allow read: if hasPerm('view_issues');
-      allow create, update: if hasPerm('edit_issues');
-      allow delete: if hasPerm('delete_issues');
+      allow read: if hasPerm('view_issues') && canReadRegion();
+      allow create, update: if hasPerm('edit_issues') && canWriteRegion();
+      allow delete: if hasPerm('delete_issues') && canDeleteRegion();
     }
 
     // 樣品清冊：項目本身（新增/編輯/刪除）限 admin；刪除為直接刪除，不做隱藏/停用
