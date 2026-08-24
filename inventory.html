@@ -1736,6 +1736,31 @@ function matName(input) {
     return (inv.matNames && inv.matNames[fam]) || latestName || FAMILY_TO_NAME[fam] || CODE_TO_NAME[input] || input;
 }
 
+// 入庫輸入的材料名稱／代碼，是不是「已知材料」？
+// ★ 不可用「家族碼是否含數字」判斷（原本的寫法）。家族碼是完整 8 碼截斷成 6 碼的結果，
+//   截斷後往往就沒有數字了：FLGPBK05 → FLGPBK。21 個材料家族裡有 12 個會被那條規則
+//   誤判成「未知材料」——Clear / White / Grey / Black V5、High Temp、Elastic 50A、
+//   Fast Model、Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material，
+//   等於一半以上的正式材料每次入庫都會跳「不是內建材料名稱」的警告，
+//   而且警告裡還會建議「您是不是要選：Black V5」——正是使用者剛輸入的那個。
+//   「含數字」那條規則是給「完整 8 碼」用的（避免把 Flexible 誤截成 FLEXIB），
+//   套到截斷後的家族碼就會誤殺。
+// 正確的判斷是「這個輸入到底有沒有解析成已知材料」。
+function isKnownMaterialInput(matInput){
+    if(!matInput) return false;
+    const mat = matCode(matInput);
+    // 1) 輸入的就是已知名稱（含去掉版本後綴後再比對，如 "Flexible 80A V1.1" → "Flexible 80A"）
+    const bare = String(matInput).replace(/\s*V\d+(\.\d+)?$/i, '').trim();
+    if (NAME_TO_CODE_FE[matInput] || NAME_TO_CODE_FE[bare]) return true;
+    // 2) 解析出來的家族碼是已知材料家族
+    if (FAMILY_TO_NAME[mat]) return true;
+    // 3) 直接輸入完整的 Formlabs 代碼（8 碼且含數字，如 FLTO2002）
+    if (/^FL[A-Z0-9]{6}$/i.test(matInput) && /\d/.test(matInput)) return true;
+    // 4) 這一區的庫存裡本來就有（含先前刻意建立的自訂名稱）→ 不必每次都再問一次
+    if (Object.keys(inv.stock || {}).some(k => matCode(k) === mat)) return true;
+    return false;
+}
+
 // ══ 機台代號 → 顯示名稱／產品圖 ══
 // **key 是機型不是機台代號** —— 同機型可能有多台（AdroitSauropod 與 JasperGosling
 // 都是 Form 4L），用代號當 key 會漏掉。機型由 regions.js 的 machineModel() 推導。
@@ -3953,8 +3978,7 @@ async function saveStockIn() {
         // 防呆：輸入無法對應到 Formlabs 家族代碼時（打錯字／自創名稱），會以「自訂名稱」
         // 另開一筆獨立庫存，日後 Formlabs 同步進來的正式代碼不會自動併入 → 庫存被拆成兩份。
         // 這是材料家族正規化最容易踩的坑，先攔一次讓使用者確認。此檢查只對「材料」類型生效。
-        const isKnownFamily = /^FL[A-Z0-9]{4,6}$/i.test(mat) && /\d/.test(mat);
-        if(!isKnownFamily){
+        if(!isKnownMaterialInput(matInput)){
             const near = Object.values(CODE_TO_NAME).filter(n =>
                 n.toLowerCase().includes(matInput.toLowerCase()) ||
                 matInput.toLowerCase().includes(n.toLowerCase().split(' ')[0]));
