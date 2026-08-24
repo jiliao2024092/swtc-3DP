@@ -341,6 +341,13 @@
         </div>
     </div>
 
+    <!-- ══ 庫存地區（北中南）══
+         ★ 擺在標題之下、品牌大分頁之上，因為它的作用範圍是「整頁」：庫存數字、
+           機台卡片、消耗記錄、月度分析全都是這一區的視角，兩個品牌也共用同一個地區。
+           先前塞在機台卡片格線裡，看起來像是只影響那個區塊，而且切到 Markforged
+           分頁時因為 renderAll() 不重繪 MF 面板，按了完全沒反應。 -->
+    <div id="region-bar"></div>
+
     <!-- ══ 品牌大分頁：Formlabs（樹脂 ml）/ Markforged（線材 cc）══
          兩套材料體系的單位、材料識別方式、資料來源都不同，全頁內容依此切換 -->
     <div class="flex items-center gap-3 flex-wrap">
@@ -1132,8 +1139,6 @@ function subscribeRegionInventory(){
     });
 }
 
-// 庫存頁一律只看 activeRegion 一區
-function effectiveRegionScope(){ return [activeRegion]; }
 // 目前檢視的是不是自己那一區（用來提醒「你正在編輯別區的庫存」）
 function viewingOwnRegion(){
     return activeRegion === (window.regionOf ? window.regionOf(currentUser) : 'central');
@@ -1144,27 +1149,71 @@ function regionOfMachine(p){
     const key = (typeof p === 'string') ? p : ((p && (p.alias || p.serial || p.display)) || '');
     return window.machineRegion ? window.machineRegion(key, MACHINE_REGIONS) : 'central';
 }
-// 可跨區者專用的「檢視地區」切換列（回傳 HTML 字串；不可跨區時回空字串）
-function regionViewBarHTML(){
-    if (!window.canViewAllRegions || !window.canViewAllRegions(currentUser)) return '';
-    const btn = (v, label) => {
-        const on = activeRegion === v;
-        return `<button onclick="setInvRegionView('${v}')" class="px-2.5 py-1 rounded-md border transition-colors ${on
-            ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
-            : 'border-[var(--line-strong)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]'}">${label}</button>`;
-    };
+// 頁首的「庫存地區」切換列。可跨區者是三顆可按的按鈕；不可跨區者也要顯示，
+// 只是變成唯讀標籤 —— 現在連消耗記錄／月度分析都依地區過濾，不標出「你正在看哪一區」
+// 的話，別區的紀錄消失會看起來像資料掉了。
+function renderRegionBar(){
+    const el = document.getElementById('region-bar');
+    if (!el) return;
+    if (!currentUser) { el.innerHTML = ''; return; }
+    const canCross = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
+    const body = canCross
+        ? (window.REGIONS||[]).map(r => {
+            const on = activeRegion === r.key;
+            return `<button onclick="setInvRegionView('${r.key}')" class="px-2.5 py-1 rounded-md border transition-colors ${on
+                ? 'border-[var(--accent-border)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold'
+                : 'border-[var(--line-strong)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]'}">${r.label}</button>`;
+          }).join('')
+        : `<span class="px-2.5 py-1 rounded-md border border-[var(--line-strong)] text-[var(--ink-2)] font-semibold">${
+            window.regionLabel(activeRegion)}</span>`;
     // ★ 看別區時給明顯提醒：這一頁的「入庫／調整／安全庫存」都會寫進那一區的帳，
     //   不講清楚很容易在錯的區改到數字，而且事後很難發現。
     const warn = viewingOwnRegion() ? '' :
         `<span class="text-[var(--warn)] font-medium">⚠ 目前檢視／編輯的是${
             window.regionLabel(activeRegion)}的庫存，不是你所屬的地區</span>`;
-    return `<div class="flex items-center gap-2 flex-wrap text-xs mb-3">
-        <span class="text-[var(--ink-5)]">庫存地區</span>${
-        (window.REGIONS||[]).map(r=>btn(r.key,r.label)).join('')}${warn}</div>`;
+    el.innerHTML = `<div class="flex items-center gap-2 flex-wrap text-xs">
+        <span class="text-[var(--ink-5)]">庫存地區</span>${body}${warn}
+        <span class="text-[var(--ink-5)] ml-1">本頁的庫存、機台、消耗記錄與月度分析都只呈現這一區</span>
+    </div>`;
 }
+
+// ── 機台卡片的分區分組（Formlabs 樹脂罐 / Markforged 機台狀態共用）─────────
+// 目前地區那一組展開，其餘各收合成一列可點的標題。
+// ★ 收合的那幾組「點下去＝切到那一區」，不是就地展開。因為樹脂罐餘量存在
+//   inventory/{region}，一次只讀得到一區，一般使用者更是被 firestore.rules 擋著
+//   讀不到別區 —— 就地展開只會畫出一堆空餘量，比不顯示更誤導。
+// ★ 不可跨區者只看得到自己那一組：其他組他按了也切不過去，列出來只是死路。
+function machineRegionGroupsHTML(bodyOf, countOf){
+    const canCross = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
+    return (window.REGIONS||[])
+        .filter(r => canCross || r.key === activeRegion)
+        .map(r => {
+            const n = countOf(r.key);
+            if (r.key !== activeRegion) {
+                return `<button type="button" onclick="setInvRegionView('${r.key}')"
+                    class="col-span-full w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--line)] bg-[var(--bg-soft)] text-sm text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    <span class="font-medium">${r.label}</span>
+                    <span class="text-xs text-[var(--ink-5)]">${n} 台</span>
+                    <span class="ml-auto text-xs">切換至此區 →</span>
+                </button>`;
+            }
+            const body = bodyOf(r.key) || `<div class="text-center text-[var(--ink-5)] text-sm py-6">此地區目前沒有機台</div>`;
+            return `<div class="col-span-full">
+                <div class="flex items-center gap-2 mb-2 text-sm font-semibold text-[var(--ink-2)]">
+                    <i data-lucide="chevron-down" class="w-4 h-4 text-[var(--ink-4)]"></i>${r.label}
+                    <span class="text-xs font-normal text-[var(--ink-5)]">${n} 台</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">${body}</div>
+            </div>`;
+        }).join('');
+}
+
 window.setInvRegionView = function(v){
     if (!window.isRegion(v) || v === activeRegion) return;
     activeRegion = v;
+    renderRegionBar();
+    rebuildInvHistory();          // 消耗記錄／月度分析也跟著換區
     subscribeRegionInventory();   // 換一區＝換一份庫存文件，要重新訂閱
 };
 const DEFAULT_CARTRIDGE_ML = 1000;
@@ -1958,10 +2007,7 @@ function subscribePrinterStatus() {
                 if (key) newPrinterStatus[key] = (p.status || '').toUpperCase();
             });
             printerStatus = newPrinterStatus;
-            renderAll();
-            // renderAll() 不含 Markforged 面板（它由 mfInv 訂閱驅動），
-            // 但機台狀態現在也來自本文件，所以要另外重繪，否則 mf_printers 更新看不到
-            if (currentTab === 'mf') renderMfPanel();
+            renderAll();   // 已含 Markforged 面板（renderAll 會依 currentTab 重繪）
         },
         (err) => console.error('[printer_status] 訂閱失敗:', err)
     );
@@ -2408,97 +2454,90 @@ function setOverviewCols(cols) {
 }
 
 // ══ 機台樹脂罐 ══
+// 分區：三區各一組，目前地區展開、其餘收合（點了就切過去，見 machineRegionGroupsHTML）。
+// 目前納入消耗追蹤的兩台都在中部，所以北/南是空的 —— 那是正確的（他們的機台還沒
+// 納入消耗追蹤，見 HANDOFF 待辦 1），不是資料掉了，故另外給訊息。
 function renderCartridges() {
     const grid=document.getElementById('cartridges-grid');
-    grid.innerHTML='';
-    // 分區過濾：目前納入消耗追蹤的兩台都在中部，所以北/南的人會看到空的 ——
-    // 那是正確的（他們的機台還沒納入消耗追蹤），不是資料掉了，故另外給訊息。
-    const scope = effectiveRegionScope();
-    const shown = TRACKED_PRINTERS.filter(p => !scope || scope.includes(regionOfMachine(p)));
-    const bar = regionViewBarHTML();
-    if (bar) { const d=document.createElement('div'); d.className='col-span-full'; d.innerHTML=bar; grid.appendChild(d); }
-    if (!shown.length) {
-        const d=document.createElement('div');
-        d.className='col-span-full text-center text-[var(--ink-5)] text-sm py-6';
-        d.textContent = scope ? '此地區目前沒有納入消耗追蹤的列印機' : '尚無列印機資料';
-        grid.appendChild(d);
-        lucide.createIcons();
-        return;
-    }
-    shown.forEach(printer=>{
-        const slots=inv.cartridges[printer]||[];
-        // 依列印機狀態決定卡片邊框色與狀態標籤
-        const status = (printerStatus[printer] || '').toUpperCase();
-        if (status && status !== 'IDLE' && status !== 'READY') {
-            console.log(`[printer status] ${printer} = "${status}"`);  // debug：印出實際狀態值
-        }
-        let borderClass, headerBg, badge;
-        // 閒置類：IDLE / READY / ONLINE / FINISHED / DONE / SLEEPING / STANDBY
-        if (['IDLE','READY','ONLINE','FINISHED','DONE','SUCCESS','COMPLETE','SLEEPING','STANDBY','AVAILABLE'].includes(status)) {
-            borderClass = 'border-2 border-[var(--ok-border)]';
-            headerBg = 'bg-[var(--ok-soft)]';
-            badge = '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">閒置</span>';
-        } else if (['PRINTING','IN_PROGRESS','PRE_PRINT','PREPRINT','PRE_HEAT','PREHEAT','WAITING_FOR_RESOLUTION','BUSY','QUEUED','STARTING'].includes(status)) {
-            borderClass = 'border-2 border-[var(--accent-border)]';
-            headerBg = 'bg-[var(--accent-soft)]';
-            badge = '<span class="text-xs bg-[var(--accent-soft)] text-[var(--accent)] px-2 py-0.5 rounded-full font-medium">列印中</span>';
-        } else if (['ERROR','FAILED','ABORTED','ABORTING','FAULT'].includes(status)) {
-            borderClass = 'border-2 border-[var(--danger-border)]';
-            headerBg = 'bg-[var(--danger-soft)]';
-            badge = `<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium">異常 ${status}</span>`;
-        } else if (['OFFLINE','DISCONNECTED','UNREACHABLE'].includes(status)) {
-            borderClass = 'border-2 border-[var(--line-strong)]';
-            headerBg = 'bg-[var(--bg-soft)]';
-            badge = '<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">離線</span>';
-        } else if (!status) {
-            // 完全沒有狀態值 → 視為閒置（多數情況機器是好的，只是 API 沒回 status）
-            borderClass = 'border-2 border-[var(--ok-border)]';
-            headerBg = 'bg-[var(--ok-soft)]';
-            badge = '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">閒置</span>';
-        } else {
-            // 有值但無法分類 → 顯示原始狀態（方便辨識，不再籠統「未知」）
-            borderClass = 'border-2 border-[var(--line-strong)]';
-            headerBg = 'bg-[var(--bg-soft)]';
-            badge = `<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">${status}</span>`;
-        }
-        const card=document.createElement('div');
-        card.className=`${borderClass} rounded-xl overflow-hidden`;
-        const slotsHTML=slots.length?slots.map(s=>{
-            const noCapacity = s.remaining_ml == null;
-            const pct=(!noCapacity && s.initial_ml>0)?Math.round(s.remaining_ml/s.initial_ml*100):null;
-            const low=!noCapacity && s.remaining_ml<200;
-            return `
-            <div class="p-4 border-t border-[var(--line-soft)]">
-                <div class="flex justify-between items-center mb-2">
-                    <div>
-                        <span class="text-xs font-medium text-[var(--ink-4)]">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
-                        <p class="font-semibold text-[var(--ink)] text-sm">${matName(s.material)||'—'}</p>
-                    </div>
-                    <div class="text-right">
-                        ${noCapacity
-                            ? '<p class="text-xs text-[var(--warn)] font-medium">容量待補登</p>'
-                            : `<p class="text-sm font-bold ${low?'text-[var(--danger)]':'text-[var(--ink-2)]'}">${((s.remaining_ml||0)/1000).toFixed(2)} L</p>${pct!=null?`<p class="text-xs text-[var(--ink-5)]">${pct}%</p>`:''}`}
-                    </div>
-                </div>
-                ${pct!=null?`<div class="progress-bar h-2"><div class="progress-fill ${pct<20?'bg-red-400':pct<40?'bg-yellow-400':'bg-teal-500'}" style="width:${pct}%"></div></div>`:''}
-            </div>`;
-        }).join('') : '<div class="p-4 border-t border-[var(--line-soft)] text-center text-[var(--ink-5)] text-sm">尚無樹脂罐資料<br><span class="text-xs">系統會在 API 同步後自動帶入，或點上方按鈕手動補登</span></div>';
-        const machineImg = getMachineImage(printer);
-        card.innerHTML=`
-            <div class="${headerBg} px-4 py-3 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    ${machineImg?`<img src="${machineImg}" alt="${printerDisplay(printer)}" loading="lazy" class="w-10 h-10 object-contain flex-shrink-0 rounded-md bg-[var(--bg)]/60">`:'<i data-lucide="printer" class="w-4 h-4 text-[var(--accent2)]"></i>'}
-                    <span class="font-semibold text-[var(--ink)]">${printerDisplay(printer)}</span>
-                    <span class="text-xs text-[var(--ink-5)]">(${printer})</span>
-                    ${badge}
-                </div>
-                <span class="text-xs text-[var(--ink-5)]">${slots.length} 個樹脂罐</span>
-            </div>
-            ${slotsHTML}
-        `;
-        grid.appendChild(card);
-    });
+    if(!grid) return;
+    const inRegion = key => TRACKED_PRINTERS.filter(p => regionOfMachine(p) === key);
+    grid.innerHTML = machineRegionGroupsHTML(
+        key => inRegion(key).map(cartridgeCardHTML).join('')
+            || '<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-6">此地區目前沒有納入消耗追蹤的列印機</div>',
+        key => inRegion(key).length
+    );
     lucide.createIcons();
+}
+
+function cartridgeCardHTML(printer) {
+    const slots=inv.cartridges[printer]||[];
+    // 依列印機狀態決定卡片邊框色與狀態標籤
+    const status = (printerStatus[printer] || '').toUpperCase();
+    if (status && status !== 'IDLE' && status !== 'READY') {
+        console.log(`[printer status] ${printer} = "${status}"`);  // debug：印出實際狀態值
+    }
+    let borderClass, headerBg, badge;
+    // 閒置類：IDLE / READY / ONLINE / FINISHED / DONE / SLEEPING / STANDBY
+    if (['IDLE','READY','ONLINE','FINISHED','DONE','SUCCESS','COMPLETE','SLEEPING','STANDBY','AVAILABLE'].includes(status)) {
+        borderClass = 'border-2 border-[var(--ok-border)]';
+        headerBg = 'bg-[var(--ok-soft)]';
+        badge = '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">閒置</span>';
+    } else if (['PRINTING','IN_PROGRESS','PRE_PRINT','PREPRINT','PRE_HEAT','PREHEAT','WAITING_FOR_RESOLUTION','BUSY','QUEUED','STARTING'].includes(status)) {
+        borderClass = 'border-2 border-[var(--accent-border)]';
+        headerBg = 'bg-[var(--accent-soft)]';
+        badge = '<span class="text-xs bg-[var(--accent-soft)] text-[var(--accent)] px-2 py-0.5 rounded-full font-medium">列印中</span>';
+    } else if (['ERROR','FAILED','ABORTED','ABORTING','FAULT'].includes(status)) {
+        borderClass = 'border-2 border-[var(--danger-border)]';
+        headerBg = 'bg-[var(--danger-soft)]';
+        badge = `<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full font-medium">異常 ${status}</span>`;
+    } else if (['OFFLINE','DISCONNECTED','UNREACHABLE'].includes(status)) {
+        borderClass = 'border-2 border-[var(--line-strong)]';
+        headerBg = 'bg-[var(--bg-soft)]';
+        badge = '<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">離線</span>';
+    } else if (!status) {
+        // 完全沒有狀態值 → 視為閒置（多數情況機器是好的，只是 API 沒回 status）
+        borderClass = 'border-2 border-[var(--ok-border)]';
+        headerBg = 'bg-[var(--ok-soft)]';
+        badge = '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full font-medium">閒置</span>';
+    } else {
+        // 有值但無法分類 → 顯示原始狀態（方便辨識，不再籠統「未知」）
+        borderClass = 'border-2 border-[var(--line-strong)]';
+        headerBg = 'bg-[var(--bg-soft)]';
+        badge = `<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-4)] px-2 py-0.5 rounded-full font-medium">${status}</span>`;
+    }
+    const slotsHTML=slots.length?slots.map(s=>{
+        const noCapacity = s.remaining_ml == null;
+        const pct=(!noCapacity && s.initial_ml>0)?Math.round(s.remaining_ml/s.initial_ml*100):null;
+        const low=!noCapacity && s.remaining_ml<200;
+        return `
+        <div class="p-4 border-t border-[var(--line-soft)]">
+            <div class="flex justify-between items-center mb-2">
+                <div>
+                    <span class="text-xs font-medium text-[var(--ink-4)]">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
+                    <p class="font-semibold text-[var(--ink)] text-sm">${matName(s.material)||'—'}</p>
+                </div>
+                <div class="text-right">
+                    ${noCapacity
+                        ? '<p class="text-xs text-[var(--warn)] font-medium">容量待補登</p>'
+                        : `<p class="text-sm font-bold ${low?'text-[var(--danger)]':'text-[var(--ink-2)]'}">${((s.remaining_ml||0)/1000).toFixed(2)} L</p>${pct!=null?`<p class="text-xs text-[var(--ink-5)]">${pct}%</p>`:''}`}
+                </div>
+            </div>
+            ${pct!=null?`<div class="progress-bar h-2"><div class="progress-fill ${pct<20?'bg-red-400':pct<40?'bg-yellow-400':'bg-teal-500'}" style="width:${pct}%"></div></div>`:''}
+        </div>`;
+    }).join('') : '<div class="p-4 border-t border-[var(--line-soft)] text-center text-[var(--ink-5)] text-sm">尚無樹脂罐資料<br><span class="text-xs">系統會在 API 同步後自動帶入，或點上方按鈕手動補登</span></div>';
+    const machineImg = getMachineImage(printer);
+    return `<div class="${borderClass} rounded-xl overflow-hidden">
+        <div class="${headerBg} px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                ${machineImg?`<img src="${machineImg}" alt="${printerDisplay(printer)}" loading="lazy" class="w-10 h-10 object-contain flex-shrink-0 rounded-md bg-[var(--bg)]/60">`:'<i data-lucide="printer" class="w-4 h-4 text-[var(--accent2)]"></i>'}
+                <span class="font-semibold text-[var(--ink)]">${printerDisplay(printer)}</span>
+                <span class="text-xs text-[var(--ink-5)]">(${printer})</span>
+                ${badge}
+            </div>
+            <span class="text-xs text-[var(--ink-5)]">${slots.length} 個樹脂罐</span>
+        </div>
+        ${slotsHTML}
+    </div>`;
 }
 
 // ══ 樹脂罐編輯 Modal ══
@@ -3050,8 +3089,7 @@ function renderMfLoaded() {
     const grid = document.getElementById('mf-loaded-grid');
     if (!grid) return;
     // 有同步資料時以 mf_printers 為準；還沒同步過才顯示佔位卡片
-    const scope = effectiveRegionScope();
-    const machines = (mfPrinters.length
+    const allMachines = mfPrinters.length
         ? mfPrinters.map(p => ({
             key:     p.display || p.name,
             display: p.display || p.name,
@@ -3062,12 +3100,10 @@ function renderMfLoaded() {
             region:  regionOfMachine(p),
           }))
         : MF_MACHINES.map(m => ({ ...m, slots: [], state: null, online: false, synced: false,
-                                  region: regionOfMachine(m.key || m.display) }))
-      ).filter(m => !scope || scope.includes(m.region));
+                                  region: regionOfMachine(m.key || m.display) }));
+    const inRegion = key => allMachines.filter(m => m.region === key);
 
-    // 地區標籤直接掛在卡片上：這個 grid 是單層排版（沒有像預約頁那樣的分組區塊），
-    // 七台機台散在一起時，不標地區看不出哪台在哪裡。
-    const cards = machines.map(({ key, display, slots, state, online, synced, region }) => {
+    const cardHTML = ({ key, display, slots, state, online, synced, region }) => {
         // 三種狀態要分清楚，否則會把「機台離線」誤顯示成「還沒接 API」：
         //  未同步 → 尚未連接 API／已同步但離線 → 離線（Eiger 在離線時根本不回材料欄位）
         //  ／已同步且上線 → 已連接
@@ -3113,13 +3149,14 @@ function renderMfLoaded() {
             </div>
             <div class="p-4">${rows}</div>
         </div>`;
-    }).join('');
-    const emptyRegion = !machines.length
-        ? `<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-6">${
-            scope ? '此地區目前沒有 Markforged 機台' : '尚無機台資料'}</div>`
-        : '';
-    const bar = regionViewBarHTML();
-    grid.innerHTML = (bar ? `<div class="col-span-full">${bar}</div>` : '') + cards + emptyRegion;
+    };
+
+    // 三區分組：目前地區展開、其餘收合成一列（點了就切過去），與 Formlabs 樹脂罐同一套
+    grid.innerHTML = machineRegionGroupsHTML(
+        key => inRegion(key).map(cardHTML).join('')
+            || '<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-6">此地區目前沒有 Markforged 機台</div>',
+        key => inRegion(key).length
+    );
     lucide.createIcons();
 }
 
@@ -4176,11 +4213,23 @@ function updateHistoryRangeLabel() {
 }
 
 // 合併 onSnapshot 即時資料 + 手動載入的 extraHistory（去重 by id）
+// 消耗紀錄的所屬區：Cloud Function 寫入時就依機台蓋了 region（見 main.py），
+// 舊紀錄沒有這個欄位 → 退回用 printer 名稱推導，推不出來才算中區（與全站預設一致）。
+function regionOfHistory(h) {
+    if (h && window.isRegion && window.isRegion(h.region)) return h.region;
+    return regionOfMachine((h && h.printer) || '');
+}
+
 function rebuildInvHistory() {
     const map = new Map();
     historyFromSubscription.forEach(h => map.set(h.id, h));
     extraHistory.forEach(h => { if (!map.has(h.id)) map.set(h.id, h); });
-    const all = [...map.values()].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+    // ★ 消耗紀錄同樣只留目前這一區：inventory_history 是全域 collection，不過濾的話
+    //   「消耗記錄／月度分析」會把三區混在一起，與同一頁上「一次只看一區」的庫存數字
+    //   互相矛盾（庫存是中部的、消耗卻含北南，對不起來也查不出原因）。
+    const all = [...map.values()]
+        .filter(h => regionOfHistory(h) === activeRegion)
+        .sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
     // ★ 依品牌拆成兩份：Formlabs 是 ml/樹脂家族代碼，Markforged 是 cc/材料名稱，
     //   單位與材料體系都不同，混在一起統計會算出無意義的數字。
     //   inv.history 維持「只含 Formlabs」，既有的庫存/月度/總覽邏輯因此完全不必改動。
@@ -4967,6 +5016,7 @@ function exportInventoryExcel() {
 
 // ══ 統一渲染 ══
 function renderAll() {
+    renderRegionBar();
     renderAlerts();
     renderShortfallBanner();
     renderOverview();
@@ -4975,6 +5025,11 @@ function renderAll() {
     renderConsumablesTable();
     if(currentTab==='history') renderHistory();
     if(currentTab==='monthly') renderMonthly();
+    // ★ Markforged 面板也要重繪。原本 renderAll() 只管 Formlabs，導致在 Markforged
+    //   分頁按「庫存地區」切換時資料換了、畫面卻不動 —— 看起來就是「點了沒反應」。
+    if(currentTab==='mf')          renderMfPanel();
+    if(currentTab==='mf-history')  renderMfHistory();
+    if(currentTab==='mf-monthly')  renderMfMonthly();
     // 更新「已停用材料」按鈕計數
     const cnt = document.getElementById('disabled-count');
     if (cnt) cnt.textContent = getAllDisabledMaterials().length;

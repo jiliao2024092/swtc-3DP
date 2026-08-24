@@ -26,6 +26,7 @@ const {
   REGIONS, DEFAULT_REGION, isRegion, normRegion, regionLabel,
   regionOf, hasExplicitRegion, machineRegion, tracksConsumption,
   regionRoleTier, regionActiveFor, canViewAllRegions, canEditInRegion,
+  defaultRegionFilter,
 } = win;
 
 // ── 區碼 ──────────────────────────────────────────────────────────
@@ -215,6 +216,24 @@ eq(canEditInRegion({ permissions: ['edit_board'], region: 'north' }, 'central'),
    '工程師不可編輯其他區');
 eq(canEditInRegion({ permissions: ['edit_board'] }, 'central'), true,
    '沒設區的舊帳號視為中區，可編輯中區');
+
+// ── 地區濾器預設值 ────────────────────────────────────────────────
+// 工作看板／異常與資源／後台使用者管理三個濾器共用這支。回錯的後果是靜默的：
+// 使用者以為看到全部、其實只看到一區（或反之），不會有任何錯誤訊息。
+eq(defaultRegionFilter({ permissions: ['admin'], region: 'south' }), 'south',
+   '★ admin 也預設帶自己那一區，不是「所有地區」');
+eq(defaultRegionFilter({ permissions: ['view_all_regions'], region: 'north' }), 'north',
+   '★ 可跨區者預設帶自己那一區');
+eq(defaultRegionFilter({ permissions: ['edit_board'], region: 'north' }), 'north',
+   '不可跨區者同樣回自己那區（濾器不顯示，但值要一致）');
+eq(defaultRegionFilter({ permissions: ['edit_board'] }), 'central',
+   '沒設地區的舊帳號 → 中區（與 regionOf 一致）');
+eq(defaultRegionFilter({ permissions: ['admin'], region: '亂填' }), 'central',
+   '地區欄位亂填 → 中區，不可原樣回傳（會濾成空清單）');
+eq(defaultRegionFilter(null), '',
+   '★ 還沒登入 → 空字串。不可回 central，否則濾器會在使用者資料到齊前鎖死在中區');
+eq(defaultRegionFilter(undefined), '',
+   '★ 同上：undefined 也要回空字串');
 
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

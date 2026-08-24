@@ -235,6 +235,15 @@
     return false;
   }
 
+  // 地區濾器（工作看板／異常與資源／後台使用者管理）的預設值。
+  // ★ 預設帶「登入者自己那一區」而不是「所有地區」：可跨區者本身也隸屬某一區，
+  //   開頁時最常要看的是自己這一區，要看三區再自己切成「所有地區」即可。
+  //   （不可跨區者根本看不到這個濾器，資料在查詢層就只有他那一區。）
+  //   拿不到使用者時回空字串＝不預設，避免在還沒登入時就把濾器鎖在中區。
+  function defaultRegionFilter(user) {
+    return user ? regionOf(user) : '';
+  }
+
   // 跨區編輯。★ 這個「不做」舊帳號相容 —— 它是新開放的能力（原本只有 admin 能跨區
   //   編輯），沒有人會因為改判斷而失去既有權限，所以一律以明確設定為準。
   function canEditInRegion(user, targetRegion) {
@@ -264,4 +273,5 @@
   window.filterRowsByRegion = filterRowsByRegion;
   window.canViewAllRegions  = canViewAllRegions;
   window.canEditInRegion    = canEditInRegion;
+  window.defaultRegionFilter = defaultRegionFilter;
 })();

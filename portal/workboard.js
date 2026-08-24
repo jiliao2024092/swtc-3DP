@@ -482,7 +482,16 @@
     const [fStatus,  setFStatus]  = useState('');
     const [fResin,   setFResin]   = useState('');
     const [fCategory,setFCategory]= useState('');
-    const [fRegion,  setFRegion]  = useState('');   // 地區濾器（只有可跨區者用得到）
+    // 地區濾器（只有可跨區者用得到）。★ 預設帶登入者自己那一區，不是「所有地區」
+    // （見 regions.js 的 defaultRegionFilter）。user 首次 render 可能還沒到，故用
+    // effect 補一次；補過就不再動，之後以使用者自己選的為準。
+    const [fRegion,  setFRegion]  = useState(() => window.defaultRegionFilter ? window.defaultRegionFilter(user) : '');
+    const fRegionReady = React.useRef(!!user);
+    useEffect(() => {
+      if (fRegionReady.current || !user) return;
+      fRegionReady.current = true;
+      setFRegion(window.defaultRegionFilter ? window.defaultRegionFilter(user) : '');
+    }, [user]);
     const [sortKey,  setSortKey]  = useState('score');   // 預設依分數排序（交期越近＋類型加權，分數越低越前）
     const [sortDir,  setSortDir]  = useState('asc');
     const [page,     setPage]     = useState(1);

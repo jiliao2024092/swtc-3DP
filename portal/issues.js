@@ -957,7 +957,16 @@
     const [search4,   setSearch4]   = useState('');   // 樣品搜尋
     // 地區濾器（三個分頁共用一個值）。一般角色只會拿到自己那區的資料，濾器對他們
     // 沒有意義，所以只在可跨區時顯示。
-    const [regionF,   setRegionF]   = useState('');
+    // ★ 預設帶登入者自己那一區（見 regions.js 的 defaultRegionFilter）。user 是 prop，
+    //   首次 render 時可能還是 null，所以另外用 effect 補一次 —— 但只補一次，補過之後
+    //   使用者自己選的值最大（否則他切成「所有地區」會被下一次 render 蓋回去）。
+    const [regionF,   setRegionF]   = useState(() => window.defaultRegionFilter ? window.defaultRegionFilter(user) : '');
+    const regionFReady = React.useRef(!!user);
+    useEffect(() => {
+      if (regionFReady.current || !user) return;
+      regionFReady.current = true;
+      setRegionF(window.defaultRegionFilter ? window.defaultRegionFilter(user) : '');
+    }, [user]);
     const [loanSample, setLoanSample] = useState(null);// 開啟出借 modal 的樣品
     const [ganttPrefill, setGanttPrefill] = useState(null); // 甘特圖雙擊帶入的 { loanDate }
     const [sampleView, setSampleView] = useState('list'); // 樣品分頁檢視：list 清冊 / gantt 甘特圖 / ledger 出借總表 / stats 借出統計
