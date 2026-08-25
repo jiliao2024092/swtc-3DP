@@ -53,6 +53,7 @@ const USERS = {
   // 分區測試用：工程師綁北部、主管綁北部（主管可跨區「看」但只能編輯自己那區）
   engN:       { uid: 'u_engN', email: 'engn@swtc.com', permissions: ['edit_board','view_board','view_issues','edit_issues'], region: 'north' },
   engC:       { uid: 'u_engC', email: 'engc@swtc.com', permissions: ['edit_board','view_board','view_issues','edit_issues'], region: 'central' },
+  engS:       { uid: 'u_engS', email: 'engs@swtc.com', permissions: ['edit_board','view_board','view_issues','edit_issues'], region: 'south' },
   // 舊主管：只有刪除權、沒有新的跨區權限 → 靠相容判斷保留「跨區檢視」，但不可跨區編輯
   mgrN:       { uid: 'u_mgrN', email: 'mgrn@swtc.com', permissions: ['edit_board','view_board','delete_board','view_issues','edit_issues','delete_issues'], region: 'north' },
   // 新主管：明確授予兩個跨區權限 → 可跨區檢視「與編輯」
@@ -331,6 +332,46 @@ async function main() {
     as(USERS.mgrFull).doc('inventory/markforged_south').set({ stock: {} }, { merge: true }));
   await ok('markforged_watch（觀測基準）不是分區文件，維持全域可讀',
     as(USERS.engN).doc('inventory/markforged_watch').get());
+
+  // ══ list 查詢（前端真正發出的那一種）══════════════════════════════
+  // ★★ 這一整段補的是測試的大洞：上面所有分區測試都是「單一文件 .get()」，
+  //    而 Firestore 對 get 與 list 的判定方式**不一樣**——list 會逐份評估
+  //    查詢結果，任何一份不通過就整個查詢被拒（回 permission-denied），
+  //    前端的 onSnapshot 錯誤處理只 console.error 然後 cb([])，
+  //    畫面上就是「什麼都沒有」而沒有任何錯誤提示。
+  //    使用者回報「南部角色看不到工作看板、admin 切到南部卻看得到」就是這一類。
+  //    這裡完整重現前端的查詢形狀（含 limitToLast），不是只測規則片段。
+  const LIMIT = 100;
+  await ok('★★ 南部工程師可 list 自己那區的工單（前端真正發的查詢）',
+    as(USERS.engS).collection('workboard_orders')
+      .where('region', '==', 'south').orderBy('seq').limitToLast(LIMIT).get());
+  await ok('★★ 北部工程師可 list 自己那區的工單',
+    as(USERS.engN).collection('workboard_orders')
+      .where('region', '==', 'north').orderBy('seq').limitToLast(LIMIT).get());
+  await nok('★ 南部工程師不可 list 北部的工單（帶了別區的條件）',
+    as(USERS.engS).collection('workboard_orders')
+      .where('region', '==', 'north').orderBy('seq').limitToLast(LIMIT).get());
+  await nok('★★ 單一地區者不可發「不帶 region 條件」的 list（規則無法證明安全）',
+    as(USERS.engS).collection('workboard_orders').orderBy('seq').limitToLast(LIMIT).get());
+  await ok('★★ 跨區者（admin）可發不帶條件的 list —— 這是他看得到南部的原因',
+    as(USERS.admin).collection('workboard_orders').orderBy('seq').limitToLast(LIMIT).get());
+  await ok('跨區主管同樣可發不帶條件的 list',
+    as(USERS.mgrN).collection('workboard_orders').orderBy('seq').limitToLast(LIMIT).get());
+
+  // 其他分頁用同一套服務層（makeCollectionService），所以要一起驗，
+  // 不能只修工作看板就以為問題解決了
+  for (const coll of ['issues_anomalies', 'issues_ipa', 'issues_equipment']) {
+    await ok(`★★ 南部工程師可 list 自己那區的 ${coll}`,
+      as(USERS.engS).collection(coll)
+        .where('region', '==', 'south').orderBy('seq').limitToLast(LIMIT).get());
+    await nok(`★ 單一地區者不可發不帶條件的 ${coll} list`,
+      as(USERS.engS).collection(coll).orderBy('seq').limitToLast(LIMIT).get());
+  }
+
+  // 預約走自己的訂閱（3DP-BK.html），查詢形狀不同（orderBy date、無 limit）
+  await ok('★★ 南部使用者可 list 自己那區的預約（3DP-BK 的查詢形狀）',
+    as(USERS.engS).collection('bookings')
+      .where('region', '==', 'south').orderBy('date').get());
 
   await testEnv.cleanup();
 

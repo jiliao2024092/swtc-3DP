@@ -1027,15 +1027,19 @@
     const [moreA, setMoreA] = useState(false);
     const [moreI, setMoreI] = useState(false);
     const [moreE, setMoreE] = useState(false);
+    const [loadErr, setLoadErr] = useState('');   // 讀取失敗訊息（見下方 onSnapshot）
 
     useEffect(() => {
       let n=0;
       const chk = () => { if(++n>=3) setLoading(false); };
       // 帶 user → 單一區的使用者在查詢就加 where('region','==')，過濾推到伺服器端。
       // ★ 相依「不含」regionMode：查詢範圍刻意不看開關（見 regions.js 的 regionQueryScopeOf）
-      const u1 = FBAnomalies.onSnapshot((r,m)=>{ setAnomalies(r); setMoreA(!!(m&&m.hasMore)); chk(); }, user, limA);
-      const u2 = FBIPA.onSnapshot(      (r,m)=>{ setIpa(r);       setMoreI(!!(m&&m.hasMore)); chk(); }, user, limI);
-      const u3 = FBEquipment.onSnapshot((r,m)=>{ setEquipment(r); setMoreE(!!(m&&m.hasMore)); chk(); }, user, limE);
+      // ★ 查詢失敗要講出來。空陣列與「這一區真的沒資料」在畫面上長得一樣
+      //   （2026-08-25 實際事故：缺索引害單一地區使用者整頁空白且無提示）。
+      const errOf = m => (m && m.error) ? (m.hint || m.message) : '';
+      const u1 = FBAnomalies.onSnapshot((r,m)=>{ setAnomalies(r); setMoreA(!!(m&&m.hasMore)); setLoadErr(errOf(m)); chk(); }, user, limA);
+      const u2 = FBIPA.onSnapshot(      (r,m)=>{ setIpa(r);       setMoreI(!!(m&&m.hasMore)); setLoadErr(e=>e||errOf(m)); chk(); }, user, limI);
+      const u3 = FBEquipment.onSnapshot((r,m)=>{ setEquipment(r); setMoreE(!!(m&&m.hasMore)); setLoadErr(e=>e||errOf(m)); chk(); }, user, limE);
       // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
       // 所以刻意不過濾。筆數也遠少於其他三個 collection，不設上限。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
@@ -1340,6 +1344,16 @@
 
     return (
       <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
+
+        {/* 讀取失敗要明講，不可以讓它跟「這一區沒資料」長得一樣 */}
+        {loadErr && (
+          <div style={{margin:'8px 12px', padding:'10px 12px', borderRadius:8,
+                       border:'1px solid var(--danger)', background:'var(--danger-soft)',
+                       color:'var(--danger)', fontSize:13, lineHeight:1.6}}>
+            <b>資料載入失敗</b>（不是「沒有資料」）<br/>
+            <span style={{color:'var(--ink-2)'}}>{loadErr}</span>
+          </div>
+        )}
 
         {/* Shell top — tab 列，跟工作看板一樣 */}
         <div className="shell-top">

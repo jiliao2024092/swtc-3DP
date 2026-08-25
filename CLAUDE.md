@@ -37,6 +37,9 @@ portal.html 是 React 外殼（React18 + Babel CDN + Firebase compat SDK），�
 - **改 portal 本地 js（issues.js/workboard.js/firebase-*.js）後，務必升 portal.html 對應那支 `.js` 的 `?v=` cache 版本號**（每支各自獨立編號，只升有改動的那支；版本號會持續往上升，實際數值請直接看 `portal/portal.html` 內對應 `<script src="...?v=...">`，不要照抄這裡的舊範例）。只改 portal.html 自身（CSS/元件）不需升號
 - Cloud Function：`git push`（functions/ 變動觸發），或 `firebase deploy --only functions --project swtc-3dp-poc`
 - **有使用者看得到的改動時，要更新 `portal/portal.html` 的 `CHANGELOG` 陣列**（標題欄右下角 `?` 圓鈕的「版本更新說明」）。新的放最前面、維持 10 筆，`hash` 填該次的 commit short hash。這是純手動維護，沒人補就會停住（實際踩過：停在 2026-08-03 整整兩週，使用者回報「版本更新說明沒顯示」）。用**使用者看得懂的話**寫，不要貼 commit title
+- ⚠ **改查詢形狀就要檢查複合索引**：`limitToLast(n)` 配 `orderBy(x,'asc')` 時，Firestore 是「反向掃描取前 N 筆再反轉」，真正需要的是 **`x DESCENDING`** 的複合索引，**不是**沿用既有的 ASC 那組。2026-08-25 實際事故：加了 `limitToLast` 沒補索引，單一地區的使用者每次查詢都 `failed-precondition`，工作看板／異常整頁空白且**毫無提示**；admin 不帶 `where` 不需要複合索引，所以他看得到——「一般人看不到、admin 看得到」這個落差就是缺索引的招牌症狀
+- ⚠ **查詢失敗不可以只回空陣列**：空陣列與「這一區真的沒資料」在畫面上完全一樣。`firebase-service.js` 的 onSnapshot 錯誤處理會把 `error/code/hint` 一起回給呼叫端，工作看板與異常頁要顯示「資料載入失敗（不是沒有資料）」
+- ⚠ **規則測試要測 `list` 不能只測 `get`**：Firestore 對兩者的判定不同，分區的坑幾乎都出在 list（`tools/rules-test` 已補 13 項真實查詢形狀的測試）
 - `firestore.rules`：`git push` 即自動部署；**新增權限保護某個 collection/doc 時，務必檢查有沒有更泛用的萬用字元規則（如 `match /settings/{docId}`）會先蓋過具體路徑規則**——Firestore rules 是「最具體路徑優先」，不是疊加 OR，泛用規則若寫在前面且路徑更廣，會讓新權限完全不生效（實際踩過：`manage_quote_pricing`、`inventory_history` 主管刪除權限，都要在泛用規則之前另外寫具體路徑）
 
 ## 驗證指令（改完必跑；於 repo 根目錄執行）
@@ -64,7 +67,7 @@ python3 tools/test_regions_py.py
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# firestore.rules 安全規則：85 項（跑本機 Firestore 模擬器，不連任何真實專案）
+# firestore.rules 安全規則：98 項（跑本機 Firestore 模擬器，不連任何真實專案；含 list 查詢）
 cd tools/rules-test && npm test
 ```
 ⚠ 規則測試需要 **JDK 21+**（firebase-tools 已不支援更舊版本）。本機的 JDK 在

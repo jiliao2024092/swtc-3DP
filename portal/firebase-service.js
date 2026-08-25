@@ -160,8 +160,24 @@
             cb(rows, { hasMore: !!limitN && rows.length >= limitN });
           },
           err => {
+            // ★★ 查詢失敗不可以只回空陣列 ★★
+            //   空陣列在畫面上與「這一區真的沒有資料」完全一樣，使用者無從分辨。
+            //   2026-08-25 實際事故：加了 limitToLast 卻沒補反向複合索引，
+            //   單一地區的使用者每次查詢都 failed-precondition，工作看板一片空白
+            //   而沒有任何提示；admin 不帶 where 不需要索引，所以他看得到 ——
+            //   最後是靠翻程式碼才找到，不是靠畫面。
+            //   把錯誤往上傳，讓呼叫端可以顯示「載入失敗」而不是假裝沒資料。
             console.error(`[${collName}] onSnapshot 失敗:`, err);
-            cb([], { hasMore: false });
+            const code = (err && err.code) || '';
+            let hint = '';
+            if (code === 'failed-precondition') {
+              // 缺索引的訊息裡通常帶著「點這裡建立索引」的連結，要原樣留給 admin
+              hint = '缺少 Firestore 複合索引。請把主控台(F12)的完整錯誤訊息給管理員。';
+            } else if (code === 'permission-denied') {
+              hint = '沒有讀取權限，或查詢條件與安全規則不符。';
+            }
+            cb([], { hasMore: false, error: err, code, hint,
+                     message: (err && err.message) || String(err) });
           }
         );
       },

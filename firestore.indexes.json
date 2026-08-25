@@ -49,6 +49,40 @@
         {"fieldPath": "region", "order": "ASCENDING"},
         {"fieldPath": "seq", "order": "ASCENDING"}
       ]
+    },
+
+    {
+      "_comment": "★ limitToLast 用的反向索引。前端對三個 collection 發的是 where('region','==') + orderBy('seq','asc') + limitToLast(100)，而 Firestore 實作 limitToLast 的方式是『把排序反過來掃、取前 N 筆、再把結果反轉』，所以真正需要的是 seq DESCENDING 的複合索引。2026-08-25 實際事故：加了 limitToLast 卻沒補這組索引，單一地區的使用者查詢直接失敗（failed-precondition），而前端的 onSnapshot 錯誤處理只 console.error 然後回空陣列 —— 畫面上就是『工作看板一片空白』且沒有任何錯誤提示。跨區者（admin）的查詢不帶 where、不需要複合索引，所以他看得到 —— 這個落差正是症狀的來源。⚠ 當初 commit 註解寫『limitToLast 走同一個既有索引，不需要新建』，那句話沒有被驗證過。",
+      "collectionGroup": "workboard_orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_anomalies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_ipa",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_equipment",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

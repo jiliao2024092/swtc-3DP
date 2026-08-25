@@ -332,6 +332,7 @@
     // 只訂閱最新的 N 筆（省 Firestore 讀取額度）。按「載入更多」才把窗口拉大並重新訂閱。
     const [rowLimit, setRowLimit] = useState(ROW_PAGE);
     const [hasMore,  setHasMore]  = useState(false);
+    const [loadErr,  setLoadErr]  = useState('');   // 讀取失敗訊息（見下方 onSnapshot）
 
     useEffect(() => {
       // 帶 user 進去 → 單一區的使用者會在查詢就加 where('region','==')，過濾推到伺服器端。
@@ -340,6 +341,9 @@
       //   user 變動（含地區被改）仍會重新訂閱。
       const unsub = FBOrders.onSnapshot((rows, meta) => {
         setAllData(rows); setHasMore(!!(meta && meta.hasMore)); setLoading(false);
+        // ★ 查詢失敗要講出來。空陣列與「這一區真的沒資料」在畫面上長得一樣，
+        //   使用者只會覺得「看不到資料」而不知道是壞掉（2026-08-25 實際事故）。
+        setLoadErr(meta && meta.error ? (meta.hint || meta.message) : '');
       }, user, rowLimit);
       return () => unsub();
     }, [user, rowLimit]);
@@ -440,6 +444,16 @@
         </div>
 
         <div className="shell-body" style={{flex:1, minHeight:0}}>
+          {/* 讀取失敗要明講。空白畫面與「這一區沒資料」分辨不出來，
+              使用者只會回報「看不到資料」，查起來要繞一大圈。 */}
+          {loadErr && (
+            <div style={{margin:'8px 12px', padding:'10px 12px', borderRadius:8,
+                         border:'1px solid var(--danger)', background:'var(--danger-soft)',
+                         color:'var(--danger)', fontSize:13, lineHeight:1.6}}>
+              <b>資料載入失敗</b>（不是「沒有資料」）<br/>
+              <span style={{color:'var(--ink-2)'}}>{loadErr}</span>
+            </div>
+          )}
           {tab==='table' && (
             <WorkTable
               data={data}
