@@ -57,9 +57,12 @@ python3 -m py_compile functions/main.py
 # 入庫的「已知材料」判斷：84 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
-# 北中南分區邏輯：前端 108 項 + 後端 47 項（含前後端種子對照一致性比對）
+# 北中南分區邏輯：前端 115 項 + 後端 47 項（含前後端種子對照一致性比對）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
+
+# 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
+node tools/test_gantt_rows.js
 
 # firestore.rules 安全規則：77 項（跑本機 Firestore 模擬器，不連任何真實專案）
 cd tools/rules-test && npm test

@@ -5,6 +5,10 @@
   const { useState, useEffect, useMemo } = React;
   const K = window.K;
 
+  // 一次訂閱幾筆。Firestore 是「每讀一份文件計費一次」，不設上限等於每次開頁
+  // 就把整個 collection 讀一遍；載入的是 seq 最大（最新）的那幾筆。
+  const PAGE = 100;
+
   const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const LBL   = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
@@ -1015,20 +1019,36 @@
 
     const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
 
+    // 只訂閱最新的 N 筆（省 Firestore 讀取額度）。三個分頁各自獨立拉大窗口，
+    // 因為使用者通常只在其中一個分頁需要翻到更舊的資料。
+    const [limA, setLimA] = useState(PAGE);
+    const [limI, setLimI] = useState(PAGE);
+    const [limE, setLimE] = useState(PAGE);
+    const [moreA, setMoreA] = useState(false);
+    const [moreI, setMoreI] = useState(false);
+    const [moreE, setMoreE] = useState(false);
+
     useEffect(() => {
       let n=0;
       const chk = () => { if(++n>=3) setLoading(false); };
       // 帶 user → 單一區的使用者在查詢就加 where('region','==')，過濾推到伺服器端。
       // ★ 相依「不含」regionMode：查詢範圍刻意不看開關（見 regions.js 的 regionQueryScopeOf）
-      const u1 = FBAnomalies.onSnapshot(r=>{ setAnomalies(r); chk(); }, user);
-      const u2 = FBIPA.onSnapshot(      r=>{ setIpa(r);       chk(); }, user);
-      const u3 = FBEquipment.onSnapshot(r=>{ setEquipment(r); chk(); }, user);
+      const u1 = FBAnomalies.onSnapshot((r,m)=>{ setAnomalies(r); setMoreA(!!(m&&m.hasMore)); chk(); }, user, limA);
+      const u2 = FBIPA.onSnapshot(      (r,m)=>{ setIpa(r);       setMoreI(!!(m&&m.hasMore)); chk(); }, user, limI);
+      const u3 = FBEquipment.onSnapshot((r,m)=>{ setEquipment(r); setMoreE(!!(m&&m.hasMore)); chk(); }, user, limE);
       // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
-      // 所以刻意不過濾。日後要分區再另議。
+      // 所以刻意不過濾。筆數也遠少於其他三個 collection，不設上限。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
       const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
       return () => { u1(); u2(); u3(); u4(); u5(); };
-    }, [user]);
+    }, [user, limA, limI, limE]);
+
+    // 「載入更早的」按鈕：拿滿上限才顯示，按一次多載 100 筆
+    const loadMoreBtn = (more, setLim) => more
+      ? <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}}
+                onClick={()=>setLim(n=>n+PAGE)}
+                title="目前只載入最新的資料，按此再載入 100 筆較舊的">↓ 載入更早的</button>
+      : null;
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
@@ -1283,11 +1303,16 @@
     ), editMode?'完成編輯':'編輯模式');
 
     // ── sidebar subtab 樣式 ──
+    // 樣品出借只有台中（中部）看得到：實體樣品箱就在台中，其他廠區借不到也管不到，
+    // 對他們是純噪音。★ 可跨區檢視者（admin／主管）不受限 —— 樣品清冊需要有人維護，
+    // 而維護的人不一定設在中部。
+    const showSamples = (window.regionOf ? window.regionOf(user) : 'central') === 'central'
+      || !!(window.canViewAllRegions && window.canViewAllRegions(user));
     const SUBTABS = [
       { key:'anomaly', label:'客戶異常', count:anomalies.length },
       { key:'ipa',     label:'IPA 採購', count:ipa.length },
       { key:'tools',   label:'設備清單', count:equipment.length },
-      { key:'samples', label:'樣品出借', count:samples.length },
+      ...(showSamples ? [{ key:'samples', label:'樣品出借', count:samples.length }] : []),
       { key:'stats',   label:'分析',     count:null },
     ];
 
@@ -1353,6 +1378,7 @@
                 style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'var(--accent-soft)',color:hideDoneA?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
                 {hideDoneA ? '顯示已完成' : '👁 顯示已完成'}
               </button>
+              {loadMoreBtn(moreA, setLimA)}
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出客戶異常為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
@@ -1425,6 +1451,7 @@
               <span className="toolbar-sub">合計 <b style={{color:'var(--ink)'}}>{filtI.reduce((s,r)=>s+Number(r.quantity||0),0)}</b> 桶</span>
               <select className="t-sel" value={personF} onChange={e=>setPersonF(e.target.value)}><option value="">所有人員</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
               {regionSelect()}
+              {loadMoreBtn(moreI, setLimI)}
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportIPA} title="匯出 IPA 採購為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
@@ -1471,6 +1498,7 @@
               <span className="toolbar-sub">合計 <b style={{color:'var(--ink)'}}>NT$ {filtT.reduce((s,r)=>s+(Number(r.price||0)*Number(r.quantity||1)),0).toLocaleString()}</b></span>
               <select className="t-sel" value={methodF} onChange={e=>setMethodF(e.target.value)}><option value="">所有方式</option><option>Easy Flow</option><option>零用金</option></select>
               {regionSelect()}
+              {loadMoreBtn(moreE, setLimE)}
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportTools} title="匯出設備清單為 Excel">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>

@@ -132,7 +132,15 @@
     return {
       // user 由呼叫端傳入（服務層拿不到 React state）。沒傳＝不做伺服器端過濾，
       // 維持舊行為，樣品清冊等不分區的 collection 就是這樣用。
-      onSnapshot(cb, user) {
+      // limit：只訂閱最新的 N 筆，用來省 Firestore 讀取額度（每一筆文件都計費，
+      // 不設上限等於每次開頁就把整個 collection 讀一遍）。
+      // ★ 用 limitToLast 而不是 limit：這些 collection 都是 orderBy('seq','asc')，
+      //   而 seq 是「現有最大值 +1」＝越新越大，limit() 會拿到最舊的 N 筆（正好相反）。
+      //   limitToLast 走的是同一個既有索引（反向掃），不需要新建 seq DESC 複合索引 ——
+      //   缺索引的失敗長得跟權限被擋一模一樣，能不新增就不新增（見 CLAUDE.md）。
+      // ★ nextSeq 仍然正確：載入的是 seq 最大的那 N 筆，全域最大值必在其中。
+      // cb 的第二個參數 { hasMore } 讓呼叫端知道要不要顯示「載入更多」。
+      onSnapshot(cb, user, limitN) {
         let q = ref();
         if (regional && window.regionQueryScopeOf) {
           // ★ 用 regionQueryScopeOf（不看 region_mode）而不是 regionScopeOf：
@@ -143,14 +151,17 @@
           if (scope && scope.length === 1) q = q.where('region', '==', scope[0]);
         }
         if (orderField) q = q.orderBy(orderField, orderDir || 'asc');
+        if (limitN > 0 && orderField) q = q.limitToLast(limitN);
         return q.onSnapshot(
           snap => {
             const rows = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
-            cb(rows);
+            // 拿滿上限＝「可能還有更多」。剛好等於總筆數時會多顯示一次載入更多，
+            // 但按下去只是再查一次、不會出錯；反過來漏掉按鈕才是真的看不到資料。
+            cb(rows, { hasMore: !!limitN && rows.length >= limitN });
           },
           err => {
             console.error(`[${collName}] onSnapshot 失敗:`, err);
-            cb([]);
+            cb([], { hasMore: false });
           }
         );
       },

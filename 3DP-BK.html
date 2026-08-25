@@ -396,6 +396,11 @@
                         <option value="conflict">僅衝突</option>
                     </select>
                     <button onclick="resetFilters()" class="text-xs text-[var(--ink-4)] hover:text-[var(--accent)] underline ml-1">清除</button>
+                    <!-- 預設只載入近 3 個月與之後的預約（省 Firestore 讀取額度），要看更早的按這裡 -->
+                    <span id="booking-window-note" class="text-xs text-[var(--ink-5)] ml-auto flex items-center gap-2">
+                        <span id="booking-window-label"></span>
+                        <button onclick="loadEarlierBookings()" class="text-xs text-[var(--ink-4)] hover:text-[var(--accent)] underline">↓ 載入更早的</button>
+                    </span>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
@@ -545,12 +550,15 @@ let salesOptions = SALES.map(s=>({key:s,label:s}));  // booking 業務清單（a
 const DEFAULT_PRINTERS = ['Form4','Form4L','MarkTwo','UR','Other'];
 const STATUSES  = ['待確認','執行中','已完成','異常/取消'];
 const DONE_STATUSES = new Set(['已完成','異常/取消']);
-// 甘特圖原本排除 MarkTwo（mk2），依需求加回甘特圖顯示
-const DEFAULT_GANTT_PRINTERS = ['Form4','Form4L','MarkTwo','UR'];
 // 機台清單：預設值先頂著，admin 於後台「3D列印機預約設定」新增機台後，
-// subscribeSettings() 會用 settings/workspace.bk_machines 覆蓋這兩個陣列並重新渲染甘特圖/下拉選單
-let PRINTERS = DEFAULT_PRINTERS.slice();
-let GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
+// subscribeSettings() 會用 settings/workspace.bk_machines 覆蓋並重新渲染甘特圖/下拉選單
+let PRINTERS = DEFAULT_PRINTERS.slice();   // 下拉選單用：不重複的機型名稱
+// 甘特圖的列。★ 一列＝「某地區的某機型」，不是單純的機型名稱。
+// 決策 A 是「機台清單維持機型、每區各一份」，所以 bk_machines 會有兩筆都叫 Form4、
+// 只有 region 不同。原本甘特圖只用名稱當 key、配對時只比對 b.printer===name，
+// 於是北部 Form4 的預約會同時畫進中部 Form4 那一列（使用者回報的 bug）。
+// 「Other」這種非實體機台不列入甘特圖。
+let GANTT_ROWS = [];   // [{ name, region, ambiguous, label }]
 // 用途類別清單：與admin後台「3D列印機預約設定」的「用途類別清單」(bk_categories)同源；
 // 「其他」固定保留在最後（選了才會出現自行填寫欄位），不受admin清單管理
 const DEFAULT_CATEGORIES = ['活動展示','工程測試','代工','評估'];
@@ -565,7 +573,9 @@ let listView = 'gantt';
 let ganttWeekStart = null;
 let ganttMode = 'week';            // 'week' | 'month'
 let ganttMonthStart = null;        // 月視圖：當月 1 號
-let sortField = 'date', sortDir = 'asc';
+// 預約清單預設「日期由新到舊」：最近與即將到來的預約才是每天在看的，
+// 由舊到新會把幾個月前的資料頂在第一頁。
+let sortField = 'date', sortDir = 'desc';
 const PAGE_SIZE = 10;
 let currentPage = 1;
 
@@ -793,34 +803,37 @@ window.clearGanttSelection = function(){
 // click 與 dblclick 會在雙擊時依序觸發（click, click, dblclick），用計時器讓「同一格的第二次點擊」視為雙擊的一部分而取消；
 // 但若第二次點擊是「不同格」（正在選跨天/跨時段範圍），代表使用者已經確定要用兩次單擊來選，
 // 應立即把前一格的單擊補上去，而不是整個吃掉（吃掉會讓兩次快速點選完全沒反應）。
-window.cellClick = function(printer, dateKey, slot){
+// ★ region 一路帶著走：同一個機型名稱在不同地區是兩台不同的機器（決策 A），
+//   只帶名稱的話，在北部那一列選的時段會被當成中部那一台。
+window.cellClick = function(printer, region, dateKey, slot){
     if (cellClickTimer && pendingClickCell &&
-        pendingClickCell.printer===printer && pendingClickCell.dateKey===dateKey && pendingClickCell.slot===slot){
+        pendingClickCell.printer===printer && pendingClickCell.region===region &&
+        pendingClickCell.dateKey===dateKey && pendingClickCell.slot===slot){
         clearTimeout(cellClickTimer); cellClickTimer = null; pendingClickCell = null;
         return;
     }
     if (cellClickTimer){
         clearTimeout(cellClickTimer); cellClickTimer = null;
         const prev = pendingClickCell; pendingClickCell = null;
-        if (prev) onGanttCellClick(prev.printer, prev.dateKey, prev.slot);
+        if (prev) onGanttCellClick(prev.printer, prev.region, prev.dateKey, prev.slot);
     }
-    pendingClickCell = {printer, dateKey, slot};
-    cellClickTimer = setTimeout(()=>{ cellClickTimer = null; pendingClickCell = null; onGanttCellClick(printer, dateKey, slot); }, 260);
+    pendingClickCell = {printer, region, dateKey, slot};
+    cellClickTimer = setTimeout(()=>{ cellClickTimer = null; pendingClickCell = null; onGanttCellClick(printer, region, dateKey, slot); }, 260);
 };
-window.quickAddBooking = function(printer, dateKey, slot){
+window.quickAddBooking = function(printer, region, dateKey, slot){
     // 雙擊：直接視為「起訖點相同」的單一時段預約，不需要點兩下
     pendingSelection = null;
-    applySelectedBooking(printer, dateKey, slot, dateKey, slot);
+    applySelectedBooking(printer, region, dateKey, slot, dateKey, slot);
 };
-function onGanttCellClick(printer, dateKey, slot){
+function onGanttCellClick(printer, region, dateKey, slot){
     if (!pendingSelection){
-        pendingSelection = { printer, date: dateKey, slot };
+        pendingSelection = { printer, region, date: dateKey, slot };
         renderGantt();
         showToast(`已選起點：${dateKey} ${slotLabel(slot)}，請再點選結束時段（Esc 取消；點同一格＝單一時段）`);
         return;
     }
-    if (pendingSelection.printer !== printer){
-        pendingSelection = { printer, date: dateKey, slot };
+    if (pendingSelection.printer !== printer || (pendingSelection.region||'') !== (region||'')){
+        pendingSelection = { printer, region, date: dateKey, slot };
         renderGantt();
         showToast(`機台不同，已重新以「${printer}」開始選擇：${dateKey} ${slotLabel(slot)}`, 'error');
         return;
@@ -828,10 +841,10 @@ function onGanttCellClick(printer, dateKey, slot){
     let start = pendingSelection, end = { date: dateKey, slot };
     if (slotSortKey(start.date, start.slot) > slotSortKey(end.date, end.slot)) { [start, end] = [end, start]; }
     pendingSelection = null;
-    applySelectedBooking(printer, start.date, start.slot, end.date, end.slot);
+    applySelectedBooking(printer, region, start.date, start.slot, end.date, end.slot);
 }
-function applySelectedBooking(printer, date, slot, endDate, endSlot){
-    selectedBooking = { printer, date, slot, endDate, endSlot };
+function applySelectedBooking(printer, region, date, slot, endDate, endSlot){
+    selectedBooking = { printer, region, date, slot, endDate, endSlot };
     renderSelectedSlotDisplay();
     renderGantt();
     const pi = document.getElementById('printer-select');
@@ -874,17 +887,35 @@ addEventListener('click', e=>{
 // ══════════════════════════════════════════════
 // ══ 4. Firestore 即時訂閱 bookings ════════════
 // ══════════════════════════════════════════════
+// 只訂閱「這個日期(含)之後」的預約，用來省 Firestore 讀取額度
+// （每一筆文件都計費，不設條件等於每次開頁把整個 bookings 讀一遍）。
+// ★ 刻意用「日期區間」而不是 limit(N) 筆數上限：甘特圖與衝突檢查讀的是同一份
+//   bookings，被筆數截掉的預約會在衝突檢查中靜默消失 → 可能重複預約同一台機器
+//   而不跳警告。用日期窗口就沒有這個洞：窗口內的資料一定是完整的，而新預約
+//   必然是今天以後，要與它衝突的預約也必然落在窗口內。
+//   （唯一漏得掉的是「起始日在 3 個月前、卻一路跨到今天」的預約 —— 列印機預約
+//    不會排這麼長，真的遇到就按「載入更早的」把窗口拉開。）
+const BOOKING_WINDOW_MONTHS = 3;
+let bookingSinceDate = null;      // yyyy-mm-dd，null＝尚未計算
+function defaultBookingSince(){
+    const d = new Date();
+    d.setMonth(d.getMonth() - BOOKING_WINDOW_MONTHS);
+    return fmtDateLocal(d);
+}
 function subscribeBookings() {
     if (unsubscribeBookings) unsubscribeBookings();
+    if (!bookingSinceDate) bookingSinceDate = defaultBookingSince();
     // 單一區的使用者在查詢就加 where('region','==')，把過濾推到伺服器端
     // （階段 5 的 Rules 收緊會要求如此：規則若比對 region，查詢沒帶條件會被整個拒絕）。
     // 跨區者（admin/主管）不加條件，本來就該讀得到三區。
-    // ★ where + orderBy 需要複合索引，已預先建在 firestore.indexes.json。
+    // ★ where + orderBy 需要複合索引，已預先建在 firestore.indexes.json
+    //   （region ASC + date ASC，日期範圍條件同樣走這個索引，不必新建）。
     // ★ 不看 REGION_MODE：規則無條件比對 region，查詢也必須無條件（理由見 regions.js）
     const scope = window.regionQueryScopeOf ? window.regionQueryScopeOf(currentUser) : null;
     const q = (scope && scope.length === 1)
-        ? query(collection(db, 'bookings'), where('region', '==', scope[0]), orderBy('date', 'asc'))
-        : query(collection(db, 'bookings'), orderBy('date', 'asc'));
+        ? query(collection(db, 'bookings'), where('region', '==', scope[0]),
+                where('date', '>=', bookingSinceDate), orderBy('date', 'asc'))
+        : query(collection(db, 'bookings'), where('date', '>=', bookingSinceDate), orderBy('date', 'asc'));
     unsubscribeBookings = onSnapshot(q, (snap) => {
         allBookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         applyBookingRegionFilter();
@@ -894,6 +925,14 @@ function subscribeBookings() {
         showToast('讀取資料失敗：' + err.message, 'error');
     });
 }
+// 「載入更早的」：把窗口往前推一年並重新訂閱
+window.loadEarlierBookings = function(){
+    const d = new Date((bookingSinceDate || defaultBookingSince()) + 'T00:00:00');
+    d.setFullYear(d.getFullYear() - 1);
+    bookingSinceDate = fmtDateLocal(d);
+    showToast(`已載入 ${bookingSinceDate} 之後的預約`);
+    subscribeBookings();
+};
 
 // ══════════════════════════════════════════════
 // ══ 5. 表格與甘特圖渲染 ═══════════════════════
@@ -1015,6 +1054,8 @@ window.renderTable = function() {
     const tbody = document.getElementById('table-body');
     populateFilterSelects();
     updateSortIndicators();
+    const winLabel = document.getElementById('booking-window-label');
+    if (winLabel) winLabel.textContent = bookingSinceDate ? `已載入 ${bookingSinceDate} 之後` : '';
     const canEdit = currentUser.role === 'admin' || currentUser.role === 'editor';
 
     if(!bookings.length){
@@ -1273,17 +1314,23 @@ function renderGantt() {
     html += '</tr></thead><tbody>';
 
     const SLOTS = ['AM','PM','EV'];
-    GANTT_PRINTERS.forEach(printer=>{
-        html += `<tr><td class="p-1 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] truncate">${printer}</td>`;
+    GANTT_ROWS.forEach(row=>{
+        const printer = row.name;
+        const rowRegion = row.region || '';
+        html += `<tr><td class="p-1 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] truncate" title="${row.label}">${row.label}</td>`;
 
         // 雙擊格子 → 快速新增預約（帶入設備/日期/時段）；單擊格子 → 兩次點選起訖時段建立跨天/跨時段預約
-        // （click 與 dblclick 用計時器互斥，見 cellClick()），僅 editor/admin
-        const dbl = (dayKey,slot)=> canEdit ? ` ondblclick="quickAddBooking('${printer}','${dayKey}','${slot}')" title="雙擊新增單一時段預約；單擊兩次選起訖時段"` : '';
-        const pick = (dayKey,slot)=> canEdit ? ` onclick="cellClick('${printer}','${dayKey}','${slot}')"` : '';
-        const isPending = (dayKey,slot)=> pendingSelection && pendingSelection.printer===printer && pendingSelection.date===dayKey && pendingSelection.slot===slot;
+        // （click 與 dblclick 用計時器互斥，見 cellClick()）
+        // ★ 除了 editor/admin 之外還要能編輯「這一列所屬地區」——否則主管會在自己改不動的
+        //   地區上選好時段、按下送出才被擋，白做一次。
+        const canPickRow = canEdit && (!window.canEditInRegion || window.canEditInRegion(currentUser, row.region || undefined));
+        const dbl = (dayKey,slot)=> canPickRow ? ` ondblclick="quickAddBooking('${printer}','${rowRegion}','${dayKey}','${slot}')" title="雙擊新增單一時段預約；單擊兩次選起訖時段"` : '';
+        const pick = (dayKey,slot)=> canPickRow ? ` onclick="cellClick('${printer}','${rowRegion}','${dayKey}','${slot}')"` : '';
+        const onThisRow = sel => sel && sel.printer===printer && (sel.region||'')===rowRegion;
+        const isPending = (dayKey,slot)=> onThisRow(pendingSelection) && pendingSelection.date===dayKey && pendingSelection.slot===slot;
         // 已完成的選取範圍（點兩下後、送出預約前）：整段跨天/跨時段範圍都用藍框標示，
         // 因為表單本身不再顯示選取文字，唯一的視覺回饋就是甘特圖上的這個標示
-        const isSelectedRange = (dayKey,slot)=> selectedBooking && selectedBooking.printer===printer
+        const isSelectedRange = (dayKey,slot)=> onThisRow(selectedBooking)
             && bookingCoversDay(selectedBooking, dayKey) && occupiedSlotsForDay(selectedBooking, dayKey).includes(slot);
 
         // 渲染一個預約色塊：只顯示用途類別（不顯示備註），備註/業務/工程師等細節收進 title 提示
@@ -1303,7 +1350,7 @@ function renderGantt() {
         days.forEach(d=>{
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
-            const dayBookings = bookings.filter(b=>b.printer===printer && bookingCoversDay(b,dayKey));
+            const dayBookings = bookings.filter(b=>bookingOnRow(b,row) && bookingCoversDay(b,dayKey));
             const allDayItems = dayBookings.filter(b=>occupiedSlotsForDay(b,dayKey).length===3);
             const indiv = { AM: [], PM: [], EV: [] };
             dayBookings.forEach(b=>{
@@ -1389,15 +1436,15 @@ function renderGanttMonth() {
     });
     html += '</tr></thead><tbody>';
 
-    GANTT_PRINTERS.forEach(printer=>{
-        html += `<tr><td class="p-2 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)]">${printer}</td>`;
+    GANTT_ROWS.forEach(row=>{
+        html += `<tr><td class="p-2 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)]">${row.label}</td>`;
         days.forEach(d=>{
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
             const wd = d.getDay();
             const isWeekend = wd===0 || wd===6;
             const todayBg = isToday ? 'bg-[var(--accent-soft)]/40' : (isWeekend ? 'bg-[var(--bg-soft)]/60' : '');
-            const dayBookings = bookings.filter(b=>b.printer===printer && bookingCoversDay(b,dayKey));
+            const dayBookings = bookings.filter(b=>bookingOnRow(b,row) && bookingCoversDay(b,dayKey));
             if(!dayBookings.length){ html += `<td class="border border-[var(--line)] ${todayBg}"></td>`; return; }
             // 衝突：同一時段(AM/PM)>1 視為衝突（與週視圖一致）
             const allDayItems = dayBookings.filter(b=>b.slot==='ALL');
@@ -1473,10 +1520,19 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     if(hasOrder===null){ showToast('請選擇是否有單號','error'); return; }
     if(!purpose){ showToast(hasOrder?'請填寫單號':'請填寫備註','error'); return; }
 
+    // 這筆預約要記在哪一區：甘特圖上選的那一列所屬地區優先（跨區者可能在別區的
+    // 機台上開單），沒有才退回建立者自己的地區。
+    const bookingRegion = (selectedBooking.region && window.isRegion && window.isRegion(selectedBooking.region))
+        ? selectedBooking.region
+        : (window.regionOf ? window.regionOf(currentUser) : 'central');
+
     // 衝突檢查：以「佔用時段」重疊判定，全天(ALL)與任一時段重疊也算衝突；跨天預約逐日檢查（含起訖日不同時段）
+    // ★ 比對範圍與甘特圖用同一支 bookingOnRow：同名不同區是兩台不同的機器，
+    //   只比對名稱會把北部 Form4 的預約誤報成中部 Form4 的衝突。
     const newBooking = {printer, date, endDate, slot, endSlot};
     const newDays = dateRangeList(date, endDate);
-    const conflicts = bookings.filter(b=>b.printer===printer
+    const machineRow = rowFor(printer, bookingRegion);
+    const conflicts = bookings.filter(b=>bookingOnRow(b, machineRow)
         && newDays.some(dk=>bookingCoversDay(b,dk)
             && occupiedSlotsForDay(b,dk).some(s=>occupiedSlotsForDay(newBooking,dk).includes(s))));
     if(conflicts.length > 0){
@@ -1493,9 +1549,9 @@ document.getElementById('booking-form').addEventListener('submit', async (e)=>{
     btn.innerHTML = '<span class="spinner"></span> 儲存中...';
     try {
         await addDoc(collection(db,'bookings'), {
-            // 建立者所屬地區。這頁不走 portal 的服務層，所以要自己帶。
-            // 沒載入 regions.js 或使用者沒設地區時皆為 'central'，與既有資料一致。
-            region: window.regionOf ? window.regionOf(currentUser) : 'central',
+            // 預約所屬地區（甘特圖選到的那一列，退回建立者自己的區）。
+            // 這頁不走 portal 的服務層，所以要自己帶。
+            region: bookingRegion,
             date,
             endDate,
             slot,
@@ -2004,22 +2060,56 @@ let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
 // ★ 回傳 null 而不是「全部三區」是刻意的：呼叫端據此決定要不要分組，
 //   分區未啟用時要維持原本的「台中/其他」分組，不能變成北中南。
 // 機台清單（機型）的分區過濾。allBkMachines 保留 settings 原始清單，
-// PRINTERS / GANTT_PRINTERS 才是畫面用的那份 —— 分開存才能在「檢視地區」切換時重算。
+// PRINTERS / GANTT_ROWS 才是畫面用的那份 —— 分開存才能在「檢視地區」切換時重算。
 // ★ 原本這段寫在 subscribeSettings 裡只算一次，切換檢視地區時不會重算，
 //   導致狀態卡切到某一區了、甘特圖列與設備下拉卻還是全部（使用者回報的 bug）。
 let allBkMachines = null;
 function applyMachineRegionFilter(){
     const scope = effectiveScope();
-    if (allBkMachines && allBkMachines.length) {
-        PRINTERS = allBkMachines
+    const machines = (allBkMachines && allBkMachines.length)
+        ? allBkMachines
             .filter(m => !scope || !m.region || scope.includes(m.region))
-            .map(m=>m.name||m).filter(Boolean);
-        GANTT_PRINTERS = PRINTERS.filter(p=>p!=='Other');   // 甘特圖排除「Other」這種非實體機台的選項
-    } else {
-        PRINTERS = DEFAULT_PRINTERS.slice();
-        GANTT_PRINTERS = DEFAULT_GANTT_PRINTERS.slice();
-    }
+            .map(m => ({ name: (m && m.name) || m, region: (m && m.region) || null }))
+            .filter(m => m.name)
+        : DEFAULT_PRINTERS.map(n => ({ name: n, region: null }));
+    // 下拉選單要的是「可以選哪些機型」，同名不同區只需出現一次
+    PRINTERS = [...new Set(machines.map(m => m.name))];
+    const nameCount = {};
+    machines.forEach(m => { nameCount[m.name] = (nameCount[m.name] || 0) + 1; });
+    GANTT_ROWS = machines
+        .filter(m => m.name !== 'Other')
+        .map(m => {
+            const ambiguous = nameCount[m.name] > 1;
+            return {
+                ...m, ambiguous,
+                // 同名多列時才把地區標進列名，否則單一地區的畫面會多出無意義的後綴
+                label: (ambiguous && m.region && window.regionLabel)
+                    ? `${m.name} · ${window.regionLabel(m.region)}` : m.name,
+            };
+        });
     populatePrinterSelects();
+}
+
+// 這一列要不要顯示某筆預約。
+// ★ 只有 ambiguous（同名多列）時才比對地區。名稱唯一時維持只比對名稱 ——
+//   否則 region 對不上的舊預約（或該區還沒建對應機型的預約）會整筆從甘特圖消失，
+//   那是比「畫錯列」更難發現的錯。
+// ★ ambiguous 群組裡若有一列是「全區」（region 為 null），由它承接地區對不上任何
+//   同名列的預約，同樣是為了不讓資料靜默消失。
+function bookingOnRow(b, row){
+    if (b.printer !== row.name) return false;
+    if (!row.ambiguous) return true;
+    const br = window.normRegion ? window.normRegion(b.region) : b.region;
+    if (row.region) return br === row.region;
+    return !GANTT_ROWS.some(r => r.name === row.name && r.region === br);
+}
+
+// 找出（機型, 地區）對應的甘特圖列；找不到就回一個「只比對名稱」的臨時列。
+// 衝突檢查走這支，才會與甘特圖上看到的完全一致 —— 兩邊各寫一套判斷遲早會走偏。
+function rowFor(printer, region){
+    const rr = window.normRegion ? window.normRegion(region) : region;
+    return GANTT_ROWS.find(r => r.name === printer && (!r.ambiguous || r.region === rr))
+        || { name: printer, region: null, ambiguous: false };
 }
 
 // 預約資料的分區過濾。allBookings 保留訂閱到的完整資料，bookings 才是畫面用的那份 ——

@@ -6,6 +6,10 @@
 (function () {
   const { useState, useEffect } = React;
 
+  // 一次訂閱幾筆。Firestore 是「每讀一份文件計費一次」，不設上限等於每次開頁
+  // 就把整個 workboard_orders 讀一遍；載入的是 seq 最大（最新）的那幾筆。
+  const ROW_PAGE = 100;
+
   // 從 INVENTORY 消耗紀錄自動帶入實際消耗量：inventory_history 的備註慣例格式為
   // 「客戶簡稱-工作類別-EF單號」（見 inventory.html 的 editHistoryNote），
   // 工作類別為 代工/評估 時才計入，EF單號需與工單的 EF 單號（form.id）完全相同，
@@ -325,14 +329,20 @@
     const canEditRow = o => canEdit && inMyRegion(o);
     const canDelRow  = o => canDel  && inMyRegion(o);
 
+    // 只訂閱最新的 N 筆（省 Firestore 讀取額度）。按「載入更多」才把窗口拉大並重新訂閱。
+    const [rowLimit, setRowLimit] = useState(ROW_PAGE);
+    const [hasMore,  setHasMore]  = useState(false);
+
     useEffect(() => {
       // 帶 user 進去 → 單一區的使用者會在查詢就加 where('region','==')，過濾推到伺服器端。
       // ★ 相依「不含」regionMode：查詢範圍刻意不看開關（見 regions.js 的
       //   regionQueryScopeOf），列進去只會讓 admin 每次切開關就把所有人的訂閱重建一次。
       //   user 變動（含地區被改）仍會重新訂閱。
-      const unsub = FBOrders.onSnapshot(rows => { setAllData(rows); setLoading(false); }, user);
+      const unsub = FBOrders.onSnapshot((rows, meta) => {
+        setAllData(rows); setHasMore(!!(meta && meta.hasMore)); setLoading(false);
+      }, user, rowLimit);
       return () => unsub();
-    }, [user]);
+    }, [user, rowLimit]);
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
@@ -442,6 +452,8 @@
               onEdit={handleEdit}
               onDelete={handleDelete}
               labelVer={labelVer}
+              hasMore={hasMore}
+              onLoadMore={()=>setRowLimit(n => n + ROW_PAGE)}
             />
           )}
           {tab==='kanban'    && <window.KanbanView    data={data} setData={()=>{}}/>}
@@ -471,7 +483,7 @@
   }
 
   // ── 總表元件（自製，不依賴原版 TableView，支援 editMode） ──
-  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer, user }) {
+  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer, user, hasMore, onLoadMore }) {
     // 沒傳 predicate 時退回頁面層的布林值（其他呼叫端不受影響）
     const rowEdit = canEditRow || (() => canEdit);
     const rowDel  = canDelRow  || (() => canDel);
@@ -652,7 +664,14 @@
             {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
           </button>
           <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出全部工作看板資料為 Excel">⬇ 匯出Excel</button>
-          <span style={{fontSize:12,color:'var(--ink-4)',marginLeft:'auto'}}>共 {filtered.length} 筆</span>
+          {/* 預設只讀最新 100 筆（省 Firestore 讀取額度）。更舊的要按了才載入。 */}
+          {hasMore && onLoadMore && (
+            <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={onLoadMore}
+                    title="目前只載入最新的工作，按此再載入 100 筆較舊的資料">↓ 載入更早的</button>
+          )}
+          <span style={{fontSize:12,color:'var(--ink-4)',marginLeft:'auto'}}>
+            共 {filtered.length} 筆{hasMore ? '（僅最新，可載入更早）' : ''}
+          </span>
         </div>
 
         {/* 表格 */}
