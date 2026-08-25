@@ -1016,14 +1016,18 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         print(f"[sync] 已寫入 printer_status/current ({len(printers_summary)} 台)")
 
         # 北中南分區用：印出「帳號底下所有機台」的 alias 與 serial（不只 TRACKED_ALIASES）。
-        # 分區要把 Form 3+ / Form 3L / Fuse 1+ 也納進來，而機型是靠 serial 前綴判斷的
-        # （現況 Form4-AluminumBowfin → Form4），這幾台的 serial 實際長相只能從 API 撈。
-        # 純 log、不影響任何行為；分區完成後可移除。
+        # 純 log、不影響任何行為。
         # 查看方式：firebase functions:log --project swtc-3dp-poc，搜 [region-scan]
+        #
+        # ★★ tracked 必須用 tracked_alias()，不可以自己寫一份只看 alias 的判斷 ★★
+        #   舊版這裡寫死 `any(a in (_p.get('alias') or ''))`，於是南部兩台
+        #   （alias=None）永遠印 tracked=False，但實際上 tracked_serials 有收它們。
+        #   **診斷訊息與真實行為不一致比沒有訊息更糟**——2026-08-25 查「北/南沒有
+        #   消耗紀錄」時就是被這行帶偏，白繞了一圈。
         for _p in printers:
             print(f"[region-scan] alias={_p.get('alias')!r} serial={_p.get('serial')!r} "
                   f"machine_type_id={_p.get('machine_type_id')!r} "
-                  f"tracked={any(a in (_p.get('alias') or '') for a in TRACKED_ALIASES)}")
+                  f"tracked={tracked_alias(_p) is not None}")
 
         # 4. 拉 inventory/main 看 last_processed_prints
         inv_ref = db.collection("inventory").document("main")
