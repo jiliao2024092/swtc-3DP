@@ -36,7 +36,8 @@ for name in ("REGION_CODES", "DEFAULT_REGION", "SEED_MACHINE_REGION",
 for fn in ("norm_region", "_longest_contained_key", "machine_region",
            "machine_key", "tracked_alias",
            "family_code", "canon_material",
-           "apply_stock_deductions", "merge_shortfalls"):
+           "apply_stock_deductions", "merge_shortfalls",
+           "mf_stock_key", "apply_mf_deductions"):
     m = re.search(r"^def %s\(.*?(?=\n\ndef |\n\n# |\Z)" % fn, src, re.S | re.M)
     assert m, f"main.py 找不到函式 {fn}"
     exec(m.group(0), ns)
@@ -207,6 +208,50 @@ _m2 = re.search(r"const MATERIAL_PRINTERS = \[(.*?)\];", _bk_html, re.S)
 assert _m2, "3DP-BK.html 找不到 MATERIAL_PRINTERS"
 eq(sorted(re.findall(r"'([A-Za-z]+)'", _m2.group(1))), sorted(TRACKED_ALIASES),
    "★ 3DP-BK.html 的 MATERIAL_PRINTERS 要與 main.py 的 TRACKED_ALIASES 一致")
+
+
+# ── Markforged 消耗扣庫存（2026-08-25 由觀測模式改為實際扣帳）──────────
+# 這一組守的是「扣錯了不會有錯誤訊息」的那類 bug：材料對不上、耗材被當成線材扣、
+# 或是把 Formlabs 的家族代碼邏輯誤套到 Markforged 的純名稱上。
+mf_key = ns["mf_stock_key"]
+mf_ded = ns["apply_mf_deductions"]
+
+_stock = {
+    "Onyx":         {"total_cc": 100.0, "category": "plastic"},
+    "Carbon Fiber": {"total_cc": 50.0,  "category": "fiber"},
+    "Nozzle":       {"kind": "consumable", "qty": 3},
+}
+eq(mf_key(_stock, "Onyx"), "Onyx", "完全相同的材料名對得到")
+eq(mf_key(_stock, "onyx"), "Onyx", "大小寫不同也對得到")
+eq(mf_key(_stock, " Onyx "), "Onyx", "前後空白不影響比對")
+eq(mf_key(_stock, "Nozzle"), None,
+   "★ 耗材（kind=consumable）不可被 cc 消耗扣到——它是以「個」計的")
+eq(mf_key(_stock, "Vega"), None,
+   "★ 帳上沒有的材料回 None，不可自己建 key（會憑空長出負庫存來源不明的項目）")
+eq(mf_key(_stock, ""), None, "空材料名回 None，不可拋錯")
+
+_s1 = {k: dict(v) for k, v in _stock.items()}
+eq(mf_ded(_s1, {"Onyx": 30.0}), {}, "夠扣時沒有差額")
+eq(_s1["Onyx"]["total_cc"], 70.0, "★ 扣的是 total_cc（不是 Formlabs 的 total_ml）")
+eq(_s1["Carbon Fiber"]["total_cc"], 50.0, "★ 不可扣到別的材料")
+
+_s2 = {k: dict(v) for k, v in _stock.items()}
+eq(mf_ded(_s2, {"Onyx": 130.0}), {"Onyx": 30.0}, "★ 扣不完要回報差額")
+eq(_s2["Onyx"]["total_cc"], 0.0, "★ 扣到 0 為止，不可變成負數")
+
+_s3 = {k: dict(v) for k, v in _stock.items()}
+eq(mf_ded(_s3, {"Vega": 20.0}), {"Vega": 20.0},
+   "★ 帳上沒有的材料 → 整筆記成差額（前端會跳「消耗紀錄可能有誤」）")
+eq("Vega" in _s3, False, "★ 不可因為扣不到就把材料塞進庫存")
+
+_s4 = {k: dict(v) for k, v in _stock.items()}
+mf_ded(_s4, {"Nozzle": 5.0})
+eq(_s4["Nozzle"]["qty"], 3, "★ 耗材的 qty 不可被 cc 消耗動到")
+
+# Markforged 機台的區要對得上（消耗紀錄跟著機台走）
+eq(machine_region("MarkTwoTainan", None), "south", "Mark Two Tainan → 南部")
+eq(machine_region("FX10", None), "north", "FX10 → 北部")
+eq(machine_region("MarkTwo", None), "central", "★ Mark Two Taichung → 中部（不可被 MarkTwoGEN2 搶走）")
 
 print(f"\n{_pass + _fail} 項：{_pass} PASS / {_fail} FAIL")
 sys.exit(1 if _fail else 0)

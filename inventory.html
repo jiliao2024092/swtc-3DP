@@ -5122,7 +5122,17 @@ async function deleteHistoryEntry(id) {
     }
     if (!id) return;
     const h = inv.history.find(x => x.id === id);
-    if (!h) return;
+    // ★ 這支只處理 Formlabs 樹脂（inv.history 本來就已濾掉 markforged）。
+    //   Markforged 是 cc、材料是純名稱、庫存在 inventory/markforged_{region}，
+    //   若日後有人替 Markforged 消耗記錄加上刪除鈕又沿用這支，回補會把 cc
+    //   加進「Formlabs 的樹脂備料」——單位與文件都錯，而且不會有任何錯誤訊息。
+    //   所以在這裡明確擋下並說清楚，不要靜默 return。
+    if (!h) {
+        if (mfHistory.some(x => x.id === id)) {
+            showToast('Markforged 消耗紀錄目前不支援刪除回補（單位與庫存文件都與樹脂不同）', 'error');
+        }
+        return;
+    }
     const label = `${matName(h.material)||''} · ${printerDisplay(h.printer)||''} · ${h.note||''}`;
     const ml = Number(h.ml) || 0;
     // 這筆當初有沒有真的扣過庫存？沒扣過就不能回補（否則憑空多出庫存）。

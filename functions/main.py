@@ -327,6 +327,50 @@ def apply_stock_deductions(stock: dict, deductions: dict, now_iso: str) -> dict:
     return shortfalls
 
 
+def mf_stock_key(stock: dict, material: str):
+    """在 Markforged 庫存裡找對應的材料 key；找不到回 None。
+
+    ★ **不可以**走 canon_material()／family_code()：那是 Formlabs 樹脂的
+      「FL 家族代碼」邏輯。Markforged 材料是純名稱（Onyx、Carbon Fiber…），
+      硬套家族正規化會把不同材料折到同一個 key 上。
+    ★ 找不到就回 None，由呼叫端記成差額，**不要**自己建 key。
+      憑空建 key 會讓庫存頁多出一筆使用者從沒入庫過的材料，
+      而且數字是負的來源不明（Formlabs 那邊也是同一個原則）。
+    """
+    if not material:
+        return None
+    if material in stock and (stock[material] or {}).get("kind") != "consumable":
+        return material
+    low = material.strip().lower()
+    for k, v in stock.items():
+        if (v or {}).get("kind") == "consumable":
+            continue          # 耗材以「個」計，不吃 cc 的消耗
+        if k.strip().lower() == low:
+            return k
+    return None
+
+
+def apply_mf_deductions(stock: dict, deductions: dict) -> dict:
+    """Markforged 線材消耗扣庫存（單位 cc）。回傳扣不完的差額。
+
+    與 apply_stock_deductions 分開寫，因為兩者的欄位與比對方式都不同：
+      Formlabs 是 total_ml + 家族代碼；Markforged 是 total_cc + 純名稱。
+    共用一支函式只會讓兩邊互相牽制。
+    """
+    shortfalls = {}
+    for mat, amount in deductions.items():
+        k = mf_stock_key(stock, mat)
+        if k is None:
+            shortfalls[mat] = round(amount, 1)     # 帳上根本沒有這個材料
+            continue
+        cur = float(stock[k].get("total_cc") or 0)
+        d = min(cur, amount)
+        stock[k]["total_cc"] = round(cur - d, 1)
+        if amount - d > 0.05:
+            shortfalls[mat] = round(amount - d, 1)
+    return shortfalls
+
+
 def merge_shortfalls(existing: dict, new: dict, now_iso: str) -> dict:
     """把本輪的差額累計進既有紀錄（累計到使用者查明後從前端清除）。"""
     existing = existing or {}
@@ -536,8 +580,22 @@ def _mf_active_job(dev: dict) -> dict:
     }
 
 
-def _mf_observe(db, entries: list, now_iso: str) -> int:
-    """★ 觀測模式：只記錄材料餘量的變化，完全不扣庫存（2026-08-04 使用者決策）。
+def _mf_observe(db, entries: list, now_iso: str, machine_regions=None) -> int:
+    """Markforged 材料餘量追蹤 —— **2026-08-25 起由觀測模式改為實際扣庫存**。
+
+    原本只寫 mf_material_log（`stock_deducted: False`）。現在同一筆消耗還會：
+      1. 寫進 inventory_history（source=markforged、unit=cc），與 Formlabs 同一個
+         collection，前端「消耗記錄／月度分析」就看得到
+      2. 依機台所屬區扣 inventory/markforged_{region}.stock[材料].total_cc
+
+    ★ 只有 kind=="consume"（餘量下降）才扣。refill／material_change 一律不動庫存：
+      餘量上升是換料或補料，不是負消耗；把它當成「加庫存」會憑空生出料，
+      因為機台上那捲料本來就已經從備料扣過了。
+
+    ★ 為什麼這個機制不需要像 Formlabs 那樣處理「歷史一次全扣」：
+      它是**差額式**的，基準存在 inventory/markforged_watch。第一次看到某個槽位
+      只建立基準、不產生紀錄（下方 `if not p: continue`），所以納管當下不會
+      回溯任何歷史用量。
 
     為什麼不用 print_job 的終態來扣料（原規劃 §2.3 的做法）：
       納管機台近 90 天 Completed 只有 4 筆共 6.8 cc，但 Canceled 有 2 筆共 92.1 cc；
@@ -557,6 +615,8 @@ def _mf_observe(db, entries: list, now_iso: str) -> int:
 
     new_seen = dict(prev)     # 以舊值為底，這次沒看到的機台/槽位原樣保留
     logs = []
+    history = []              # 要寫進 inventory_history 的消耗紀錄
+    region_ded = {}           # region -> { 材料名: cc }
 
     for e in entries:
         for m in e.get("materials", []):
@@ -582,8 +642,7 @@ def _mf_observe(db, entries: list, now_iso: str) -> int:
                 kind = "consume" if delta < 0 else "refill"
 
             logs.append({
-                "doc_id": f"mfobs_{e.get('display')}_{m.get('slot')}_"
-                          f"{now_iso.replace(':','').replace('-','')[:15]}",
+                "doc_id": "mfobs_" + lg_doc_id_of(e, m, now_iso),
                 "data": {
                     "source":      "markforged",
                     "device_id":   e["device_id"],
@@ -601,29 +660,100 @@ def _mf_observe(db, entries: list, now_iso: str) -> int:
                     "job_id":      e.get("job_id"),
                     "observed_at": now_iso,
                     "prev_at":     p.get("at"),
-                    # 明確標記：這是觀測資料，庫存沒有被動過
-                    "stock_deducted": False,
-                    "note":        "觀測模式，未扣庫存",
+                    # 這一筆有沒有真的動到庫存（只有 consume 會）
+                    "stock_deducted": kind == "consume",
+                    "note":        ("已扣庫存" if kind == "consume"
+                                    else "餘量上升／換料，未動庫存"),
                 },
             })
 
-    for lg in logs:
-        db.collection("mf_material_log").document(lg["doc_id"]).set(lg["data"])
-        d = lg["data"]
-        print(f"[eiger][觀測] {d['device']} {d['slot']} {d['material']} "
-              f"{d['from_cc']} → {d['to_cc']} cc（{d['kind']}）")
+            # ── 只有「餘量下降」才是消耗，才進 history 與扣庫存 ──
+            if kind == "consume" and delta is not None:
+                used = round(-delta, 3)
+                dev  = e.get("display") or e.get("device_id")
+                rk   = machine_region(dev, machine_regions)
+                region_ded.setdefault(rk, {})
+                region_ded[rk][mat] = region_ded[rk].get(mat, 0.0) + used
+                history.append({
+                    # ★ doc_id 與 mf_material_log 同一組，讓重寫是冪等的。
+                    #   萬一寫入成功但基準沒更新（下一輪算出同一段差額），
+                    #   同 id 覆寫不會變成兩筆。
+                    "doc_id": "mfh_" + lg_doc_id_of(e, m, now_iso),
+                    "data": {
+                        "ts":        now_iso,
+                        "tsDate":    parse_valid_ts(now_iso),
+                        "type":      "consume",
+                        "source":    "markforged",
+                        "unit":      "cc",
+                        "material":  mat,
+                        # Eiger 的 slot：secondary = 纖維、primary = 塑料
+                        "category":  "fiber" if m.get("slot") == "secondary" else "plastic",
+                        "printer":   dev,
+                        "region":    rk,
+                        "ml":        used,     # 欄位沿用 ml，單位由 unit 欄位決定
+                        "note":      e.get("print_name") or f"{dev} {m.get('slot')}",
+                        "stock_deducted":     True,
+                        "deduct_skip_reason": None,
+                        "createdBy":      "cloud-function",
+                        "createdByEmail": "sync-eiger@cloud-function",
+                    },
+                })
 
-    # 基準值有變才寫，避免機台整天離線時每輪都寫一次
+    # ★★ 三件事必須一起成功或一起失敗，所以走同一個 batch ★★
+    #   history 寫了、基準沒更新 → 下一輪會用更舊的基準算出「更大的一段差額」，
+    #   而那筆的 doc_id 又不同（時間戳不同）→ 同一段消耗被記兩次、庫存也扣兩次。
+    #   把基準更新綁進同一個 batch，就不會有這個窗口。
+    batch = db.batch()
+    for lg in logs:
+        batch.set(db.collection("mf_material_log").document(lg["doc_id"]), lg["data"])
+        d = lg["data"]
+        print(f"[eiger] {d['device']} {d['slot']} {d['material']} "
+              f"{d['from_cc']} → {d['to_cc']} cc（{d['kind']}）")
+    for h in history:
+        batch.set(db.collection("inventory_history").document(h["doc_id"]), h["data"])
+
+    # 依機台所屬區扣庫存
+    for rk, ded in region_ded.items():
+        doc_id = "markforged_" + rk
+        mref = db.collection("inventory").document(doc_id)
+        msnap = mref.get()
+        minv = (msnap.to_dict() or {}) if msnap.exists else {}
+        stock = minv.get("stock") or {}
+        sf = apply_mf_deductions(stock, ded)
+        payload = {"stock": stock, "region": rk,
+                   "updatedAt": firestore.SERVER_TIMESTAMP,
+                   "updatedBy": "cloud-function",
+                   "updatedByEmail": "sync-eiger@cloud-function"}
+        if sf:
+            payload["stock_shortfalls"] = merge_shortfalls(
+                minv.get("stock_shortfalls"), sf, now_iso)
+            for mat, cc in sf.items():
+                print(f"[eiger][警示] {rk} 消耗超過庫存: {mat} 差額 {cc:.1f} cc")
+        batch.set(mref, payload, merge=True)
+        print(f"[eiger] {rk} 扣減: { {m: round(v,1) for m, v in ded.items()} }")
+
     if new_seen != prev:
-        ref.set({"last_seen": new_seen, "updated_at": firestore.SERVER_TIMESTAMP}, merge=True)
+        # 基準值有變才寫，避免機台整天離線時每輪都寫一次
+        batch.set(ref, {"last_seen": new_seen,
+                        "updated_at": firestore.SERVER_TIMESTAMP}, merge=True)
+    batch.commit()
 
     return len(logs)
 
 
-def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
-    """Markforged 機台狀態同步（階段 2：唯讀，完全不碰庫存與 inventory_history）。
+def lg_doc_id_of(e, m, now_iso: str) -> str:
+    """觀測紀錄的 doc_id。抽出來是為了讓 inventory_history 用**同一組**識別，
+    重跑同一段差額時可以冪等覆寫而不是變成兩筆。"""
+    return (f"{e.get('display')}_{m.get('slot')}_"
+            f"{now_iso.replace(':','').replace('-','')[:15]}")
 
-    只寫 printer_status/current 的 mf_printers 欄位，用 merge 保留 Formlabs 的 printers。
+
+def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
+    """Markforged 機台狀態同步 + 材料消耗追蹤。
+
+    寫 printer_status/current 的 mf_printers 欄位（用 merge 保留 Formlabs 的 printers），
+    並由 _mf_observe 依餘量差額寫 inventory_history、扣 inventory/markforged_{region}。
+    ★ 2026-08-25 之前這裡是唯讀的觀測模式，完全不碰庫存；現在會扣了。
     """
     stats = {"devices_seen": 0, "devices_tracked": 0, "printing": 0,
              "observations": 0, "errors": []}
@@ -703,12 +833,15 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
             "mf_updated_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)   # ★ merge：不可覆蓋 Formlabs 寫的 printers
 
-        # 材料餘量觀測（只記錄，不扣庫存）。失敗不可影響機台狀態同步本身。
+        # 材料餘量追蹤（寫消耗紀錄並扣庫存）。
+        # ★ 失敗不可影響機台狀態同步本身：狀態卡是每個人都在看的，
+        #   不能因為扣庫存出問題就整頁沒有機台狀態。
         try:
             stats["observations"] = _mf_observe(
-                db, mf_printers, datetime.datetime.utcnow().isoformat() + "Z")
+                db, mf_printers, datetime.datetime.utcnow().isoformat() + "Z",
+                machine_regions)
         except Exception as oe:
-            msg = f"[eiger] 觀測記錄失敗（機台狀態已正常寫入）: {oe}"
+            msg = f"[eiger] 消耗追蹤失敗（機台狀態已正常寫入）: {oe}"
             print(msg)
             stats["errors"].append(msg)
 

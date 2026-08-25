@@ -57,7 +57,7 @@ python3 -m py_compile functions/main.py
 # 入庫的「已知材料」判斷：84 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
-# 北中南分區邏輯：前端 115 項 + 後端 60 項（含前後端種子對照、追蹤機台名單三處一致性比對）
+# 北中南分區邏輯：前端 115 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
@@ -83,7 +83,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
   - **納入消耗扣庫存的 5 台**（2026-08-25 起）：上述 6 台扣掉 `TealMoa`（Fuse 1+ 是 SLS 粉末，只顯示狀態不記消耗）。名單存在**三個地方，必須一起改**：`functions/main.py` 的 `TRACKED_ALIASES`、`inventory.html` 的 `TRACKED_PRINTERS`、`3DP-BK.html` 的 `MATERIAL_PRINTERS`
   - ⚠ 因為 alias 可能是 `None`，比對機台一律走 `alias or serial`（後端 `machine_key()`/`tracked_alias()`）。只看 `alias` 會讓南部兩台**完全不被追蹤且沒有任何錯誤訊息**：serial 進不了 `tracked_serials` → prints 根本不會被拉回來 → 消耗靜默消失
-  - Markforged 納管 8 台（見 `EIGER_TRACKED_DEVICES`）；中國廠的 `Mark Two Dongguan`、`X7 Shanghai` **刻意排除**，白名單以外一律不寫入
+  - Markforged 納管 7 台（見 `EIGER_TRACKED_DEVICES`）；中國廠的 `Mark Two Dongguan`、`X7 Shanghai` **刻意排除**，白名單以外一律不寫入
+  - **Markforged 已納入消耗扣帳**（2026-08-25 起，原為唯讀觀測模式）：靠 `ccs_*_remaining` 的差額判定用量，**只有「餘量下降」才扣**；refill／換料一律不動庫存（餘量上升是換料，那捲料早就從備料扣過了，當成加庫存會憑空生料）。消耗寫進 `inventory_history`（`source=markforged`、`unit=cc`）並扣 `inventory/markforged_{region}`
+  - ⚠ 差額式追蹤的基準存在 `inventory/markforged_watch`，**基準更新與消耗寫入必須在同一個 batch**——分開寫會在「history 寫成功、基準寫失敗」時，讓下一輪用更舊的基準算出更大的一段差額，同一段消耗被記兩次、庫存也扣兩次
+  - ⚠ Markforged 材料是**純名稱**（Onyx／Carbon Fiber），不可套 `canon_material()`／`family_code()` 那套 FL 家族代碼邏輯；扣庫存走 `apply_mf_deductions()`（比對純名稱、扣 `total_cc`），與樹脂的 `total_ml` 完全分開。耗材（`kind='consumable'`，以「個」計）不可被 cc 消耗扣到
   - ⚠ 機台顯示名稱有互為子字串的情況（`MarkTwo` ⊂ `MarkTwoGEN2` / `MarkTwoTainan`）。`machine_region()` 必須「完全相同優先、包含取最長」，只用包含比對會依 dict 鍵順序判錯區，且完全沒有錯誤訊息（`tools/test_regions*` 有守）
 
 ## 領域邏輯地雷
