@@ -43,7 +43,41 @@ EIGER_SECRET_KEY       = SecretParam("EIGER_SECRET_KEY")
 
 # ── 常數 ──
 FORMLABS_API_BASE  = "https://api.formlabs.com/developer/v1"
-TRACKED_ALIASES    = ["AluminumBowfin", "AdroitSauropod"]   # 我們真的會扣材料的兩台
+# 真的會扣材料的機台。北/南三台於 2026-08-25 納入（決策見 HANDOFF 待辦 1）。
+# ★ TealMoa（Fuse 1+）刻意不列：SLS 粉末與樹脂不是同一套體系，只顯示機台狀態、不記消耗。
+# ★ 這五個名稱彼此都不是對方的子字串，所以下面的 `in` 比對不會互相誤判；
+#   日後新增機台前務必再確認一次（機台名互為子字串已經害過一次，見 CLAUDE.md）。
+TRACKED_ALIASES    = [
+    "AluminumBowfin",   # Form 4  · 中
+    "AdroitSauropod",   # Form 4L · 中
+    "JasperGosling",    # Form 4L · 北
+    "CreativeDragon",   # Form 3+ · 南
+    "BoldSturgeon",     # Form 3L · 南
+]
+
+
+def machine_key(ps) -> str:
+    """機台的識別名稱。
+
+    ★ 一律 `alias or serial`，不可只看 alias —— CreativeDragon / BoldSturgeon /
+      TealMoa 的 alias 是 None，serial 就是機台名（實測見 [region-scan] log）。
+      只看 alias 的話這幾台永遠比對不到 TRACKED_ALIASES，而且**沒有任何錯誤訊息**：
+      它們的 serial 不會進 tracked_serials → prints 根本不會被拉回來 → 消耗靜默消失。
+    """
+    return (ps.get("alias") or ps.get("serial") or "") if isinstance(ps, dict) else (ps or "")
+
+
+def tracked_alias(ps):
+    """這台機器對應到的 TRACKED_ALIASES 名稱；不在追蹤名單內回 None。
+
+    回傳的是「名單裡的那個名稱」而不是原始 alias/serial，好讓 inv.cartridges 的 key
+    在各機台之間保持一致（前端的 TRACKED_PRINTERS 就是照這份名單寫的）。
+    """
+    name = machine_key(ps)
+    for a in TRACKED_ALIASES:
+        if a in name:
+            return a
+    return None
 
 # ── Markforged / Eiger v3 ──
 #   規劃與實測校正見 docs/markforged-integration-plan.md §0.5、§0.6
@@ -932,8 +966,25 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             # 首次啟用：把現有 last_processed_prints 視為「已扣」，避免一次扣掉 60 天歷史
             deducted = set(inv.get("last_processed_prints", []))
             print(f"[sync] 首次啟用消耗扣庫存：種子 {len(deducted)} 筆歷史 print 視為已扣")
-        stock_deductions = {}   # material(code) -> 本次要扣的 ml 總和（main，過渡期相容用）
-        region_deductions = {}  # region -> { material(code): ml }（分區用）
+
+        # ── 新納管機台的歷史 print：只補紀錄、不扣庫存 ──────────────────────
+        # ★ 這一段非常重要。TRACKED_ALIASES 擴充時，新機台的**所有歷史 print** 都是
+        #   沒見過的 guid，會在同一輪被判定成 will_deduct → 幾個月（甚至幾年）的用量
+        #   一次全扣。那一區帳上庫存是 0，結果就是 stock_shortfalls 累積出一個天文數字，
+        #   前端跳「消耗紀錄可能有誤」而且數字毫無意義。
+        #   與上面「首次啟用」的處理原則一致：歷史只記錄、不追溯扣帳；從納管的那一刻起
+        #   往後才真的扣。實際盤點數量填進去之後，數字就是對的。
+        # tracked_aliases_seeded 是後加的欄位；既有部署早就在追蹤中部兩台，
+        # 沒有這個欄位時視為那兩台已完成種子（不可視為「全部都沒種子過」，
+        # 否則中部會在升級當下突然停扣一輪）。
+        seeded_aliases = set(inv.get("tracked_aliases_seeded")
+                             or ["AluminumBowfin", "AdroitSauropod"])
+        newly_tracked = {a for a in TRACKED_ALIASES if a not in seeded_aliases}
+        if newly_tracked:
+            print(f"[sync] 新納管機台 {sorted(newly_tracked)}：本輪歷史 print 只補紀錄不扣庫存")
+
+        stock_deductions = {}   # material(code) -> 本次要扣的 ml 總和（統計用）
+        region_deductions = {}  # region -> { material(code): ml }（分區用，實際扣這個）
 
         # 5. 同步機台樹脂罐到 inv.cartridges（給 inventory.html 用）
         # ★ 關鍵：cartridge 數值純粹以 API 為準（initial_ml - dispensed_ml），不再自行扣減
@@ -942,36 +993,37 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         ML_PER_BOTTLE = 1000
 
         for ps in printers_summary:
-            for alias in TRACKED_ALIASES:
-                if alias not in (ps.get("alias") or ""):
-                    continue
-                _carts = [
-                    {
-                        "slot":         c.get("slot"),
-                        "material":     c["material"],
-                        "material_raw": c.get("material_raw"),
-                        "remaining_ml": c["remaining_ml"],
-                        "initial_ml":   c["initial_ml"] or ML_PER_BOTTLE,
-                        "serial":       c.get("serial"),
-                        "updated_at":   c["updated_at"],
-                        "source":       "api",
-                    }
-                    for c in ps["cartridges"]
-                ]
-                inv["cartridges"][alias] = _carts
-                # 分區：同一份也寫進該機台所屬區的文件（樹脂罐天然屬於某一區）
-                _crk = machine_region(alias, machine_regions)
-                if region_invs[_crk]["cartridges"].get(alias) != _carts:
-                    region_invs[_crk]["cartridges"][alias] = _carts
-                    region_dirty[_crk] = True
+            alias = tracked_alias(ps)
+            if not alias:
+                continue
+            _carts = [
+                {
+                    "slot":         c.get("slot"),
+                    "material":     c["material"],
+                    "material_raw": c.get("material_raw"),
+                    "remaining_ml": c["remaining_ml"],
+                    "initial_ml":   c["initial_ml"] or ML_PER_BOTTLE,
+                    "serial":       c.get("serial"),
+                    "updated_at":   c["updated_at"],
+                    "source":       "api",
+                }
+                for c in ps["cartridges"]
+            ]
+            inv["cartridges"][alias] = _carts
+            # 分區：同一份也寫進該機台所屬區的文件（樹脂罐天然屬於某一區）
+            _crk = machine_region(alias, machine_regions)
+            if region_invs[_crk]["cartridges"].get(alias) != _carts:
+                region_invs[_crk]["cartridges"][alias] = _carts
+                region_dirty[_crk] = True
 
         # 6. 拉 prints — ★ 比照舊版可正常運作的做法：
         #    按機台 serial 過濾、不加 date 過濾、不加 sort，分頁抓每台追蹤機台的全部 prints
         #    （之前用 date__gt + sort 全抓的方式會漏掉最新一筆，改回 per-printer 過濾）
+        # ★ 用 tracked_alias（看 alias or serial），不可只看 alias —— 南部兩台的 alias
+        #   是 None，只看 alias 會讓它們的 serial 根本進不了這份清單，消耗靜默消失。
         tracked_serials = []
         for ps in printers_summary:
-            ps_alias = ps.get("alias") or ""
-            if any(a in ps_alias for a in TRACKED_ALIASES) and ps.get("serial"):
+            if tracked_alias(ps) and ps.get("serial"):
                 tracked_serials.append(ps.get("serial"))
         print(f"[sync] 追蹤機台 serials: {tracked_serials}")
 
@@ -1041,7 +1093,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 alias = None
                 for ps in printers_summary:
                     if ps.get("serial") == printer_ref or ps.get("alias") == printer_ref:
-                        alias = ps.get("alias")
+                        # ★ machine_key 而不是 ps["alias"]：南部兩台的 alias 是 None，
+                        #   取到 None 會讓這筆 print 被當成「無法對應」而整筆跳過。
+                        alias = machine_key(ps)
                         break
                 # 還是找不到 → 退而求其次：printer_ref 本身若含追蹤機台名就直接用
                 if not alias and printer_ref:
@@ -1127,7 +1181,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 # 消耗以最新版本計算：舊版本代碼（如家族已看過 FLTO2002 時的 FLTO2001）
                 # 只記錄不扣庫存 —— 備料存的是新版本，舊版罐用量不該扣新版庫存。
                 outdated = is_outdated_version(raw_material, family_latest, family_latest_seen)
-                will_deduct = (not backfill) and (guid not in deducted) and (not outdated)
+                # 新納管機台的歷史 print 不追溯扣帳（見上方 newly_tracked 說明）
+                is_new_machine_history = any(a in alias for a in newly_tracked)
+                will_deduct = ((not backfill) and (guid not in deducted)
+                               and (not outdated) and (not is_new_machine_history))
                 if outdated:
                     stats["skipped_outdated_deduct"] = stats.get("skipped_outdated_deduct", 0) + 1
                     print(f"[sync] 舊版本不扣庫存: {raw_material!r}(家族最新非此版) "
@@ -1145,6 +1202,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     skip_reason = "outdated_version"
                 elif backfill:
                     skip_reason = "backfill"
+                elif is_new_machine_history:
+                    # 前端「未扣庫存」tooltip 會顯示這個原因，讓人看得懂為什麼沒扣
+                    skip_reason = "newly_tracked_machine"
                 else:
                     skip_reason = None      # 已扣過的重複 guid
 
@@ -1196,23 +1256,22 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     batch.set(ref, entry["data"])
                 batch.commit()
 
-        # 9. 套用消耗扣減到備料庫存（從實際存在的同家族 key 扣，不建立幽靈 key）
+        # 9. 消耗扣減。
+        # ★ 過渡期的「inventory/main.stock 也全額扣一份」已於 2026-08-25 移除。
+        #   原因：main 是單一池子，沒有地區概念。北/南機台納入追蹤（TRACKED_ALIASES 擴充）
+        #   之後，那些消耗會同時扣進 main 與各自的 inventory/{region}，等於重複計算。
+        #   前端早已改讀 inventory/{region}（見 inventory.html 的 subscribeRegionInventory），
+        #   main.stock 只剩「central 文件不存在時的相容退路」，不再是任何畫面的真實來源。
+        #   ⚠ 因此 main.stock 從此凍結在移除當下的數值，不要再拿它跟任何畫面對帳。
         if stock_deductions:
-            print(f"[sync] 套用消耗扣備料庫存: {stock_deductions}")
-            # ★ 過渡期：main 的 stock 仍照舊全額扣減，因為前端目前還是讀 inventory/main。
-            #   等前端改讀 inventory/{region} 之後，這一段就可以拿掉。
-            #   目前所有納入追蹤的機台都在中部，所以 main 與 central 的數字會完全一致；
-            #   TRACKED_ALIASES 擴充到北/南機台時，「必須」同時把前端切過去，
-            #   否則那些消耗會被重複算進 main 這個單一池子。
-            shortfalls = apply_stock_deductions(inv["stock"], stock_deductions, now_iso)
-            for fam, ml in shortfalls.items():
-                print(f"[sync][警示] 消耗超過庫存: {fam} 差額 {ml:.1f} ml（庫存已扣至 0）")
+            print(f"[sync] 本輪消耗（依區扣減，main 不再扣）: "
+                  f"{ {m: round(v, 1) for m, v in stock_deductions.items()} }")
             stats["stock_deducted"] = {m: round(v, 2) for m, v in stock_deductions.items()}
-            if shortfalls:
-                stats["stock_shortfall"] = shortfalls
-                inv["stock_shortfalls"] = merge_shortfalls(inv.get("stock_shortfalls"), shortfalls, now_iso)
 
-        # 9b. 同一批消耗，依機台所屬區扣到 inventory/{region}
+        # 9b. 消耗依機台所屬區扣到 inventory/{region}（唯一真正扣庫存的地方）
+        # ★ 北/南剛納入追蹤時帳上庫存是 0，消耗會直接扣到 0 並把差額累進 stock_shortfalls，
+        #   前端因此會跳「消耗紀錄可能有誤」——這是預期中的，等實際盤點數量填進去、
+        #   再由 admin 按「已確認，清除警示」即可。
         if region_deductions:
             for _rk, _ded in region_deductions.items():
                 _rinv = region_invs[_rk]
@@ -1226,6 +1285,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
         inv["last_processed_prints"] = list(processed)[-2000:]  # 保留最近 2000 個
         inv["deducted_prints"]       = list(deducted)[-2000:]   # 已扣庫存的 print
+        # 已完成「首次納管」種子的機台。★ 一定要寫回，否則每一輪都會把新機台的 print
+        # 當成歷史而永遠不扣庫存 —— 那是靜默的少扣，比多扣更難發現。
+        inv["tracked_aliases_seeded"] = sorted(seeded_aliases | set(TRACKED_ALIASES))
         # 把本次同步看到的各家族最新版本代碼併入既有記錄（版本號較大者勝出，只會前進不會倒退）
         for raw in family_latest_seen.values():
             note_family_latest_version(raw, family_latest)
@@ -1235,6 +1297,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             "safety":                inv["safety"],
             "last_processed_prints": inv["last_processed_prints"],
             "deducted_prints":       inv["deducted_prints"],
+            "tracked_aliases_seeded": inv["tracked_aliases_seeded"],
             "disabled_materials":    inv["disabled_materials"],
             "disabled_overrides":    inv["disabled_overrides"],
             "family_latest_version": family_latest,

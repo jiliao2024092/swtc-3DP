@@ -1082,7 +1082,17 @@
 <script src="regions.js"></script>
 <script type="module">
 // ══ 設定 ══
-const TRACKED_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+// 納入消耗扣庫存的機台。★ 必須與 functions/main.py 的 TRACKED_ALIASES 完全一致 ——
+// 這份決定畫面上有哪些樹脂罐卡片，那份決定實際扣哪些機台的消耗，對不上就會出現
+// 「有扣庫存卻沒有卡片」（或反之）而沒有任何錯誤訊息。
+// TealMoa（Fuse 1+）刻意不列：SLS 粉末不走樹脂那套帳。
+const TRACKED_PRINTERS = [
+    'AluminumBowfin',   // Form 4  · 中
+    'AdroitSauropod',   // Form 4L · 中
+    'JasperGosling',    // Form 4L · 北
+    'CreativeDragon',   // Form 3+ · 南
+    'BoldSturgeon',     // Form 3L · 南
+];
 
 // ══ 北中南分區（與 3DP-BK.html 同一套判斷，定義在 regions.js）══════════
 // settings/workspace 的兩個欄位，由 subscribeWorkspaceSettings() 填入。
@@ -1118,6 +1128,47 @@ function applyRegionInv(){
     inv.safety           = seeded ? (d.safety || {})           : (useFallback ? mainSafetyFallback : {});
     inv.cartridges       = seeded ? (d.cartridges || {})       : (useFallback ? mainCartFallback : {});
     inv.stock_shortfalls = seeded ? (d.stock_shortfalls || {}) : {};
+}
+
+// ── Markforged 線材／耗材的分區庫存（inventory/markforged_{region}）──────────
+// 與 Formlabs 一樣：三個廠區的線材與耗材是三份獨立的實體庫存，台北的碳纖維捲
+// 不可能給台南用，混成一份會讓每一區都以為自己有那些料。
+// ★ 相容既有資料：舊的單一文件 inventory/markforged 就是「中部」的庫存
+//   （既有資料全歸中區，與 Formlabs 播種同一個原則）。中區的分區文件還不存在時
+//   沿用它，第一次存檔就會寫成 markforged_central。北/南從空的開始 ——
+//   絕不可退回舊文件，否則會把中部的量顯示成北部的（看起來正常但完全錯誤）。
+const MF_LEGACY_DOC = 'markforged';
+function mfRegionDocId(region){ return 'markforged_' + region; }
+
+function subscribeMfRegionInventory(){
+    if (unsubscribeMf) { unsubscribeMf(); unsubscribeMf = null; }
+    const region = activeRegion;
+    const docId = mfRegionDocId(region);
+    console.log('[mf-region-inv] 訂閱 inventory/' + docId);
+    unsubscribeMf = onSnapshot(doc(db, 'inventory', docId), async (snap) => {
+        let d = snap.exists() ? snap.data() : null;
+        if (!d && region === 'central') {
+            // 中區尚未建立分區文件 → 一次性讀舊文件承接（不常駐訂閱，省讀取額度）
+            try {
+                const legacy = await getDoc(doc(db, 'inventory', MF_LEGACY_DOC));
+                if (legacy.exists()) {
+                    d = legacy.data();
+                    console.warn('[mf-region-inv] inventory/' + docId +
+                        ' 尚未建立，暫時沿用 inventory/' + MF_LEGACY_DOC);
+                }
+            } catch (err) { console.warn('[mf-region-inv] 讀取舊文件失敗:', err.message); }
+        }
+        if (activeRegion !== region) return;   // 期間又被切走了，這份結果已過期
+        d = d || {};
+        mfInv.stock  = d.stock  || {};
+        mfInv.safety = d.safety || {};
+        mfInv.loaded = d.loaded || {};
+        mfLoadedFromFirestore = true;
+        if (currentBrand === 'markforged') { renderAlerts(); renderAll(); }
+    }, (err) => {
+        console.error('[mf-region-inv] 訂閱失敗:', err.code, err.message);
+        if (err.code === 'permission-denied') showToast('沒有權限讀取該地區的 Markforged 庫存', 'error');
+    });
 }
 
 function subscribeRegionInventory(){
@@ -1212,9 +1263,11 @@ function machineRegionGroupsHTML(bodyOf, countOf){
 window.setInvRegionView = function(v){
     if (!window.isRegion(v) || v === activeRegion) return;
     activeRegion = v;
+    mfLoadedFromFirestore = false;  // 新的一區還沒載回來之前不准寫，避免用舊區資料覆蓋
     renderRegionBar();
-    rebuildInvHistory();          // 消耗記錄／月度分析也跟著換區
-    subscribeRegionInventory();   // 換一區＝換一份庫存文件，要重新訂閱
+    rebuildInvHistory();            // 消耗記錄／月度分析也跟著換區
+    subscribeRegionInventory();     // 換一區＝換一份庫存文件，要重新訂閱
+    subscribeMfRegionInventory();   // Markforged 線材／耗材同樣分區
 };
 const DEFAULT_CARTRIDGE_ML = 1000;
 const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
@@ -1594,18 +1647,8 @@ function subscribeAll() {
         (err) => console.error('[mf_material_log] 訂閱失敗:', err)
     );
 
-    // 訂閱 inventory/markforged（Markforged 線材，獨立文件）
-    // 文件可能尚未建立（第一次使用），不存在時視為空資料而非錯誤
-    console.log('[subscribeAll] 訂閱 inventory/markforged...');
-    unsubscribeMf = onSnapshot(doc(db, 'inventory', 'markforged'), (snap) => {
-        const d = snap.exists() ? snap.data() : {};
-        mfInv.stock  = d.stock  || {};
-        mfInv.safety = d.safety || {};
-        mfInv.loaded = d.loaded || {};
-        mfLoadedFromFirestore = true;
-        if (currentTab === 'mf') renderMfPanel();
-        if (currentBrand === 'markforged') renderAlerts();   // 線材缺料橫幅
-    }, (err) => console.error('[markforged snapshot] 訂閱失敗:', err));
+    // 訂閱目前檢視地區的 Markforged 線材／耗材庫存
+    subscribeMfRegionInventory();
 
     // 訂閱目前檢視地區的庫存文件（stock/safety/cartridges/shortfalls）
     subscribeRegionInventory();
@@ -3362,8 +3405,11 @@ async function saveMfEdits() {
     renderMfPanel();
 }
 
-// 寫回 inventory/markforged。文件可能尚未建立，故用 setDoc（updateDoc 對不存在的文件會失敗）；
-// 不加 merge，讓刪除的材料 key 能真正消失（比照 saveAll 用 updateDoc 完整取代 map 的理由）
+// 寫回 inventory/markforged_{目前地區}。文件可能尚未建立，故用 setDoc
+//（updateDoc 對不存在的文件會失敗）；不加 merge，讓刪除的材料 key 能真正消失
+//（比照 saveAll 用 updateDoc 完整取代 map 的理由）。
+// ★ 一律寫進「目前檢視的那一區」，與畫面上顯示的完全一致 —— 跨區者在別區改數字時，
+//   頁首的「庫存地區」列會有橘色警告，不會不知道自己在改哪一區。
 async function saveMfDoc(reason) {
     if (!isEditor) { showToast('唯讀模式無法修改', 'error'); return; }
     if (!mfLoadedFromFirestore) {
@@ -3372,7 +3418,8 @@ async function saveMfDoc(reason) {
     }
     setSyncStatus('saving');
     try {
-        await setDoc(doc(db, 'inventory', 'markforged'), {
+        await setDoc(doc(db, 'inventory', mfRegionDocId(activeRegion)), {
+            region: activeRegion,
             stock:  mfInv.stock  || {},
             safety: mfInv.safety || {},
             loaded: mfInv.loaded || {},   // 保留 Cloud Function 寫入的掛載資料，別被前端清掉

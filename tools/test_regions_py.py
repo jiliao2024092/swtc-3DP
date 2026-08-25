@@ -28,11 +28,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src = open(os.path.join(ROOT, "functions", "main.py"), encoding="utf-8").read()
 ns = {"re": re, "Optional": Optional}
 for name in ("REGION_CODES", "DEFAULT_REGION", "SEED_MACHINE_REGION",
-             "FAMILY_REMAP", "NAME_TO_CODE"):
-    m = re.search(r"^%s = .*?$(?:\n(?!\n).*?$)*" % name, src, re.M)
+             "FAMILY_REMAP", "NAME_TO_CODE", "TRACKED_ALIASES"):
+    # \s*=\s* 而不是 " = "：main.py 有些常數是對齊寫法（多個空白）
+    m = re.search(r"^%s\s*=\s*.*?$(?:\n(?!\n).*?$)*" % name, src, re.M)
     assert m, f"main.py 找不到常數 {name}"
     exec(m.group(0), ns)
 for fn in ("norm_region", "_longest_contained_key", "machine_region",
+           "machine_key", "tracked_alias",
            "family_code", "canon_material",
            "apply_stock_deductions", "merge_shortfalls"):
     m = re.search(r"^def %s\(.*?(?=\n\ndef |\n\n# |\Z)" % fn, src, re.S | re.M)
@@ -158,6 +160,53 @@ acc = merge({}, {"FLTO20": 10.0}, "t1")
 acc = merge(acc, {"FLTO20": 5.0}, "t2")
 eq(acc["FLTO20"]["ml"], 15.0, "★ 差額要累計，不是覆寫")
 eq(acc["FLTO20"]["last_at"], "t2", "時間戳更新為最後一次")
+
+# ── 納入消耗追蹤的機台判斷（machine_key / tracked_alias）──────────────
+# ★ 這一組在守 CLAUDE.md 記載的地雷：CreativeDragon / BoldSturgeon / TealMoa 的
+#   alias 是 None，serial 才是機台名。只看 alias 的話這幾台永遠比對不到
+#   TRACKED_ALIASES，而且完全沒有錯誤訊息 —— serial 進不了 tracked_serials，
+#   prints 根本不會被拉回來，消耗靜默消失。
+machine_key = ns["machine_key"]
+tracked_alias = ns["tracked_alias"]
+TRACKED_ALIASES = ns["TRACKED_ALIASES"]
+
+eq(machine_key({"alias": "Form4-AluminumBowfin", "serial": "X1"}), "Form4-AluminumBowfin",
+   "有 alias 時以 alias 為準")
+eq(machine_key({"alias": None, "serial": "CreativeDragon"}), "CreativeDragon",
+   "★ alias 是 None 時退回 serial（南部兩台就是這樣）")
+eq(machine_key({"alias": "", "serial": "BoldSturgeon"}), "BoldSturgeon",
+   "★ alias 是空字串也要退回 serial")
+eq(machine_key({}), "", "兩者都沒有時回空字串，不可拋錯")
+
+eq(tracked_alias({"alias": "Form4-AluminumBowfin", "serial": "X1"}), "AluminumBowfin",
+   "serial 前綴形式的 alias 仍對得到名單裡的名稱")
+eq(tracked_alias({"alias": None, "serial": "CreativeDragon"}), "CreativeDragon",
+   "★ alias 為 None 的南部機台必須被追蹤到（只看 alias 會回 None＝完全不追蹤）")
+eq(tracked_alias({"alias": None, "serial": "BoldSturgeon"}), "BoldSturgeon",
+   "★ 同上：BoldSturgeon")
+eq(tracked_alias({"alias": None, "serial": "JasperGosling"}), "JasperGosling",
+   "北部 Form4L 已納入追蹤")
+eq(tracked_alias({"alias": None, "serial": "TealMoa"}), None,
+   "★ TealMoa（Fuse 1+）刻意不納入消耗追蹤（SLS 粉末不走樹脂帳）")
+eq(tracked_alias({"alias": "SomeOtherPrinter", "serial": "ZZ"}), None,
+   "名單外的機台不被追蹤")
+
+# 名單內的名稱彼此不可互為子字串，否則 `in` 比對會互相誤判（機台名子字串已害過一次）
+_collide = [(a, b) for a in TRACKED_ALIASES for b in TRACKED_ALIASES if a != b and a in b]
+eq(_collide, [], "★ TRACKED_ALIASES 內不可有名稱是另一個的子字串")
+
+# 追蹤名單與前端兩份清單必須逐字一致（對不上＝有扣庫存卻沒有卡片，或反之）
+_inv_html = open(os.path.join(ROOT, "inventory.html"), encoding="utf-8").read()
+_m = re.search(r"const TRACKED_PRINTERS = \[(.*?)\];", _inv_html, re.S)
+assert _m, "inventory.html 找不到 TRACKED_PRINTERS"
+eq(re.findall(r"'([A-Za-z]+)'", _m.group(1)), TRACKED_ALIASES,
+   "★ inventory.html 的 TRACKED_PRINTERS 要與 main.py 的 TRACKED_ALIASES 一致")
+
+_bk_html = open(os.path.join(ROOT, "3DP-BK.html"), encoding="utf-8").read()
+_m2 = re.search(r"const MATERIAL_PRINTERS = \[(.*?)\];", _bk_html, re.S)
+assert _m2, "3DP-BK.html 找不到 MATERIAL_PRINTERS"
+eq(sorted(re.findall(r"'([A-Za-z]+)'", _m2.group(1))), sorted(TRACKED_ALIASES),
+   "★ 3DP-BK.html 的 MATERIAL_PRINTERS 要與 main.py 的 TRACKED_ALIASES 一致")
 
 print(f"\n{_pass + _fail} 項：{_pass} PASS / {_fail} FAIL")
 sys.exit(1 if _fail else 0)

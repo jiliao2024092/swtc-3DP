@@ -200,18 +200,28 @@ service cloud.firestore {
     }
 
     // inventory 底下有兩類文件：
-    //   north / central / south → 各廠區的實體庫存，要比對地區
-    //   main / markforged / markforged_watch → 全域帳務與 Markforged，維持原本判斷
+    //   north / central / south                          → 各廠區的樹脂實體庫存
+    //   markforged_north / _central / _south             → 各廠區的 Markforged 線材與耗材
+    //     （以上都要比對地區）
+    //   main / markforged / markforged_watch → 全域帳務、Markforged 舊單一文件與觀測基準，
+    //     維持原本判斷。markforged 這個舊文件保留唯讀相容（中區分區文件建立前的來源），
+    //     不再由前端寫入。
     // ★ 用 docId 判斷而不是文件裡的欄位：庫存文件的 id 就是區碼，這樣連「文件還沒
     //   被建立出來」的情況也擋得住（用欄位判斷會在 resource 為 null 時求值失敗）。
     function isRegionInvDoc(docId) {
-      return docId in ['north', 'central', 'south'];
+      return docId in ['north', 'central', 'south',
+                       'markforged_north', 'markforged_central', 'markforged_south'];
+    }
+    // 區碼：樹脂文件的 id 就是區碼；Markforged 的要去掉 'markforged_' 前綴才比對得上
+    // myRegion()（回傳的是 north/central/south）。
+    function invDocRegion(docId) {
+      return docId.replace('markforged_', '');
     }
     match /inventory/{docId} {
       allow read: if isLoggedIn()
-        && (!isRegionInvDoc(docId) || isCrossRegionViewer() || docId == myRegion());
+        && (!isRegionInvDoc(docId) || isCrossRegionViewer() || invDocRegion(docId) == myRegion());
       allow write: if isLegacyEditorOrAdmin()
-        && (!isRegionInvDoc(docId) || isCrossRegionEditor() || docId == myRegion());
+        && (!isRegionInvDoc(docId) || isCrossRegionEditor() || invDocRegion(docId) == myRegion());
     }
 
     match /inventory_history/{logId} {

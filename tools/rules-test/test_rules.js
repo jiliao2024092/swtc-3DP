@@ -307,8 +307,30 @@ async function main() {
   // main 是全域帳務，不受地區限制（每個人都要讀得到材料版本、停用清單等產品設定）
   await ok('★ inventory/main 不受地區限制，一般使用者仍讀得到',
     as(USERS.engN).doc('inventory/main').get());
-  await ok('inventory/markforged 也不受地區限制',
+  await ok('inventory/markforged（舊單一文件）仍不受地區限制，保留唯讀相容',
     as(USERS.engN).doc('inventory/markforged').get());
+
+  // ══ 分區的 Markforged 庫存 inventory/markforged_{region} ══════════
+  // ★ 這幾項在守 invDocRegion()：docId 要去掉 'markforged_' 前綴才比對得上
+  //   myRegion()。少了那一步，'markforged_north' 永遠不等於 'north'，
+  //   結果是「每個人都只能讀寫不存在的區」＝所有人都被擋，或（若寫錯方向）
+  //   變成完全不設防。兩種都不會有錯誤訊息，只會看起來怪怪的。
+  await ok('北部工程師可讀自己那區的 Markforged 庫存',
+    as(USERS.engN).doc('inventory/markforged_north').get());
+  await nok('★ 北部工程師不可讀南部的 Markforged 庫存（線材耗材同樣是獨立實體庫存）',
+    as(USERS.engN).doc('inventory/markforged_south').get());
+  await ok('北部工程師可寫自己那區的 Markforged 庫存',
+    as(USERS.engN).doc('inventory/markforged_north').set({ stock: {} }, { merge: true }));
+  await nok('★ 北部工程師不可寫南部的 Markforged 庫存',
+    as(USERS.engN).doc('inventory/markforged_south').set({ stock: {} }, { merge: true }));
+  await ok('只給 view_all_regions 者可跨區「讀」Markforged 庫存',
+    as(USERS.mgrViewOnly).doc('inventory/markforged_south').get());
+  await nok('★ 只給 view_all_regions 者不可跨區「寫」Markforged 庫存',
+    as(USERS.mgrViewOnly).doc('inventory/markforged_south').set({ stock: {} }, { merge: true }));
+  await ok('有 edit_all_regions 者可跨區寫 Markforged 庫存',
+    as(USERS.mgrFull).doc('inventory/markforged_south').set({ stock: {} }, { merge: true }));
+  await ok('markforged_watch（觀測基準）不是分區文件，維持全域可讀',
+    as(USERS.engN).doc('inventory/markforged_watch').get());
 
   await testEnv.cleanup();
 

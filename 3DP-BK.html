@@ -1864,7 +1864,9 @@ window.exportExcel = function(){
 // ══════════════════════════════════════════════
 // ══ 9. 列印機即時狀態（訂閱 Firestore printer_status/current）═════
 // ══════════════════════════════════════════════
-const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod'];
+// 有樹脂罐餘量可顯示的機台，與 functions/main.py 的 TRACKED_ALIASES、
+// inventory.html 的 TRACKED_PRINTERS 同一份名單（三處要一起改）。
+const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod','JasperGosling','CreativeDragon','BoldSturgeon'];
 const CODE_TO_NAME = {
     'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
     'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
@@ -2373,7 +2375,9 @@ function renderStatusPanel(printers) {
 
 function renderMaterialPanel(printers) {
     const grid = document.getElementById('material-grid');
-    const targets = printers.filter(p=>MATERIAL_PRINTERS.some(name=>(p.alias||'').includes(name)));
+    // ★ alias or serial：南部兩台（CreativeDragon/BoldSturgeon）的 alias 是 None，
+    //   只看 alias 會讓它們永遠不顯示，而且沒有任何錯誤訊息（見 CLAUDE.md）。
+    const targets = printers.filter(p=>MATERIAL_PRINTERS.some(name=>((p.alias||p.serial||'')).includes(name)));
     if(!targets.length){
         grid.innerHTML = '<div class="col-span-full text-center text-[var(--ink-5)] text-sm py-4">找不到指定機台資料</div>';
         return;
