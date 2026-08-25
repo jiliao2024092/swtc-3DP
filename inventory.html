@@ -302,36 +302,36 @@
 <div class="max-w-7xl mx-auto space-y-6">
 
     <!-- Header -->
-    <div class="bg-[var(--bg)] rounded-xl shadow-sm p-5 flex items-center justify-between border-l-4 border-[var(--accent2)]">
+    <div class="bg-[var(--bg)] rounded-xl shadow-sm p-5 flex items-center justify-between gap-3 flex-wrap border-l-4 border-[var(--accent2)]">
         <div class="flex items-center gap-4">
             <div class="bg-[var(--accent2-soft)] p-3 rounded-lg text-[var(--accent2)]"><i data-lucide="package" class="w-7 h-7"></i></div>
             <div>
-                <div class="flex items-center gap-3">
-                    <h1 class="text-2xl font-bold text-[var(--ink)]">材料庫存管理</h1>
-                    <span class="text-xs bg-[var(--accent2-soft)] text-[var(--accent2)] px-2 py-0.5 rounded-full font-medium">Form 4 / Form 4L / Markforged</span>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h1 class="text-2xl font-bold text-[var(--ink)] whitespace-nowrap">材料庫存管理</h1>
+                    <span class="text-xs bg-[var(--accent2-soft)] text-[var(--accent2)] px-2 py-0.5 rounded-full font-medium whitespace-nowrap">Form 4 / Form 4L / Markforged</span>
                     <span id="role-badge" class="role-badge"></span>
                 </div>
                 <p class="text-sm text-[var(--ink-4)]">追蹤機台樹脂罐 + 備料庫存，自動計算列印消耗。</p>
             </div>
         </div>
         <div class="flex items-center gap-2">
-            <a href="3DP-BK.html" class="flex items-center gap-1.5 text-sm text-[var(--ink-4)] hover:text-[var(--accent)] px-3 py-2 rounded-md hover:bg-[var(--accent-soft)] transition-colors">
+            <a href="3DP-BK.html" class="whitespace-nowrap flex items-center gap-1.5 text-sm text-[var(--ink-4)] hover:text-[var(--accent)] px-3 py-2 rounded-md hover:bg-[var(--accent-soft)] transition-colors">
                 <i data-lucide="calendar-check" class="w-4 h-4"></i> 預約系統
             </a>
-            <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors">
+            <button data-admin-only onclick="purgeAndRebuildHistory()" title="清空所有消耗紀錄並從頭重新匯入（解決重複紀錄問題）" class="whitespace-nowrap flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--danger-soft)] text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors">
                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 清除並重建
             </button>
-            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除完全相同的重複紀錄（材料/機台/消耗/備註/時間全相同才刪；時間不同保留）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--orange-border)] bg-[var(--orange-soft)] text-[var(--orange)] hover:bg-[var(--orange-soft)] transition-colors">
+            <button data-admin-only onclick="deduplicateHistory()" title="掃描並刪除完全相同的重複紀錄（材料/機台/消耗/備註/時間全相同才刪；時間不同保留）" class="whitespace-nowrap flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--orange-border)] bg-[var(--orange-soft)] text-[var(--orange)] hover:bg-[var(--orange-soft)] transition-colors">
                 <i data-lucide="copy-x" class="w-3.5 h-3.5"></i> 去除重複
             </button>
-            <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+            <button onclick="reloadData()" title="從 Firestore 重新拉取最新資料" class="whitespace-nowrap flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="reload-icon"></i> 重新載入
             </button>
             <div class="text-right mr-2 embedded-hide">
                 <p id="user-name" class="text-sm font-medium text-[var(--ink)]">—</p>
                 <p id="user-email" class="text-xs text-[var(--ink-5)]">—</p>
             </div>
-            <div class="flex items-center gap-1 text-xs text-[var(--ink-5)]">
+            <div class="flex items-center gap-1 text-xs text-[var(--ink-5)] whitespace-nowrap">
                 <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
                 <span id="sync-status">同步中</span>
             </div>
@@ -528,17 +528,17 @@
             </div>
             <div id="stock-table-wrap" class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                    <thead>
+                    <th class="whitespace-nowrap"ead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium text-center w-24 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('ltank')" title="是否配有 Form 4L 樹脂槽">L樹脂槽<span id="stock-sort-ltank" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('total_ml')">總庫存 (L)<span id="stock-sort-total_ml" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('on_machine')">機台上存量 (L)<span id="stock-sort-on_machine" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium w-40">備註</th>
-                            <th class="p-3 border-b font-medium">最後更新</th>
-                            <th class="p-3 border-b font-medium text-center">操作</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-center w-24 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('ltank')" title="是否配有 Form 4L 樹脂槽">L樹脂槽<span id="stock-sort-ltank" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('total_ml')">總庫存 (L)<span id="stock-sort-total_ml" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('on_machine')">機台上存量 (L)<span id="stock-sort-on_machine" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-32 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('safety')">安全庫存 (L)<span id="stock-sort-safety" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('status')">狀態<span id="stock-sort-status" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-40">備註</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium">最後更新</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody id="stock-table-body" class="divide-y divide-gray-100"></tbody>
@@ -555,15 +555,15 @@
                 </summary>
                 <div class="p-4 border-t border-[var(--line-soft)] overflow-x-auto">
                     <table class="w-full text-left border-collapse text-sm">
-                        <thead>
+                        <th class="whitespace-nowrap"ead>
                             <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                                <th class="p-3 border-b font-medium">名稱</th>
-                                <th class="p-3 border-b font-medium text-right">庫存</th>
-                                <th class="p-3 border-b font-medium text-right w-28">安全庫存</th>
-                                <th class="p-3 border-b font-medium">狀態</th>
-                                <th class="p-3 border-b font-medium w-40">備註</th>
-                                <th class="p-3 border-b font-medium">最後更新</th>
-                                <th class="p-3 border-b font-medium text-center">操作</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium">名稱</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium text-right">庫存</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">安全庫存</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium">狀態</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium w-40">備註</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium">最後更新</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium text-center">操作</th>
                             </tr>
                         </thead>
                         <tbody id="consumables-table-body" class="divide-y divide-gray-100"></tbody>
@@ -619,14 +619,14 @@
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                            <th class="p-3 border-b font-medium w-36 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ts')">時間<span id="hist-sort-ts" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium">類型</th>
-                            <th class="p-3 border-b font-medium text-right w-28 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-[var(--ink-6)]"></span></th>
-                            <th class="p-3 border-b font-medium">備註</th>
-                            <th class="p-3 border-b font-medium w-32" title="Formlabs 原始回傳狀態，用於排查分類問題">API狀態</th>
-                            <th class="p-3 border-b font-medium w-14 text-center" data-delete-record-only>操作</th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap w-36 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ts')">時間<span id="hist-sort-ts" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap">類型</th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap text-right w-28 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-[var(--ink-6)]"></span></th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap">備註</th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap w-32" title="Formlabs 原始回傳狀態，用於排查分類問題">API狀態</th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap w-14 text-center" data-delete-record-only>操作</th>
                         </tr>
                     </thead>
                     <tbody id="history-body" class="divide-y divide-gray-100"></tbody>
@@ -851,18 +851,18 @@
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                    <thead>
+                    <th class="whitespace-nowrap"ead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                            <th class="p-3 border-b font-medium">材料名稱</th>
-                            <th class="p-3 border-b font-medium text-center w-24">類別</th>
-                            <th class="p-3 border-b font-medium text-right w-32">總庫存 (cc)</th>
-                            <th class="p-3 border-b font-medium text-right w-32">每捲 (cc)</th>
-                            <th class="p-3 border-b font-medium text-right w-20">捲數</th>
-                            <th class="p-3 border-b font-medium text-right w-32">安全庫存 (cc)</th>
-                            <th class="p-3 border-b font-medium w-24">狀態</th>
-                            <th class="p-3 border-b font-medium w-40">備註</th>
-                            <th class="p-3 border-b font-medium">最後更新</th>
-                            <th class="p-3 border-b font-medium text-center w-16">操作</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium">材料名稱</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-center w-24">類別</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-32">總庫存 (cc)</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-32">每捲 (cc)</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-20">捲數</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-32">安全庫存 (cc)</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-24">狀態</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-40">備註</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium">最後更新</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-center w-16">操作</th>
                         </tr>
                     </thead>
                     <tbody id="mf-table-body" class="divide-y divide-gray-100"></tbody>
@@ -879,15 +879,15 @@
                 </summary>
                 <div class="p-4 border-t border-[var(--line-soft)] overflow-x-auto">
                     <table class="w-full text-left border-collapse text-sm">
-                        <thead>
+                        <th class="whitespace-nowrap"ead>
                             <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                                <th class="p-3 border-b font-medium">名稱</th>
-                                <th class="p-3 border-b font-medium text-right">庫存</th>
-                                <th class="p-3 border-b font-medium text-right w-28">安全庫存</th>
-                                <th class="p-3 border-b font-medium">狀態</th>
-                                <th class="p-3 border-b font-medium w-40">備註</th>
-                                <th class="p-3 border-b font-medium">最後更新</th>
-                                <th class="p-3 border-b font-medium text-center">操作</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium">名稱</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium text-right">庫存</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">安全庫存</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium">狀態</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium w-40">備註</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium">最後更新</th>
+                                <th class="whitespace-nowrap p-3 border-b font-medium text-center">操作</th>
                             </tr>
                         </thead>
                         <tbody id="mf-consumables-body" class="divide-y divide-gray-100"></tbody>
@@ -914,14 +914,14 @@
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                    <thead>
+                    <th class="whitespace-nowrap"ead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                            <th class="p-3 border-b font-medium w-36">日期</th>
-                            <th class="p-3 border-b font-medium">材料</th>
-                            <th class="p-3 border-b font-medium w-32">機台</th>
-                            <th class="p-3 border-b font-medium text-right w-28">用量 (cc)</th>
-                            <th class="p-3 border-b font-medium w-24">類型</th>
-                            <th class="p-3 border-b font-medium">列印 / 備註</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-36">日期</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium">材料</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-32">機台</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">用量 (cc)</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-24">類型</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium">列印 / 備註</th>
                         </tr>
                     </thead>
                     <tbody id="mf-hist-body" class="divide-y divide-gray-100"></tbody>
@@ -4479,14 +4479,18 @@ function renderHistory() {
             <td class="p-3 text-xs text-[var(--ink-4)]">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
             <td class="p-3 font-medium text-[var(--ink)] text-sm">${matName(h.material)||'—'}</td>
             <td class="p-3 text-sm text-[var(--ink-3)]">${printerDisplay(h.printer)||'—'}</td>
-            <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full font-medium ${t.color}">${t.label}</span></td>
-            <td class="p-3 text-right font-medium text-sm ${mlColor}">${mlCell}${
+            <td class="p-3 whitespace-nowrap"><span class="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${t.color}">${t.label}</span></td>
+            <td class="p-3 text-right font-medium text-sm whitespace-nowrap ${mlColor}">
+                <div class="inline-flex items-center justify-end gap-1 whitespace-nowrap">
+                    <span>${mlCell}</span>${
                 isConsumeLike && h.stock_deducted === false
-                ? `<span class="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)] border border-[var(--warn-border)] font-normal cursor-help" title="${escHtml(deductSkipTitle(h))}">未扣庫存</span>`
+                ? `<span class="whitespace-nowrap flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)] border border-[var(--warn-border)] font-normal cursor-help" title="${escHtml(deductSkipTitle(h))}">未扣庫存</span>`
                   + (isAdminUser() && (h.ml||0) > 0
-                    ? `<button onclick="fixHistoryDeduction('${h.id}')" title="這筆其實應該扣庫存 → 立即補扣（僅 admin）" class="ml-1 align-middle text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--accent-border)] text-[var(--accent)] hover:bg-[var(--accent-soft)] font-normal">補扣</button>`
+                    ? `<button onclick="fixHistoryDeduction('${h.id}')" title="這筆其實應該扣庫存 → 立即補扣（僅 admin）" class="whitespace-nowrap flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--accent-border)] text-[var(--accent)] hover:bg-[var(--accent-soft)] font-normal">補扣</button>`
                     : '')
-                : ''}</td>
+                : ''}
+                </div>
+            </td>
             <td class="p-3 text-xs text-[var(--ink-5)]">
                 <div class="flex items-center gap-1.5">
                     <span class="truncate max-w-[200px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
