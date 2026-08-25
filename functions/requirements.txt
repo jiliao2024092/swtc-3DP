@@ -1,4 +1,26 @@
-firebase-functions>=0.4.0
-firebase-admin>=6.5.0
+# ==============================================================
+# KEEP THIS FILE ASCII-ONLY.
+# pip decodes requirements files with the *locale* encoding, so non-ASCII
+# comments break the install on any non-UTF-8 machine (hit locally on cp950:
+# "UnicodeDecodeError: 'cp950' codec can't decode byte 0xe2").
+# Full incident writeup is in CLAUDE.md ("2026-08-25 Firestore stopped working").
+#
+# PIN VERSIONS. Do not go back to bare ">=".
+# 2026-08-25: three Google packages all released on 2026-08-24; the next deploy
+# picked them up and every sync started failing on the first Firestore call with
+#   400 Invalid database id %28default%29
+# No code change was involved. Pinned back to the 2026-08-06 set (the
+# combination that the last good deploy on 2026-08-21 was running).
+# When upgrading, bump ONE package at a time and confirm the sync log shows a
+# successful run before moving on.
+# ==============================================================
+firebase-functions>=0.4.0,<0.7.0
+firebase-admin>=6.5.0,<8.0.0
+
+# Direct cause of the 2026-08-25 outage - keep pinned.
+google-cloud-firestore==2.28.1
+google-api-core==2.34.0
+google-cloud-core==2.6.1
+
 requests>=2.31.0
 tzdata>=2024.1

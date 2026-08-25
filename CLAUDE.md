@@ -76,6 +76,17 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 
 ## Firebase / 除錯
 - 看 log：`firebase functions:log --project swtc-3dp-poc`。常搜 `[sync]`、`DEBUG目標print`、`DEBUG列印中無檔名`
+- ⚠ **`firebase functions:log` 預設會被「部署稽核事件」洗版**（整頁 `google.cloud.audit.AuditLog`／`UpdateFunction`，看不到任何 `print()` 輸出）。要先濾掉：
+  ```powershell
+  firebase functions:log -n 300 --project swtc-3dp-poc |
+    Select-String -NotMatch 'google.cloud.audit'
+  ```
+  漏掉這一步會誤以為「函式根本沒執行」，實際上是輸出被蓋掉了（2026-08-25 就是這樣繞了一圈）。
+- ⚠ **`functions/requirements.txt` 的版本必須鎖死，且整份保持純 ASCII**（兩個獨立的坑）：
+  - **不鎖版本**：2026-08-25 事故——`google-cloud-firestore` / `google-api-core` / `google-cloud-core` 三個套件都在 2026-08-24 發新版，隔天部署裝到之後，**每一輪同步都在第一次讀 Firestore 就掛**（`400 Invalid database id %28default%29`），而程式碼一行都沒改。已釘回 2026-08-06 那組。升級請一次升一個並確認 log 有成功訊息
+  - **中文註解**：pip 是用**系統語系**讀 requirements（本機 cp950），非 ASCII 會直接 `UnicodeDecodeError` 讓安裝失敗
+- ⚠ **這個事故的症狀很像「新功能沒生效」**：`printer_status/current` 是在失敗**之前**寫的，所以機台狀態看起來一切正常、6 台都在，只有消耗紀錄與庫存靜止。判斷「新版有沒有真的在跑」要看**該版本才會寫的欄位**（例如 `inventory/main.tracked_aliases_seeded`），不要看 `printer_status`
+- ⚠ `%28default%29` 是 `(default)` 的 URL 編碼，但 firestore 客戶端的 `_database_string` **本來就長這樣**（實測 2.22.0～2.29.0 全部一致），**不是**判斷依據，別往那個方向查
 - 主要 Firestore collection：`users`（`permissions` 陣列為主，`role` 是自動推導的舊系統相容值）、`bookings`（含跨天 `endDate`、用途 `category`）、`inventory/main`（全域帳務：去重用的 print guid、`family_latest_version`、產品層級設定）、`inventory/{north|central|south}`（各廠區樹脂實體庫存：stock／safety／cartridges／stock_shortfalls）、`inventory/markforged_{north|central|south}`（各廠區 Markforged 線材與耗材；舊的單一文件 `inventory/markforged` 保留為中區尚未建立時的唯讀來源）、`inventory_history/{guid}`（doc_id=guid 防重複；刪除消耗類紀錄會自動回補庫存）、`printer_status/current`、`workboard_orders`（`actUsage` 可從 inventory_history 自動帶入）、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`、`settings/quote_materials`、`settings/quote_studio_pricing`、`print_orders`、`print_history`
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
 - 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃）：
