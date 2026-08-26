@@ -505,7 +505,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-config.js?v=20260814a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260825a"></script>
+<script src="firebase-service.js?v=20260825b"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1668,7 +1668,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260825a"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260825b"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260825a"></script>
 
 <!-- ⑦ 主 App -->
@@ -2844,8 +2844,6 @@ const CHANGELOG = [
     text:'資安強化：使用者清單改為只有管理員與具「使用者管理」權限的主管讀得到；刪除預約會自動留下稽核紀錄（誰、何時、刪了哪一筆）；修補一個新帳號首次登入時可自行取得管理員權限的漏洞。' },
   { hash:'6e0004c', date:'2026-08-14', type:'feat',
     text:'工作看板的「實際消耗量」自動帶入改為比對材料：同一張 EF 單號若用了多種樹脂，只會帶入與工單樹脂相符的用量，其餘材料列在下方可一鍵切換。材料庫存的消耗紀錄可直接選時間區間載入更早的資料；「未扣庫存」標籤改成滑鼠停留即顯示原因，管理員可對誤判的紀錄補扣。' },
-  { hash:'b35a9fc', date:'2026-08-12', type:'feat',
-    text:'SLA 後固化變形模擬器新增瀏覽器操作介面，並可打包成免安裝的 exe；求解時間由 30 分鐘以上縮短到約 25 秒，新增列印擺放方向作為變因與自動網格修復。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },
@@ -3086,10 +3084,12 @@ function App() {
     let unsubUserDoc  = null;
     let unsubSettings = null;
     let unsubInv      = null;
+    let unsubMfInv    = null;
     const teardownSession = () => {
       if (unsubUserDoc)  { unsubUserDoc();  unsubUserDoc  = null; }
       if (unsubSettings) { unsubSettings(); unsubSettings = null; }
       if (unsubInv)      { unsubInv();      unsubInv      = null; }
+      if (unsubMfInv)    { unsubMfInv();    unsubMfInv    = null; }
     };
     // 監聽登入狀態
     const unsubAuth = FBAuth.onStateChanged(async fbUser => {
@@ -3108,9 +3108,14 @@ function App() {
           //   全部掉回寫死的 K.ENG_ORDER。只有 admin 因為進後台按過「儲存」，靠本機立即
           //   套用（saveSettings 內的 window.applySettings）才看起來正常，其餘角色都受影響。
           unsubSettings = FBSettings.onSnapshot(s => { if (s) window.applySettings(s); });
-          // 監聽材料庫存 → 工作看板「樹脂材料」下拉用（與材料庫存頁一致）
+          // 監聽材料庫存 → 工作看板「材料」下拉用（與材料庫存頁一致）
           unsubInv = FBInventory.onSnapshot(names => {
             window._inventory_materials = names;
+            if (window._onSettingsUpdated) window._onSettingsUpdated();
+          });
+          // Markforged 線材（依登入者所屬地區），供「純塑料 / 塑料＋纖維」選項用
+          unsubMfInv = FBInventory.onMarkforgedSnapshot(mf => {
+            window._mf_materials = mf;
             if (window._onSettingsUpdated) window._onSettingsUpdated();
           });
           // 即時訂閱自己的使用者文件：權限被改時左下角會即時更新，停用時自動登出

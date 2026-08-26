@@ -334,20 +334,69 @@
     return DEFAULT_DISABLED_NAMES.includes(material) || DEFAULT_DISABLED_NAMES.includes(name);
   }
   // 由 inventory/main 文件組出「材料庫存顯示名稱」清單（家族去重、排除停用、排序）
+  // ★ 必須排除耗材：inv.stock 同時放樹脂與耗材（Mixer / Resin Tank 等機台配件），
+  //   靠 kind==='consumable' 區分。不濾掉的話工作看板的材料下拉會混進一堆
+  //   根本不是材料的東西（使用者回報過）。判斷方式與 inventory.html 的
+  //   isConsumableStock() 一致。
   function materialDisplayNames(inv) {
     if (!inv) return [];
     const fams = new Set();
     Object.values(inv.cartridges || {}).forEach(slots => (slots || []).forEach(s => { if (s && s.material) fams.add(matCode(s.material)); }));
-    Object.keys(inv.stock || {}).forEach(k => fams.add(matCode(k)));
+    Object.entries(inv.stock || {}).forEach(([k, v]) => {
+      if (v && v.kind === 'consumable') return;   // 耗材不是材料
+      fams.add(matCode(k));
+    });
     const names = [...fams].filter(f => !isDisabled(inv, f)).map(matName);
     return [...new Set(names)].sort();
   }
+
+  // Markforged 材料清單：依 category 拆成「塑料」與「纖維」兩組，供工作看板組出
+  // 「純塑料」與「塑料＋纖維」的選項。
+  // ★ 同樣要排除耗材（kind==='consumable'，以「個」計的機台配件）。
+  // ★ Markforged 材料是**純名稱**（Onyx／Carbon Fiber），不可套 matCode()/matName()
+  //   那套 FL 家族代碼邏輯——會把不同材料折到同一個 key（見 CLAUDE.md）。
+  function mfMaterialNames(inv) {
+    const out = { plastics: [], fibers: [] };
+    if (!inv) return out;
+    Object.entries(inv.stock || {}).forEach(([name, v]) => {
+      if (!name || (v && v.kind === 'consumable')) return;
+      ((v && v.category) === 'fiber' ? out.fibers : out.plastics).push(name);
+    });
+    out.plastics = [...new Set(out.plastics)].sort();
+    out.fibers = [...new Set(out.fibers)].sort();
+    return out;
+  }
+
   window.matName = matName;
   window.FBInventory = {
     onSnapshot(cb) {
       return db.collection('inventory').doc('main').onSnapshot(
         snap => cb(materialDisplayNames(snap.exists ? snap.data() : null)),
         err => { console.error('[inventory] onSnapshot 失敗:', err); cb([]); }
+      );
+    },
+    // Markforged 線材：讀「登入者所屬地區」那一份。
+    // ★ 中區若還沒建立分區文件，退回舊的單一文件 inventory/markforged
+    //   （與 inventory.html 的相容邏輯一致）；北/南沒有就是空的，
+    //   那是正確的——不可退回舊文件，否則會把中部的材料顯示成北部的。
+    onMarkforgedSnapshot(cb) {
+      const region = (window.regionOf ? window.regionOf(window._portalUser) : 'central');
+      const docId = 'markforged_' + region;
+      return db.collection('inventory').doc(docId).onSnapshot(
+        async snap => {
+          let data = snap.exists ? snap.data() : null;
+          if (!data && region === 'central') {
+            try {
+              const legacy = await db.collection('inventory').doc('markforged').get();
+              if (legacy.exists) data = legacy.data();
+            } catch (e) { /* 讀不到就當空的 */ }
+          }
+          cb(mfMaterialNames(data));
+        },
+        err => {
+          console.error('[inventory/markforged] onSnapshot 失敗:', err);
+          cb({ plastics: [], fibers: [] });
+        }
       );
     },
   };

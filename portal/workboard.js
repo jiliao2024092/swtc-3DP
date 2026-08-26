@@ -83,6 +83,53 @@
     return (window.matName ? window.matName(m) : m) || '';
   }
 
+  /* ── 材料下拉的選項來源 ─────────────────────────────────────────
+     這個欄位原本叫「樹脂材料」、只有 Formlabs 樹脂。現在改名「材料」並涵蓋
+     Markforged，分成三組：
+        Formlabs 樹脂        ← inventory/main（已排除耗材）
+        Markforged 純塑料    ← inventory/markforged_{地區} 的 category=plastic
+        Markforged 塑料＋纖維 ← 上面每個塑料 × 每個纖維的組合
+     再加一個「其他（自行輸入）」讓使用者填清單以外的材料。
+     ★ 存進 o.resin 的一律是**顯示字串本身**（例如 "Onyx ＋ Carbon Fiber"），
+       不另外拆欄位——消耗紀錄的自動回填是拿這個欄位去比對材料名稱的
+       （見 pickByResin），拆成兩欄會讓比對邏輯要同時顧兩邊。
+     ★ 塑料＋纖維用全形「＋」當分隔，與材料名稱裡可能出現的半形 + 不衝突。  */
+  const MF_JOIN = ' ＋ ';
+  const OTHER_OPT = '__other__';
+
+  function materialGroups() {
+    const K = window.K || {};
+    const resins = (window._inventory_materials && window._inventory_materials.length)
+      ? window._inventory_materials : (K.RESINS || []);
+    const mf = window._mf_materials || { plastics: [], fibers: [] };
+    const combos = [];
+    (mf.plastics || []).forEach(p =>
+      (mf.fibers || []).forEach(f => combos.push(p + MF_JOIN + f)));
+    return [
+      { label: 'Formlabs 樹脂',        items: resins },
+      { label: 'Markforged 純塑料',     items: mf.plastics || [] },
+      { label: 'Markforged 塑料＋纖維', items: combos },
+    ].filter(g => g.items.length);
+  }
+  // 這個值是不是「清單裡有的」——不是的話代表使用者自行輸入過
+  function isKnownMaterial(v) {
+    if (!v) return false;
+    return materialGroups().some(g => g.items.includes(v));
+  }
+
+  // 篩選用的選項：標準清單 ＋「資料裡出現過但已不在清單上」的材料。
+  // 少了後者，用「其他」自訂過的工單、或材料下架之後的舊工單，會永遠篩不出來。
+  window.wbMaterialFilterOptions = function (rows) {
+    const groups = materialGroups();
+    const known = new Set(groups.flatMap(g => g.items));
+    const extra = [...new Set((rows || [])
+      .map(o => (o && o.resin) || '')
+      .filter(v => v && !known.has(v)))].sort();
+    return extra.length
+      ? groups.concat([{ label: '其他（資料中出現過）', items: extra }])
+      : groups;
+  };
+
   // 從消耗紀錄的材料分組中，挑出與工單「樹脂材料」同一家族的那一筆
   function pickByResin(info, resin) {
     if (!info || !resin) return null;
@@ -96,8 +143,6 @@
     // 動態讀取工程師與機台（支援後台新增）
     const engineers = window._settings_engineers || K.ENG_ORDER;
     const machines  = window._settings_machines  || K.MACHINES;
-    // 樹脂材料：優先用材料庫存實際清單，未載入時退回 K.RESINS
-    const resins = (window._inventory_materials && window._inventory_materials.length) ? window._inventory_materials : K.RESINS;
 
     const empty = {
       seq:'', id:'', customer:'',
@@ -113,6 +158,11 @@
     const [busy, setBusy] = useState(false);
     const [showLink, setShowLink] = useState(!!(order && order.link));  // 單號超連結輸入是否展開
     const [consumeInfo, setConsumeInfo] = useState(null);   // INVENTORY 消耗紀錄查詢結果 {sum, count}
+    // 材料是不是「其他（自行輸入）」。★ 編輯既有工單時要用它原本的值判斷：
+    //   舊工單存的材料若已不在清單裡（材料下架、或當初就是自訂），一開啟就要
+    //   停在自行輸入模式並保留原值，否則使用者一存檔就把它洗成空的。
+    const [matOther, setMatOther] = useState(
+      () => !!(order && order.resin && !isKnownMaterial(order.resin)));
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
     // EF 單號變更時，自動查詢 INVENTORY 消耗紀錄；首次開啟若「實際消耗量」尚未填寫才自動帶入。
@@ -242,12 +292,28 @@
                 </select></div>
             </div>
             <div className="m-row">
-              <div className="m-field"><label style={LBL}>樹脂材料</label>
-                <select style={INP} value={form.resin||''} onChange={e=>set('resin',e.target.value)}>
+              <div className="m-field"><label style={LBL}>材料</label>
+                <select style={INP}
+                        value={matOther ? OTHER_OPT : (form.resin || '')}
+                        onChange={e=>{
+                          const v = e.target.value;
+                          if (v === OTHER_OPT) { setMatOther(true); set('resin',''); }
+                          else { setMatOther(false); set('resin', v); }
+                        }}>
                   <option value="">未指定</option>
-                  {resins.map(m=><option key={m}>{m}</option>)}
-                  {form.resin && !resins.includes(form.resin) && <option value={form.resin}>{form.resin}</option>}
-                </select></div>
+                  {materialGroups().map(g=>(
+                    <optgroup key={g.label} label={g.label}>
+                      {g.items.map(m=><option key={m} value={m}>{m}</option>)}
+                    </optgroup>
+                  ))}
+                  <option value={OTHER_OPT}>其他（自行輸入）</option>
+                </select>
+                {matOther && (
+                  <input style={{...INP, marginTop:6}} value={form.resin||''}
+                         placeholder="自行輸入材料名稱"
+                         onChange={e=>set('resin', e.target.value)} />
+                )}
+              </div>
               <div className="m-field"><label style={LBL}>類型</label>
                 <select style={INP} value={form.category||''} onChange={e=>set('category',e.target.value)}>
                   <option value="">未指定</option>
@@ -527,7 +593,6 @@
     // 每次都即時從 window 讀取最新設定（labelVer 變動時觸發重新渲染）
     const engineers = window._settings_engineers || K.ENG_ORDER;
     const machines  = window._settings_machines  || K.MACHINES;
-    const resins = (window._inventory_materials && window._inventory_materials.length) ? window._inventory_materials : K.RESINS;
 
     // 篩選
     const filtered = data.filter(o => {
@@ -608,7 +673,7 @@
           '期望交期': o.dueDate || '',
           '實際完成日': o.actualEndDate || '',
           '材料庫存': o.material || '',
-          '樹脂': o.resin || '',
+          '材料': o.resin || '',
           '類型': o.category || '',
           '進度(%)': o.progress ?? 0,
           '狀態': (K.STATUS_TONE[st] && K.STATUS_TONE[st].label) || st,
@@ -664,9 +729,16 @@
             <option value="done">已完成</option>
             <option value="cancelled">已取消</option>
           </select>
+          {/* 篩選要與新增/編輯用同一份來源，否則 Markforged 的工單篩不出來。
+              另外把「資料裡出現過、但已不在清單上」的材料也列進去（自訂或已下架的），
+              不然那些工單會變成永遠篩不到。 */}
           <select className="t-sel" value={fResin} onChange={e=>{setFResin(e.target.value);setPage(1);}}>
-            <option value="">所有樹脂</option>
-            {resins.map(m=><option key={m}>{m}</option>)}
+            <option value="">所有材料</option>
+            {window.wbMaterialFilterOptions(data).map(g => g.label
+              ? <optgroup key={g.label} label={g.label}>
+                  {g.items.map(m=><option key={m}>{m}</option>)}
+                </optgroup>
+              : g.items.map(m=><option key={m}>{m}</option>))}
           </select>
           <select className="t-sel" value={fCategory} onChange={e=>{setFCategory(e.target.value);setPage(1);}}>
             <option value="">所有類型</option>
@@ -700,7 +772,7 @@
                 <th className={thCls('dueDate')} onClick={()=>sortBy('dueDate')} style={{cursor:'pointer'}}>期望交期</th>
                 <th className={thCls('machine')} onClick={()=>sortBy('machine')} style={{cursor:'pointer'}}>機台</th>
                 <th className={thCls('material')} onClick={()=>sortBy('material')} style={{cursor:'pointer'}}>材料</th>
-                <th className={thCls('resin')} onClick={()=>sortBy('resin')} style={{cursor:'pointer'}}>樹脂</th>
+                <th className={thCls('resin')} onClick={()=>sortBy('resin')} style={{cursor:'pointer'}}>材料</th>
                 <th className={thCls('category')} onClick={()=>sortBy('category')} style={{cursor:'pointer'}}>類型</th>
                 <th className={thCls('progress')} onClick={()=>sortBy('progress')} style={{cursor:'pointer'}}>進度</th>
                 <th className={thCls('status')} onClick={()=>sortBy('status')} style={{cursor:'pointer'}}>狀態</th>
