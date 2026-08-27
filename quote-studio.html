@@ -572,6 +572,8 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <!-- App Check 設定（未填 site key 時為 no-op）-->
 <script src="appcheck.js"></script>
+<!-- Firebase 專案設定（唯一來源，五頁共用）-->
+<script src="firebase-config.js?v=20260827a"></script>
 <script>
 "use strict";
 /* =========================================================================
@@ -591,14 +593,10 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
    登入沿用入口網站（portal）的帳號 session：同網域下 Firebase Auth
    自動共用，未登入者顯示提示並擋下操作（與 quote.html 相同模式）。
    ============================================================ */
-const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
-  authDomain:        "swtc-3dp-poc.firebaseapp.com",
-  projectId:         "swtc-3dp-poc",
-  storageBucket:     "swtc-3dp-poc.firebasestorage.app",
-  messagingSenderId: "1074210451221",
-  appId:             "1:1074210451221:web:quote"
-};
+// ★ 設定值統一放在根目錄的 firebase-config.js（五頁共用），不要在這裡再寫一份。
+// 原本這裡的 appId 是自己編的 web:quote / web:quotemf；Auth 與 Firestore 不驗證
+// appId 所以一直沒出事，但 App Check 是綁「已註冊的 app」的，收斂後改用真實那個。
+const FIREBASE_CONFIG = window.requireFirebaseConfig();
 const FB = { ready:false, db:null, uid:null, unsubOrders:null, unsubHistory:null };
 
 // 全螢幕檢視：本頁以 iframe 嵌在 portal.html 裡時，隱藏 portal 左側選單(.shell-sidebar)讓本頁填滿整個

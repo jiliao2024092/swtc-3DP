@@ -1081,6 +1081,8 @@
 
 <!-- App Check 設定（classic script，會先於下方 module 執行；未填 site key 時為 no-op）-->
 <script src="appcheck.js"></script>
+<!-- Firebase 專案設定（唯一來源，五頁共用）-->
+<script src="firebase-config.js?v=20260827a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
 <script src="regions.js"></script>
 <script type="module">
@@ -1484,14 +1486,10 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/fireba
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import { getFirestore, doc, setDoc, addDoc, updateDoc, collection, onSnapshot, serverTimestamp, query, orderBy, Timestamp, getDocs, deleteDoc, writeBatch, limit, where, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
-const firebaseConfig = {
-    apiKey: "AIzaSyB-bFYMZPkqZenFWmFxEExxb4iVUz3Pz_k",
-    authDomain: "swtc-3dp-poc.firebaseapp.com",
-    projectId: "swtc-3dp-poc",
-    storageBucket: "swtc-3dp-poc.firebasestorage.app",
-    messagingSenderId: "1074210451221",
-    appId: "1:1074210451221:web:30e84a3f501e90e612831c"
-};
+// Firebase 配置。★ 設定值統一放在根目錄的 firebase-config.js（五頁共用），
+// 不要在這裡再寫一份。<script type="module"> 是 defer，一定在 classic script
+// 之後執行，所以讀得到。
+const firebaseConfig = window.requireFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 if (window.initAppCheckModular) window.initAppCheckModular(app);
 const auth = getAuth(app);

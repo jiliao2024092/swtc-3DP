@@ -487,7 +487,7 @@ sync_formlabs_scheduled（每 30 分鐘）
 | 工作看板 / 異常 / 後台 | `portal/portal.html`（React 元件） |
 | 工作看板邏輯 | `portal/workboard.js` |
 | 異常與資源邏輯 | `portal/issues.js` |
-| Firebase 設定 | `portal/firebase-config.js` |
+| Firebase 設定 | `firebase-config.js`（repo 根目錄，五頁共用的唯一來源；portal 的初始化在 `portal/firebase-init.js`） |
 | Firebase 服務封裝 | `portal/firebase-service.js`（`PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 也在這） |
 | 預約系統 | `3DP-BK.html`（根目錄） |
 | 材料庫存 | `inventory.html`（根目錄） |
@@ -495,7 +495,7 @@ sync_formlabs_scheduled（每 30 分鐘）
 
 **升 cache 版本號**：改完 `portal/` 下的 `.js` 後，必須升 `portal.html` 的 `?v=` 參數。每支 `.js` 各自獨立編號，只需升有改動的那支；只改 portal.html 自身（CSS/元件）不需升號。
 
-> 版本號會持續往上升，**實際數值請直接看 `portal/portal.html` 內對應的 `<script src="...?v=...">`**，不要照抄文件。（撰寫本文時：`workboard.js`=`20260708j`、`issues.js`=`20260708k`、`firebase-service.js`=`20260708i`、`firebase-config.js`=`20260708f`）
+> 版本號會持續往上升，**實際數值請直接看 `portal/portal.html` 內對應的 `<script src="...?v=...">`**，不要照抄文件。（撰寫本文時：`workboard.js`=`20260708j`、`issues.js`=`20260708k`、`firebase-service.js`=`20260708i`、`firebase-init.js`（原 `firebase-config.js`）=`20260708f`）
 
 ---
 

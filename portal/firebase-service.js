@@ -1,6 +1,7 @@
 // firebase-service.js
 // 服務層：把 Coffee-Who 平台用到的 FB* 介面實作在 swtc-3dp-poc 上
-// 依賴 firebase-config.js 先初始化 window.fbAuth / window.fbDb
+// 依賴 firebase-init.js 先初始化 window.fbAuth / window.fbDb
+// （設定值本身在 repo 根目錄的 firebase-config.js，五頁共用）
 
 (function () {
   const auth = window.fbAuth;
@@ -497,7 +498,7 @@
     async createUser(email, password, profile) {
       const secondaryAuth = window.fbSecondaryAuth;
       if (!secondaryAuth) {
-        throw new Error('secondary auth 未初始化（firebase-config.js）');
+        throw new Error('secondary auth 未初始化（firebase-init.js）');
       }
       try {
         // 用 secondary auth 建立新 user，不影響目前管理員的登入 session

@@ -507,10 +507,12 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="../appcheck.js?v=20260814a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
 <script src="../regions.js?v=20260824a"></script>
-<script src="firebase-config.js?v=20260814a"></script>
+<!-- Firebase 專案設定（唯一來源，五頁共用；檔案在 repo 根目錄）-->
+<script src="../firebase-config.js?v=20260827a"></script>
+<script src="firebase-init.js?v=20260827a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260827a"></script>
+<script src="firebase-service.js?v=20260827b"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->

@@ -26,8 +26,8 @@ portal.html 是 React 外殼（React18 + Babel CDN + Firebase compat SDK），�
 → 改預約/庫存/列印機狀態/估價的功能，要改根目錄的 `3DP-BK.html` / `inventory.html` / `quote-studio.html`，**不是** portal.html。
 
 ## 檔案地圖
-- 根目錄：`inventory.html`（庫存）、`3DP-BK.html`（預約+列印機即時狀態）、`quote-studio.html`（3D列印估價 Beta）、`index.html`
-- `portal/`：`portal.html`（外殼 + 看板/異常/後台元件 + 所有 modal/卡片 CSS）、`issues.js`、`workboard.js`、`firebase-config.js`、`firebase-service.js`（含 `PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 角色權限定義）
+- 根目錄：`inventory.html`（庫存）、`3DP-BK.html`（預約+列印機即時狀態）、`quote-studio.html`（3D列印估價 Beta）、`index.html`、`firebase-config.js`（**Firebase 設定的唯一來源**，五頁共用）、`appcheck.js`、`regions.js`
+- `portal/`：`portal.html`（外殼 + 看板/異常/後台元件 + 所有 modal/卡片 CSS）、`issues.js`、`workboard.js`、`firebase-init.js`（compat SDK 初始化，**不含設定值**）、`firebase-service.js`（含 `PERMS_MAP`/`DEFAULT_ROLE_PRESETS` 角色權限定義）
 - `functions/`：`main.py`（Formlabs 同步，entry：`sync_formlabs_scheduled` 每30分、`sync_formlabs_manual` admin）、`requirements.txt`
 - `.github/workflows/`：`deploy-pages.yml`（push main 即全部署）、`deploy-functions.yml`（functions/ 有變動 → firebase deploy）
 - `firestore.rules`：安全規則，改動後隨 push 自動 deploy（見下方部署段落）
@@ -85,6 +85,14 @@ cd tools/rules-test && npm test
 模擬器設定在根目錄的 `firebase.emulator.json`——**刻意不併進 `firebase.json`**，
 因為那個檔名列在 `deploy-functions.yml` 的 paths 過濾裡，動它會白白重新部署一次 Cloud Function。
 JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset-react `transformSync` 逐一編譯各 babel 區塊（能編譯＝語法正確）。
+
+## Firebase 設定（唯一來源，2026-08-27 收斂）
+- 設定值只在根目錄的 **`firebase-config.js`**，五個頁面共用：`portal/portal.html`（經 `portal/firebase-init.js`）、`3DP-BK.html`、`inventory.html`、`quote-studio.html`、`quote-markforged.html`。收斂前是 5 份硬編碼，改專案要同時改 5 個檔
+- 取用一律走 **`window.requireFirebaseConfig()`**，拿不到會拋明確錯誤。少了這道防護，`initializeApp(undefined)` 會在很後面才冒出 `auth/invalid-api-key`，排查方向整個被帶偏
+- ⚠ 用 **classic `<script>` 不是 ES module**：compat 頁（portal/quote-studio/quote-markforged）與 modular 頁（3DP-BK/inventory）都要能用。`<script type="module">` 預設 defer，一定在 classic script 之後執行，所以兩邊都讀得到。與 `appcheck.js` 同一個模式
+- ⚠ 全域屬性刻意叫 `window.__FIREBASE_CONFIG__`：quote-studio / quote-markforged 頂層有 `const FIREBASE_CONFIG`，classic script 的頂層 const 會建立全域詞法繫結而**遮蔽同名的 window 屬性**，取名撞在一起遲早出事
+- ⚠ **`appId` 收斂前有四種值**（`web:portal`／`web:quote`／`web:quotemf` 都是自己編的）。Auth 與 Firestore 確實不驗證 appId 所以一直沒出事，但 **App Check 綁的是「已註冊的 app」**——等 `appcheck.js` 的 `SITE_KEY` 填上去，那三頁會拿不到 token。現已統一成真實的 `1:1074210451221:web:30e84a3f501e90e612831c`
+- 改完務必**五頁都開起來確認能登入**（改一個檔會同時影響全部）
 
 ## Firebase / 除錯
 - 看 log：`firebase functions:log --project swtc-3dp-poc`。常搜 `[sync]`、`DEBUG目標print`、`DEBUG列印中無檔名`
