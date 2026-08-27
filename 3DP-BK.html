@@ -2513,7 +2513,19 @@ function subscribeSettings(){
         ENG_LABEL = {}; ENG_FULLLABEL = {};
         let order = ENGINEERS.slice();
         if (s && Array.isArray(s.engineers) && s.engineers.length){
-            order = s.engineers.map(e=>e.key);
+            // 分區：下拉只列出「自己這一區」的工程師（沒設 region ＝ 全區可見）。
+            // 分區未啟用、或可跨區檢視者不過濾，行為與加這段之前相同。
+            // ★ 名稱對照（ENG_LABEL/ENG_FULLLABEL）**不過濾**：舊預約可能指向
+            //   已被濾掉的工程師，對照查不到就會直接顯示英文 key，看起來像資料壞掉。
+            const _mode = (s.region_mode) || 'off';
+            const _active = window.regionActiveFor && window.regionActiveFor(currentUser, _mode);
+            const _scope = !_active ? null
+                : (window.canViewAllRegions && window.canViewAllRegions(currentUser)
+                    ? (window.REGIONS||[]).map(r=>r.key)
+                    : [window.regionOf ? window.regionOf(currentUser) : 'central']);
+            order = s.engineers
+                .filter(e => !_scope || !e.region || _scope.includes(e.region))
+                .map(e=>e.key);
             s.engineers.forEach(e=>{
                 ENG_LABEL[e.key]     = e.label || e.key;
                 ENG_FULLLABEL[e.key] = (e.label && e.label !== e.key) ? `${e.label} (${e.key})` : e.key;

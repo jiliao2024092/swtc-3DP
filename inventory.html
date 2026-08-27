@@ -1103,6 +1103,17 @@ const TRACKED_PRINTERS = [
 // settings/workspace 的兩個欄位，由 subscribeWorkspaceSettings() 填入。
 let REGION_MODE = 'off';        // off / alpha / beta / on
 let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
+// 工程師／業務的 key → 中文名（settings/workspace，與 portal 後台同源）。
+// 只給「匯出列印記錄」把 workboard_orders 存的 key 翻成「中文 (英文)」用。
+let ENG_NAMES   = {};
+let SALES_NAMES = {};
+// 「中文 (英文)」；沒有中文名或中文=key 時只顯示 key。與 3DP-BK.html 的
+// engDisplay/salesDisplay 同一個慣例，匯出與畫面上看到的才會一致。
+function zhEnLabel(key, dict){
+    if (!key) return '';
+    const zh = dict[key];
+    return (zh && zh !== key) ? `${zh} (${key})` : key;
+}
 // ★ 庫存頁刻意「一次只看一區」（決策 A）：三個廠區的備料是三個獨立的實體庫存，
 //   台北的樹脂不可能給台南用，所以加總會誤導（「Tough 2000 還有 3000mL」，
 //   但其中 2000 在台北、台中根本領不到）。因此這裡沒有「全部」這個選項——
@@ -1319,6 +1330,8 @@ function parseNote(note){
 //   目標表其實還有「正式立案前測試列印」，但我們的來源只有單一個「工程測試」，
 //   一對二無法自動判別，所以固定對到其中一個，需要改的人再手動改。
 const PURPOSE_MAP = { '代工':'代工列印', '評估':'評估機器', '工程測試':'原廠材料工程測試' };
+// 工程測試＝自家原廠材料測試，客戶固定是這一家（人工登記表該類 7 筆全部如此）
+const SWTC_TEST_CUSTOMER = '實威國際股份有限公司';
 
 // 是否收費。★ 實測目標表 23 筆全中（23/23），規則不是「看列印目的」那麼單純：
 //   「評估機器」在目標表裡是 5 筆收費、1 筆不收費，光看目的判不出來，
@@ -1742,6 +1755,20 @@ function subscribeAll() {
         const s = snap.exists() ? snap.data() : {};
         REGION_MODE     = s.region_mode || 'off';
         MACHINE_REGIONS = s.machine_regions || null;
+        // 工程師／業務的「中文 (英文)」對照，供「匯出列印記錄」把 workboard 存的
+        // key（Jaylen／Ava）還原成人看得懂的名字。與 portal 後台同一份設定。
+        // ★ 這裡**不做地區過濾**：對照表是拿來把舊資料的 key 翻成名字的，
+        //   濾掉就會讓別區的工程師顯示成英文 key，看起來像資料壞掉。
+        //   要限制「能選誰」是下拉選單的事，不是對照表的事。
+        ENG_NAMES   = {};
+        SALES_NAMES = {};
+        (Array.isArray(s.engineers) ? s.engineers : []).forEach(e => {
+            if (e && e.key) ENG_NAMES[e.key] = e.label || e.key;
+        });
+        (Array.isArray(s.bk_sales) ? s.bk_sales : []).forEach(x => {
+            const k = x && (x.key || x.label);
+            if (k) SALES_NAMES[k] = (x.label || x.key);
+        });
         // 設定是後到的，先前已用預設值 off 渲染過一次，要重畫才會套用
         renderCartridges();
         if (currentTab === 'mf') renderMfPanel();
@@ -5259,8 +5286,11 @@ function buildPrintLogRows(){
             '時間戳記':  valid ? ts.toLocaleString('zh-TW') : '',
             '日期':      valid ? fmtDateLocalInv(ts) : '',
             '地區':      window.regionLabel ? (window.regionLabel(h.region)||'') : (h.region||''),
-            '業務':      '',                       // 階段 2（workboard join）
-            '客戶名稱':  '',                       // 階段 2；備註只有簡稱，非 EIP 全名
+            '業務':      '',                       // 由 EF 單號 join workboard 補上
+            // 工程測試一律是自家的原廠材料測試，客戶就是實威國際（對照人工登記表，
+            // 該類 7 筆全部都是這一家）。其餘類別的客戶全名要靠單號 join 工單，
+            // 因為備註第一段只有客戶「簡稱」，不是 EIP 上的公司全名。
+            '客戶名稱':  p.category === '工程測試' ? SWTC_TEST_CUSTOMER : '',
             '品牌':      h.source === 'markforged' ? 'Markforged' : 'Formlabs',
             '機型':      exportModelName(h),
             '列印目的':  PURPOSE_MAP[p.category] || '',
@@ -5338,9 +5368,13 @@ async function exportPrintLogExcel(){
             const o = wbMap.get(String(ef).trim());
             if (!o) return;
             matched++;
-            r['業務']       = o.sales || '';
-            r['客戶名稱']   = o.customer || '';
-            r['責任工程師'] = o.engineer || '';
+            // key → 「中文 (英文)」。workboard 存的是 key（Jaylen／Ava），
+            // 直接匯出英文代號人看不懂，而中文名在 settings/workspace 就有。
+            r['業務']       = zhEnLabel(o.sales, SALES_NAMES);
+            r['責任工程師'] = zhEnLabel(o.engineer, ENG_NAMES);
+            // ★ 不覆蓋已經填好的客戶名稱：工程測試那類已固定帶入實威國際，
+            //   工單上若填了別的（例如借用同一張單號）不該把它蓋掉。
+            if (!r['客戶名稱']) r['客戶名稱'] = o.customer || '';
         });
     }
     const wb = XLSX.utils.book_new();

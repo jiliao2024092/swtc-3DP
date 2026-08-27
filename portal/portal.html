@@ -603,8 +603,23 @@ window.showToast = window.showToast || function (msg, type) {
     if (window.applyRolePresets) window.applyRolePresets(settings.role_presets);
     const eng = settings.engineers;
     const mch = settings.machines;
+
+    // 分區：清單依登入者所屬地區過濾。沒設 region 的項目 ＝ 全區可見。
+    // 分區未啟用、或使用者可跨區檢視（admin／主管）時回 null ＝ 完全不過濾，
+    // 行為與加這段之前相同。機台與工程師共用這個判斷，避免兩邊寫法走偏。
+    const regionScope = (() => {
+      const u = window._portalUser;
+      const active = window.regionActiveFor && window.regionActiveFor(u, settings.region_mode);
+      if (!active) return null;
+      return window.canViewAllRegions(u) ? (window.REGIONS || []).map(r => r.key) : [window.regionOf(u)];
+    })();
+    // ★ 只過濾「誰出現在下拉選單」，不動 ENG_LABEL/ENG_FULLLABEL ——
+    //   舊資料可能指向已被過濾掉的工程師，名稱對照仍要查得到，否則畫面會
+    //   直接顯示英文 key（或空白），看起來像資料壞掉。
+    const inScope = item => !regionScope || !item.region || regionScope.includes(item.region);
+
     if (eng && Array.isArray(eng)) {
-      window._settings_engineers = eng.map(e => e.key);
+      window._settings_engineers = eng.filter(inScope).map(e => e.key);
       eng.forEach(e => {
         K.ENG_LABEL[e.key]     = e.label;
         K.ENG_FULLLABEL[e.key] = e.label + ' (' + e.key + ')';
@@ -617,7 +632,7 @@ window.showToast = window.showToast || function (msg, type) {
     //   is_engineers 未設定時退回 engineers（沿用同步模式的既有行為）。
     const isEng = settings.is_engineers;
     if (Array.isArray(isEng) && isEng.length) {
-      window._settings_is_engineers = isEng.map(e => e.key);
+      window._settings_is_engineers = isEng.filter(inScope).map(e => e.key);
       isEng.forEach(e => {
         K.ENG_LABEL[e.key]     = K.ENG_LABEL[e.key]     || e.label;
         K.ENG_FULLLABEL[e.key] = K.ENG_FULLLABEL[e.key] || (e.label + ' (' + e.key + ')');
@@ -628,16 +643,8 @@ window.showToast = window.showToast || function (msg, type) {
       window._settings_is_engineers = window._settings_engineers;
     }
     if (mch && Array.isArray(mch)) {
-      // 分區：機台清單依登入者所屬地區過濾（機型項目沒設 region ＝ 全區可見）。
-      // 分區未啟用、或使用者可跨區檢視時不過濾，行為與改動前相同。
       // ★ 這裡拿的是「機型清單」（Form4/Form4L…）不是實體機台，兩者不同，見 regions.js。
-      const u = window._portalUser;
-      const active = window.regionActiveFor && window.regionActiveFor(u, settings.region_mode);
-      const scope = !active ? null
-        : (window.canViewAllRegions(u) ? (window.REGIONS||[]).map(r=>r.key) : [window.regionOf(u)]);
-      window._settings_machines = mch
-        .filter(m => !scope || !m.region || scope.includes(m.region))
-        .map(m => m.name);
+      window._settings_machines = mch.filter(inScope).map(m => m.name);
     }
     // 業務清單：與「3D列印機預約」共用同一份 settings/workspace.bk_sales，
     // 不另開一份設定 —— 兩份會慢慢走偏，而且後台要維護兩個清單。
@@ -2411,6 +2418,9 @@ function AdminPanel({ user, isAdmin }) {
       bk_sync:      bkSync,
       bk_engineers: bkSync ? wbEng  : bkEng,
       bk_machines:  bkSync ? wbMach : bkMach,
+      // ★ key 仍叫 bk_sales 是歷史因素（原本只有 3D列印機預約在用）。刻意不改名：
+      //   改 key 要同時遷移既有資料，而 3DP-BK / workboard / 列印記錄匯出三處都在讀它，
+      //   漏一處的症狀是「業務下拉突然空白」。UI 已移到工作看板頁籤統一維護。
       bk_sales:     bkSales,
       bk_categories: bkCategories,
       role_presets: rolePresets,
@@ -2465,14 +2475,14 @@ function AdminPanel({ user, isAdmin }) {
       ))}
       <button className="btn-cancel" style={{marginTop:2,fontSize:12}} onClick={()=>setList([...list, keyField?{key:'',label:''}:{name:''}])}>＋ 新增</button>
       {regionField && <div style={{fontSize:11,color:'var(--ink-4)',marginTop:6,lineHeight:1.6}}>
-        地區留「全區」＝所有地區都看得到這個機型（例如共用的「Other」）。設定了地區的機型，分區啟用後只有該區的人看得到。
+        地區留「全區」＝所有地區都看得到這一項（例如共用的「Other」、跨區支援的工程師）。設定了地區的項目，分區啟用後只有該區的人看得到；可跨區檢視的管理員與主管不受限制。
       </div>}
     </div>
   );
 
   const SalesEditor = () => (
     <div style={{marginBottom:24}}>
-      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>業務清單<span style={{fontWeight:400,color:'var(--ink-4)',fontSize:11,marginLeft:6}}>(獨立設定，不與工作看板同步)</span></div>
+      <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:10}}>業務清單<span style={{fontWeight:400,color:'var(--ink-4)',fontSize:11,marginLeft:6}}>(工作看板、3D列印機預約、列印記錄匯出共用)</span></div>
       <div style={{display:'grid',gridTemplateColumns:'110px 1fr 28px',gap:'0 8px',marginBottom:4}}>
         <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>英文 / Key</div>
         <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>中文名稱</div>
@@ -2626,8 +2636,9 @@ function AdminPanel({ user, isAdmin }) {
             {/* 工作看板設定 */}
             {settingTab==='workboard'&&(
               <div>
-                {ListEditor({label:"工程師清單", list:wbEng,  setList:setWbEngSync,  keyField:true})}
+                {ListEditor({label:"工程師清單", list:wbEng,  setList:setWbEngSync,  keyField:true, regionField:true})}
                 {ListEditor({label:"機台清單",   list:wbMach, setList:setWbMachSync, keyField:false, regionField:true})}
+                {SalesEditor()}
               </div>
             )}
 
@@ -2651,7 +2662,7 @@ function AdminPanel({ user, isAdmin }) {
                 {sync
                   ? <div style={{padding:'16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center'}}>目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
-                      {ListEditor({label:"工程師清單（獨立）", list:isEng,  setList:setIsEng,  keyField:true})}
+                      {ListEditor({label:"工程師清單（獨立）", list:isEng,  setList:setIsEng,  keyField:true, regionField:true})}
                       {ListEditor({label:"機台清單（獨立）",   list:isMach, setList:setIsMach, keyField:false, regionField:true})}
                     </>
                 }
@@ -2688,12 +2699,20 @@ function AdminPanel({ user, isAdmin }) {
                 {bkSync
                   ? <div style={{padding:'16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8,color:'var(--ink-4)',fontSize:13,textAlign:'center',marginBottom:20}}>工程師與機台目前同步工作看板設定，如需個別設定請關閉同步</div>
                   : <>
-                      {ListEditor({label:"工程師清單（獨立）", list:bkEng,  setList:setBkEng,  keyField:true})}
+                      {ListEditor({label:"工程師清單（獨立）", list:bkEng,  setList:setBkEng,  keyField:true, regionField:true})}
                       {ListEditor({label:"機台清單（獨立）",   list:bkMach, setList:setBkMach, keyField:false, regionField:true})}
                     </>
                 }
-                {/* 業務清單（獨立，含中英文） */}
-                {SalesEditor()}
+                {/* 業務清單已移到「工作看板」頁籤統一維護（工作看板、3D列印機預約、
+                    列印記錄匯出三處共用同一份，不再各自一套）。 */}
+                <div style={{marginBottom:24,padding:'12px 16px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:8}}>
+                  <div style={{fontSize:13,fontWeight:700,color:'var(--ink-2)',marginBottom:4}}>業務清單</div>
+                  <div style={{fontSize:11.5,color:'var(--ink-4)',lineHeight:1.7}}>
+                    已與「工作看板」同步，統一在<b>工作看板</b>頁籤維護。
+                    這份清單同時供 3D列印機預約、工作看板的業務欄、以及材料庫存的「匯出列印記錄」使用。
+                    <br/>目前共 {bkSales.length} 位：{bkSales.filter(x=>x&&(x.key||x.label)).map(x=>x.label||x.key).join('、')||'（尚未設定）'}
+                  </div>
+                </div>
                 {ListEditor({label:"用途類別清單", list:bkCategories, setList:setBkCategories, keyField:false})}
                 <div style={{fontSize:11,color:'var(--ink-4)',marginTop:-16,marginBottom:20}}>「其他」選項固定保留（選擇後可自行輸入說明），不需列在此清單中</div>
               </div>
@@ -2862,6 +2881,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING5', date:'2026-08-27', type:'feat',
+    text:'後台的「業務清單」移到系統設定的「工作看板」頁籤統一維護，工作看板的業務欄、3D列印機預約、材料庫存的匯出列印記錄三處共用同一份，不再各自一套。工程師清單新增「地區」欄位：設定地區後，該區同仁在工作看板、異常與資源、3D列印機預約都只會看到自己這一區的工程師；留「全區」的人（例如跨區支援）則每一區都看得到，管理員與主管不受限制。匯出列印記錄的「業務」與「責任工程師」改成「中文 (英文)」的形式；列印目的為原廠材料工程測試時，客戶名稱會自動帶入實威國際股份有限公司。' },
   { hash:'d429537', date:'2026-08-27', type:'feat',
     text:'「匯出列印記錄」補上「列印時間」欄，直接從 Formlabs 取實際列印耗時，以 0.5 小時為單位（不足半小時算 0.5）。同樣只有之後新同步的列印才有，先前的紀錄仍需人工填。至此匯出的 19 欄只剩「列印時間（舊紀錄）」與 Ultem9085（我們沒有這台機器）需要人工處理。' },
   { hash:'a068bdb', date:'2026-08-27', type:'feat',
@@ -2880,8 +2901,6 @@ const CHANGELOG = [
     text:'修正甘特圖會把同一筆預約同時顯示在不同地區同機型機台上的問題（例如北部 Form4 的預約也出現在中部 Form4 那一列）；同名機台若分屬多個地區，甘特圖列名會加上地區以利辨識。預約清單預設改為日期由新到舊排序。樣品出借分頁改為只對中部同仁顯示（樣品箱實際放在台中），管理員與主管仍看得到。另外為節省流量費用，工作看板、異常與資源預設只載入最新 100 筆、機台預約預設只載入近三個月，需要更早的資料請按工具列的「載入更早的」。' },
   { hash:'5cbb061', date:'2026-08-24', type:'feat',
     text:'材料庫存的「庫存地區」切換移到標題正下方，Formlabs 與 Markforged 共用同一個地區；切換後庫存、機台、消耗記錄與月度分析會一起換區（先前消耗記錄與月度分析是三區混在一起）。並修正在 Markforged 分頁按地區切換時畫面不會更新的問題。機台狀態卡改為三區分組，目前地區展開、其餘收合，點收合的地區即可切換過去。工作看板、異常與資源、後台使用者管理的地區篩選改為預設帶出自己所屬地區（要看全部請自行切到「所有地區」）。' },
-  { hash:'b507a4b', date:'2026-08-21', type:'feat',
-    text:'系統改為北中南分區：每個帳號設定所屬地區，一般同仁只會看到自己地區的預約、工單與異常資料；管理員與主管可檢視全部地區，並可用「所有地區」下拉切換。列印機狀態卡改依地區分組，預設展開自己那一區、其餘收合。後台使用者管理新增地區欄位與角色／地區篩選。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },

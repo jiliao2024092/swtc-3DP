@@ -235,5 +235,53 @@ eq(defaultRegionFilter(null), '',
 eq(defaultRegionFilter(undefined), '',
    '★ 同上：undefined 也要回空字串');
 
+// ── 工程師／機台清單的地區過濾（兩處實作必須一致）─────────────────
+// portal.html 與 3DP-BK.html 各有一份「依地區過濾下拉清單」的實作。兩邊走偏
+// 的症狀是靜默的：某人在工作看板選得到某位工程師、到預約頁卻選不到。
+// 這裡把兩份原始碼都掃過，確認關鍵性質仍成立。
+const portalSrc = fs.readFileSync(path.join(__dirname, '..', 'portal', 'portal.html'), 'utf8');
+const bkSrc     = fs.readFileSync(path.join(__dirname, '..', '3DP-BK.html'), 'utf8');
+
+const inScope = (item, scope) => !scope || !item.region || scope.includes(item.region);
+const ENG_LIST = [
+  { key:'Jaylen', label:'何哲綸', region:'central' },
+  { key:'Okra',   label:'邱文魁', region:'south' },
+  { key:'Kiwi',   label:'陳睿蒼', region:'north' },
+  { key:'Barry',  label:'Barry' },
+];
+const scopeFor = u => {
+  const active = regionActiveFor(u, 'on');
+  if (!active) return null;
+  return canViewAllRegions(u) ? REGIONS.map(r => r.key) : [regionOf(u)];
+};
+const listFor = u => ENG_LIST.filter(e => inScope(e, scopeFor(u))).map(e => e.key);
+
+eq(listFor({ permissions:['edit_board'], region:'south' }), ['Okra','Barry'],
+   '南部工程師只看到南部同仁＋全區支援者');
+eq(listFor({ permissions:['edit_board'], region:'central' }), ['Jaylen','Barry'],
+   '中部工程師只看到中部同仁＋全區支援者');
+eq(listFor({ permissions:['admin'] }), ['Jaylen','Okra','Kiwi','Barry'],
+   'admin 看得到全部');
+eq(listFor({ permissions:['delete_board'], region:'north' }), ['Jaylen','Okra','Kiwi','Barry'],
+   '主管可跨區檢視 → 看得到全部');
+eq(ENG_LIST.filter(e => !e.region).every(e =>
+     REGIONS.every(r => listFor({ permissions:['edit_board'], region:r.key }).includes(e.key))),
+   true, '未設地區的工程師在每一區都看得到');
+
+eq(/window\._settings_engineers\s*=\s*eng\.filter\(inScope\)/.test(portalSrc), true,
+   'portal.html：工作看板工程師清單有過濾');
+eq(/window\._settings_is_engineers\s*=\s*isEng\.filter\(inScope\)/.test(portalSrc), true,
+   'portal.html：異常與資源工程師清單有過濾');
+eq(/window\._settings_machines\s*=\s*mch\.filter\(inScope\)/.test(portalSrc), true,
+   'portal.html：機台清單有過濾');
+eq(/order\s*=\s*s\.engineers[\s\S]{0,200}?\.filter\(e\s*=>\s*!_scope\s*\|\|\s*!e\.region/.test(bkSrc), true,
+   '3DP-BK.html：工程師下拉有過濾');
+eq(/s\.engineers\.forEach\(e=>\{[\s\S]{0,200}?ENG_LABEL\[e\.key\]/.test(bkSrc), true,
+   '3DP-BK.html：名稱對照仍走完整清單（不過濾）');
+eq(/eng\.forEach\(e => \{[\s\S]{0,200}?K\.ENG_LABEL\[e\.key\]/.test(portalSrc), true,
+   'portal.html：名稱對照仍走完整清單（不過濾）');
+eq((portalSrc.match(/label:"工程師清單[^"]*", list:\w+,\s+setList:\w+,\s+keyField:true, regionField:true/g)||[]).length,
+   3, '後台三個工程師清單都有地區欄位');
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

@@ -127,6 +127,8 @@ const rowSrcs = [
   extract('OUTCOME_LABEL_TW',    /const OUTCOME_LABEL_TW = \{[\s\S]*?\};/),
   extract('IN_FLIGHT_API_STATUS',/const IN_FLIGHT_API_STATUS = \[[^\]]*\];/),
   extract('NOT_A_FAILURE_SKIP',  /const NOT_A_FAILURE_SKIP = \[[^\]]*\];/),
+  extract('SWTC_TEST_CUSTOMER', /const SWTC_TEST_CUSTOMER = [^\n]*;/),
+  extract('zhEnLabel',          /function zhEnLabel\(key, dict\)\{[\s\S]*?\n\}/),
   extract('historyOutcome',      /function historyOutcome\(h\)\{[\s\S]*?\n\}/),
   extract('exportPrintResult',   /function exportPrintResult\(h\)\{[\s\S]*?\n\}/),
   extract('exportModelName',     /function exportModelName\(h\)\{[\s\S]*?\n\}/),
@@ -273,6 +275,48 @@ check('新納管機台未扣 → 仍是成功',
 check('因失敗/中止而未扣 → 失敗',
       exportPrintResult(H({ stock_deducted:false, deduct_skip_reason:'failed_or_aborted' })), '失敗');
 check('有扣庫存 → 成功', exportPrintResult(H({ stock_deducted:true })), '成功');
+
+
+// ══ 工程測試的客戶名稱 ══════════════════════════════════════════
+// 工程測試＝自家原廠材料測試，客戶固定是實威國際（人工登記表該類 7 筆全部如此）。
+console.log('── 工程測試自動帶入客戶名稱 ──');
+const engTest = { id:'e1', ts:'2026-08-20T10:00:00', material:'Grey V5',
+  printer:'AluminumBowfin', type:'consume', ml:10, region:'central', source:'formlabs' };
+check('工程測試 → 實威國際股份有限公司',
+      runBuild([{ ...engTest, note:'實威-工程測試-海昌體驗營' }])[0]['客戶名稱'],
+      '實威國際股份有限公司');
+check('底線格式的工程測試也要帶入',
+      runBuild([{ ...engTest, note:'實威國際_工程測試_翹曲試片' }])[0]['客戶名稱'],
+      '實威國際股份有限公司');
+check('無第三段的工程測試也要帶入',
+      runBuild([{ ...engTest, note:'實威-工程測試' }])[0]['客戶名稱'],
+      '實威國際股份有限公司');
+// ★ 其他類別不可亂帶：客戶全名要靠單號 join 工單，備註只有簡稱
+check('代工 → 客戶名稱留空（等 join）',
+      runBuild([{ ...engTest, note:'博大-代工-202607160001' }])[0]['客戶名稱'], '');
+check('評估 → 客戶名稱留空（等 join）',
+      runBuild([{ ...engTest, note:'裕田動能-評估-202608170001' }])[0]['客戶名稱'], '');
+check('未分類 → 客戶名稱留空',
+      runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['客戶名稱'], '');
+
+// ══ 業務／工程師的「中文 (英文)」顯示 ═══════════════════════════
+console.log('── 業務／工程師以「中文 (英文)」匯出 ──');
+const zh = {};
+new Function('o', srcs.join('\n') + '\n' + rowSrcs.join('\n') +
+  '\nObject.assign(o,{zhEnLabel});')(zh);
+const zhEnLabel = zh.zhEnLabel;
+const ENG = { Jaylen:'何哲綸', Okra:'邱文魁', Barry:'Barry' };
+const SAL = { Ava:'曾采秢', Benny:'賴冠瑀', Amber:'Amber' };
+check('工程師 Jaylen → 何哲綸 (Jaylen)', zhEnLabel('Jaylen', ENG), '何哲綸 (Jaylen)');
+check('業務 Ava → 曾采秢 (Ava)',          zhEnLabel('Ava', SAL),    '曾采秢 (Ava)');
+// 中文名與 key 相同時不要輸出「Barry (Barry)」這種疊字
+check('中文=key 時只顯示一次',            zhEnLabel('Barry', ENG),  'Barry');
+check('業務中文=key 時只顯示一次',        zhEnLabel('Amber', SAL),  'Amber');
+// ★ 對照表查不到時退回 key，不可回空字串——匯出欄位空白會被當成「沒填」，
+//   而實際上工單是有指定人的，只是清單裡沒有這個人（離職／改名）。
+check('查不到對照 → 退回 key',            zhEnLabel('Unknown', ENG), 'Unknown');
+check('空 key → 空字串',                  zhEnLabel('', ENG),        '');
+check('null → 空字串',                    zhEnLabel(null, ENG),      '');
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

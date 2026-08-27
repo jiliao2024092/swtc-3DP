@@ -60,7 +60,7 @@ python3 -m py_compile functions/main.py
 # 入庫的「已知材料」判斷：84 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
-# 北中南分區邏輯：前端 115 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳）
+# 北中南分區邏輯：前端 127 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
@@ -70,7 +70,7 @@ node tools/test_gantt_rows.js
 # 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間：69 項
 python tools/test_deduct_outcome.py
 
-# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間）：78 項
+# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間、中英文名）：91 項
 node tools/test_print_log_export.js
 
 # JSX 實際編譯（比括號平衡強：portal 的 babel 區塊 + workboard.js/issues.js）
@@ -142,6 +142,12 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ **FC-118 風險**：Formlabs 偶爾對已印完的 print 永遠回傳 `PRINTING`，那種會被無限期跳過、消耗永不入帳。為此每輪把飛行中的檔名印進 log（`[sync] 飛行中`）——**同一個名字連續多天出現就是踩到了**
   - `PRINTING` **仍留在 `DONE_STATUSES`**：兩者分工不同（前者決定「這輪要不要現在寫」，後者決定「這個狀態算不算已結束」），不衝突
 - ⚠ **「沒扣庫存」≠ 列印失敗**：四種未扣原因裡有三種（`outdated_version`/`backfill`/`newly_tracked_machine`）其實列印是成功的，只有 `failed_or_aborted` 才是失敗。匯出的成功/失敗判定見 `exportPrintResult()`
+- **工程師／業務／機台清單分區**（2026-08-27）：後台三個工程師清單都有「地區」欄，**留空＝全區可見**（跨區支援的人一定要留空，否則那些區的人永遠指派不到他，畫面上毫無提示）。過濾在兩處實作：`portal/portal.html` 的 `inScope`（工作看板／異常與資源／機台共用）與 `3DP-BK.html` 的 `subscribeSettings`
+  - ⚠ **只過濾「下拉能選誰」，絕不過濾名稱對照表**（`ENG_LABEL`/`ENG_FULLLABEL`）。舊資料可能指向別區的人，對照查不到會直接顯示英文 key，看起來像資料壞掉
+  - admin 與可跨區檢視的主管不受限制
+- **業務清單**：UI 在後台「**工作看板**」頁籤（原本在 3D列印機預約），工作看板業務欄／3D列印機預約／列印記錄匯出**三處共用同一份**。⚠ Firestore key 仍叫 `bk_sales` 是歷史因素，刻意不改名：改 key 要遷移既有資料，而三處都在讀它，漏一處的症狀是「業務下拉突然空白」
+- **匯出的人名格式**：業務與責任工程師一律「**中文 (英文)**」（`zhEnLabel`），與 3DP-BK 的 `engDisplay`/`salesDisplay` 同一慣例。⚠ 對照查不到時**退回 key 而不是空字串**——空白會被當成「沒填」，但實際上工單有指定人，只是那人已不在清單裡
+- **工程測試的客戶名稱**固定帶入「實威國際股份有限公司」（自家原廠材料測試，人工登記表該類 7 筆全部如此）。其餘類別靠單號 join 工單，因為備註第一段只有客戶**簡稱**不是 EIP 全名；join 時**不覆蓋**已填好的客戶名稱
 - **業務欄**：`workboard_orders.sales`，清單與 3DP-BK 共用 `settings/workspace.bk_sales`（`window._settings_sales`）。列印記錄匯出以 **EF 單號** join 補「業務／客戶全名／責任工程師」三欄；**沒單號或對不到就留空給人工填**，不做客戶簡稱的模糊比對（撞名風險太高）
 - **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
 - ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
