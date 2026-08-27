@@ -52,7 +52,10 @@
       const byMat = new Map();   // 材料顯示名稱 → { name, sum, count }
       let sum = 0, count = 0;
       rows.forEach(d => {
-        const parts = (d.note || '').split('-');
+        // ★ 分隔符要同時吃 `-` 與 `_`：實掃 29 筆消耗紀錄，2 筆用底線
+        //   （例：實威國際_工程測試_翹曲試片）。只 split('-') 的話那些單號
+        //   永遠對不上，實際消耗量就靜默地帶不進來（inventory.html 同一個坑）。
+        const parts = (d.note || '').split(/[-_]/);
         if (parts.length < 3) return;
         const category = parts[1].trim();
         const ef = parts.slice(2).join('-').trim();

@@ -67,6 +67,12 @@ python3 tools/test_regions_py.py
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
+# 扣庫存規則與 Dashboard Outcome 五分類：43 項
+python tools/test_deduct_outcome.py
+
+# 列印記錄匯出（備註解析、收費規則、MF 併列、排序）：47 項
+node tools/test_print_log_export.js
+
 # firestore.rules 安全規則：98 項（跑本機 Firestore 模擬器，不連任何真實專案；含 list 查詢）
 cd tools/rules-test && npm test
 ```
@@ -102,6 +108,28 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ 差額式追蹤的基準存在 `inventory/markforged_watch`，**基準更新與消耗寫入必須在同一個 batch**——分開寫會在「history 寫成功、基準寫失敗」時，讓下一輪用更舊的基準算出更大的一段差額，同一段消耗被記兩次、庫存也扣兩次
   - ⚠ Markforged 材料是**純名稱**（Onyx／Carbon Fiber），不可套 `canon_material()`／`family_code()` 那套 FL 家族代碼邏輯；扣庫存走 `apply_mf_deductions()`（比對純名稱、扣 `total_cc`），與樹脂的 `total_ml` 完全分開。耗材（`kind='consumable'`，以「個」計）不可被 cc 消耗扣到
   - ⚠ 機台顯示名稱有互為子字串的情況（`MarkTwo` ⊂ `MarkTwoGEN2` / `MarkTwoTainan`）。`machine_region()` 必須「完全相同優先、包含取最長」，只用包含比對會依 dict 鍵順序判錯區，且完全沒有錯誤訊息（`tools/test_regions*` 有守）
+
+## 列印記錄匯出 / Outcome（2026-08-27）
+- **備註即 Formlabs 檔名**，慣例 `客戶簡稱-工作類別-第三段`。實掃 29 筆列印紀錄 **29/29 可解析**
+  - ⚠ **分隔符要同時吃 `-` 與 `_`**（27 筆連字號、2 筆底線）。只 split `'-'` 會讓底線那幾筆的第2段變 `undefined` → 歸「未分類」，月度分析佔比少算且**畫面無徵兆**。`inventory.html` 與 `portal/workboard.js` **兩處都有這份解析**，改一處要記得改另一處
+  - 第三段**純數字（8碼以上）= APP單號**、**文字 = 展示活動名稱**（海昌體驗營、翹曲試片…）
+- **是否收費 = (工作類別==代工) OR (備註有APP單號)**。對照人工登記表 23 筆**全中**。⚠ 不可只看列印目的：「評估機器」在該表是 5 筆收費、1 筆不收費
+- **列印目的**：代工→代工列印、評估→評估機器、工程測試→原廠材料工程測試。⚠ 目標表另有「正式立案前測試列印」，來源只有單一個「工程測試」，一對二**無法自動判別**，固定對到前者
+- **Dashboard 的 Outcome 五分類**（實掃 1475 筆 prints 得出，`print_outcome()`）：
+  | status | print_run_success | Outcome | 筆數 |
+  |---|---|---|---|
+  | FINISHED | SUCCESS | successful | 952 |
+  | FINISHED | FAILURE | unsuccessful | 56 |
+  | FINISHED | （無此欄） | printed | 220 |
+  | ABORTED | （無此欄） | aborted | 175 |
+  | ERROR | FAILURE | failed | 71 |
+  - ⚠ `print_run_success` 是**巢狀 dict**，值在內層同名 key。直接拿整個 dict 比對 → 952 筆 successful 全誤判成 printed，**畫面看不出來**
+  - ⚠ 官方文件範例的 `"UNKNOWN"` **實際一次都沒出現**；真實 enum 只有 `SUCCESS`/`FAILURE`，「Printed」是**欄位不存在**。照文件寫死會得到永遠不成立的分支
+- **扣庫存規則（決策 B）**：只有 **Failed（ERROR）與 Aborted（ABORTED/ABORTING）不扣**，其餘全扣（含 **Unsuccessful —— 印完了、樹脂一樣消耗掉**）。刻意寫成**排除清單**（`NO_DEDUCT_OUTCOME_STATUSES`），讓 UNKNOWN／舊資料／未來新增的 enum 自動落在「扣」那側，不會靜默漏扣。仍以 `status` 判定而非 `outcome`：兩者對 Failed/Aborted 結論相同，但 `status` 的 enum 官方有完整文件
+- ⚠ **「列印結果」欄不可用 `apiStatus`**：實測 29 筆消耗紀錄裡 **27 筆是 `PRINTING`**（那是抓取當下的機台狀態，不是該次列印的結果）。要用 `outcome` 欄位，2026-08-27 前的舊紀錄沒有此欄位（未 backfill）
+- **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
+- ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
+- Formlabs `/prints/` 另有 **`elapsed_duration_ms`**（實際耗時）、`print_started_at`、`estimated_duration_ms`，目前**都沒接**；「列印時間」欄要用它
 
 ## 領域邏輯地雷
 - **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示（曾詢問過使用者是否要改成樹脂罐也計入總庫存，明確回答**不要**，維持現狀）

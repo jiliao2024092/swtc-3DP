@@ -436,8 +436,11 @@
                 <button data-inv-manage-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-soft)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">
                     <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
                 </button>
-                <button onclick="exportInventoryExcel()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
-                    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出
+                <button onclick="exportInventoryExcel()" title="庫存視角：庫存總覽 + 所有異動（入庫/調整/消耗）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
+                    <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出庫存
+                </button>
+                <button onclick="exportPrintLogExcel()" title="列印視角：每次列印一列，欄位對齊人工登記表（業務／客戶全名／責任工程師／列印時間需人工補填）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                    <i data-lucide="printer" class="w-3.5 h-3.5"></i> 匯出列印記錄
                 </button>
             </div>
         </div>
@@ -1276,12 +1279,71 @@ const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
 // 備註(檔名)規範：客戶簡稱-工作類別-EF單號，例：鑫元鴻-代工-202607020001、實威-工程測試
 // 取第2欄位([1])比對這4種狀態；不符合規範或無備註 → 歸類「未分類」
 const WORK_CATEGORIES = ['評估','代工','工程測試','其他'];
+// ★ 分隔符要同時吃 `-` 與 `_`：實掃 29 筆列印消耗紀錄，27 筆用連字號、2 筆用底線
+//   （例：實威國際_工程測試_翹曲試片）。原本只 split('-')，那 2 筆的第2段永遠是
+//   undefined → 被歸成「未分類」，月度分析的工作類別佔比因此少算，而畫面上沒有
+//   任何徵兆。改用 [-_] 後 29/29 全部可解析。
+const NOTE_SEP = /[-_]/;
 function parseWorkCategory(note){
     if(!note) return '未分類';
-    const seg = String(note).split('-')[1];
+    const seg = String(note).split(NOTE_SEP)[1];
     const trimmed = (seg||'').trim();
     return WORK_CATEGORIES.includes(trimmed) ? trimmed : '未分類';
 }
+
+// ══ 備註解析（列印記錄匯出用）══════════════════════════════════════
+// 備註即 Formlabs 的列印檔名，慣例格式「客戶簡稱-工作類別-第三段」。
+// 第三段有兩種用途，靠「是不是純數字」區分（實掃 21 筆三段紀錄的分布）：
+//   純數字（202608170001）→ APP 單號，14 筆
+//   文字（海昌體驗營、翹曲試片、漢民3D列印驗收模型…）→ 活動名稱與事由，7 筆
+// 只有兩段（客戶-類別）的 8 筆，兩者皆空。
+const APP_NO_RE = /^\d{8,}$/;
+function parseNote(note){
+    const parts = String(note||'').split(NOTE_SEP).map(s=>s.trim());
+    const cat   = WORK_CATEGORIES.includes(parts[1]) ? parts[1] : '';
+    // 第三段之後若還有分隔符，一律併回去（活動名稱本身可能含連字號）
+    const tail  = parts.length > 2 ? parts.slice(2).join('-').trim() : '';
+    const isNo  = APP_NO_RE.test(tail);
+    return {
+        customer: parts[0] || '',      // 客戶「簡稱」——不是 EIP 公司全名
+        category: cat,                 // 評估 / 代工 / 工程測試 / 其他（對不上則空字串）
+        appNo:    isNo ? tail : '',    // R 備註欄
+        event:    (!isNo && tail) ? tail : '',  // I 活動名稱欄
+    };
+}
+
+// 工作類別 → 目標表的「列印目的」。
+// ★ 「工程測試」統一輸出成「原廠材料工程測試」（使用者 2026-08-27 決定）。
+//   目標表其實還有「正式立案前測試列印」，但我們的來源只有單一個「工程測試」，
+//   一對二無法自動判別，所以固定對到其中一個，需要改的人再手動改。
+const PURPOSE_MAP = { '代工':'代工列印', '評估':'評估機器', '工程測試':'原廠材料工程測試' };
+
+// 是否收費。★ 實測目標表 23 筆全中（23/23），規則不是「看列印目的」那麼單純：
+//   「評估機器」在目標表裡是 5 筆收費、1 筆不收費，光看目的判不出來，
+//   差別在備註有沒有 APP 單號。
+function isChargeable(p){ return (p.category === '代工' || !!p.appNo) ? '是' : '否'; }
+
+// 品牌 → 機型顯示名稱。Markforged 的機台不在 regions.js 的 SEED_MACHINE_MODEL 裡
+// （那份只收 Formlabs），故另外對照。
+const MF_MODEL_LABEL = {
+    FX10:'FX10', FX20:'FX20', MarkTwoGEN2:'Mark Two Gen2', MetalX:'Metal X',
+    X7:'X7', MarkTwo:'Mark Two', MarkTwoTainan:'Mark Two',
+};
+// 目標表用「Form 4」（有空格）但系統內部是「Form4」，輸出時轉成目標表的寫法
+const FL_MODEL_LABEL = { Form4:'Form 4', Form4L:'Form4L', 'Form3+':'Form 3+', Form3L:'Form 3L', 'Fuse1+':'Fuse 1+' };
+function exportModelName(h){
+    if (h.source === 'markforged') return MF_MODEL_LABEL[h.printer] || h.printer || '';
+    const m = window.machineModel ? window.machineModel(h.printer) : '';
+    return FL_MODEL_LABEL[m] || m || h.printer || '';
+}
+
+// 列印結果。★ 一定要用 outcome，不可用 apiStatus —— 實測 29 筆消耗紀錄裡
+//   27 筆的 apiStatus 是 PRINTING（抓取當下的機台狀態，不是該次列印的結果）。
+//   2026-08-27 以前同步的舊紀錄沒有 outcome 欄位，只能留空。
+const OUTCOME_LABEL_TW = {
+    successful:'成功', unsuccessful:'不成功', printed:'已列印',
+    failed:'失敗', aborted:'已中止', unknown:'未知',
+};
 const escHtml = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 列印機即時狀態與消耗紀錄全部由 Cloud Function 同步至 Firestore，前端 onSnapshot 訂閱
 
@@ -5079,6 +5141,118 @@ function exportInventoryExcel() {
     showToast('✓ 已匯出 '+fname,'success');
 }
 
+// ══ 列印記錄匯出（對齊人工登記表的 19 欄格式）══════════════════════
+// 與上面的「庫存記錄」匯出是兩回事：那份是庫存視角（總覽＋所有異動），
+// 這份是「每一次列印」的視角，欄位對齊使用者既有的人工登記表。
+//
+// ★ 只取列印相關紀錄：備料入庫／手動調整不是列印，必須濾掉。
+//   實測既有資料 58 筆裡只有 29 筆是列印，不濾會多出一倍的雜訊列。
+//
+// ★ 目前有 4 欄無法自動填，一律留空給人工補（使用者 2026-08-27 決定）：
+//     D 業務、E 客戶全名、J 責任工程師 → 需 workboard 以 EF 單號 join（階段 2）
+//     K 列印時間                      → 需 Cloud Function 接 elapsed_duration_ms（階段 3）
+//   N 欄（Ultem9085 Support）恆空：那是 Stratasys 的材料，我們沒有該機型。
+const PRINT_LOG_HEADERS = [
+    '時間戳記','日期','地區','業務','客戶名稱','品牌','機型','列印目的',
+    '活動名稱與事由','責任工程師','列印時間(hr)','使用材料(樹脂與塑料)',
+    '樹脂與塑料用量','Ultem9085 Support 用量','使用材料(纖維/蠟支撐)','纖維用量',
+    '是否收費','備註(APP單號)','列印結果',
+];
+
+// Markforged 的塑料與纖維在 inventory_history 是**兩筆獨立紀錄**（doc_id 帶 slot），
+// 但目標表是一列同時有樹脂用量與纖維用量，所以要合併。
+//
+// ★★ 合併只能套用在 Markforged。Formlabs 每筆 print 本來就是一筆紀錄、一次列印，
+//    一律 1:1 輸出。曾經寫成「所有來源都依 機台+備註+分鐘 合併」，用真實的 29 筆
+//    乾跑才發現被併成 13 列，而且把 `High Temp V2` 與 `Rigid 10K V1.1` 這種
+//    **不同材料的獨立列印**加總進同一列（同一個檔名被印很多次是常態，
+//    實測「實威-工程測試」就有 8 筆）。那是靜默的錯誤：匯出檔看起來完全正常。
+//
+// ★ 時間無效時（舊資料 ts 壞掉）退回用 print_guid／id 當鍵，確保「至少不會亂併」——
+//   寧可該併的沒併（多一列，看得出來），也不要不該併的併了（數字被加總，看不出來）。
+function printLogGroupKey(h){
+    if ((h.source || 'formlabs') !== 'markforged') {
+        return `single|${h.id || h.print_guid || Math.random()}`;   // Formlabs：不合併
+    }
+    const t = h.ts ? new Date(h.ts) : null;
+    const minute = (t && !isNaN(t.getTime())) ? t.toISOString().slice(0,16) : null;
+    if (minute === null) return `single|${h.id || h.print_guid || Math.random()}`;
+    return `mf|${h.printer||''}|${h.note||''}|${minute}`;
+}
+
+function buildPrintLogRows(){
+    const printRows = inv.history.filter(h => h.type === 'consume' || h.type === 'aborted');
+    const groups = new Map();
+    printRows.forEach(h => {
+        const k = printLogGroupKey(h);
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(h);
+    });
+
+    const rows = [];
+    groups.forEach(items => {
+        const h = items[0];
+        const p = parseNote(h.note);
+        // 纖維只有 Markforged 有（category==='fiber'）；樹脂／塑料是其餘的
+        const fiber   = items.filter(x => x.category === 'fiber');
+        const plastic = items.filter(x => x.category !== 'fiber');
+        const sumMl = arr => arr.reduce((s,x)=>s + Math.abs(+x.ml||0), 0);
+        const names = arr => [...new Set(arr.map(x=>matName(x.material)||x.material||''))].filter(Boolean).join(', ');
+        const r1 = v => v ? +v.toFixed(2) : '';
+        const ts = h.ts ? new Date(h.ts) : null;
+        const valid = ts && !isNaN(ts.getTime());
+        rows.push({
+            // 排序鍵，輸出前會刪掉。★ 不可拿「時間戳記」那欄排序：它是
+            // toLocaleString('zh-TW') 的字串（2026/8/7），字典序會把 8/7 排在
+            // 8/27 之前（'7' > '2'），整份表的順序就是錯的而且看起來很像對的。
+            _sort: valid ? ts.getTime() : 0,
+            '時間戳記':  valid ? ts.toLocaleString('zh-TW') : '',
+            '日期':      valid ? fmtDateLocalInv(ts) : '',
+            '地區':      window.regionLabel ? (window.regionLabel(h.region)||'') : (h.region||''),
+            '業務':      '',                       // 階段 2（workboard join）
+            '客戶名稱':  '',                       // 階段 2；備註只有簡稱，非 EIP 全名
+            '品牌':      h.source === 'markforged' ? 'Markforged' : 'Formlabs',
+            '機型':      exportModelName(h),
+            '列印目的':  PURPOSE_MAP[p.category] || '',
+            '活動名稱與事由': p.event,
+            '責任工程師': '',                      // 階段 2（workboard join）
+            '列印時間(hr)': '',                    // 階段 3（elapsed_duration_ms）
+            '使用材料(樹脂與塑料)': names(plastic),
+            '樹脂與塑料用量':       r1(sumMl(plastic)),
+            'Ultem9085 Support 用量': '',          // 無此機型，恆空
+            '使用材料(纖維/蠟支撐)': fiber.length ? names(fiber) : '無',
+            '纖維用量':             r1(sumMl(fiber)),
+            '是否收費':  isChargeable(p),
+            '備註(APP單號)': p.appNo || h.note || '',
+            '列印結果':  OUTCOME_LABEL_TW[h.outcome] || '',
+        });
+    });
+    // 日期新到舊（用時間數值，不是格式化後的字串）
+    rows.sort((a, b) => b._sort - a._sort);
+    rows.forEach(r => { delete r._sort; });
+    return rows;
+}
+
+// 本地日期（不要用 toISOString，那是 UTC，台灣時間早上 8 點前會退成前一天）
+function fmtDateLocalInv(d){
+    const p = n => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+function exportPrintLogExcel(){
+    const rows = buildPrintLogRows();
+    if (!rows.length) { showToast('目前沒有列印紀錄可匯出','error'); return; }
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows, { header: PRINT_LOG_HEADERS });
+    ws['!cols'] = PRINT_LOG_HEADERS.map(hd => ({ wch: Math.max(10, Math.min(28, hd.length * 2)) }));
+    XLSX.utils.book_append_sheet(wb, ws, '列印記錄');
+    const fname = `列印記錄_${fmtDateLocalInv(new Date())}.xlsx`;
+    XLSX.writeFile(wb, fname);
+    const blanks = rows.filter(r => !r['列印結果']).length;
+    showToast(`✓ 已匯出 ${fname}（${rows.length} 筆）`
+        + (blanks ? `；其中 ${blanks} 筆無「列印結果」（2026-08-27 前的舊紀錄）` : ''), 'success');
+}
+
 // ══ 統一渲染 ══
 function renderAll() {
     renderRegionBar();
@@ -5351,6 +5525,7 @@ window.closeSafetyModal = closeSafetyModal;
 window.closeStockModal = closeStockModal;
 window.deleteStock = deleteStock;
 window.exportInventoryExcel = exportInventoryExcel;
+window.exportPrintLogExcel  = exportPrintLogExcel;
 window.historySortBy = historySortBy;
 window.openCartridgeModal = openCartridgeModal;
 window.resetHistoryFilters = resetHistoryFilters;
