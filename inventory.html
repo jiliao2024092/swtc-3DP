@@ -2797,7 +2797,7 @@ function renderStockTable() {
                 ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
                     : `<button onclick="deleteStock('${me}')" title="刪除此材料"
                         class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        ${isStockEditMode?'disabled':''}>
+                        ${!isStockEditMode?'disabled':''}>
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                        </button>`}
             </td>
@@ -2852,7 +2852,7 @@ function renderConsumablesTable() {
                 ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
                     : `<button onclick="deleteStock('${me}')" title="刪除此耗材"
                         class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        ${isStockEditMode?'disabled':''}>
+                        ${!isStockEditMode?'disabled':''}>
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                        </button>`}
             </td>
@@ -3255,7 +3255,7 @@ function renderMfTable() {
                 ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
                     : `<button onclick="deleteMfMaterial('${name.replace(/'/g,"\\'")}')" title="刪除此材料"
                         class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        ${isMfEditMode?'disabled':''}>
+                        ${!isMfEditMode?'disabled':''}>
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                        </button>`}
             </td>
@@ -3310,7 +3310,7 @@ function renderMfConsumables() {
                 ${!isEditor ? '<span class="text-[var(--ink-6)]">—</span>'
                     : `<button onclick="deleteMfMaterial('${name.replace(/'/g,"\\'")}')" title="刪除此耗材"
                         class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        ${isMfEditMode?'disabled':''}>
+                        ${!isMfEditMode?'disabled':''}>
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                        </button>`}
             </td>
@@ -3440,7 +3440,9 @@ async function saveMfDoc(reason) {
 async function deleteMfMaterial(name) {
     if (!isEditor) return;
     const label = mfIsConsumable(name) ? '耗材' : '材料';
-    if (!confirm(`確定刪除${label}「${name}」？此操作不影響已產生的消耗紀錄。`)) return;
+    let msg = `確定刪除${label}「${name}」？此操作不影響已產生的消耗紀錄。`;
+    if (isMfEditMode) msg += `\n\n⚠️ 表格中其他尚未按「儲存全部」的修改會一併捨棄。`;
+    if (!confirm(msg)) return;
     delete mfInv.stock[name];
     delete mfInv.safety[name];
     await saveMfDoc(`刪除 Markforged ${label} ${name}`);
@@ -3893,6 +3895,7 @@ async function deleteStock(material) {
     const onMachine = getCartridgeTotal(material) > 0;
     let msg = `確定要刪除「${matName(material)}」嗎？\n\n刪除後此材料會從備料庫存、庫存總覽、月度分析中完全隱藏，且不會被消耗紀錄自動加回。`;
     if(onMachine) msg += `\n\n⚠️ 此材料目前裝載在機台樹脂罐上，刪除後機台樹脂罐頁仍會顯示（即時同步自 Formlabs API）。如要徹底隱藏，請先換掉機台上的樹脂罐。`;
+    if(isStockEditMode) msg += `\n\n⚠️ 表格中其他尚未按「儲存全部」的修改會一併捨棄。`;
     if(!confirm(msg)) return;
 
     // 清除備料、安全庫存（含所有同家族的 key）

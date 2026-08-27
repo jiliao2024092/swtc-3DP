@@ -430,6 +430,11 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .login-submit{width:100%;padding:11px;border:0;border-radius:7px;background:var(--accent);color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s}
 .login-submit:hover{background:#1a2334}
 .login-submit:disabled{opacity:.5;cursor:not-allowed}
+.login-note{background:#f0f6ff;border:1px solid #c9dcff;color:#1a2334;border-radius:6px;padding:9px 12px;font-size:12.5px;margin-bottom:14px;display:none}
+.login-note.show{display:block}
+.login-forgot{display:block;margin:14px auto 0;background:none;border:0;color:var(--ink-4);font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline}
+.login-forgot:hover{color:var(--accent)}
+.login-forgot:disabled{opacity:.5;cursor:not-allowed}
 
 /* Admin */
 .perm-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
@@ -505,7 +510,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-config.js?v=20260814a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260825b"></script>
+<script src="firebase-service.js?v=20260827a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1679,12 +1684,13 @@ function LoginPage({ onLogin }) {
   const [email, setEmail] = useStateApp('');
   const [pw, setPw] = useStateApp('');
   const [err, setErr] = useStateApp('');
+  const [notice, setNotice] = useStateApp('');
   const [busy, setBusy] = useStateApp(false);
 
   const submit = async (e) => {
     e.preventDefault();
     if (!email || !pw) { setErr('請填寫帳號與密碼'); return; }
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setNotice('');
     try {
       const cred = await FBAuth.signIn(email, pw);
       const user = await FBAuth.getUser(cred.user.uid);
@@ -1696,6 +1702,24 @@ function LoginPage({ onLogin }) {
     }
   };
 
+  // 忘記密碼：寄 Firebase Auth 內建的重設信。不論帳號是否存在都回一致訊息，避免洩漏哪些 email 有註冊。
+  const forgot = async () => {
+    setErr(''); setNotice('');
+    if (!email) { setErr('請先在上方填寫電子郵件，再點「忘記密碼」'); return; }
+    setBusy(true);
+    const done = () => setNotice('如果這個 email 有對應帳號，重設密碼的信件已寄出。請檢查收件匣與垃圾郵件夾（寄件者為 noreply@swtc-3dp-poc.firebaseapp.com）。');
+    try {
+      await FBAuth.resetPassword(email);
+      done();
+    } catch(ex) {
+      if (ex.code === 'auth/invalid-email') setErr('電子郵件格式不正確');
+      else if (ex.code === 'auth/too-many-requests') setErr('嘗試次數過多，請稍後再試');
+      else if (ex.code === 'auth/user-not-found') done();
+      else setErr('寄送失敗：' + (ex.message || ex.code || '未知錯誤'));
+    }
+    setBusy(false);
+  };
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -1705,11 +1729,13 @@ function LoginPage({ onLogin }) {
           <p>SWTC · PORTAL v3</p>
         </div>
         {err && <div className="login-err show">{err}</div>}
+        {notice && <div className="login-note show">{notice}</div>}
         <form onSubmit={submit}>
           <div className="login-fg"><label>電子郵件</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="your@email.com" autoFocus/></div>
           <div className="login-fg"><label>密碼</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••"/></div>
           <button className="login-submit" type="submit" disabled={busy}>{busy?'登入中...':'登入'}</button>
         </form>
+        <button type="button" className="login-forgot" onClick={forgot} disabled={busy}>忘記密碼？</button>
       </div>
     </div>
   );
@@ -2826,6 +2852,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING', date:'2026-08-27', type:'feat',
+    text:'機台預約的甘特圖左側「機台」欄位加寬，機台名稱完整顯示、不再被截斷成「Alumin…」。材料庫存的「刪除材料／耗材」鈕改為進入「編輯模式」後才能點（先前相反：只有非編輯模式能刪），與其他欄位的編輯行為一致；編輯模式下按刪除時會提醒「表格中其他尚未儲存的修改會一併捨棄」。登入頁新增「忘記密碼？」：填入電子郵件即可收到重設密碼信（寄件者為 noreply@swtc-3dp-poc.firebaseapp.com，若沒收到請查看垃圾郵件夾）。' },
   { hash:'cdb9b86', date:'2026-08-25', type:'feat',
     text:'工作看板的「樹脂材料」欄改名為「材料」，並修正下拉選單會混進耗材（Mixer、樹脂槽等機台配件）的問題。新增 Markforged 材料，分成「純塑料」與「塑料＋纖維」兩組（依登入者所在地區的 Markforged 庫存自動帶出）。另外新增「其他（自行輸入）」，清單上沒有的材料可以自己打；篩選下拉也會一併列出曾經用過但已不在清單上的材料，避免舊工單篩不到。' },
   { hash:'aa97fcf', date:'2026-08-25', type:'feat',
@@ -2844,8 +2872,6 @@ const CHANGELOG = [
     text:'3D列印估價的動作紀錄改為只保留有價值的項目（分析、修復、驗證、建立工單），旋轉與擺放等操作只留在本機不再上傳；建立工單後會自動清掉該次的過程紀錄。雲端工單保留 14 天（對齊報價有效期），需要長期存檔請用「列印 / PDF」。' },
   { hash:'c21b644', date:'2026-08-17', type:'fix',
     text:'資安強化：使用者清單改為只有管理員與具「使用者管理」權限的主管讀得到；刪除預約會自動留下稽核紀錄（誰、何時、刪了哪一筆）；修補一個新帳號首次登入時可自行取得管理員權限的漏洞。' },
-  { hash:'6e0004c', date:'2026-08-14', type:'feat',
-    text:'工作看板的「實際消耗量」自動帶入改為比對材料：同一張 EF 單號若用了多種樹脂，只會帶入與工單樹脂相符的用量，其餘材料列在下方可一鍵切換。材料庫存的消耗紀錄可直接選時間區間載入更早的資料；「未扣庫存」標籤改成滑鼠停留即顯示原因，管理員可對誤判的紀錄補扣。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },

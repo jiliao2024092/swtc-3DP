@@ -412,6 +412,12 @@
     async signOut() {
       return auth.signOut();
     },
+    // 寄送密碼重設信（Firebase Auth 內建，不需 Cloud Function）。
+    // ⚠ 寄件者為預設網域 noreply@swtc-3dp-poc.firebaseapp.com，公司信箱可能擋信；
+    //   要提高送達率需自訂寄件網域並在 swtc.com 設定 SPF/DKIM。
+    async resetPassword(email) {
+      return auth.sendPasswordResetEmail(email);
+    },
     // 變更密碼：先用舊密碼重新驗證，再更新（所有分頁共用）
     async changePassword(currentPassword, newPassword) {
       const u = auth.currentUser;

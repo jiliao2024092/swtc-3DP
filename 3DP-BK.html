@@ -1301,7 +1301,7 @@ function renderGantt() {
     const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
 
     let html = '<table class="w-full border-collapse text-xs" style="table-layout:fixed"><thead>';
-    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-1 border border-[var(--line)] w-14 sticky left-0 bg-[var(--bg-panel)]">機台</th>';
+    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-1 border border-[var(--line)] w-36 sticky left-0 bg-[var(--bg-panel)] whitespace-nowrap">機台</th>';
     days.forEach(d=>{
         const isToday = fmtDateLocal(d)===todayKey;
         html += `<th class="p-1 border border-[var(--line)] ${isToday?'bg-[var(--accent-soft)]':''}" colspan="3">
@@ -1317,7 +1317,7 @@ function renderGantt() {
     GANTT_ROWS.forEach(row=>{
         const printer = row.name;
         const rowRegion = row.region || '';
-        html += `<tr><td class="p-1 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] truncate" title="${row.label}">${row.label}</td>`;
+        html += `<tr><td class="p-1 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] whitespace-nowrap" title="${row.label}">${row.label}</td>`;
 
         // 雙擊格子 → 快速新增預約（帶入設備/日期/時段）；單擊格子 → 兩次點選起訖時段建立跨天/跨時段預約
         // （click 與 dblclick 用計時器互斥，見 cellClick()）
@@ -1424,7 +1424,7 @@ function renderGanttMonth() {
     const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
 
     let html = '<table class="w-full border-collapse text-xs"><thead>';
-    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-2 border border-[var(--line)] w-16 sticky left-0 bg-[var(--bg-panel)]">機台</th>';
+    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-2 border border-[var(--line)] w-36 sticky left-0 bg-[var(--bg-panel)] whitespace-nowrap">機台</th>';
     days.forEach(d=>{
         const isToday = fmtDateLocal(d)===todayKey;
         const wd = d.getDay();
@@ -1437,7 +1437,7 @@ function renderGanttMonth() {
     html += '</tr></thead><tbody>';
 
     GANTT_ROWS.forEach(row=>{
-        html += `<tr><td class="p-2 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)]">${row.label}</td>`;
+        html += `<tr><td class="p-2 border border-[var(--line)] font-medium text-[var(--ink-2)] sticky left-0 bg-[var(--bg)] whitespace-nowrap" title="${row.label}">${row.label}</td>`;
         days.forEach(d=>{
             const dayKey = fmtDateLocal(d);
             const isToday = dayKey===todayKey;
