@@ -1301,7 +1301,7 @@ function renderGantt() {
     const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
 
     let html = '<table class="w-full border-collapse text-xs" style="table-layout:fixed"><thead>';
-    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-1 border border-[var(--line)] w-36 sticky left-0 bg-[var(--bg-panel)] whitespace-nowrap">機台</th>';
+    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-1 border border-[var(--line)] w-28 sticky left-0 bg-[var(--bg-panel)] whitespace-nowrap">機台</th>';
     days.forEach(d=>{
         const isToday = fmtDateLocal(d)===todayKey;
         html += `<th class="p-1 border border-[var(--line)] ${isToday?'bg-[var(--accent-soft)]':''}" colspan="3">
@@ -1424,7 +1424,7 @@ function renderGanttMonth() {
     const canEdit = currentUser && (currentUser.role==='admin' || currentUser.role==='editor');
 
     let html = '<table class="w-full border-collapse text-xs"><thead>';
-    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-2 border border-[var(--line)] w-36 sticky left-0 bg-[var(--bg-panel)] whitespace-nowrap">機台</th>';
+    html += '<tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]"><th class="p-2 border border-[var(--line)] w-28 sticky left-0 bg-[var(--bg-panel)] whitespace-nowrap">機台</th>';
     days.forEach(d=>{
         const isToday = fmtDateLocal(d)===todayKey;
         const wd = d.getDay();
