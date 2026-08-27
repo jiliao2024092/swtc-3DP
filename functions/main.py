@@ -1201,6 +1201,22 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 if not guid:
                     stats["skipped_invalid"] += 1
                     continue
+
+                # ── 診斷（暫時，確認後移除）───────────────────────────────
+                # Dashboard 的「Outcome」篩選有 Successful / Unsuccessful / Failed /
+                # Printed / Aborted 五種，對應 API 的 print_run_success 欄位，但官方文件
+                # 只給了範例值 "UNKNOWN"，沒列出完整 enum。要把「只扣 Printed/Successful」
+                # 寫成規則，得先知道真實回傳：型別（巢狀 dict 還是純字串）與實際出現過的值。
+                # ★ 必須放在 `guid in processed` 的 continue **之前** —— 放在後面的話
+                #   1474 筆歷史全被跳過，一天只撈得到 1 筆新的，等於白做。
+                # ★ 純統計、不寫 Firestore、不改變任何行為。
+                _prs = pr.get("print_run_success")
+                _pv  = _prs.get("print_run_success") if isinstance(_prs, dict) else _prs
+                _probe_key = (f"{(pr.get('status') or '').upper()}"
+                              f"|{type(_prs).__name__}|{_pv!r}")
+                stats.setdefault("outcome_probe", {})
+                stats["outcome_probe"][_probe_key] = stats["outcome_probe"].get(_probe_key, 0) + 1
+
                 # ★ 已處理過的 guid 直接跳過，不重寫。
                 #   history doc_id = guid，紀錄內容（材料/體積/完成時間）在 print 完成後
                 #   不再變動；每輪重寫只是浪費 Firestore 寫入配額——曾造成每輪約 777 筆 ×
