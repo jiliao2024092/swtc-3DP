@@ -99,6 +99,44 @@ check("NO_DEDUCT 含 ABORTING",              "ABORTING" in NO_DEDUCT,  True)
 check("NO_DEDUCT 不可含 FINISHED",          "FINISHED" in NO_DEDUCT,  False)
 check("NO_DEDUCT 不可含 PRINTING",          "PRINTING" in NO_DEDUCT,  False)
 
+print("── print_outcome() 五分類（對照 2026-08-27 實掃 1475 筆的真實分布）──")
+# 把 print_outcome 從 main.py 抽出來執行（同樣不 import 整個模組）
+_fn = re.search(r"^def print_outcome\(.*?(?=^\n\n# 匯出)", src, re.M | re.S)
+if not _fn:
+    print("✗ 在 functions/main.py 找不到 print_outcome()")
+    sys.exit(1)
+_ns = {"DONE_STATUSES": ns["DONE_STATUSES"]}
+exec(_fn.group(0), _ns)
+print_outcome = _ns["print_outcome"]
+
+D = lambda v: {"print_run": "x", "print_run_success": v, "created_at": "2026-01-01"}
+
+# 實掃分布：FINISHED+SUCCESS 952、FINISHED+FAILURE 56、FINISHED+無 220、
+#           ABORTED+無 175、ERROR+FAILURE 71、PRINTING+無 1 （合計 1475）
+check("FINISHED + SUCCESS → successful",   print_outcome("FINISHED", D("SUCCESS")), "successful")
+check("FINISHED + FAILURE → unsuccessful", print_outcome("FINISHED", D("FAILURE")), "unsuccessful")
+check("FINISHED + 無欄位 → printed",        print_outcome("FINISHED", None),         "printed")
+check("ABORTED + 無欄位 → aborted",         print_outcome("ABORTED", None),          "aborted")
+check("ERROR + FAILURE → failed",          print_outcome("ERROR", D("FAILURE")),    "failed")
+check("PRINTING + 無欄位 → printed",        print_outcome("PRINTING", None),         "printed")
+
+# ★ 官方文件的範例值 "UNKNOWN" 在 1475 筆裡一次都沒出現。真的冒出來時不可以
+#   當成 successful（會把不合格的當成功），歸到 printed（印完、未評價）才對。
+check("FINISHED + UNKNOWN → printed（文件範例值，實際從未出現）",
+      print_outcome("FINISHED", D("UNKNOWN")), "printed")
+# ★ 巢狀 dict 是這個欄位最容易寫錯的地方：直接把 dict 當字串比對會永遠不相等，
+#   結果 952 筆 successful 全被誤判成 printed，而畫面上完全看不出來。
+check("巢狀 dict 有被拆開（不是拿整個 dict 去比）",
+      print_outcome("FINISHED", D("SUCCESS")) != print_outcome("FINISHED", D("FAILURE")), True)
+check("ABORTING → aborted",                print_outcome("ABORTING", None),         "aborted")
+check("小寫 success 也認得",                print_outcome("FINISHED", D("success")), "successful")
+
+# 分類結果與扣帳規則必須一致：只有 failed/aborted 這兩類不扣
+for _oc, _st in (("successful", "FINISHED"), ("unsuccessful", "FINISHED"),
+                 ("printed", "FINISHED"), ("failed", "ERROR"), ("aborted", "ABORTED")):
+    _want = _oc not in ("failed", "aborted")
+    check(f"{_oc} 的扣帳結論與規則一致", will_deduct(_st), _want)
+
 print("── 與 main.py 實作接線一致 ──")
 # 規則若沒真的接到 will_deduct，測試會全綠但線上完全沒生效（測到影子實作）。
 check("main.py 有 bad_outcome = status in NO_DEDUCT_OUTCOME_STATUSES",
@@ -107,6 +145,12 @@ check("will_deduct 條件式有串上 not bad_outcome",
       bool(re.search(r"will_deduct\s*=.*?not\s+bad_outcome", src, re.S)), True)
 check("未扣原因有寫 failed_or_aborted",
       "failed_or_aborted" in src, True)
+check("outcome 有被寫進 inventory_history",
+      bool(re.search(r'"outcome":\s*outcome', src)), True)
+check("outcome 由 print_outcome() 產生",
+      bool(re.search(r'outcome\s*=\s*print_outcome\(', src)), True)
+# 探針是暫時的，任務完成後必須移除，否則每輪都白算 1475 次
+check("暫時探針已移除",  "outcome_probe" in src, False)
 
 total = passed + failed
 print(f"\n{total} 項：{passed} PASS / {failed} FAIL")

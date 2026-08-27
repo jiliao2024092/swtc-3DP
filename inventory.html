@@ -1604,6 +1604,11 @@ function mapHistoryDoc(d) {
         type: data.type, material: data.material, printer: data.printer,
         ml: data.ml, note: data.note, print_guid: data.print_guid,
         apiStatus: data.apiStatus,
+        // Dashboard「Outcome」五分類：successful/unsuccessful/printed/failed/aborted
+        // ★ 判斷列印結果要用這個，不要用 apiStatus——實測 29 筆消耗紀錄裡有 27 筆的
+        //   apiStatus 是 PRINTING（那是抓取當下的機台狀態，不是該次列印的結果）。
+        //   2026-08-27 之前同步的舊紀錄沒有此欄位。
+        outcome: data.outcome,
         material_raw: data.material_raw,             // 原始代碼（未截斷版本）
         stock_deducted: data.stock_deducted,         // 這筆有沒有真的扣過庫存 → 刪除是否回補
         deduct_skip_reason: data.deduct_skip_reason, // outdated_version / backfill / newly_tracked_machine / failed_or_aborted / null

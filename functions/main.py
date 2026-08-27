@@ -128,6 +128,52 @@ ABORT_STATUSES              = ("ABORTED", "ABORTING")
 # ★ PRINTING 不在此清單內（仍會扣）：FC-118 那類實際印完卻回報 PRINTING 的
 #   print 要保留扣帳；真正還在印、尚無用量的會被後面的 volume 檢查濾掉。
 NO_DEDUCT_OUTCOME_STATUSES  = ("ERROR", "FAILED", "ABORTED", "ABORTING")
+
+
+def print_outcome(status, prs):
+    """把 API 的 status + print_run_success 併成 Dashboard「Outcome」那五種分類。
+
+    ★ 以下對照是 2026-08-27 實掃 1475 筆 prints 的真實分布，不是照文件猜的：
+        FINISHED + SUCCESS   → successful     952 筆
+        FINISHED + FAILURE   → unsuccessful    56 筆
+        FINISHED + （無此欄）→ printed        220 筆
+        ABORTED  + （無此欄）→ aborted        175 筆
+        ERROR    + FAILURE   → failed          71 筆
+        PRINTING + （無此欄）→ printing          1 筆
+
+    ⚠ 兩個文件會誤導的地方：
+      1. print_run_success 是**巢狀 dict**（{print_run, print_run_success,
+         created_at}），真正的值在內層同名 key，不是直接一個字串。
+      2. 官方文件範例寫的 "UNKNOWN" 在 1475 筆裡**一次都沒出現**；真實 enum
+         只有 SUCCESS 與 FAILURE。「Printed」是「欄位不存在」而不是某個值。
+         照文件把 UNKNOWN 寫死會得到一個永遠不成立的分支。
+    """
+    st = (status or "").upper()
+    val = prs.get("print_run_success") if isinstance(prs, dict) else prs
+    val = (val or "").upper() if isinstance(val, str) else None
+
+    if st in ("ABORTED", "ABORTING"):
+        return "aborted"
+    if st in ("ERROR", "FAILED"):
+        return "failed"
+    if st in DONE_STATUSES:
+        if val == "SUCCESS":
+            return "successful"
+        if val == "FAILURE":
+            return "unsuccessful"
+        return "printed"          # 印完但使用者沒評價（欄位不存在）
+    return "unknown"
+
+
+# 匯出／前端顯示用的中文標籤（與 Dashboard 的英文選項一一對應）
+OUTCOME_LABEL = {
+    "successful":   "成功",
+    "unsuccessful": "不成功",
+    "printed":      "已列印",
+    "failed":       "失敗",
+    "aborted":      "已中止",
+    "unknown":      "未知",
+}
 NON_DEDUCT_STATUSES         = ("IN_PROGRESS", "QUEUED", "CANCELED", "CANCELLED",
                                 "NOT_STARTED", "PREPRINT", "PREHEAT")
 
@@ -1220,21 +1266,6 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                     stats["skipped_invalid"] += 1
                     continue
 
-                # ── 診斷（暫時，確認後移除）───────────────────────────────
-                # Dashboard 的「Outcome」篩選有 Successful / Unsuccessful / Failed /
-                # Printed / Aborted 五種，對應 API 的 print_run_success 欄位，但官方文件
-                # 只給了範例值 "UNKNOWN"，沒列出完整 enum。要把「只扣 Printed/Successful」
-                # 寫成規則，得先知道真實回傳：型別（巢狀 dict 還是純字串）與實際出現過的值。
-                # ★ 必須放在 `guid in processed` 的 continue **之前** —— 放在後面的話
-                #   1474 筆歷史全被跳過，一天只撈得到 1 筆新的，等於白做。
-                # ★ 純統計、不寫 Firestore、不改變任何行為。
-                _prs = pr.get("print_run_success")
-                _pv  = _prs.get("print_run_success") if isinstance(_prs, dict) else _prs
-                _probe_key = (f"{(pr.get('status') or '').upper()}"
-                              f"|{type(_prs).__name__}|{_pv!r}")
-                stats.setdefault("outcome_probe", {})
-                stats["outcome_probe"][_probe_key] = stats["outcome_probe"].get(_probe_key, 0) + 1
-
                 # ★ 已處理過的 guid 直接跳過，不重寫。
                 #   history doc_id = guid，紀錄內容（材料/體積/完成時間）在 print 完成後
                 #   不再變動；每輪重寫只是浪費 Firestore 寫入配額——曾造成每輪約 777 筆 ×
@@ -1354,7 +1385,12 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 outdated = is_outdated_version(raw_material, family_latest, family_latest_seen)
                 # 新納管機台的歷史 print 不追溯扣帳（見上方 newly_tracked 說明）
                 is_new_machine_history = any(a in alias for a in newly_tracked)
+                # Dashboard 的 Outcome 五分類，寫進紀錄供匯出／前端顯示
+                outcome = print_outcome(status, pr.get("print_run_success"))
                 # Failed / Aborted 不扣庫存（決策 B，見 NO_DEDUCT_OUTCOME_STATUSES）
+                # ★ 仍以 status 判定，不改用 outcome：兩者對 Failed/Aborted 的結論相同
+                #   （實掃 1475 筆驗證過），但 status 的 enum 官方有完整文件，
+                #   而 print_run_success 沒有——用有文件保證的那個當扣帳依據。
                 bad_outcome = status in NO_DEDUCT_OUTCOME_STATUSES
                 will_deduct = ((not backfill) and (guid not in deducted)
                                and (not outdated) and (not is_new_machine_history)
@@ -1397,6 +1433,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         "material_raw": raw_material,   # 原始代碼（未截斷版本），供日後版本判斷用；舊紀錄沒有此欄位
                         "stock_deducted":     actually_deducted,
                         "deduct_skip_reason": skip_reason,
+                        # Dashboard「Outcome」五分類：successful / unsuccessful /
+                        # printed / failed / aborted（匯出的「列印結果」欄用這個，
+                        # 不要用 apiStatus——實測 apiStatus 幾乎都是 PRINTING，判不出結果）
+                        "outcome":     outcome,
                         "printer":     alias,
                         # 北中南分區：消耗紀錄跟著機台走（哪一台印的就算哪一區的用量）
                         "region":      machine_region(alias, machine_regions),
