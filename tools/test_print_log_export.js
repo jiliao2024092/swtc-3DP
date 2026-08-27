@@ -133,18 +133,22 @@ const rowSrcs = [
   extract('exportPrintResult',   /function exportPrintResult\(h\)\{[\s\S]*?\n\}/),
   extract('exportModelName',     /function exportModelName\(h\)\{[\s\S]*?\n\}/),
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
-  extract('buildPrintLogRows',   /function buildPrintLogRows\(\)\{[\s\S]*?\n\}/),
+  extract('buildPrintLogRows',   /function buildPrintLogRows\(filters\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
+  extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
 ];
-function runBuild(history) {
+function runBuild(history, filters) {
   const shim = `const inv={history:${JSON.stringify(history)}};
+    const __filters=${JSON.stringify(filters || {})};
     const matName=m=>m||'';
+    const matCode=m=>String(m||'').slice(0,6);
+    const printerDisplay=p=>p||'';
     const window={regionLabel:r=>({north:'北',central:'中',south:'南'}[r]||''),
                   machineModel:p=>({AluminumBowfin:'Form4',AdroitSauropod:'Form4L',
                                     JasperGosling:'Form4L',CreativeDragon:'Form3+',
                                     BoldSturgeon:'Form3L'}[p]||'')};\n`;
   return new Function(shim + srcs.join('\n') + '\n' + rowSrcs.join('\n') +
-                      '\nreturn buildPrintLogRows();')();
+                      '\nreturn buildPrintLogRows(__filters);')();
 }
 
 console.log('── ★ Formlabs 每筆列印 1:1，絕不合併 ──');
@@ -339,6 +343,34 @@ check('業務中文=key 時只顯示一次',        zhEnLabel('Amber', SAL),  'A
 check('查不到對照 → 退回 key',            zhEnLabel('Unknown', ENG), 'Unknown');
 check('空 key → 空字串',                  zhEnLabel('', ENG),        '');
 check('null → 空字串',                    zhEnLabel(null, ENG),      '');
+
+// ══ ★ 匯出筆數以畫面上的篩選為準 ═══════════════════════════════
+// 畫面顯示 12 筆、匯出卻是 58 筆（或反過來）是使用者最難自己察覺的不一致，
+// 因為兩邊都「看起來正常」。表格與匯出共用 applyHistoryFilters 就是為了這個。
+console.log('── ★ 匯出筆數依篩選（日期／材料／機台／類別）──');
+const spread = [
+  { id:'t1', ts:'2026-07-15T10:00:00', material:'Grey V5',    printer:'AluminumBowfin', type:'consume', ml:10, note:'A-代工-202607150001', region:'central', source:'formlabs' },
+  { id:'t2', ts:'2026-08-01T10:00:00', material:'Grey V5',    printer:'AluminumBowfin', type:'consume', ml:20, note:'B-代工-202608010001', region:'central', source:'formlabs' },
+  { id:'t3', ts:'2026-08-15T10:00:00', material:'Tough 2000', printer:'JasperGosling',  type:'consume', ml:30, note:'C-評估-202608150001', region:'north',   source:'formlabs' },
+  { id:'t4', ts:'2026-08-27T10:00:00', material:'Tough 2000', printer:'JasperGosling',  type:'consume', ml:40, note:'D-工程測試',          region:'north',   source:'formlabs' },
+  { id:'t5', ts:'2026-09-05T10:00:00', material:'Grey V5',    printer:'AluminumBowfin', type:'consume', ml:50, note:'E-代工-202609050001', region:'central', source:'formlabs' },
+];
+check('不篩選 → 5 筆',                 runBuild(spread, {}).length, 5);
+check('日期 8/1~8/27 → 3 筆',          runBuild(spread, { from:'2026-08-01', to:'2026-08-27' }).length, 3);
+check('只設起日 8/15 → 3 筆',          runBuild(spread, { from:'2026-08-15' }).length, 3);
+check('只設迄日 8/01 → 2 筆',          runBuild(spread, { to:'2026-08-01' }).length, 2);
+// 邊界要含端點（8/1 與 8/27 兩天都要在內）
+check('起日當天要含進來',              runBuild(spread, { from:'2026-08-01', to:'2026-08-01' }).map(r=>r['日期']), ['2026-08-01']);
+check('迄日當天要含進來',              runBuild(spread, { from:'2026-08-27', to:'2026-08-27' }).map(r=>r['日期']), ['2026-08-27']);
+check('材料篩選 Tough 2000 → 2 筆',    runBuild(spread, { material:'Tough 2000' }).length, 2);
+check('機台篩選 JasperGosling → 2 筆', runBuild(spread, { printer:'JasperGosling' }).length, 2);
+check('工作類別篩選 代工 → 3 筆',      runBuild(spread, { workcat:'代工' }).length, 3);
+check('日期＋類別可疊加 → 1 筆',       runBuild(spread, { from:'2026-08-01', to:'2026-08-27', workcat:'代工' }).length, 1);
+check('篩到沒東西 → 0 筆',             runBuild(spread, { from:'2027-01-01' }).length, 0);
+// ★ 類型篩選仍不可讓非列印紀錄進來：匯出永遠只含 consume/aborted
+const withStockin = [...spread,
+  { id:'s9', ts:'2026-08-10T10:00:00', material:'Grey V5', printer:'備料庫存', type:'stockin', ml:1000, note:'備料入庫（1.0 L）', region:'central', source:'formlabs' }];
+check('入庫紀錄不論篩選都不進匯出',    runBuild(withStockin, { from:'2026-08-01', to:'2026-08-27' }).length, 3);
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

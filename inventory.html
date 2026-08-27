@@ -439,7 +439,7 @@
                 <button onclick="exportInventoryExcel()" title="庫存視角：庫存總覽 + 所有異動（入庫/調整/消耗）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出庫存
                 </button>
-                <button onclick="exportPrintLogExcel()" title="列印視角：每次列印一列，欄位對齊人工登記表（業務／客戶全名／責任工程師／列印時間需人工補填）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                <button onclick="exportPrintLogExcel()" title="列印視角：每次列印一列，欄位對齊人工登記表。★ 匯出範圍以「消耗記錄」分頁目前的篩選為準（日期區間／材料／機台／工作類別）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                     <i data-lucide="printer" class="w-3.5 h-3.5"></i> 匯出列印記錄
                 </button>
             </div>
@@ -4556,6 +4556,48 @@ function deductSkipTitle(h) {
     return `${raw}\n此筆未扣除備料庫存（未記錄原因）。`;
 }
 
+// ══ 消耗紀錄的篩選條件（表格與「匯出列印記錄」共用的唯一來源）══════
+// ★ 抽出來共用，不要各寫一份：畫面上看到 12 筆、匯出卻是 58 筆（或反過來）
+//   是使用者最難自己察覺的那種不一致 —— 兩邊都「看起來正常」。
+function historyFilters() {
+    const val = id => (document.getElementById(id) || {}).value || '';
+    return {
+        material: val('history-filter'),
+        printer:  val('history-filter-printer'),
+        type:     val('history-filter-type'),
+        workcat:  val('history-filter-workcat'),
+        from:     val('history-filter-from'),
+        to:       val('history-filter-to'),
+    };
+}
+
+function applyHistoryFilters(list, f) {
+    f = f || historyFilters();
+    return list.filter(h => {
+        if (f.material && matCode(h.material) !== matCode(f.material)) return false;
+        if (f.printer  && !(h.printer||'').includes(f.printer)) return false;
+        // 「列印消耗」這個選項同時涵蓋 consume 與 aborted（中止也是一次列印）
+        if (f.type === 'consume' && !(h.type === 'consume' || h.type === 'aborted')) return false;
+        else if (f.type && f.type !== 'consume' && h.type !== f.type) return false;
+        if (f.workcat && parseWorkCategory(h.note) !== f.workcat) return false;
+        if (f.from && (h.ts||'').slice(0,10) < f.from) return false;
+        if (f.to   && (h.ts||'').slice(0,10) > f.to) return false;
+        return true;
+    });
+}
+
+// 目前有哪些篩選生效，用人看得懂的話描述（匯出時提示用，避免使用者以為漏抓）
+function activeFilterSummary(f) {
+    f = f || historyFilters();
+    const parts = [];
+    if (f.from || f.to) parts.push(`日期 ${f.from || '最早'}～${f.to || '最新'}`);
+    if (f.material) parts.push(`材料 ${matName(f.material) || f.material}`);
+    if (f.printer)  parts.push(`機台 ${printerDisplay(f.printer) || f.printer}`);
+    if (f.workcat)  parts.push(`類別 ${f.workcat}`);
+    if (f.type)     parts.push(`類型 ${({consume:'列印消耗',stockin:'備料入庫',manual:'手動調整'})[f.type] || f.type}`);
+    return parts;
+}
+
 function renderHistory() {
     updateHistorySortIndicators();
     // 更新材料 filter 選單
@@ -4565,24 +4607,8 @@ function renderHistory() {
     getAllMaterials().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=matName(m);sel.appendChild(o);});
     sel.value=cur;
 
-    // 取得所有篩選值
-    const fMat     = sel.value;
-    const fPrinter = document.getElementById('history-filter-printer').value;
-    const fType    = document.getElementById('history-filter-type').value;
-    const fWorkCat = document.getElementById('history-filter-workcat').value;
-    const fFrom    = document.getElementById('history-filter-from').value;
-    const fTo      = document.getElementById('history-filter-to').value;
-
-    let filtered = inv.history.filter(h=>{
-        if(fMat     && matCode(h.material) !== matCode(fMat)) return false;
-        if(fPrinter && !(h.printer||'').includes(fPrinter)) return false;
-        if(fType==='consume' && !(h.type==='consume'||h.type==='aborted')) return false;
-        else if(fType && fType!=='consume' && h.type !== fType) return false;
-        if(fWorkCat && parseWorkCategory(h.note) !== fWorkCat) return false;
-        if(fFrom    && (h.ts||'').slice(0,10) < fFrom) return false;
-        if(fTo      && (h.ts||'').slice(0,10) > fTo) return false;
-        return true;
-    });
+    // 取得所有篩選值（與匯出共用同一份，見 historyFilters/applyHistoryFilters）
+    let filtered = applyHistoryFilters(inv.history);
 
     // 排序
     const dir = histSortDir==='asc'?1:-1;
@@ -5259,8 +5285,12 @@ function printLogGroupKey(h){
     return `mf|${h.printer||''}|${h.note||''}|${minute}`;
 }
 
-function buildPrintLogRows(){
-    const printRows = inv.history.filter(h => h.type === 'consume' || h.type === 'aborted');
+// filters 傳入時用它，否則讀畫面上目前的篩選（匯出走這條）。
+// ★ 匯出的筆數以「消耗記錄」分頁目前的篩選為準：使用者選了 8/1～8/27，
+//   匯出就只該有那段期間的紀錄，而不是整份 history。
+function buildPrintLogRows(filters){
+    const printRows = applyHistoryFilters(inv.history, filters)
+        .filter(h => h.type === 'consume' || h.type === 'aborted');
     const groups = new Map();
     printRows.forEach(h => {
         const k = printLogGroupKey(h);
@@ -5360,8 +5390,15 @@ async function fetchWorkboardByEF(){
 }
 
 async function exportPrintLogExcel(){
-    const rows = buildPrintLogRows();
-    if (!rows.length) { showToast('目前沒有列印紀錄可匯出','error'); return; }
+    const f = historyFilters();
+    const active = activeFilterSummary(f);
+    const rows = buildPrintLogRows(f);
+    if (!rows.length) {
+        showToast(active.length
+            ? `目前的篩選（${active.join('、')}）沒有列印紀錄`
+            : '目前沒有列印紀錄可匯出', 'error');
+        return;
+    }
 
     // 用 EF 單號補三欄（沒單號或對不到就維持空白）
     const wbMap = await fetchWorkboardByEF();
@@ -5386,12 +5423,15 @@ async function exportPrintLogExcel(){
     const ws = XLSX.utils.json_to_sheet(rows, { header: PRINT_LOG_HEADERS });
     ws['!cols'] = PRINT_LOG_HEADERS.map(hd => ({ wch: Math.max(10, Math.min(28, hd.length * 2)) }));
     XLSX.utils.book_append_sheet(wb, ws, '列印記錄');
-    const fname = `列印記錄_${fmtDateLocalInv(new Date())}.xlsx`;
+    // 檔名帶篩選的日期區間，避免多份匯出檔混在一起分不出誰是誰
+    const span = (f.from || f.to) ? `_${f.from || '最早'}~${f.to || '最新'}` : '';
+    const fname = `列印記錄${span}_${fmtDateLocalInv(new Date())}.xlsx`;
     XLSX.writeFile(wb, fname);
     // ★ 明確告知有多少欄要人工補：不講的話使用者會以為那些空白是系統壞了
     const withEF = rows.filter(r => r['備註(APP單號)']).length;
     const noDur = rows.filter(r => !r['列印時間(hr)']).length;
-    let msg = `✓ 已匯出 ${fname}（${rows.length} 筆）`;
+    let msg = `✓ 已匯出 ${fname}（${rows.length} 筆`
+        + (active.length ? `，已套用篩選：${active.join('、')}` : '，未套用篩選') + '）';
     if (wbMap === null) msg += '；⚠ 工單資料讀取失敗，業務／客戶／工程師三欄未帶入';
     else msg += `；${matched}/${withEF} 筆以單號比對到工單`;
     if (noDur) msg += `；${noDur} 筆無列印時間（2026-08-27 前的舊紀錄，需人工填）`;
