@@ -125,6 +125,10 @@ const rowSrcs = [
   extract('MF_MODEL_LABEL',      /const MF_MODEL_LABEL = \{[\s\S]*?\};/),
   extract('FL_MODEL_LABEL',      /const FL_MODEL_LABEL = \{[^}]*\};/),
   extract('OUTCOME_LABEL_TW',    /const OUTCOME_LABEL_TW = \{[\s\S]*?\};/),
+  extract('IN_FLIGHT_API_STATUS',/const IN_FLIGHT_API_STATUS = \[[^\]]*\];/),
+  extract('NOT_A_FAILURE_SKIP',  /const NOT_A_FAILURE_SKIP = \[[^\]]*\];/),
+  extract('historyOutcome',      /function historyOutcome\(h\)\{[\s\S]*?\n\}/),
+  extract('exportPrintResult',   /function exportPrintResult\(h\)\{[\s\S]*?\n\}/),
   extract('exportModelName',     /function exportModelName\(h\)\{[\s\S]*?\n\}/),
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
   extract('buildPrintLogRows',   /function buildPrintLogRows\(\)\{[\s\S]*?\n\}/),
@@ -200,9 +204,58 @@ check('內部排序鍵已刪除',       '_sort' in one, false);
 check('Ultem9085 恆空（無此機型）', one['Ultem9085 Support 用量'], '');
 check('無纖維時顯示「無」',     one['使用材料(纖維/蠟支撐)'], '無');
 check('地區有翻成中文',         one['地區'], '中');
-check('舊紀錄無 outcome → 列印結果留空', one['列印結果'], '');
-check('有 outcome 時翻成中文',
-      runBuild([{ ...sameNote[0], outcome:'unsuccessful' }])[0]['列印結果'], '不成功');
+
+// ══ 列印結果 ════════════════════════════════════════════════════
+// 表格顯示五分類（historyOutcome）、匯出是二元成功/失敗（exportPrintResult）。
+const ho = {}, ep = {};
+new Function('o','p', srcs.join('\n') + '\n' + rowSrcs.join('\n') +
+  '\nObject.assign(o,{historyOutcome});Object.assign(p,{exportPrintResult});')(ho, ep);
+const { historyOutcome } = ho, { exportPrintResult } = ep;
+const H = x => ({ type:'consume', ...x });
+
+console.log('── 表格：新紀錄直接用 outcome ──');
+['successful','unsuccessful','printed','failed','aborted'].forEach(oc =>
+  check(`outcome=${oc} 原樣採用`, historyOutcome(H({ outcome:oc })), oc));
+
+console.log('── ★ 表格：飛行中的 apiStatus 是陳舊值，不可拿來猜結果 ──');
+// 實測 29 筆消耗紀錄裡 27 筆的 apiStatus 是 PRINTING，但探針顯示當下真正在
+// 列印的只有 1 筆——那些全是「在飛行中被寫入、之後永不重寫」的陳舊值。
+// 這種一律顯示 —，不可猜成「成功」（會把中止/失敗的也標成成功）。
+['PRINTING','PAUSED','PAUSING','PRECOAT','POSTCOAT'].forEach(st =>
+  check(`apiStatus=${st} → 無法判定`, historyOutcome(H({ apiStatus:st })), ''));
+check('小寫 printing 也視為飛行中', historyOutcome(H({ apiStatus:'printing' })), '');
+
+console.log('── 表格：舊紀錄的終局狀態可回推 ──');
+check('apiStatus=ABORTED → aborted',  historyOutcome(H({ apiStatus:'ABORTED' })), 'aborted');
+check('apiStatus=ERROR → failed',     historyOutcome(H({ apiStatus:'ERROR' })),   'failed');
+check('apiStatus=FINISHED → printed', historyOutcome(H({ apiStatus:'FINISHED' })), 'printed');
+check('type=aborted → aborted',       historyOutcome(H({ type:'aborted' })),      'aborted');
+check('新規則寫的 skip_reason → failed',
+      historyOutcome(H({ deduct_skip_reason:'failed_or_aborted' })), 'failed');
+check('完全沒線索 → 無法判定',          historyOutcome(H({})), '');
+// outcome 優先於一切（新紀錄的 apiStatus 仍可能是抓取當下的狀態）
+check('outcome 勝過 apiStatus',
+      historyOutcome(H({ outcome:'successful', apiStatus:'PRINTING' })), 'successful');
+
+console.log('── 匯出：二元成功／失敗 ──');
+check('successful → 成功',   exportPrintResult(H({ outcome:'successful' })),   '成功');
+check('printed → 成功',      exportPrintResult(H({ outcome:'printed' })),      '成功');
+// Unsuccessful 是「印完但成品不合格」，樹脂有扣 → 依規則算成功
+check('unsuccessful → 成功（有扣庫存）', exportPrintResult(H({ outcome:'unsuccessful' })), '成功');
+check('failed → 失敗',       exportPrintResult(H({ outcome:'failed' })),       '失敗');
+check('aborted → 失敗',      exportPrintResult(H({ outcome:'aborted' })),      '失敗');
+
+console.log('── ★ 匯出：沒扣庫存 ≠ 失敗 ──');
+// 「沒扣庫存」有四種原因，其中三種列印其實是成功的。全部判成「失敗」會是錯的。
+check('舊版本代碼未扣 → 仍是成功',
+      exportPrintResult(H({ stock_deducted:false, deduct_skip_reason:'outdated_version' })), '成功');
+check('backfill 未扣 → 仍是成功',
+      exportPrintResult(H({ stock_deducted:false, deduct_skip_reason:'backfill' })), '成功');
+check('新納管機台未扣 → 仍是成功',
+      exportPrintResult(H({ stock_deducted:false, deduct_skip_reason:'newly_tracked_machine' })), '成功');
+check('因失敗/中止而未扣 → 失敗',
+      exportPrintResult(H({ stock_deducted:false, deduct_skip_reason:'failed_or_aborted' })), '失敗');
+check('有扣庫存 → 成功', exportPrintResult(H({ stock_deducted:true })), '成功');
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

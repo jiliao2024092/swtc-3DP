@@ -108,6 +108,17 @@ EIGER_TRACKED_DEVICES = {
 #   誤判成列印中止。真正還在列印中、尚無實際用量的 print 會在後面的
 #   volume 檢查（material/volume 皆空則 continue）被過濾掉，不會被這裡誤收。
 DONE_STATUSES               = ("FINISHED", "SUCCESS", "COMPLETE", "DONE", "COMPLETED", "PRINTED", "PRINTING")
+
+# ── 列印進行中：先不記消耗，等結束那一輪再寫 ──────────────────────────
+# ★ 這與上面 DONE_STATUSES 裡的 "PRINTING" 看似矛盾，其實分工不同：
+#   DONE_STATUSES 決定「這個狀態算不算已結束（→ record_type=consume）」，
+#   IN_FLIGHT_STATUSES 決定「這一輪要不要現在就寫」。飛行中先跳過，
+#   等它變 FINISHED 再走 DONE_STATUSES 那條路，兩者不衝突。
+# ⚠ 已知風險（CLAUDE.md 的 FC-118 案例）：Formlabs 偶爾對「實際已印完」的
+#   print 永遠回傳 PRINTING。那種 print 在這裡會被無限期跳過、消耗永遠不入帳。
+#   為了讓它不是靜默的，每輪會把飛行中的檔名印進 log（見 [sync] 飛行中）；
+#   若同一個名字連續很多天都出現在那行，就是踩到這個案例了。
+IN_FLIGHT_STATUSES          = ("PRINTING", "PAUSED", "PAUSING", "PRECOAT", "POSTCOAT")
 ERROR_AS_CONSUME_STATUSES   = ("ERROR", "FAILED")
 ABORT_STATUSES              = ("ABORTED", "ABORTING")
 
@@ -1259,6 +1270,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         # ★ stock 扣減由 step 5 的「換罐偵測」自動處理
         # ★ 這裡只是把每筆 print 寫成歷史紀錄供統計分析用
         new_history_entries = []
+        _in_flight_names = []      # 這輪因「還在列印」而跳過的，印進 log 供追蹤（見 IN_FLIGHT_STATUSES）
         for pr in all_prints:
             try:
                 guid = pr.get("guid", "")
@@ -1331,6 +1343,19 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 # 尚未完成的狀態（沒有最終用量）→ 完全跳過
                 NOT_FINISHED = ("IN_PROGRESS", "QUEUED", "NOT_STARTED", "PREPRINT", "PREHEAT")
                 if status in NOT_FINISHED:
+                    continue
+
+                # ★ 列印中／暫停中一律先跳過，等這一輪列印真的結束再記消耗
+                #   （使用者 2026-08-27 決策：「任務完成後才計入消耗」）。
+                #   在飛行中就寫入的問題：doc_id=guid 且 `guid in processed` 之後
+                #   永不重寫，所以那筆紀錄的 apiStatus／outcome 會**永遠停在當下那一刻**。
+                #   實測既有 29 筆消耗紀錄裡有 27 筆的 apiStatus 是 PRINTING，但探針
+                #   顯示 1475 筆 prints 裡當下真正在列印的只有 1 筆 —— 那 27 筆全是
+                #   「在飛行中被寫進去、之後再也沒更新」的陳舊值。
+                #   跳過之後，下一輪看到 FINISHED 才寫，狀態與用量都是最終值。
+                if status in IN_FLIGHT_STATUSES:
+                    stats["skipped_in_flight"] = stats.get("skipped_in_flight", 0) + 1
+                    _in_flight_names.append(f"{_pname or guid[:8]}({status})")
                     continue
 
                 # 取得用量（先算出來，供 CANCELED 判斷用）
@@ -1462,6 +1487,13 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             except Exception as e:
                 print(f"[sync] 處理 guid={pr.get('guid','?')[:8]} 失敗: {e}")
                 stats["errors"].append(f"{type(e).__name__}: {e}")
+
+        # 飛行中被跳過的，印出來讓它不是靜默的。同一個名字若連續多天出現在這行，
+        # 就是踩到 FC-118 那類「永遠回報 PRINTING 的已完成 print」，需人工處理。
+        if _in_flight_names:
+            print(f"[sync] 飛行中（本輪不記消耗，等結束）{len(_in_flight_names)} 筆: "
+                  + ", ".join(_in_flight_names[:10])
+                  + (" ..." if len(_in_flight_names) > 10 else ""))
 
         # 8. batch 寫 inventory_history（doc_id = print_guid 防重複）
         if new_history_entries:

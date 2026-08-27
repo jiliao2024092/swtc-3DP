@@ -35,7 +35,7 @@ src = open(MAIN, encoding="utf-8").read()
 
 # ── 只抽常數，不 import 整個 main.py（會拉 firebase_functions 相依）──
 ns = {}
-for name in ("NO_DEDUCT_OUTCOME_STATUSES", "DONE_STATUSES",
+for name in ("NO_DEDUCT_OUTCOME_STATUSES", "DONE_STATUSES", "IN_FLIGHT_STATUSES",
              "ERROR_AS_CONSUME_STATUSES", "ABORT_STATUSES"):
     m = re.search(rf"^{name}\s*=\s*(\(.*?\))\s*$", src, re.M | re.S)
     if not m:
@@ -74,11 +74,23 @@ check("Successful（FINISHED）要扣",         will_deduct("FINISHED"),  True)
 check("Printed（FINISHED＋未評價）要扣",    will_deduct("FINISHED"),  True)
 check("Unsuccessful（FINISHED＋不合格）要扣", will_deduct("FINISHED"), True)
 
-print("── FC-118 迴歸：印完卻回報 PRINTING ──")
-# CLAUDE.md 已確認案例：實際印完的 print，API 回傳 status="PRINTING"。
-# 這類必須繼續扣；真正還在印、尚無用量的會被後面的 volume 檢查濾掉。
-check("PRINTING 仍要扣（FC-118 案例）",     will_deduct("PRINTING"),  True)
-check("PAUSED 要扣",                        will_deduct("PAUSED"),    True)
+print("── 飛行中：任務完成後才計入消耗（使用者 2026-08-27 決策）──")
+IN_FLIGHT = ns["IN_FLIGHT_STATUSES"]
+# 在飛行中就寫入的問題：doc_id=guid 且處理過就不再重寫，那筆紀錄的
+# apiStatus／outcome 會永遠停在當下那一刻。實測 29 筆消耗紀錄有 27 筆
+# 是 PRINTING，但當下真正在列印的只有 1 筆——全是陳舊值。
+for _s in ("PRINTING", "PAUSED", "PAUSING", "PRECOAT", "POSTCOAT"):
+    check(f"{_s} 屬飛行中（本輪不寫）", _s in IN_FLIGHT, True)
+for _s in ("FINISHED", "ABORTED", "ERROR"):
+    check(f"{_s} 不屬飛行中（終局狀態）", _s in IN_FLIGHT, False)
+# ★ 飛行中跳過與扣帳規則是兩件事：PRINTING 仍留在 DONE_STATUSES，
+#   等它變 FINISHED 之後才走扣帳那條路，兩者不衝突。
+check("PRINTING 仍在 DONE_STATUSES（結束後才走這條）",
+      "PRINTING" in ns["DONE_STATUSES"], True)
+check("main.py 有在飛行中 continue",
+      bool(re.search(r"if status in IN_FLIGHT_STATUSES:[\s\S]{0,200}?continue", src)), True)
+# FC-118 風險（永遠回報 PRINTING 的已完成 print）必須是看得見的，不能靜默
+check("飛行中有印進 log（FC-118 風險可追蹤）", "[sync] 飛行中" in src, True)
 
 print("── 排除清單語意：沒見過的值一律落在「扣」那側 ──")
 check("UNKNOWN 要扣",                       will_deduct("UNKNOWN"),   True)

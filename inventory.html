@@ -628,7 +628,7 @@
                             <th class="p-3 border-b font-medium whitespace-nowrap">類型</th>
                             <th class="p-3 border-b font-medium whitespace-nowrap text-right w-28 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium whitespace-nowrap">備註</th>
-                            <th class="p-3 border-b font-medium whitespace-nowrap w-32" title="Formlabs 原始回傳狀態，用於排查分類問題">API狀態</th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap w-32" title="對應 Formlabs Dashboard 的 Outcome：成功／不成功／已列印（印完未評價）／失敗／已中止。列印中不顯示，等列印結束才會有結果。2026-08-27 前的舊紀錄多半判不出來，顯示 —">列印結果</th>
                             <th class="p-3 border-b font-medium whitespace-nowrap w-14 text-center" data-delete-record-only>操作</th>
                         </tr>
                     </thead>
@@ -1344,6 +1344,51 @@ const OUTCOME_LABEL_TW = {
     successful:'成功', unsuccessful:'不成功', printed:'已列印',
     failed:'失敗', aborted:'已中止', unknown:'未知',
 };
+const OUTCOME_STYLE = {
+    successful:  'bg-[var(--ok-soft)] text-[var(--ok)]',
+    printed:     'bg-[var(--bg-panel)] text-[var(--ink-3)]',
+    unsuccessful:'bg-[var(--warn-soft)] text-[var(--warn)]',
+    failed:      'bg-[var(--danger-soft)] text-[var(--danger)]',
+    aborted:     'bg-[var(--danger-soft)] text-[var(--danger)]',
+    unknown:     'bg-[var(--bg-panel)] text-[var(--ink-4)]',
+};
+
+// ══ 列印結果（消耗紀錄表格與匯出共用的唯一判斷點）════════════════
+// 2026-08-27 之後同步的紀錄有 outcome 欄位，直接用。更早的沒有，只能回推：
+//
+//   ⚠ 舊紀錄的 apiStatus **不可信**：doc_id=guid 且處理過就不再重寫，所以那個值
+//     停在「第一次看到這筆 print 的那一刻」。實測 29 筆裡 27 筆是 PRINTING，
+//     但探針顯示當下真正在列印的只有 1 筆 —— 那 27 筆全是陳舊值。
+//     PRINTING 這種飛行中狀態一律視為「無法判定」，顯示 — 而不是猜一個結果出來。
+//
+//   回推順序：outcome → deduct_skip_reason（新規則寫的） → apiStatus（只認終局狀態）
+//   → type（aborted 代表中止）→ 都對不上就是無法判定。
+const IN_FLIGHT_API_STATUS = ['PRINTING','PAUSED','PAUSING','PRECOAT','POSTCOAT'];
+function historyOutcome(h){
+    if (h.outcome) return h.outcome;
+    if (h.deduct_skip_reason === 'failed_or_aborted') return 'failed';
+    const st = String(h.apiStatus || '').toUpperCase();
+    if (IN_FLIGHT_API_STATUS.includes(st)) return '';        // 陳舊值，判不出來
+    if (st === 'ABORTED' || st === 'ABORTING') return 'aborted';
+    if (st === 'ERROR' || st === 'FAILED')     return 'failed';
+    if (h.type === 'aborted') return 'aborted';
+    if (st && ['FINISHED','SUCCESS','COMPLETE','COMPLETED','DONE','PRINTED'].includes(st)) return 'printed';
+    return '';
+}
+
+// 匯出用的二元結果。使用者 2026-08-27 決定：**有扣庫存的算成功、其餘算失敗**。
+// ★ 但「沒扣庫存」有好幾種原因，其中三種其實列印是成功的（舊版本代碼、backfill、
+//   新納管機台），把它們寫成「失敗」會是錯的。所以只有「真的因為失敗/中止而沒扣」
+//   才判失敗，其餘沒扣的仍依實際 outcome 判斷。
+const NOT_A_FAILURE_SKIP = ['outdated_version','backfill','newly_tracked_machine'];
+function exportPrintResult(h){
+    const oc = historyOutcome(h);
+    if (oc) return (oc === 'failed' || oc === 'aborted') ? '失敗' : '成功';
+    // 完全判不出 outcome 的舊紀錄 → 回到使用者的規則：扣了庫存就是成功
+    if (h.stock_deducted) return '成功';
+    if (NOT_A_FAILURE_SKIP.includes(h.deduct_skip_reason)) return '成功';
+    return h.stock_deducted === false ? '失敗' : '成功';
+}
 const escHtml = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // 列印機即時狀態與消耗紀錄全部由 Cloud Function 同步至 Firestore，前端 onSnapshot 訂閱
 
@@ -4573,7 +4618,11 @@ function renderHistory() {
                     ${isEditor?`<button onclick="editHistoryNote('${h.id}')" title="編輯備註" class="text-[var(--ink-6)] hover:text-[var(--accent)] flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
                 </div>
             </td>
-            <td class="p-3 text-xs text-[var(--ink-4)] font-mono">${h.apiStatus||'—'}</td>
+            <td class="p-3 text-xs">${(()=>{
+                const oc = historyOutcome(h);
+                if (!oc) return `<span class="text-[var(--ink-6)]" title="${IN_FLIGHT_API_STATUS.includes(String(h.apiStatus||'').toUpperCase())?'列印尚未結束，或這是列印中被寫入的舊紀錄':'2026-08-27 前的紀錄沒有列印結果欄位'}">—</span>`;
+                return `<span class="px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${OUTCOME_STYLE[oc]||''}" title="${escHtml(h.apiStatus||'')}">${OUTCOME_LABEL_TW[oc]}</span>`;
+            })()}</td>
             <td class="p-3 text-center" ${canDelRec?'':'style="display:none"'}>
                 <button onclick="deleteHistoryEntry('${h.id}')" title="刪除這筆紀錄（消耗/中止類型會自動回補庫存）" class="text-[var(--ink-5)] hover:text-[var(--danger)] transition-colors">
                     <i data-lucide="trash-2" class="w-4 h-4"></i>
@@ -5131,7 +5180,8 @@ function exportInventoryExcel() {
             '機台':   printerDisplay(h.printer)||'',
             '類型':   typeLabels[h.type] || h.type,
             '數量 (L)': isConsumeLike ? -Math.abs(mlL) : mlL,
-            'API狀態': h.apiStatus || '',
+            '列印結果': OUTCOME_LABEL_TW[historyOutcome(h)] || '',
+            'API狀態': h.apiStatus || '',      // 原始值保留：排查分類問題時要看得到
             '備註':   h.note||'',
         };
     });
@@ -5224,7 +5274,7 @@ function buildPrintLogRows(){
             '纖維用量':             r1(sumMl(fiber)),
             '是否收費':  isChargeable(p),
             '備註(APP單號)': p.appNo || h.note || '',
-            '列印結果':  OUTCOME_LABEL_TW[h.outcome] || '',
+            '列印結果':  exportPrintResult(h),
         });
     });
     // 日期新到舊（用時間數值，不是格式化後的字串）
@@ -5239,18 +5289,67 @@ function fmtDateLocalInv(d){
     return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 
-function exportPrintLogExcel(){
+// ══ 以 EF 單號向 workboard_orders 補 業務／客戶全名／責任工程師 ═══════
+// 備註只有客戶「簡稱」，而目標表的客戶名稱要「與 EIP 一致的公司全名」，
+// 工單那邊才有。單號是唯一可靠的對應鍵。
+// ★ 一次性 getDocs，不做常駐訂閱：這頁平常用不到工單，訂閱只是白白吃讀取額度
+//   （workboard.js 有同樣的考量，見該檔 loadRecentHistory 的註解）。
+// ★ 沒有單號、或單號在工單裡找不到 → 三欄留空給人工填（使用者 2026-08-27 決定），
+//   不做模糊比對。客戶簡稱撞名的風險比留空高太多。
+async function fetchWorkboardByEF(){
+    const map = new Map();
+    try {
+        const snap = await getDocs(query(collection(db,'workboard_orders'), limit(1000)));
+        snap.docs.forEach(d => {
+            const x = d.data();
+            const ef = String(x.id || '').trim();
+            if (!ef) return;
+            // 同一單號有多筆工單時取第一筆；欄位缺的不覆蓋已有的值
+            const cur = map.get(ef) || {};
+            map.set(ef, {
+                sales:    cur.sales    || x.sales    || '',
+                customer: cur.customer || x.customer || '',
+                engineer: cur.engineer || x.engineer || '',
+            });
+        });
+    } catch (err) {
+        console.error('[列印記錄匯出] 讀取 workboard_orders 失敗:', err);
+        return null;    // ★ 回 null 而非空 Map：呼叫端要能分辨「查詢失敗」與「查到但沒資料」
+    }
+    return map;
+}
+
+async function exportPrintLogExcel(){
     const rows = buildPrintLogRows();
     if (!rows.length) { showToast('目前沒有列印紀錄可匯出','error'); return; }
+
+    // 用 EF 單號補三欄（沒單號或對不到就維持空白）
+    const wbMap = await fetchWorkboardByEF();
+    let matched = 0;
+    if (wbMap) {
+        rows.forEach(r => {
+            const ef = r['備註(APP單號)'];
+            if (!ef) return;
+            const o = wbMap.get(String(ef).trim());
+            if (!o) return;
+            matched++;
+            r['業務']       = o.sales || '';
+            r['客戶名稱']   = o.customer || '';
+            r['責任工程師'] = o.engineer || '';
+        });
+    }
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows, { header: PRINT_LOG_HEADERS });
     ws['!cols'] = PRINT_LOG_HEADERS.map(hd => ({ wch: Math.max(10, Math.min(28, hd.length * 2)) }));
     XLSX.utils.book_append_sheet(wb, ws, '列印記錄');
     const fname = `列印記錄_${fmtDateLocalInv(new Date())}.xlsx`;
     XLSX.writeFile(wb, fname);
-    const blanks = rows.filter(r => !r['列印結果']).length;
-    showToast(`✓ 已匯出 ${fname}（${rows.length} 筆）`
-        + (blanks ? `；其中 ${blanks} 筆無「列印結果」（2026-08-27 前的舊紀錄）` : ''), 'success');
+    // ★ 明確告知有多少欄要人工補：不講的話使用者會以為那些空白是系統壞了
+    const withEF = rows.filter(r => r['備註(APP單號)']).length;
+    let msg = `✓ 已匯出 ${fname}（${rows.length} 筆）`;
+    if (wbMap === null) msg += '；⚠ 工單資料讀取失敗，業務／客戶／工程師三欄未帶入';
+    else msg += `；${matched}/${withEF} 筆以單號比對到工單`;
+    showToast(msg, wbMap === null ? 'error' : 'success');
 }
 
 // ══ 統一渲染 ══

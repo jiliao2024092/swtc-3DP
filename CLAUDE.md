@@ -67,11 +67,14 @@ python3 tools/test_regions_py.py
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# 扣庫存規則與 Dashboard Outcome 五分類：43 項
+# 扣庫存規則與 Dashboard Outcome 五分類、飛行中跳過：52 項
 python tools/test_deduct_outcome.py
 
-# 列印記錄匯出（備註解析、收費規則、MF 併列、排序）：47 項
+# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果）：73 項
 node tools/test_print_log_export.js
+
+# JSX 實際編譯（比括號平衡強：portal 的 babel 區塊 + workboard.js/issues.js）
+# 需先 npm i @babel/core @babel/preset-react（可裝在 scratch 目錄，不必進版控）
 
 # firestore.rules 安全規則：98 項（跑本機 Firestore 模擬器，不連任何真實專案；含 list 查詢）
 cd tools/rules-test && npm test
@@ -127,6 +130,11 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ 官方文件範例的 `"UNKNOWN"` **實際一次都沒出現**；真實 enum 只有 `SUCCESS`/`FAILURE`，「Printed」是**欄位不存在**。照文件寫死會得到永遠不成立的分支
 - **扣庫存規則（決策 B）**：只有 **Failed（ERROR）與 Aborted（ABORTED/ABORTING）不扣**，其餘全扣（含 **Unsuccessful —— 印完了、樹脂一樣消耗掉**）。刻意寫成**排除清單**（`NO_DEDUCT_OUTCOME_STATUSES`），讓 UNKNOWN／舊資料／未來新增的 enum 自動落在「扣」那側，不會靜默漏扣。仍以 `status` 判定而非 `outcome`：兩者對 Failed/Aborted 結論相同，但 `status` 的 enum 官方有完整文件
 - ⚠ **「列印結果」欄不可用 `apiStatus`**：實測 29 筆消耗紀錄裡 **27 筆是 `PRINTING`**（那是抓取當下的機台狀態，不是該次列印的結果）。要用 `outcome` 欄位，2026-08-27 前的舊紀錄沒有此欄位（未 backfill）
+- **飛行中不記消耗**（`IN_FLIGHT_STATUSES`，2026-08-27 起）：`PRINTING/PAUSED/PAUSING/PRECOAT/POSTCOAT` 這輪跳過，等變 FINISHED 再寫。原因：`doc_id=guid` 且處理過就**永不重寫**，飛行中寫入會讓 `apiStatus`/`outcome` 永遠停在當下那一刻（那 27 筆陳舊值就是這樣來的）
+  - ⚠ **FC-118 風險**：Formlabs 偶爾對已印完的 print 永遠回傳 `PRINTING`，那種會被無限期跳過、消耗永不入帳。為此每輪把飛行中的檔名印進 log（`[sync] 飛行中`）——**同一個名字連續多天出現就是踩到了**
+  - `PRINTING` **仍留在 `DONE_STATUSES`**：兩者分工不同（前者決定「這輪要不要現在寫」，後者決定「這個狀態算不算已結束」），不衝突
+- ⚠ **「沒扣庫存」≠ 列印失敗**：四種未扣原因裡有三種（`outdated_version`/`backfill`/`newly_tracked_machine`）其實列印是成功的，只有 `failed_or_aborted` 才是失敗。匯出的成功/失敗判定見 `exportPrintResult()`
+- **業務欄**：`workboard_orders.sales`，清單與 3DP-BK 共用 `settings/workspace.bk_sales`（`window._settings_sales`）。列印記錄匯出以 **EF 單號** join 補「業務／客戶全名／責任工程師」三欄；**沒單號或對不到就留空給人工填**，不做客戶簡稱的模糊比對（撞名風險太高）
 - **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
 - ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
 - Formlabs `/prints/` 另有 **`elapsed_duration_ms`**（實際耗時）、`print_started_at`、`estimated_duration_ms`，目前**都沒接**；「列印時間」欄要用它

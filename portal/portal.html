@@ -637,6 +637,14 @@ window.showToast = window.showToast || function (msg, type) {
         .filter(m => !scope || !m.region || scope.includes(m.region))
         .map(m => m.name);
     }
+    // 業務清單：與「3D列印機預約」共用同一份 settings/workspace.bk_sales，
+    // 不另開一份設定 —— 兩份會慢慢走偏，而且後台要維護兩個清單。
+    const sales = settings.bk_sales;
+    if (Array.isArray(sales) && sales.length) {
+      window._settings_sales = sales
+        .filter(x => x && (x.key || x.label))
+        .map(x => ({ key: x.key || x.label, label: x.label || x.key }));
+    }
     if (window._onSettingsUpdated) window._onSettingsUpdated();
   };
 })();
@@ -1673,7 +1681,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260827a"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260827b"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260825a"></script>
 
 <!-- ⑦ 主 App -->
@@ -2852,6 +2860,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING3', date:'2026-08-27', type:'feat',
+    text:'工作看板新增「業務」欄位（清單與 3D列印機預約共用同一份，在後台維護）。填了之後，材料庫存的「匯出列印記錄」會用 EF 單號自動帶出業務、客戶全名與責任工程師三欄；沒有單號或工單裡找不到的仍會留白等人工填。材料庫存消耗紀錄的「API狀態」欄改名為「列印結果」，直接顯示成功／不成功／已列印／失敗／已中止。另外列印中的工作不再當場記錄消耗，改成等列印真的結束才計入——先前在列印中就寫入的紀錄，狀態會永遠停在「列印中」而不會更新。' },
   { hash:'0f1987b', date:'2026-08-27', type:'feat',
     text:'材料庫存新增「匯出列印記錄」：每次列印一列，欄位比照大家在填的人工登記表（日期、地區、品牌機型、列印目的、材料與用量、是否收費、APP單號、列印結果）。是否收費會自動判斷（代工，或備註有 APP 單號）；備註第三段若不是單號會當成活動名稱填到「活動名稱與事由」。業務、客戶全名、責任工程師、列印時間這四欄目前仍需人工補填。另外列印失敗（機器錯誤）與人工中止不再扣庫存，印完的（含成品不合格）照扣；此規則只對之後的新紀錄生效。順帶修正備註用底線分隔（如「實威國際_工程測試_翹曲試片」）時工作類別會變成「未分類」、工作看板的實際消耗量也帶不進來的問題。' },
   { hash:'e53968b', date:'2026-08-27', type:'feat',
@@ -2870,8 +2880,6 @@ const CHANGELOG = [
     text:'系統改為北中南分區：每個帳號設定所屬地區，一般同仁只會看到自己地區的預約、工單與異常資料；管理員與主管可檢視全部地區，並可用「所有地區」下拉切換。列印機狀態卡改依地區分組，預設展開自己那一區、其餘收合。後台使用者管理新增地區欄位與角色／地區篩選。' },
   { hash:'f7e754b', date:'2026-08-17', type:'fix',
     text:'修正 Tough 2000 的消耗被誤標為「未扣庫存」：該材料有兩組代碼對應同一個 V2 版本，系統誤把其中一組當成舊版本。3D列印估價上方的視角工具列不再跳行，視窗變窄或切成大字模式時會自動縮小字級。' },
-  { hash:'86c33b8', date:'2026-08-17', type:'feat',
-    text:'3D列印估價的動作紀錄改為只保留有價值的項目（分析、修復、驗證、建立工單），旋轉與擺放等操作只留在本機不再上傳；建立工單後會自動清掉該次的過程紀錄。雲端工單保留 14 天（對齊報價有效期），需要長期存檔請用「列印 / PDF」。' },
 ];
 const VER_TAG = {
   feat: { label:'新功能', color:'var(--ok)',     bg:'var(--ok-soft)' },

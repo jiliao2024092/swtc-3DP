@@ -147,8 +147,10 @@
     const engineers = window._settings_engineers || K.ENG_ORDER;
     const machines  = window._settings_machines  || K.MACHINES;
 
+    // 業務清單與「3D列印機預約」共用 settings/workspace.bk_sales（見 portal.html）
+    const salesOptions = window._settings_sales || [];
     const empty = {
-      seq:'', id:'', customer:'',
+      seq:'', id:'', customer:'', sales:'',
       engineer: engineers[0] || K.ENG_ORDER[0],
       dueDate:'', startDate:'', endDate:'', actualEndDate:'', material:'足夠',
       resin:'', category:'代工',
@@ -226,26 +228,35 @@
                 <input style={INP} value={form.customer} onChange={e=>set('customer',e.target.value)}/></div>
             </div>
             <div className="m-row">
+              <div className="m-field"><label style={LBL}>業務</label>
+                {/* 清單與「3D列印機預約」同源（後台的業務清單）。★ 保留舊值：
+                    工單存的業務若已從清單移除，不補一個 option 的話 select 會顯示
+                    空白，使用者一存檔就把原本的值洗掉。 */}
+                <select style={INP} value={form.sales||''} onChange={e=>set('sales',e.target.value)}>
+                  <option value="">未指定</option>
+                  {salesOptions.map(s=><option key={s.key} value={s.key}>{s.label===s.key?s.key:`${s.label} (${s.key})`}</option>)}
+                  {form.sales && !salesOptions.some(s=>s.key===form.sales) &&
+                    <option value={form.sales}>{form.sales}（已不在清單）</option>}
+                </select></div>
               <div className="m-field"><label style={LBL}>執行工程師</label>
                 <select style={INP} value={form.engineer} onChange={e=>set('engineer',e.target.value)}>
                   {engineers.map(e=><option key={e} value={e}>{K.ENG_FULLLABEL[e]||K.ENG_LABEL[e]||e}</option>)}
                 </select></div>
+            </div>
+            <div className="m-row">
               <div className="m-field"><label style={LBL}>機台</label>
                 <select style={INP} value={form.machine} onChange={e=>set('machine',e.target.value)}>
                   {machines.map(m=><option key={m}>{m}</option>)}
                 </select></div>
-            </div>
-            <div className="m-row">
               <div className="m-field"><label style={LBL}>開始日</label>
                 <input style={INP} type="date" value={form.startDate||''} onChange={e=>set('startDate',e.target.value)}/></div>
-              <div className="m-field"><label style={LBL}>預計完成日</label>
-                <input style={INP} type="date" value={form.endDate||''} onChange={e=>set('endDate',e.target.value)}/></div>
             </div>
             <div className="m-row">
+              <div className="m-field"><label style={LBL}>預計完成日</label>
+                <input style={INP} type="date" value={form.endDate||''} onChange={e=>set('endDate',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>實際完成日</label>
-                <input style={INP} type="date" value={form.actualEndDate||''} onChange={e=>set('actualEndDate',e.target.value)}/></div>
-              <div className="m-field"><label style={LBL}>&nbsp;</label>
-                <div style={{fontSize:11,color:'var(--ink-4)',padding:'8px 0'}}>實際完成日晚於期望交期時，總表會標記逾期</div></div>
+                <input style={INP} type="date" value={form.actualEndDate||''} onChange={e=>set('actualEndDate',e.target.value)}/>
+                <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4}}>晚於期望交期時，總表會標記逾期</div></div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>預估消耗量 (mL)</label>
@@ -669,6 +680,7 @@
           '序': o.seq ?? '',
           '單號': o.id || '',
           '客戶': o.customer || '',
+          '業務': o.sales || '',
           '工程師': K.ENG_FULLLABEL[o.engineer] || K.ENG_LABEL[o.engineer] || o.engineer || '',
           '機台': o.machine || '',
           '開始日': o.startDate || '',
