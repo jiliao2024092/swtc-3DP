@@ -67,10 +67,10 @@ python3 tools/test_regions_py.py
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# 扣庫存規則與 Dashboard Outcome 五分類、飛行中跳過：52 項
+# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間：69 項
 python tools/test_deduct_outcome.py
 
-# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果）：73 項
+# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間）：78 項
 node tools/test_print_log_export.js
 
 # JSX 實際編譯（比括號平衡強：portal 的 babel 區塊 + workboard.js/issues.js）
@@ -137,7 +137,9 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - **業務欄**：`workboard_orders.sales`，清單與 3DP-BK 共用 `settings/workspace.bk_sales`（`window._settings_sales`）。列印記錄匯出以 **EF 單號** join 補「業務／客戶全名／責任工程師」三欄；**沒單號或對不到就留空給人工填**，不做客戶簡稱的模糊比對（撞名風險太高）
 - **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
 - ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
-- Formlabs `/prints/` 另有 **`elapsed_duration_ms`**（實際耗時）、`print_started_at`、`estimated_duration_ms`，目前**都沒接**；「列印時間」欄要用它
+- **列印時間**（`duration_hr`，2026-08-27 起）：來源 `elapsed_duration_ms`，缺漏時退回 `print_finished_at - print_started_at`，**無條件進位到 0.5 小時**（對齊人工填表習慣）
+  - ⚠ **不可用 `estimated_duration_ms` 頂替**：那是排程用的預估值，填進「實際列印時間」是錯資料而且看不出來是估的。拿不到就回 `None`，匯出留空給人工填
+  - ⚠ MF 合併列取**最大值不是加總**：塑料與纖維是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍
 
 ## 領域邏輯地雷
 - **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示（曾詢問過使用者是否要改成樹脂罐也計入總庫存，明確回答**不要**，維持現狀）

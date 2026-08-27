@@ -1716,6 +1716,8 @@ function mapHistoryDoc(d) {
         //   apiStatus 是 PRINTING（那是抓取當下的機台狀態，不是該次列印的結果）。
         //   2026-08-27 之前同步的舊紀錄沒有此欄位。
         outcome: data.outcome,
+        // 實際列印耗時（小時，後端已進位到 0.5 為單位）。2026-08-27 之前的紀錄沒有。
+        duration_hr: data.duration_hr,
         material_raw: data.material_raw,             // 原始代碼（未截斷版本）
         stock_deducted: data.stock_deducted,         // 這筆有沒有真的扣過庫存 → 刪除是否回補
         deduct_skip_reason: data.deduct_skip_reason, // outdated_version / backfill / newly_tracked_machine / failed_or_aborted / null
@@ -5265,8 +5267,13 @@ function buildPrintLogRows(){
             '機型':      exportModelName(h),
             '列印目的':  PURPOSE_MAP[p.category] || '',
             '活動名稱與事由': p.event,
-            '責任工程師': '',                      // 階段 2（workboard join）
-            '列印時間(hr)': '',                    // 階段 3（elapsed_duration_ms）
+            '責任工程師': '',                      // 由 EF 單號 join workboard 補上（見 exportPrintLogExcel）
+            // 實際列印耗時。MF 合併列取「同一次列印」的最大值而非加總——塑料與纖維
+            // 是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍。
+            '列印時間(hr)': (() => {
+                const ds = items.map(x => +x.duration_hr).filter(v => v > 0);
+                return ds.length ? Math.max(...ds) : '';
+            })(),
             '使用材料(樹脂與塑料)': names(plastic),
             '樹脂與塑料用量':       r1(sumMl(plastic)),
             'Ultem9085 Support 用量': '',          // 無此機型，恆空
@@ -5346,9 +5353,11 @@ async function exportPrintLogExcel(){
     XLSX.writeFile(wb, fname);
     // ★ 明確告知有多少欄要人工補：不講的話使用者會以為那些空白是系統壞了
     const withEF = rows.filter(r => r['備註(APP單號)']).length;
+    const noDur = rows.filter(r => !r['列印時間(hr)']).length;
     let msg = `✓ 已匯出 ${fname}（${rows.length} 筆）`;
     if (wbMap === null) msg += '；⚠ 工單資料讀取失敗，業務／客戶／工程師三欄未帶入';
     else msg += `；${matched}/${withEF} 筆以單號比對到工單`;
+    if (noDur) msg += `；${noDur} 筆無列印時間（2026-08-27 前的舊紀錄，需人工填）`;
     showToast(msg, wbMap === null ? 'error' : 'success');
 }
 

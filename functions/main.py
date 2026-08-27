@@ -15,6 +15,7 @@ import sys
 import re
 import json
 import copy
+import math
 import datetime
 import traceback
 from typing import Optional
@@ -139,6 +140,37 @@ ABORT_STATUSES              = ("ABORTED", "ABORTING")
 # ★ PRINTING 不在此清單內（仍會扣）：FC-118 那類實際印完卻回報 PRINTING 的
 #   print 要保留扣帳；真正還在印、尚無用量的會被後面的 volume 檢查濾掉。
 NO_DEDUCT_OUTCOME_STATUSES  = ("ERROR", "FAILED", "ABORTED", "ABORTING")
+
+
+def print_duration_hours(pr):
+    """列印耗時（小時，無條件進位到 0.5 為單位）。對不出來回 None。
+
+    人工登記表的「列印時間」欄就是以 0.5 小時為單位填寫，所以在後端就先湊整，
+    避免前端與匯出各湊一次、規則走偏。
+
+    來源優先序：
+      1. elapsed_duration_ms —— API 直接給的實際耗時（2026-08-27 查官方文件確認存在）
+      2. print_finished_at - print_started_at —— 前者缺漏時的備援
+    ★ 兩者都可能不存在（尤其舊 print），拿不到就回 None，讓匯出留空給人工填，
+      不要用「預估耗時」estimated_duration_ms 頂替——那是排程用的預估值，
+      填進「實際列印時間」欄會是錯的資料，而且看不出來是估的。
+    ⚠ 只有這之後同步的新紀錄才有，歷史紀錄不回溯（使用者決定不做 backfill）。
+    """
+    ms = pr.get("elapsed_duration_ms")
+    if ms is None:
+        st, fi = parse_valid_ts(pr.get("print_started_at")), parse_valid_ts(pr.get("print_finished_at"))
+        if st and fi and fi > st:
+            ms = (fi - st).total_seconds() * 1000
+    if ms is None:
+        return None
+    try:
+        hours = float(ms) / 3_600_000.0
+    except (TypeError, ValueError):
+        return None
+    if hours <= 0:
+        return None
+    # 無條件進位到 0.5 小時（10 分鐘的列印也算 0.5，與人工填表的習慣一致）
+    return math.ceil(hours * 2) / 2
 
 
 def print_outcome(status, prs):
@@ -1462,6 +1494,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         # printed / failed / aborted（匯出的「列印結果」欄用這個，
                         # 不要用 apiStatus——實測 apiStatus 幾乎都是 PRINTING，判不出結果）
                         "outcome":     outcome,
+                        # 實際列印耗時（小時，已進位到 0.5 為單位）。對不出來就不寫，
+                        # 匯出時留空給人工填。只有 2026-08-27 之後同步的紀錄才有。
+                        "duration_hr": print_duration_hours(pr),
                         "printer":     alias,
                         # 北中南分區：消耗紀錄跟著機台走（哪一台印的就算哪一區的用量）
                         "region":      machine_region(alias, machine_regions),

@@ -237,6 +237,23 @@ check('完全沒線索 → 無法判定',          historyOutcome(H({})), '');
 check('outcome 勝過 apiStatus',
       historyOutcome(H({ outcome:'successful', apiStatus:'PRINTING' })), 'successful');
 
+console.log('── ★ 列印時間：MF 合併列取最大值，不是加總 ──');
+// 塑料與纖維是同一次列印的兩條料，時間本來就是同一段。相加會變兩倍。
+const mfDur = [
+  { id:'d1', ts:'2026-08-20T10:00:00', material:'Onyx',         printer:'MarkTwo', type:'consume', ml:54, note:'客戶-代工-202608200001', region:'south', source:'markforged', category:'plastic', duration_hr:15 },
+  { id:'d2', ts:'2026-08-20T10:00:00', material:'Carbon Fiber', printer:'MarkTwo', type:'consume', ml:7,  note:'客戶-代工-202608200001', region:'south', source:'markforged', category:'fiber',   duration_hr:15 },
+];
+check('MF 兩條料同一次列印 → 15（不是 30）', runBuild(mfDur)[0]['列印時間(hr)'], 15);
+check('Formlabs 單筆原樣帶出',
+      runBuild([{ ...sameNote[0], duration_hr:2.5 }])[0]['列印時間(hr)'], 2.5);
+check('沒有 duration_hr → 留空（舊紀錄，人工填）',
+      runBuild([sameNote[0]])[0]['列印時間(hr)'], '');
+check('duration_hr 為 0 視同沒有',
+      runBuild([{ ...sameNote[0], duration_hr:0 }])[0]['列印時間(hr)'], '');
+// 兩條料的時間萬一不一致（其中一條沒抓到），取有值的那個而不是 0
+check('其中一條缺時間 → 取有值的',
+      runBuild([{ ...mfDur[0], duration_hr:15 }, { ...mfDur[1], duration_hr:undefined }])[0]['列印時間(hr)'], 15);
+
 console.log('── 匯出：二元成功／失敗 ──');
 check('successful → 成功',   exportPrintResult(H({ outcome:'successful' })),   '成功');
 check('printed → 成功',      exportPrintResult(H({ outcome:'printed' })),      '成功');

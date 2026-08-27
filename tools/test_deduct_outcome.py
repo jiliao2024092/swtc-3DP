@@ -21,6 +21,7 @@ CLAUDE.md 記載過同類事故（alias=None 讓南部兩台消耗靜默消失�
 執行：python tools/test_deduct_outcome.py     （於 repo 根目錄）
 """
 import io
+import math
 import os
 import re
 import sys
@@ -149,7 +150,62 @@ for _oc, _st in (("successful", "FINISHED"), ("unsuccessful", "FINISHED"),
     _want = _oc not in ("failed", "aborted")
     check(f"{_oc} 的扣帳結論與規則一致", will_deduct(_st), _want)
 
+print("── print_duration_hours()：實際耗時，進位到 0.5 小時 ──")
+_dfn = re.search(r"^def print_duration_hours\(.*?(?=^\ndef print_outcome)", src, re.M | re.S)
+if not _dfn:
+    print("✗ 在 functions/main.py 找不到 print_duration_hours()")
+    sys.exit(1)
+# parse_valid_ts 用 stub：這一組只驗 elapsed_duration_ms 那條路，
+# 讓時間解析一律回 None，等於「沒有起訖時間可用」。
+_dns = {"math": math, "parse_valid_ts": lambda v, floor_year=2000: None}
+exec(_dfn.group(0), _dns)
+dur = _dns["print_duration_hours"]
+
+H = 3_600_000
+check("1 小時整",              dur({"elapsed_duration_ms": H}),        1.0)
+check("30 分 → 0.5",           dur({"elapsed_duration_ms": H // 2}),   0.5)
+# 無條件進位：人工填表就是以 0.5 為單位，寧可高估不要漏記
+check("10 分 → 進位成 0.5",    dur({"elapsed_duration_ms": H // 6}),   0.5)
+check("31 分 → 進位成 1.0",    dur({"elapsed_duration_ms": int(H * 31 / 60)}), 1.0)
+check("2 小時 1 分 → 2.5",     dur({"elapsed_duration_ms": int(H * 121 / 60)}), 2.5)
+check("15 小時整",             dur({"elapsed_duration_ms": H * 15}),   15.0)
+
+print("── 拿不到就回 None，不可用預估值頂替 ──")
+check("欄位不存在 → None",      dur({}),                                None)
+check("0 毫秒 → None",          dur({"elapsed_duration_ms": 0}),        None)
+check("負值 → None",            dur({"elapsed_duration_ms": -1000}),    None)
+check("非數字 → None",          dur({"elapsed_duration_ms": "abc"}),    None)
+# ★ estimated_duration_ms 是排程用的預估值，填進「實際列印時間」會是錯資料，
+#   而且看不出來是估的。只有它時必須回 None。
+check("只有 estimated_duration_ms → None",
+      dur({"estimated_duration_ms": H * 5}),                            None)
+# ★ 比對「有沒有真的去讀那個欄位」，不是比對原始碼含不含這個字串 ——
+#   函式的註解裡就寫著「不要用 estimated_duration_ms 頂替」，用字串比對會誤判。
+check("main.py 沒把 estimated_duration_ms 當來源",
+      bool(re.search(r'\.get\(\s*["\']estimated_duration_ms', _dfn.group(0))), False)
+
+print("── 備援：finished - started ──")
+_dns2 = dict(_dns)
+_dns2["parse_valid_ts"] = lambda v, floor_year=2000: (
+    __import__("datetime").datetime.fromisoformat(v) if isinstance(v, str) and v else None)
+exec(_dfn.group(0), _dns2)
+dur2 = _dns2["print_duration_hours"]
+check("elapsed 缺 → 用起訖時間差",
+      dur2({"print_started_at": "2026-08-20T10:00:00",
+            "print_finished_at": "2026-08-20T13:00:00"}),               3.0)
+check("結束早於開始 → None（資料壞掉不硬算）",
+      dur2({"print_started_at": "2026-08-20T13:00:00",
+            "print_finished_at": "2026-08-20T10:00:00"}),               None)
+check("只有開始時間 → None",
+      dur2({"print_started_at": "2026-08-20T10:00:00"}),                None)
+# elapsed 優先於時間差
+check("elapsed 優先",
+      dur2({"elapsed_duration_ms": H, "print_started_at": "2026-08-20T10:00:00",
+            "print_finished_at": "2026-08-20T20:00:00"}),               1.0)
+
 print("── 與 main.py 實作接線一致 ──")
+check("duration_hr 有寫進 inventory_history",
+      bool(re.search(r'"duration_hr":\s*print_duration_hours\(pr\)', src)), True)
 # 規則若沒真的接到 will_deduct，測試會全綠但線上完全沒生效（測到影子實作）。
 check("main.py 有 bad_outcome = status in NO_DEDUCT_OUTCOME_STATUSES",
       bool(re.search(r"bad_outcome\s*=\s*status\s+in\s+NO_DEDUCT_OUTCOME_STATUSES", src)), True)
