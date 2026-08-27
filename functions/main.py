@@ -110,6 +110,24 @@ EIGER_TRACKED_DEVICES = {
 DONE_STATUSES               = ("FINISHED", "SUCCESS", "COMPLETE", "DONE", "COMPLETED", "PRINTED", "PRINTING")
 ERROR_AS_CONSUME_STATUSES   = ("ERROR", "FAILED")
 ABORT_STATUSES              = ("ABORTED", "ABORTING")
+
+# ── 哪些 print 要扣庫存（2026-08-27 起，使用者決策 B）────────────────────
+# Dashboard 的「Outcome」篩選有五種：Successful / Unsuccessful / Failed /
+# Printed / Aborted。決策：**只有 Failed 與 Aborted 不扣**，其餘全扣。
+#   Successful   印完、判定合格      → 樹脂用掉了 → 扣
+#   Printed      印完、使用者沒評價   → 樹脂用掉了 → 扣
+#   Unsuccessful 印完、成品不合格     → 樹脂**一樣用掉了** → 扣
+#   Failed       機器錯誤中斷        → 只用掉一部分、難精算 → 不扣
+#   Aborted      人工中止           → 同上 → 不扣
+#
+# ★ 刻意寫成「排除清單」而不是「允許清單」：
+#   Failed/Aborted 單看 status 就能判定（ERROR / ABORTED / ABORTING 都在官方
+#   enum 裡），不需要 print_run_success 那個文件沒列完整 enum 的欄位。
+#   其餘一切（含 UNKNOWN、欄位不存在的舊資料、未來新增的 enum 值）自動落在
+#   「扣」這一側 —— 與決策一致，且不會因為冒出沒看過的值而靜默漏扣。
+# ★ PRINTING 不在此清單內（仍會扣）：FC-118 那類實際印完卻回報 PRINTING 的
+#   print 要保留扣帳；真正還在印、尚無用量的會被後面的 volume 檢查濾掉。
+NO_DEDUCT_OUTCOME_STATUSES  = ("ERROR", "FAILED", "ABORTED", "ABORTING")
 NON_DEDUCT_STATUSES         = ("IN_PROGRESS", "QUEUED", "CANCELED", "CANCELLED",
                                 "NOT_STARTED", "PREPRINT", "PREHEAT")
 
@@ -1336,8 +1354,13 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 outdated = is_outdated_version(raw_material, family_latest, family_latest_seen)
                 # 新納管機台的歷史 print 不追溯扣帳（見上方 newly_tracked 說明）
                 is_new_machine_history = any(a in alias for a in newly_tracked)
+                # Failed / Aborted 不扣庫存（決策 B，見 NO_DEDUCT_OUTCOME_STATUSES）
+                bad_outcome = status in NO_DEDUCT_OUTCOME_STATUSES
                 will_deduct = ((not backfill) and (guid not in deducted)
-                               and (not outdated) and (not is_new_machine_history))
+                               and (not outdated) and (not is_new_machine_history)
+                               and (not bad_outcome))
+                if bad_outcome:
+                    stats["skipped_bad_outcome"] = stats.get("skipped_bad_outcome", 0) + 1
                 if outdated:
                     stats["skipped_outdated_deduct"] = stats.get("skipped_outdated_deduct", 0) + 1
                     print(f"[sync] 舊版本不扣庫存: {raw_material!r}(家族最新非此版) "
@@ -1351,6 +1374,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 actually_deducted = (guid in deducted) if backfill else will_deduct
                 if actually_deducted:
                     skip_reason = None
+                elif bad_outcome:
+                    # 前端「未扣庫存」tooltip 會顯示這個原因
+                    skip_reason = "failed_or_aborted"
                 elif outdated:
                     skip_reason = "outdated_version"
                 elif backfill:

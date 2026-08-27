@@ -1606,7 +1606,7 @@ function mapHistoryDoc(d) {
         apiStatus: data.apiStatus,
         material_raw: data.material_raw,             // 原始代碼（未截斷版本）
         stock_deducted: data.stock_deducted,         // 這筆有沒有真的扣過庫存 → 刪除是否回補
-        deduct_skip_reason: data.deduct_skip_reason, // outdated_version / backfill / null
+        deduct_skip_reason: data.deduct_skip_reason, // outdated_version / backfill / newly_tracked_machine / failed_or_aborted / null
         // 品牌來源：Formlabs 的舊紀錄沒有此欄位 → 一律視為 formlabs（不可預設成 markforged，
         // 否則所有既有樹脂紀錄會從 Formlabs 統計中消失）
         source: data.source || 'formlabs',
@@ -4405,6 +4405,12 @@ function deductSkipTitle(h) {
     }
     if (h.deduct_skip_reason === 'backfill') {
         return `${raw}\n此筆由 backfill 重建，當初就沒有扣除備料庫存（刪除時也不會回補）。`;
+    }
+    if (h.deduct_skip_reason === 'failed_or_aborted') {
+        return `${raw}\n此筆為 Failed（機器錯誤中斷）或 Aborted（人工中止），依規則不扣備料庫存。\n（印完的 Successful／Printed／Unsuccessful 都會扣，因為樹脂實際已消耗。）`;
+    }
+    if (h.deduct_skip_reason === 'newly_tracked_machine') {
+        return `${raw}\n此機台是後來才納入消耗追蹤的，納管前的歷史列印只補紀錄、不追溯扣庫存。`;
     }
     return `${raw}\n此筆未扣除備料庫存（未記錄原因）。`;
 }
