@@ -127,7 +127,7 @@ const rowSrcs = [
   extract('OUTCOME_LABEL_TW',    /const OUTCOME_LABEL_TW = \{[\s\S]*?\};/),
   extract('IN_FLIGHT_API_STATUS',/const IN_FLIGHT_API_STATUS = \[[^\]]*\];/),
   extract('NOT_A_FAILURE_SKIP',  /const NOT_A_FAILURE_SKIP = \[[^\]]*\];/),
-  extract('SWTC_TEST_CUSTOMER', /const SWTC_TEST_CUSTOMER = [^\n]*;/),
+  extract('ENG_TEST_COMPANY',  /const ENG_TEST_COMPANY = [^\n]*;/),
   extract('zhEnLabel',          /function zhEnLabel\(key, dict\)\{[\s\S]*?\n\}/),
   extract('historyOutcome',      /function historyOutcome\(h\)\{[\s\S]*?\n\}/),
   extract('exportPrintResult',   /function exportPrintResult\(h\)\{[\s\S]*?\n\}/),
@@ -298,6 +298,28 @@ check('評估 → 客戶名稱留空（等 join）',
       runBuild([{ ...engTest, note:'裕田動能-評估-202608170001' }])[0]['客戶名稱'], '');
 check('未分類 → 客戶名稱留空',
       runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['客戶名稱'], '');
+
+console.log('── 工程測試且無單號 → 業務也帶入實威國際 ──');
+// 人工登記表「原廠材料工程測試且無單號」5 筆，業務全部是實威國際（5/5）。
+check('工程測試＋活動名（無單號）→ 業務帶入',
+      runBuild([{ ...engTest, note:'實威-工程測試-海昌體驗營' }])[0]['業務'],
+      '實威國際股份有限公司');
+check('工程測試＋無第三段 → 業務帶入',
+      runBuild([{ ...engTest, note:'實威-工程測試' }])[0]['業務'],
+      '實威國際股份有限公司');
+check('底線格式的工程測試 → 業務帶入',
+      runBuild([{ ...engTest, note:'實威國際_工程測試_翹曲試片' }])[0]['業務'],
+      '實威國際股份有限公司');
+// ★ 有單號時不可預填：那種走工單 join，工單上的業務才是真的指定人
+check('工程測試＋有單號 → 業務留空（交給 join）',
+      runBuild([{ ...engTest, note:'實威-工程測試-202608170001' }])[0]['業務'], '');
+// ★ 其他類別一律不帶：代工／評估的業務要靠單號 join，猜錯會是錯資料
+check('代工 → 業務留空',
+      runBuild([{ ...engTest, note:'博大-代工-202607160001' }])[0]['業務'], '');
+check('評估（無單號）→ 業務留空',
+      runBuild([{ ...engTest, note:'高禎-評估' }])[0]['業務'], '');
+check('未分類 → 業務留空',
+      runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['業務'], '');
 
 // ══ 業務／工程師的「中文 (英文)」顯示 ═══════════════════════════
 console.log('── 業務／工程師以「中文 (英文)」匯出 ──');

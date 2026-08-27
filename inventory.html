@@ -1330,8 +1330,10 @@ function parseNote(note){
 //   目標表其實還有「正式立案前測試列印」，但我們的來源只有單一個「工程測試」，
 //   一對二無法自動判別，所以固定對到其中一個，需要改的人再手動改。
 const PURPOSE_MAP = { '代工':'代工列印', '評估':'評估機器', '工程測試':'原廠材料工程測試' };
-// 工程測試＝自家原廠材料測試，客戶固定是這一家（人工登記表該類 7 筆全部如此）
-const SWTC_TEST_CUSTOMER = '實威國際股份有限公司';
+// 工程測試＝自家的原廠材料測試，客戶與業務都掛這一家。
+// 客戶：人工登記表該類 7 筆全部如此。
+// 業務：該表「原廠材料工程測試且無單號」5 筆，業務全部是這一家（5/5）。
+const ENG_TEST_COMPANY = '實威國際股份有限公司';
 
 // 是否收費。★ 實測目標表 23 筆全中（23/23），規則不是「看列印目的」那麼單純：
 //   「評估機器」在目標表裡是 5 筆收費、1 筆不收費，光看目的判不出來，
@@ -5286,11 +5288,14 @@ function buildPrintLogRows(){
             '時間戳記':  valid ? ts.toLocaleString('zh-TW') : '',
             '日期':      valid ? fmtDateLocalInv(ts) : '',
             '地區':      window.regionLabel ? (window.regionLabel(h.region)||'') : (h.region||''),
-            '業務':      '',                       // 由 EF 單號 join workboard 補上
+            // 工程測試且沒有單號時，業務也掛實威國際（人工登記表 5/5 相符）。
+            // ★ 限「無單號」：有單號的走下面的工單 join，那邊的業務才是真的指定人。
+            // 沒單號的列不會進 join（那段開頭就 return），所以這裡填的值不會被蓋掉。
+            '業務':      (p.category === '工程測試' && !p.appNo) ? ENG_TEST_COMPANY : '',
             // 工程測試一律是自家的原廠材料測試，客戶就是實威國際（對照人工登記表，
             // 該類 7 筆全部都是這一家）。其餘類別的客戶全名要靠單號 join 工單，
             // 因為備註第一段只有客戶「簡稱」，不是 EIP 上的公司全名。
-            '客戶名稱':  p.category === '工程測試' ? SWTC_TEST_CUSTOMER : '',
+            '客戶名稱':  p.category === '工程測試' ? ENG_TEST_COMPANY : '',
             '品牌':      h.source === 'markforged' ? 'Markforged' : 'Formlabs',
             '機型':      exportModelName(h),
             '列印目的':  PURPOSE_MAP[p.category] || '',
