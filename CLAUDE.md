@@ -70,7 +70,7 @@ python3 tools/test_regions_py.py
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間：69 項
+# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析：85 項
 python tools/test_deduct_outcome.py
 
 # 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間、中英文名）：110 項
@@ -155,7 +155,9 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - **業務**：限「工程測試**且無單號**」才帶入（該表這類 5 筆全部如此，5/5）。⚠ 有單號的一律交給工單 join——工單上的業務才是真的指定人，預填會蓋掉它
   - 其餘類別靠單號 join 工單，因為備註第一段只有客戶**簡稱**不是 EIP 全名；join 時**不覆蓋**已填好的客戶名稱
 - **工作看板「實際消耗量」自動帶入刻意不比對地區**：工單的 region 是「誰開的單」、消耗紀錄的 region 是「哪台機器印的」，跨區支援時兩者本來就不同（北部單子送中部機台印）。用工單地區去濾會讓那種消耗**整筆消失**，比多帶還糟——**EF 單號才是正確的關聯鍵**
-  - ⚠ 但 `loadRecentHistory()` 的 `limit(1000)` 是**全域共用**的，三區一起吃這個額度，等於每區的可回溯範圍只剩約 1/3。單號較舊的工單會查不到消耗量而**沒有任何提示**。根治要讓 Cloud Function 把 EF 單號存成獨立欄位才能精準查詢（目前 Firestore 無法查「note 內含某字串」）
+  - ✅ **已改用 `ef_no` 精準查詢**（2026-08-27）：Cloud Function 把備註裡的單號解析成獨立欄位，`where('ef_no','==',x)` 不再受筆數窗口限制。原本 `loadRecentHistory()` 的 `limit(1000)` 是全域共用的，三區一起吃，每區可回溯範圍只剩約 1/3
+  - ⚠ **退路不能拿掉**：2026-08-27 之前的紀錄沒有 `ef_no`，只靠精準查詢會讓那些工單的消耗量整個消失。admin 跑過一次 `sync_formlabs_manual({backfill_ef_no:true})` 之後退路就不會再被用到
+  - ⚠ `backfill_ef_no` 與 `backfill` **完全不同**：後者清空重建整份 history（會重寫所有 `stock_deducted`），前者只用 `update()` 加 `ef_no` 一個欄位、冪等、不動任何既有值
 - **業務欄**：`workboard_orders.sales`，清單與 3DP-BK 共用 `settings/workspace.bk_sales`（`window._settings_sales`）。列印記錄匯出以 **EF 單號** join 補「業務／客戶全名／責任工程師」三欄；**沒單號或對不到就留空給人工填**，不做客戶簡稱的模糊比對（撞名風險太高）
 - **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
 - ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
@@ -163,6 +165,14 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - **列印時間**（`duration_hr`，2026-08-27 起）：來源 `elapsed_duration_ms`，缺漏時退回 `print_finished_at - print_started_at`，**無條件進位到 0.5 小時**（對齊人工填表習慣）
   - ⚠ **不可用 `estimated_duration_ms` 頂替**：那是排程用的預估值，填進「實際列印時間」是錯資料而且看不出來是估的。拿不到就回 `None`，匯出留空給人工填
   - ⚠ MF 合併列取**最大值不是加總**：塑料與纖維是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍
+
+## 前端相依版本（2026-08-27 統一）
+- **Firebase SDK 全站 10.12.5**（原本 compat 頁是 10.12.0、modular 頁是 10.12.5）。`appcheck.js` 的 `SDK_VERSION` 是單一來源，compat 與 modular 兩個常數都指向它
+  - ⚠ compat 與 modular 是**兩個建置產物、不是兩個版本**，所以常數分開留著；但版號要一致，否則 App Check 會載到兩份 SDK
+- **three.js 0.149.0**（原 r128／2021）。只有 `quote-studio.html` 與 `quote-markforged.html` 用到，共 217 處 `THREE.*`
+  - ⚠ **刻意停在 0.149**：r152 起 color management 預設開啟、r155 起燈光預設改變，再往上估價頁的模型外觀會變
+  - ⚠ **r150 起非模組版被棄用、r160 移除**，要用更新版本得整頁改寫成 ESM + import map，並重新驗證那 217 處。那是獨立專案不是版本號替換
+  - ⚠ CDN 換成 **jsDelivr**：cdnjs 的 three.js 只鏡像到 r134 就停止更新了
 
 ## 領域邏輯地雷
 - **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示（曾詢問過使用者是否要改成樹脂罐也計入總庫存，明確回答**不要**，維持現狀）

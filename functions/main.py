@@ -142,6 +142,29 @@ ABORT_STATUSES              = ("ABORTED", "ABORTING")
 NO_DEDUCT_OUTCOME_STATUSES  = ("ERROR", "FAILED", "ABORTED", "ABORTING")
 
 
+# 備註（＝Formlabs 檔名）慣例格式：客戶簡稱-工作類別-第三段。
+# 第三段是純數字（8 碼以上）時就是 EF/APP 單號。
+# ★ 分隔符要同時吃 `-` 與 `_`：實掃 29 筆消耗紀錄有 2 筆用底線
+#   （實威國際_工程測試_翹曲試片）。前端 inventory.html / workboard.js 也是這個規則。
+NOTE_SEP_RE = re.compile(r"[-_]")
+EF_NO_RE    = re.compile(r"^\d{8,}$")
+
+
+def parse_ef_no(note):
+    """從備註抽出 EF 單號；抽不出來回 None。
+
+    為什麼要存成獨立欄位：Firestore 查不了「note 內含某字串」，工作看板只能
+    「抓最近 1000 筆再到前端比對」。那個 1000 是**全域共用**的，三個地區一起吃，
+    每區可回溯範圍只剩約 1/3 —— 較舊的工單查不到消耗量，而且沒有任何提示。
+    存成 ef_no 之後就能 where('ef_no','==',x) 精準查，不再受筆數窗口限制。
+    """
+    parts = NOTE_SEP_RE.split(note or "")
+    if len(parts) < 3:
+        return None
+    tail = "-".join(parts[2:]).strip()
+    return tail if EF_NO_RE.match(tail) else None
+
+
 def print_duration_hours(pr):
     """列印耗時（小時，無條件進位到 0.5 為單位）。對不出來回 None。
 
@@ -1494,6 +1517,9 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         # printed / failed / aborted（匯出的「列印結果」欄用這個，
                         # 不要用 apiStatus——實測 apiStatus 幾乎都是 PRINTING，判不出結果）
                         "outcome":     outcome,
+                        # EF/APP 單號（從備註解析）。供工作看板精準查詢消耗量用，
+                        # 見 parse_ef_no() 的說明。解析不出來就不寫這個欄位。
+                        "ef_no":       parse_ef_no(pr.get("name", "")),
                         # 實際列印耗時（小時，已進位到 0.5 為單位）。對不出來就不寫，
                         # 匯出時留空給人工填。只有 2026-08-27 之後同步的紀錄才有。
                         "duration_hr": print_duration_hours(pr),
@@ -1658,6 +1684,41 @@ def sync_formlabs_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
     secrets=[FORMLABS_CLIENT_ID, FORMLABS_CLIENT_SECRET],
     region="asia-east1",
 )
+def backfill_ef_no_only():
+    """把 ef_no 補到既有的 inventory_history 上（只加這一個欄位）。
+
+    ★ 只 update ef_no，不碰其他欄位 —— 用 update() 而不是 set()，
+      避免把 stock_deducted / outcome / ml 等既有值洗掉。
+    ★ 已經有 ef_no 的跳過，重複執行是安全的（冪等）。
+    ★ 解析不出單號的也跳過，不寫 null —— 寫了只是白白多一筆寫入。
+    """
+    db = get_db()
+    stats = {"scanned": 0, "updated": 0, "skipped_has_value": 0, "skipped_no_ef": 0}
+    batch, pending = db.batch(), 0
+
+    for doc in db.collection("inventory_history").stream():
+        stats["scanned"] += 1
+        d = doc.to_dict() or {}
+        if d.get("ef_no"):
+            stats["skipped_has_value"] += 1
+            continue
+        ef = parse_ef_no(d.get("note", ""))
+        if not ef:
+            stats["skipped_no_ef"] += 1
+            continue
+        batch.update(doc.reference, {"ef_no": ef})
+        pending += 1
+        stats["updated"] += 1
+        if pending >= 400:          # Firestore writeBatch 上限 500，留餘裕
+            batch.commit()
+            batch, pending = db.batch(), 0
+    if pending:
+        batch.commit()
+
+    print(f"[backfill ef_no] {stats}")
+    return stats
+
+
 def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
     """從前端呼叫的手動觸發。
     可傳 { backfill: true } 觸發回填模式。
@@ -1676,6 +1737,15 @@ def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
             code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
             message="僅 admin 可手動觸發同步",
         )
+
+    # ── 只補 ef_no 的一次性回填 ──────────────────────────────────
+    # ★ 與 backfill 完全不同：backfill 會清空重建整份 inventory_history
+    #   （所有紀錄的 stock_deducted 會被重寫）。這個模式**只加 ef_no 一個欄位**，
+    #   不動 ml／outcome／stock_deducted／任何既有值，也不重算庫存。
+    #   既有紀錄不會再經過寫入路徑（guid in processed 就跳過），所以要單獨補一次。
+    if bool(req.data.get("backfill_ef_no", False)):
+        print(f"[manual trigger] uid={uid} 模式=backfill_ef_no")
+        return backfill_ef_no_only()
 
     backfill = bool(req.data.get("backfill", False))
     print(f"[manual trigger] uid={uid} backfill={backfill}")

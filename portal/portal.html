@@ -494,9 +494,9 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <div id="toasts" class="toast-wrap"></div>
 
 <!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <!-- React -->
 <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -510,7 +510,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <!-- Firebase 專案設定（唯一來源，五頁共用；檔案在 repo 根目錄）-->
 <script src="../firebase-config.js?v=20260827a"></script>
 <script src="firebase-init.js?v=20260827a"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
 <script src="firebase-service.js?v=20260827b"></script>
 <!-- ECharts -->
@@ -1690,7 +1690,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260827c"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260827d"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260825a"></script>
 
 <!-- ⑦ 主 App -->
@@ -2881,6 +2881,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING9', date:'2026-08-27', type:'fix',
+    text:'修正工作看板「實際消耗量」自動帶入時，較舊的 EF 單號查不到消耗紀錄的問題——原本只能掃描最近 1000 筆消耗紀錄，而那個額度是三個地區共用的，等於每區只能回溯約三分之一。現在改用單號精準查詢，不再受筆數限制。⚠ 2026-08-27 之前的舊紀錄需要管理員手動觸發一次回填才會生效（在此之前仍走舊的掃描方式，行為與先前相同）。另外前端套件版本統一：Firebase SDK 全站 10.12.5、3D 估價頁的 three.js 由 2021 年的 r128 升到 0.149.0（外觀不變）。' },
   { hash:'8aaa6c1', date:'2026-08-27', type:'tweak',
     text:'工作看板「新增／編輯列印工作」移除「預計完成日」欄位，改放「纖維消耗量 (cc)」——Markforged 的碳纖等纖維以 cc 計，與樹脂的 mL 分開記錄，不會混進「實際消耗量」。舊工單原本填過的預計完成日仍會顯示在總表與甘特圖上。' },
   { hash:'e932f19', date:'2026-08-27', type:'tweak',
@@ -2899,8 +2901,6 @@ const CHANGELOG = [
     text:'機台預約的甘特圖左側「機台」欄位加寬，機台名稱完整顯示、不再被截斷成「Alumin…」。材料庫存的「刪除材料／耗材」鈕改為進入「編輯模式」後才能點（先前相反：只有非編輯模式能刪），與其他欄位的編輯行為一致；編輯模式下按刪除時會提醒「表格中其他尚未儲存的修改會一併捨棄」。登入頁新增「忘記密碼？」：填入電子郵件即可收到重設密碼信（寄件者為 noreply@swtc-3dp-poc.firebaseapp.com，若沒收到請查看垃圾郵件夾）。' },
   { hash:'cdb9b86', date:'2026-08-25', type:'tweak',
     text:'工作看板的「樹脂材料」欄改名為「材料」，並修正下拉選單會混進耗材（Mixer、樹脂槽等機台配件）的問題。新增 Markforged 材料，分成「純塑料」與「塑料＋纖維」兩組（依登入者所在地區的 Markforged 庫存自動帶出）。另外新增「其他（自行輸入）」，清單上沒有的材料可以自己打；篩選下拉也會一併列出曾經用過但已不在清單上的材料，避免舊工單篩不到。' },
-  { hash:'aa97fcf', date:'2026-08-25', type:'feat',
-    text:'Markforged 機台開始自動記錄列印消耗並扣庫存（原本只顯示餘量、不扣帳）。消耗會依機台所在地區扣該區的 Markforged 線材庫存，並出現在「Markforged／消耗記錄」與「月度分析」。⚠ 各廠區的 Markforged 庫存目前是空的，請先盤點填入，否則消耗會扣到 0 並跳「消耗紀錄可能有誤」。換料造成的餘量上升不會被當成消耗，也不會自動加庫存。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

@@ -20,9 +20,12 @@
   const SITE_KEY = '';          // ← 填 reCAPTCHA v3 網站金鑰以啟用
   const USE_DEBUG_TOKEN = false; // 本機開發用；true 會在 console 印出 debug token 供 Console 註冊
 
-  // 各頁面用的 Firebase SDK 版本不同，App Check 模組要跟著對齊，否則會載到兩份 SDK
-  const COMPAT_SDK_VERSION  = '10.12.0';  // portal / quote-studio / quote-markforged
-  const MODULAR_SDK_VERSION = '10.12.5';  // 3DP-BK / inventory
+  // App Check 模組要跟頁面載入的 Firebase SDK 同版本，否則會載到兩份 SDK。
+  // ★ 2026-08-27 起五頁統一 10.12.5（原本 compat 頁是 10.12.0）。compat 與 modular
+  //   是兩個不同的建置產物、不是兩個版本，所以仍分成兩個常數；但版號要一致。
+  const SDK_VERSION = '10.12.5';
+  const COMPAT_SDK_VERSION  = SDK_VERSION;   // portal / quote-studio / quote-markforged
+  const MODULAR_SDK_VERSION = SDK_VERSION;   // 3DP-BK / inventory
 
   const enabled = () => !!SITE_KEY;
 

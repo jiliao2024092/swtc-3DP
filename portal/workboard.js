@@ -18,12 +18,14 @@
   //   不同材料的用量加在一起、灌進工單唯一的「實際消耗量」欄位。故改成「單號相同後
   //   再依材料分組」，回填時只取與工單「樹脂材料」同家族的那一份（見 pickByResin）。
   //   材料比對走 window.matName（家族正規化），紀錄存的是家族代碼、工單存的是顯示名稱。
-  // Firestore 沒有可查「note 內含某字串」的索引，只能抓一段時間內的紀錄再前端解析比對，
-  // 故限制筆數（最近1000筆）並僅在開啟工單/EF單號變更時查一次，不做常駐訂閱以免耗用讀取額度。
+  // ★ 2026-08-27 起主要走 queryByEfNo()：Cloud Function 把單號存成 ef_no 欄位，
+  //   可以精準查詢。下面這支「抓最近 1000 筆再前端比對」只留給沒有 ef_no 的舊紀錄。
+  //   為什麼原本要這樣繞：note 是自由字串，Firestore 查不了「內含某字串」。
+  //   ⚠ 那個 1000 是**全域共用**的，三個地區一起吃，每區可回溯範圍只剩約 1/3，
+  //     較舊的工單會查不到消耗量且毫無提示 —— 這正是改用 ef_no 要解決的問題。
   // 這支查詢的內容與 efNo 無關（每次都是「最近 1000 筆」，比對是在前端做的），
   // 所以每開一張工單就重抓一次是純浪費讀取額度 —— 連開 10 張 = 10,000 次文件讀取。
   // 改成整個分頁共用一份快取：TTL 內重用，並用 in-flight promise 讓同時觸發的查詢共用一次。
-  // Cloud Function 是每 30 分同步一次，5 分鐘的新鮮度綽綽有餘。
   const HISTORY_CACHE_TTL_MS = 5 * 60 * 1000;
   let _historyCache = null;          // { at, rows }
   let _historyCachePromise = null;   // 進行中的查詢（避免同時打多次）
@@ -45,10 +47,36 @@
     return _historyCachePromise;
   }
 
+  // 依 EF 單號精準查詢（Cloud Function 2026-08-27 起把單號存成 ef_no 欄位）。
+  // ★ 為什麼要有這條路：note 是「客戶-類別-單號」的自由字串，Firestore 查不了
+  //   「內含某字串」，所以原本只能抓最近 1000 筆再到前端比對。那個 1000 是**全域
+  //   共用**的，三個地區一起吃，每區可回溯範圍只剩約 1/3 —— 較舊的工單查不到
+  //   消耗量，而且畫面上沒有任何提示。改用 ef_no 之後不再受筆數窗口限制。
+  async function queryByEfNo(efNo) {
+    const snap = await window.fbDb.collection('inventory_history')
+      .where('ef_no', '==', efNo).get();
+    return snap.docs.map(d => {
+      const x = d.data();
+      return { note: x.note || '', ml: Number(x.ml) || 0, material: x.material };
+    });
+  }
+
   async function fetchConsumptionForEF(efNo) {
     if (!efNo || !window.fbDb) return null;
     try {
-      const rows = await loadRecentHistory();
+      // 先走精準查詢；查不到再退回掃描最近 1000 筆。
+      // ★ 退路不能拿掉：2026-08-27 之前同步的紀錄沒有 ef_no 欄位，只靠精準查詢
+      //   會讓那些工單的消耗量整個消失（比現況更糟）。admin 跑過一次
+      //   backfill_ef_no 之後，退路實際上就不會再被用到。
+      let rows = [];
+      try {
+        rows = await queryByEfNo(efNo);
+      } catch (e) {
+        console.warn('[fetchConsumptionForEF] ef_no 查詢失敗，改用備註掃描', e);
+      }
+      const precise = rows.length > 0;
+      if (!precise) rows = await loadRecentHistory();
+
       const byMat = new Map();   // 材料顯示名稱 → { name, sum, count }
       let sum = 0, count = 0;
       rows.forEach(d => {
@@ -70,7 +98,7 @@
       if (!count) return null;
       const r1 = v => Math.round(v * 10) / 10;
       return {
-        sum: r1(sum), count,
+        sum: r1(sum), count, precise,
         byMaterial: [...byMat.values()].map(m => ({ ...m, sum: r1(m.sum) }))
                                        .sort((a, b) => b.sum - a.sum),
       };

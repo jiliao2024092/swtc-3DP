@@ -203,6 +203,55 @@ check("elapsed 優先",
       dur2({"elapsed_duration_ms": H, "print_started_at": "2026-08-20T10:00:00",
             "print_finished_at": "2026-08-20T20:00:00"}),               1.0)
 
+print("── parse_ef_no()：從備註抽出 EF 單號 ──")
+_efn = re.search(r"^def parse_ef_no\(.*?(?=^\ndef print_duration_hours)", src, re.M | re.S)
+if not _efn:
+    print("✗ 在 functions/main.py 找不到 parse_ef_no()")
+    sys.exit(1)
+# ★ 從 main.py 抽出真正的常數，不要在測試裡自己寫一份 ——
+#   自己注入的話，改壞 main.py 的 NOTE_SEP_RE／EF_NO_RE 測試也不會失敗
+#   （實際踩過：突變測試跑出全綠，查了才發現測的是測試自己的常數）。
+_c = {}
+for _n in ("NOTE_SEP_RE", "EF_NO_RE"):
+    _m = re.search(rf"^{_n}\s*=\s*re\.compile\((r?\"[^\"]*\")\)", src, re.M)
+    if not _m:
+        print(f"✗ 在 functions/main.py 找不到 {_n}")
+        sys.exit(1)
+    _c[_n] = re.compile(eval(_m.group(1)))
+_ens = dict(_c)
+exec(_efn.group(0), _ens)
+ef = _ens["parse_ef_no"]
+
+# 逐字取自真實的 29 筆消耗紀錄
+check("連字號格式",        ef("裕田動能-評估-202608170001"), "202608170001")
+check("底線格式",          ef("實威國際_工程測試_202608170002"), "202608170002")
+check("客戶名含連字號",     ef("A-代工-202608170003"), "202608170003")
+# 第三段是活動名稱而非單號 → 不可誤判成單號
+check("活動名稱不是單號",   ef("實威-工程測試-海昌體驗營"), None)
+check("翹曲試片不是單號",   ef("實威國際_工程測試_翹曲試片"), None)
+check("只有兩段 → None",   ef("實威-工程測試"), None)
+check("不符規範 → None",   ef("palm_pad_silicon"), None)
+check("空字串 → None",     ef(""), None)
+check("None → None",       ef(None), None)
+# 7 碼以下不算單號（避免把年份之類的短數字誤判）
+check("短數字不是單號",     ef("客戶-代工-2026"), None)
+check("剛好 8 碼算單號",    ef("客戶-代工-20260817"), "20260817")
+
+# ★ 前後端必須用同一套規則：inventory.html 的 APP_NO_RE 也是 8 碼以上純數字，
+#   兩邊走偏會讓「匯出看得到單號、工單卻查不到消耗量」這種對不起來的情況。
+inv_html = open(os.path.join(ROOT, "inventory.html"), encoding="utf-8").read()
+check("與 inventory.html 的單號規則一致",
+      "const APP_NO_RE = /^\d{8,}$/;" in inv_html, True)
+check("與 inventory.html 的分隔符規則一致",
+      bool(re.search(r"NOTE_SEP = /\[-_\]/", inv_html)), True)
+
+check("ef_no 有寫進 inventory_history",
+      bool(re.search(r'"ef_no":\s*parse_ef_no\(', src)), True)
+check("有 backfill_ef_no 一次性回填",  "def backfill_ef_no_only" in src, True)
+# ★ 回填只能用 update（加欄位），用 set 會把既有欄位洗掉
+check("回填用 update 不是 set",
+      bool(re.search(r"batch\.update\(doc\.reference, \{\"ef_no\"", src)), True)
+
 print("── 與 main.py 實作接線一致 ──")
 check("duration_hr 有寫進 inventory_history",
       bool(re.search(r'"duration_hr":\s*print_duration_hours\(pr\)', src)), True)

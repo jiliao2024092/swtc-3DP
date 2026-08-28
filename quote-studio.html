@@ -6,7 +6,12 @@
 <title>3D列印估價（Beta）</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- three.js r128(2021) → 0.149.0(2023)：21 個版本的修正，API 相容、外觀不變。
+     ★ 停在 0.149 是刻意的：r152 起 color management 預設開啟、r155 起燈光預設改變，
+       再往上會讓估價頁的模型看起來不一樣。而 r150 起非模組版被棄用、r160 移除，
+       要用更新的版本得整頁改寫成 ESM + import map（217 處 THREE.* 要一併驗證）。
+     ★ 換 cdnjs → jsDelivr：cdnjs 的 three.js 只鏡像到 r134 就停止更新了。 -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
 <style>
 :root{
   --bg1:#ffffff; --bg2:#f6f8fa;
@@ -567,9 +572,9 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 <!-- quote modal -->
 <div id="quoteModal"><div id="quoteSheet"></div></div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <!-- App Check 設定（未填 site key 時為 no-op）-->
 <script src="appcheck.js"></script>
 <!-- Firebase 專案設定（唯一來源，五頁共用）-->
