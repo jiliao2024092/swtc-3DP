@@ -2438,9 +2438,25 @@ function AdminPanel({ user, isAdmin }) {
     //   對 settings/{docId} 的 catch-all 規則只允許 isAdmin() 寫入。主管按下儲存會在
     //   FBSettings.save 拋出 permission-denied，之後所有程式碼（含 setSaving(false)）
     //   都不會執行，按鈕卡在「儲存中…」且沒有任何錯誤提示。
+    // ★ 防護網：Firestore 拒收 undefined，而錯誤訊息只會說「found in document
+    //   settings/workspace」、不會指出是哪個欄位 —— 一旦有人在某個編輯器裡漏寫，
+    //   使用者只會看到整份設定存不進去而查不出原因（2026-08-27 實際發生過：
+    //   工程師清單選「全區」時寫進了 region: undefined）。
+    //   這裡統一把 undefined 遞迴清掉，讓單一欄位的疏漏不會拖垮整次儲存。
+    const stripUndefined = v => {
+      if (Array.isArray(v)) return v.map(stripUndefined);
+      if (v && typeof v === 'object') {
+        const o = {};
+        Object.keys(v).forEach(k => { if (v[k] !== undefined) o[k] = stripUndefined(v[k]); });
+        return o;
+      }
+      return v;
+    };
+    const payload = stripUndefined(s);
+
     try {
-      await FBSettings.save(s);
-      window.applySettings(s);
+      await FBSettings.save(payload);
+      window.applySettings(payload);
       // 通知樣品模組更新借用人清單
       try {
         if(window.smSetBorrowers)
@@ -2465,7 +2481,15 @@ function AdminPanel({ user, isAdmin }) {
           {keyField && <input style={{...INP,width:110}} placeholder="Key (英文)" value={item.key||''} onChange={ev=>{const l=[...list];l[i]={...l[i],key:ev.target.value};setList(l);}}/>}
           <input style={{...INP,flex:1}} placeholder={keyField?'顯示名稱':'名稱'} value={keyField?item.label||'':(item.name!==undefined?item.name:item)} onChange={ev=>{const l=[...list];l[i]=keyField?{...l[i],label:ev.target.value}:{...(typeof l[i]==='object'?l[i]:{}),name:ev.target.value};setList(l);}}/>
           {regionField && (
-            <select style={{...INP,width:96}} value={(item&&item.region)||''} onChange={ev=>{const l=[...list];l[i]={...(typeof l[i]==='object'?l[i]:{name:l[i]}),region:ev.target.value||undefined};setList(l);}}>
+            <select style={{...INP,width:96}} value={(item&&item.region)||''} onChange={ev=>{
+              // ★ 選「全區」時要把 region 這個 key **刪掉**，不能寫成 undefined ——
+              //   Firestore 拒收 undefined，整份設定會存不進去（錯誤訊息只說
+              //   「found in document settings/workspace」，不會講是哪個欄位）。
+              const l=[...list];
+              const item2 = (typeof l[i]==='object' && l[i]) ? {...l[i]} : {name:l[i]};
+              if (ev.target.value) item2.region = ev.target.value; else delete item2.region;
+              l[i] = item2; setList(l);
+            }}>
               <option value="">全區</option>
               {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
             </select>
@@ -2881,6 +2905,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDINGA', date:'2026-08-27', type:'fix',
+    text:'修正後台系統設定在工程師或機台清單把地區選成「全區」時，按儲存會出現「儲存失敗：Unsupported field value: undefined」而整份設定存不進去的問題。' },
   { hash:'9c797bc', date:'2026-08-27', type:'fix',
     text:'修正工作看板「實際消耗量」自動帶入時，較舊的 EF 單號查不到消耗紀錄的問題——原本只能掃描最近 1000 筆消耗紀錄，而那個額度是三個地區共用的，等於每區只能回溯約三分之一。現在改用單號精準查詢，不再受筆數限制。⚠ 2026-08-27 之前的舊紀錄需要管理員手動觸發一次回填才會生效（在此之前仍走舊的掃描方式，行為與先前相同）。另外前端套件版本統一：Firebase SDK 全站 10.12.5、3D 估價頁的 three.js 由 2021 年的 r128 升到 0.149.0（外觀不變）。' },
   { hash:'8aaa6c1', date:'2026-08-27', type:'tweak',
@@ -2899,8 +2925,6 @@ const CHANGELOG = [
     text:'材料庫存新增「匯出列印記錄」：每次列印一列，欄位比照大家在填的人工登記表（日期、地區、品牌機型、列印目的、材料與用量、是否收費、APP單號、列印結果）。是否收費會自動判斷（代工，或備註有 APP 單號）；備註第三段若不是單號會當成活動名稱填到「活動名稱與事由」。業務、客戶全名、責任工程師、列印時間這四欄目前仍需人工補填。另外列印失敗（機器錯誤）與人工中止不再扣庫存，印完的（含成品不合格）照扣；此規則只對之後的新紀錄生效。順帶修正備註用底線分隔（如「實威國際_工程測試_翹曲試片」）時工作類別會變成「未分類」、工作看板的實際消耗量也帶不進來的問題。' },
   { hash:'e53968b', date:'2026-08-27', type:'feat',
     text:'機台預約的甘特圖左側「機台」欄位加寬，機台名稱完整顯示、不再被截斷成「Alumin…」。材料庫存的「刪除材料／耗材」鈕改為進入「編輯模式」後才能點（先前相反：只有非編輯模式能刪），與其他欄位的編輯行為一致；編輯模式下按刪除時會提醒「表格中其他尚未儲存的修改會一併捨棄」。登入頁新增「忘記密碼？」：填入電子郵件即可收到重設密碼信（寄件者為 noreply@swtc-3dp-poc.firebaseapp.com，若沒收到請查看垃圾郵件夾）。' },
-  { hash:'cdb9b86', date:'2026-08-25', type:'tweak',
-    text:'工作看板的「樹脂材料」欄改名為「材料」，並修正下拉選單會混進耗材（Mixer、樹脂槽等機台配件）的問題。新增 Markforged 材料，分成「純塑料」與「塑料＋纖維」兩組（依登入者所在地區的 Markforged 庫存自動帶出）。另外新增「其他（自行輸入）」，清單上沒有的材料可以自己打；篩選下拉也會一併列出曾經用過但已不在清單上的材料，避免舊工單篩不到。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

@@ -63,7 +63,7 @@ python3 -m py_compile functions/main.py
 # 入庫的「已知材料」判斷：84 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
-# 北中南分區邏輯：前端 137 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區、工單消耗帶入）
+# 北中南分區邏輯：前端 149 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區、工單消耗帶入、設定不可寫 undefined）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
@@ -165,6 +165,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - **列印時間**（`duration_hr`，2026-08-27 起）：來源 `elapsed_duration_ms`，缺漏時退回 `print_finished_at - print_started_at`，**無條件進位到 0.5 小時**（對齊人工填表習慣）
   - ⚠ **不可用 `estimated_duration_ms` 頂替**：那是排程用的預估值，填進「實際列印時間」是錯資料而且看不出來是估的。拿不到就回 `None`，匯出留空給人工填
   - ⚠ MF 合併列取**最大值不是加總**：塑料與纖維是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍
+
+- ⚠ **後台設定不可寫入 `undefined`**：Firestore 直接拒收，而錯誤訊息只說「found in document settings/workspace」、**不會指出是哪個欄位**，使用者只看到「儲存失敗」。實際踩過：`ListEditor` 的地區下拉選「全區」時寫 `region: undefined`，整份設定存不進去。
+  - 正解：選「全區」要**刪掉那個 key**（`delete item.region`），不是設成 `undefined`
+  - `saveSettings` 另有 `stripUndefined()` 防護網遞迴清理，讓單一欄位的疏漏不會拖垮整次儲存。⚠ 只清 `undefined`——`null`／`0`／空字串／`false` 都是有意義的值，用 falsy 判斷會改變設定語意
 
 ## 前端相依版本（2026-08-27 統一）
 - **Firebase SDK 全站 10.12.5**（原本 compat 頁是 10.12.0、modular 頁是 10.12.5）。`appcheck.js` 的 `SDK_VERSION` 是單一來源，compat 與 modular 兩個常數都指向它

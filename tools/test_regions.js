@@ -332,5 +332,44 @@ eq(matchEF(CROSS, '202608010001'), { sum:120, count:1 },
 eq(/\.where\(\s*['"]region['"]/.test(wbSrc), false,
    'workboard.js：消耗查詢刻意不加 region 條件');
 
+// ── 後台設定儲存：不可寫入 undefined（2026-08-27 實際事故）────────────
+// 工程師清單選「全區」時原本寫的是 region: undefined，Firestore 直接拒收，
+// 整份設定存不進去。錯誤訊息只說「found in document settings/workspace」，
+// 不會指出是哪個欄位 —— 使用者只看得到「儲存失敗」而查不出原因。
+// 這裡驗兩層：① 根因（選全區要 delete key）② 防護網（存檔前清 undefined）。
+
+// ① 根因：ListEditor 的 region onChange
+const regionOnChange = portalSrc.match(
+  /const l=\[\.\.\.list\];\s*\r?\n\s*const item2[\s\S]*?l\[i\] = item2; setList\(l\);/);
+eq(!!regionOnChange, true, 'portal.html：抓得到 region 下拉的 onChange');
+const runRegionChange = (cur, val) => {
+  let out = null;
+  new Function('list', 'i', 'ev', 'setList', regionOnChange[0])(
+    [cur], 0, { target: { value: val } }, l => out = l[0]);
+  return out;
+};
+eq(runRegionChange({ key:'A', region:'north' }, ''), { key:'A' },
+   '選「全區」→ region 這個 key 被刪掉');
+eq('region' in runRegionChange({ key:'A', region:'north' }, ''), false,
+   '★ 是真的沒有這個 key，不是設成 undefined');
+eq(runRegionChange({ key:'A' }, 'south'), { key:'A', region:'south' }, '選某一區 → 寫入該區');
+eq(runRegionChange({ key:'A', region:'north' }, 'south'), { key:'A', region:'south' }, '換區 → 覆蓋');
+eq(runRegionChange('Form4', 'north'), { name:'Form4', region:'north' }, '字串項目會轉成物件');
+
+// ② 防護網：stripUndefined
+const stripSrc = portalSrc.match(/const stripUndefined = v => \{[\s\S]*?\n    \};/);
+eq(!!stripSrc, true, 'portal.html：抓得到 stripUndefined');
+const stripUndefined = new Function(stripSrc[0] + '\nreturn stripUndefined;')();
+eq(stripUndefined({ a:1, b:undefined }), { a:1 }, '頂層 undefined 被清掉');
+eq(stripUndefined({ e:[{ key:'A', region:undefined }, { key:'B', region:'north' }] }),
+   { e:[{ key:'A' }, { key:'B', region:'north' }] }, '陣列裡的 undefined 被清掉');
+eq(stripUndefined({ a:{ b:{ c:undefined, d:1 } } }), { a:{ b:{ d:1 } } }, '巢狀 undefined 被清掉');
+// ★ 只能清 undefined：null / 0 / 空字串 / false 都是有意義的值，誤刪會改變設定語意
+eq(stripUndefined({ a:null, b:0, c:'', d:false }), { a:null, b:0, c:'', d:false },
+   '★ null／0／空字串／false 不可被誤刪');
+// 防護網要真的接在儲存路徑上，不能只是定義了沒用
+eq(/await FBSettings\.save\(payload\)/.test(portalSrc), true,
+   '★ 儲存時送出的是清理過的 payload');
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
