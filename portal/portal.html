@@ -1690,7 +1690,7 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20260827b"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20260827c"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20260825a"></script>
 
 <!-- ⑦ 主 App -->
@@ -2881,6 +2881,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING8', date:'2026-08-27', type:'tweak',
+    text:'工作看板「新增／編輯列印工作」移除「預計完成日」欄位，改放「纖維消耗量 (cc)」——Markforged 的碳纖等纖維以 cc 計，與樹脂的 mL 分開記錄，不會混進「實際消耗量」。舊工單原本填過的預計完成日仍會顯示在總表與甘特圖上。' },
   { hash:'e932f19', date:'2026-08-27', type:'tweak',
     text:'材料庫存的「匯出列印記錄」現在會依照「消耗記錄」分頁上目前的篩選條件匯出，例如日期選 8/1～8/27 就只會匯出這段期間的紀錄（材料、機台、工作類別的篩選也一樣適用）。檔名會帶出日期區間，匯出後的提示也會列出目前套用了哪些篩選，避免誤以為漏抓。' },
   { hash:'bbb821a', date:'2026-08-27', type:'tweak',
@@ -2899,8 +2901,6 @@ const CHANGELOG = [
     text:'工作看板的「樹脂材料」欄改名為「材料」，並修正下拉選單會混進耗材（Mixer、樹脂槽等機台配件）的問題。新增 Markforged 材料，分成「純塑料」與「塑料＋纖維」兩組（依登入者所在地區的 Markforged 庫存自動帶出）。另外新增「其他（自行輸入）」，清單上沒有的材料可以自己打；篩選下拉也會一併列出曾經用過但已不在清單上的材料，避免舊工單篩不到。' },
   { hash:'aa97fcf', date:'2026-08-25', type:'feat',
     text:'Markforged 機台開始自動記錄列印消耗並扣庫存（原本只顯示餘量、不扣帳）。消耗會依機台所在地區扣該區的 Markforged 線材庫存，並出現在「Markforged／消耗記錄」與「月度分析」。⚠ 各廠區的 Markforged 庫存目前是空的，請先盤點填入，否則消耗會扣到 0 並跳「消耗紀錄可能有誤」。換料造成的餘量上升不會被當成消耗，也不會自動加庫存。' },
-  { hash:'4d094a0', date:'2026-08-25', type:'tweak',
-    text:'Markforged 的線材與耗材庫存改為分地區管理，跟 Formlabs 一樣切換頁首的「庫存地區」即可；原本三區是混在一起的。⚠ 北部與南部的 Markforged 庫存目前是空的，需要各廠區實際盤點後自行填入（中部沿用原有數字）。另外北部 Form 4L、南部 Form 3+ 與 Form 3L 三台印表機開始自動記錄列印消耗，這三台的帳上庫存目前為 0，請盤點後填入；納入前的歷史列印只會補上紀錄、不會扣庫存。Fuse 1+ 依原訂方式只顯示機台狀態、不記消耗。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

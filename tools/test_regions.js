@@ -283,5 +283,54 @@ eq(/eng\.forEach\(e => \{[\s\S]{0,200}?K\.ENG_LABEL\[e\.key\]/.test(portalSrc), 
 eq((portalSrc.match(/label:"工程師清單[^"]*", list:\w+,\s+setList:\w+,\s+keyField:true, regionField:true/g)||[]).length,
    3, '後台三個工程師清單都有地區欄位');
 
+// ── 工作看板「實際消耗量」自動帶入 × 地區 ──────────────────────────
+// 使用者要求驗證「各地區的消耗紀錄會帶入各地區的工單」。
+// 這裡把 workboard.js 的比對邏輯抽出來，餵入帶 region 的假資料實際跑一次。
+const wbSrc = fs.readFileSync(path.join(__dirname, '..', 'portal', 'workboard.js'), 'utf8');
+
+// ★ 直接執行 workboard.js 裡那段比對邏輯，不要在測試裡重寫一份 ——
+//   重寫的那份會跟實作慢慢走偏，測試全綠但線上是錯的。
+const matchBody = wbSrc.match(/rows\.forEach\(d => \{[\s\S]*?\n      \}\);/);
+eq(!!matchBody, true, 'workboard.js：抓得到消耗比對邏輯');
+const runMatch = new Function('rows', 'efNo', 'matDisplay', `
+  const byMat = new Map(); let sum = 0, count = 0;
+  ${matchBody[0]}
+  return { sum, count, materials: [...byMat.keys()] };
+`);
+const matchEF = (rows, efNo) => {
+  const r = runMatch(rows, efNo, m => m || '');
+  return { sum: r.sum, count: r.count };
+};
+
+const HIST = [
+  { region:'north',   note:'甲客戶-代工-202608010001', ml:100 },
+  { region:'central', note:'乙客戶-代工-202608010002', ml:200 },
+  { region:'south',   note:'丙客戶-評估-202608010003', ml:300 },
+  { region:'north',   note:'甲客戶-代工-202608010001', ml:50  },   // 同單號分次列印
+];
+eq(matchEF(HIST, '202608010001'), { sum:150, count:2 }, '北部單號帶入北部的兩筆（分次列印加總）');
+eq(matchEF(HIST, '202608010002'), { sum:200, count:1 }, '中部單號帶入中部那筆');
+eq(matchEF(HIST, '202608010003'), { sum:300, count:1 }, '南部單號帶入南部那筆（評估也算）');
+eq(matchEF(HIST, '202699999999'), { sum:0,   count:0 }, '查無此單號 → 0 筆（呼叫端會回 null）');
+// ★ 底線分隔也要對得上：實掃 29 筆消耗紀錄有 2 筆用底線（實威國際_工程測試_翹曲試片）。
+//   只 split('-') 的話那些單號永遠比不到，實際消耗量會靜默地帶不進來。
+eq(matchEF([{ region:'central', note:'某客戶_代工_202608010009', ml:77 }], '202608010009'),
+   { sum:77, count:1 }, '底線分隔的備註也帶得到消耗量');
+eq(matchEF([{ region:'central', note:'某客戶-代工_202608010010', ml:88 }], '202608010010'),
+   { sum:88, count:1 }, '連字號與底線混用也帶得到');
+// 工程測試不計入（只有代工/評估要帶進工單）
+eq(matchEF([{ region:'north', note:'實威-工程測試-202608010001', ml:99 }], '202608010001'),
+   { sum:0, count:0 }, '工程測試不帶入工單消耗量');
+
+// ★ 現況記錄：比對只看 EF 單號，**不看 region**。
+//   這是刻意的 —— 工單的 region 是「誰開的單」，消耗紀錄的 region 是「哪台印的」，
+//   跨區支援時兩者本來就會不一樣（北部單子送中部機台印）。用工單的區去濾，
+//   那種情況的消耗會整筆消失，比多帶還糟。單號才是正確的關聯鍵。
+const CROSS = [{ region:'central', note:'甲客戶-代工-202608010001', ml:120 }];
+eq(matchEF(CROSS, '202608010001'), { sum:120, count:1 },
+   '跨區列印（北部單／中部機台）仍帶得到 —— 不可用工單地區過濾');
+eq(/\.where\(\s*['"]region['"]/.test(wbSrc), false,
+   'workboard.js：消耗查詢刻意不加 region 條件');
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

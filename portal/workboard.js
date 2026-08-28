@@ -154,7 +154,7 @@
       engineer: engineers[0] || K.ENG_ORDER[0],
       dueDate:'', startDate:'', endDate:'', actualEndDate:'', material:'足夠',
       resin:'', category:'代工',
-      estUsage:'', actUsage:'',
+      estUsage:'', actUsage:'', fiberUsage:'',
       progress: 0,
       machine: machines[0] || K.MACHINES[0],
       complete:'否', remark:''
@@ -251,12 +251,19 @@
               <div className="m-field"><label style={LBL}>開始日</label>
                 <input style={INP} type="date" value={form.startDate||''} onChange={e=>set('startDate',e.target.value)}/></div>
             </div>
+            {/* 「預計完成日」欄位已移除（使用者 2026-08-27 決定）。
+                ★ endDate 這個欄位本身沒有刪掉：舊工單存有值，總表／詳情／甘特圖
+                  仍會顯示；甘特圖本來就有 endDate||dueDate 的退回，新工單不填也不會壞。 */}
             <div className="m-row">
-              <div className="m-field"><label style={LBL}>預計完成日</label>
-                <input style={INP} type="date" value={form.endDate||''} onChange={e=>set('endDate',e.target.value)}/></div>
               <div className="m-field"><label style={LBL}>實際完成日</label>
                 <input style={INP} type="date" value={form.actualEndDate||''} onChange={e=>set('actualEndDate',e.target.value)}/>
                 <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4}}>晚於期望交期時，總表會標記逾期</div></div>
+              <div className="m-field"><label style={LBL}>纖維消耗量 (cc)</label>
+                {/* Markforged 的纖維（Carbon Fiber 等）以 cc 計，與樹脂的 mL 分開記，
+                    不可加總到「實際消耗量」——兩者是同一次列印的兩條料、單位也不同。 */}
+                <input style={INP} type="number" min="0" step="0.01" value={form.fiberUsage??''}
+                       onChange={e=>set('fiberUsage',e.target.value===''?'':+e.target.value)}
+                       placeholder="僅 Markforged 需填，例：7.39"/></div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>預估消耗量 (mL)</label>
@@ -694,6 +701,7 @@
           '狀態': (K.STATUS_TONE[st] && K.STATUS_TONE[st].label) || st,
           '預估消耗量(mL)': o.estUsage ?? '',
           '實際消耗量(mL)': o.actUsage ?? '',
+          '纖維消耗量(cc)': o.fiberUsage ?? '',
           '備註': o.remark || '',
         };
       });

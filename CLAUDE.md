@@ -63,7 +63,7 @@ python3 -m py_compile functions/main.py
 # 入庫的「已知材料」判斷：84 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
-# 北中南分區邏輯：前端 127 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區）
+# 北中南分區邏輯：前端 137 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區、工單消耗帶入）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
@@ -154,6 +154,8 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - **客戶名稱**：只要是工程測試就帶入（人工登記表該類 7 筆全部如此）
   - **業務**：限「工程測試**且無單號**」才帶入（該表這類 5 筆全部如此，5/5）。⚠ 有單號的一律交給工單 join——工單上的業務才是真的指定人，預填會蓋掉它
   - 其餘類別靠單號 join 工單，因為備註第一段只有客戶**簡稱**不是 EIP 全名；join 時**不覆蓋**已填好的客戶名稱
+- **工作看板「實際消耗量」自動帶入刻意不比對地區**：工單的 region 是「誰開的單」、消耗紀錄的 region 是「哪台機器印的」，跨區支援時兩者本來就不同（北部單子送中部機台印）。用工單地區去濾會讓那種消耗**整筆消失**，比多帶還糟——**EF 單號才是正確的關聯鍵**
+  - ⚠ 但 `loadRecentHistory()` 的 `limit(1000)` 是**全域共用**的，三區一起吃這個額度，等於每區的可回溯範圍只剩約 1/3。單號較舊的工單會查不到消耗量而**沒有任何提示**。根治要讓 Cloud Function 把 EF 單號存成獨立欄位才能精準查詢（目前 Firestore 無法查「note 內含某字串」）
 - **業務欄**：`workboard_orders.sales`，清單與 3DP-BK 共用 `settings/workspace.bk_sales`（`window._settings_sales`）。列印記錄匯出以 **EF 單號** join 補「業務／客戶全名／責任工程師」三欄；**沒單號或對不到就留空給人工填**，不做客戶簡稱的模糊比對（撞名風險太高）
 - **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
 - ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
