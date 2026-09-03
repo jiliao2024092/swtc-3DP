@@ -172,7 +172,10 @@
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-[var(--ink-2)]" id="stock-qty-label">數量 (L)</label>
-                <input type="number" id="stock-qty" min="0" step="1" value="1" placeholder="例：1.5 = 1500 ml"
+                <!-- ★ step 要跟著單位走：這欄是「L」，而 placeholder 與下方提示都明寫
+                     「可輸入小數」，step="1" 卻把使用者擋在整數 —— 自己跟自己打架。
+                     切到「耗材」時單位變成「個」，setStockKind() 會把 step 改回 1。 -->
+                <input type="number" id="stock-qty" min="0" step="0.01" value="1" placeholder="例：1.5 = 1500 ml"
                     class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 <p class="text-xs text-[var(--ink-5)]" id="stock-qty-hint">可輸入小數（如 1.5 L = 1500 ml）</p>
             </div>
@@ -2922,7 +2925,7 @@ function renderStockTable() {
                         : '<span class="text-[var(--ink-6)] text-xs">—</span>')}
             </td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="1" value="${stockLiters.toFixed(1)}" ${inputDisabled?'disabled':''}
+                <input type="number" min="0" step="0.01" value="${stockLiters.toFixed(2)}" ${inputDisabled?'disabled':''}
                     class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)] ${low&&!isStockEditMode?'text-[var(--danger)] font-medium':''}">
                 <span class="text-xs text-[var(--ink-5)] ml-1">L</span>
             </td>
@@ -4082,6 +4085,9 @@ function setStockKind(kind) {
     document.getElementById('stock-material').placeholder = kind==='consumable' ? '選擇或直接輸入耗材名稱' : '選擇或直接輸入新材料名稱';
     document.getElementById('stock-qty-label').textContent = kind==='consumable' ? '數量（個）' : '數量 (L)';
     document.getElementById('stock-qty-hint').textContent = kind==='consumable' ? '耗材以「個」計算' : '可輸入小數（如 1.5 L = 1500 ml）';
+    // ★ step 要跟著單位走，不能只改標籤：耗材以「個」計不該讓人打 0.5 個，
+    //   材料以「L」計則必須能打小數（列印消耗常常只有 0.03 L）。
+    document.getElementById('stock-qty').step = kind==='consumable' ? '1' : '0.01';
 
     // 依類型重新填充 datalist：材料給材料清單，耗材給既有耗材清單（不混在一起，避免誤選）
     const dl = document.getElementById('material-options');
