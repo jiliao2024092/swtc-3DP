@@ -286,6 +286,23 @@ FAMILY_TO_NAME = {
 }
 
 
+# ★★ 家族顯示名稱也要能反查回家族代碼 ★★
+#   NAME_TO_CODE 原本只涵蓋「完整版本名 → 8 碼代碼」，但實際流進來的往往是
+#   **家族名稱**（"Elastic 50A"）或帶舊版本後綴的名稱（"Elastic 50A V1"）。
+#   查不到時 canon_material() 會把**名稱字串本身當成家族 key**，同一個材料
+#   於是被拆成好幾個 key：
+#       canon_material("Elastic 50A V2") → FLFLES           （庫存記在這裡）
+#       canon_material("Elastic 50A")    → "Elastic 50A"    （另一個 key）
+#       canon_material("Elastic 50A V1") → "Elastic 50A V1" （又一個 key）
+#   後果：消耗扣不到庫存 → 累進 stock_shortfalls → 前端跳「消耗紀錄可能有誤」，
+#   但庫存數字看起來完全正常（因為根本沒被扣到），使用者無從理解。
+#   2026-09-03 實際回報：Elastic 50A V1 超出 0.0 L，而 Elastic 50A 還有 1.0 L。
+#   實測 21 個家族有 11 個中招。inventory.html 有同一份修正，兩邊必須一致。
+# ⚠ 只在不存在時才寫：NAME_TO_CODE 既有的對應比較精確，不可被家族碼覆蓋。
+for _fam, _name in FAMILY_TO_NAME.items():
+    NAME_TO_CODE.setdefault(_name, _fam)
+
+
 # 已被舊版誤截的殘留 key → 正確家族代碼
 FAMILY_REMAP = {
     "FLEXIB": "FLFL80",   # "Flexible 80A" 被誤截

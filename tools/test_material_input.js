@@ -27,6 +27,9 @@ const src = [
   grab(/const CODE_TO_NAME = \{[\s\S]*?^\};/m, 'CODE_TO_NAME'),
   grab(/const NAME_TO_CODE_FE = \{\};[\s\S]*?NAME_TO_CODE_FE\['Rigid 4000 V1'\][^\r\n]*/, 'NAME_TO_CODE_FE'),
   grab(/const FAMILY_TO_NAME = \{[\s\S]*?^\};/m, 'FAMILY_TO_NAME'),
+  // ★ 家族名稱 → 家族代碼的反查補建。順序很重要：它讀 FAMILY_TO_NAME，
+  //   必須排在上一行之後（漏抽這段的話下面那組測試會全部假性通過）。
+  grab(/Object\.entries\(FAMILY_TO_NAME\)\.forEach[^\r\n]*/, '家族名稱反查補建'),
   grab(/const FAMILY_REMAP = \{[\s\S]*?^\};/m, 'FAMILY_REMAP'),
   grab(/function familyCode\s*\(code\)\s*\{[\s\S]*?^\}/m, 'familyCode'),
   grab(/function canonCode\s*\(input\)\s*\{[\s\S]*?^\}/m, 'canonCode'),
@@ -76,6 +79,30 @@ eq(isKnownMaterialInput('Resin Tank'), false, '★ 樹脂槽不是材料，仍�
 eq(isKnownMaterialInput('FLXXXX'), false, '長度不對的假代碼要擋下');
 eq(isKnownMaterialInput(''), false, '空字串');
 eq(isKnownMaterialInput(null), false, 'null 不可拋錯');
+
+// ── 家族名稱必須解得回家族代碼（2026-09-03 實際事故）─────────────────
+// 使用者回報：畫面跳「Elastic 50A V1 超出 0.0 L」，但庫存裡 Elastic 50A
+// 明明還有 1.0 L 而且沒被扣。
+// 原因：NAME_TO_CODE_FE 只由 CODE_TO_NAME（完整版本名 → 8 碼）反建，
+// **家族顯示名稱查不到代碼**，canonCode 就把名稱字串本身當成家族 key，
+// 同一個材料被拆成 'FLFLES' / 'Elastic 50A' / 'Elastic 50A V1' 三個 key。
+// 消耗扣不到庫存 → 累進 stock_shortfalls → 跳警告，但庫存數字看起來正常。
+// 實測 21 個家族有 10 個中招（後端 main.py 11 個）。
+console.log('── 家族名稱 → 家族代碼的反查 ──');
+Object.entries(FAMILY_TO_NAME).forEach(([fam, name]) => {
+  eq(matCode(name), fam, `家族名稱「${name}」要解回 ${fam}`);
+});
+// 舊版本後綴（V1）在資料裡很常見：消耗紀錄存的是當時的版本名
+Object.entries(FAMILY_TO_NAME).forEach(([fam, name]) => {
+  eq(matCode(`${name} V1`), fam, `「${name} V1」要解回 ${fam}`);
+});
+// ★ 使用者回報的那一組：三種寫法必須是同一個 key，否則庫存與消耗對不起來
+eq(new Set(['Elastic 50A', 'Elastic 50A V1', 'Elastic 50A V2', 'FLFLES01', 'FLFLES02']
+     .map(matCode)).size, 1,
+   'Elastic 50A 的所有寫法都要收斂成同一個家族 key');
+// ★ 反查是「不存在才補」：CODE_TO_NAME 的精確對應不可被家族碼蓋掉
+eq(matCode('Rigid 4000 V1'), matCode('Rigid 4000'),
+   '既有的精確對應不可被家族碼覆蓋（Rigid 4000 V1 → FLRG40）');
 
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

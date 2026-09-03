@@ -2469,13 +2469,19 @@ function renderShortfallBanner() {
     const banner = document.getElementById('shortfall-banner');
     if (!banner) return;
     const sf = inv.stock_shortfalls || {};
-    const entries = Object.entries(sf).filter(([, v]) => (v && v.ml > 0));
+    // ★ 門檻用 1 mL，不是 > 0：浮點累加會留下 1e-9 這種殘值，
+    //   而畫面是用 L 顯示的（toFixed(1)），那種殘值會變成「超出 0.0 L」——
+    //   一個看起來像程式壞掉的警告。低於 1 mL 沒有實務意義，直接不報。
+    const entries = Object.entries(sf).filter(([, v]) => (v && v.ml >= 1));
     if (!entries.length) { banner.classList.add('hidden'); return; }
     document.getElementById('shortfall-count').textContent = `${entries.length} 項`;
     document.getElementById('shortfall-items').innerHTML = entries.map(([fam, v]) => {
         const when = v.last_at ? new Date(v.last_at).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'}) : '';
+        // ★ 小量用 mL 顯示：0.02 L 這種數字在 toFixed(1) 下一律變成 0.0，
+        //   使用者看到「超出 0.0 L」只會覺得莫名其妙，無從判斷嚴不嚴重。
+        const amt = v.ml < 100 ? `${Math.round(v.ml)} mL` : `${(v.ml/1000).toFixed(2)} L`;
         return `<span class="text-xs px-2 py-1 rounded-md bg-[var(--bg)] border border-[var(--danger-border)] text-[var(--ink-2)]">`
-             + `${escHtml(matName(fam))} <b class="text-[var(--danger)]">超出 ${(v.ml/1000).toFixed(1)} L</b>`
+             + `${escHtml(matName(fam))} <b class="text-[var(--danger)]">超出 ${amt}</b>`
              + (when ? ` <span class="text-[var(--ink-5)]">(${when})</span>` : '')
              + `</span>`;
     }).join('');

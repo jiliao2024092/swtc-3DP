@@ -60,7 +60,7 @@ node --input-type=module --check < /tmp/x.js
 # Cloud Function
 python3 -m py_compile functions/main.py
 
-# 入庫的「已知材料」判斷：84 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
+# 入庫的「已知材料」判斷 + 家族名稱反查：128 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
 # 北中南分區邏輯：前端 149 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區、工單消耗帶入、設定不可寫 undefined）
@@ -180,6 +180,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 
 ## 領域邏輯地雷
 - **材料代碼家族正規化**（前後端須一致）：familyCode 取代碼前 6 碼，且須符合 `/^FL[A-Z0-9]{6}$/` 且含數字（避免 "Flexible" 被誤截）；有 FAMILY_REMAP / FAMILY_TO_NAME；所有計算函式按「家族」加總與去重；**總庫存 = 備料庫存**，機台樹脂罐純顯示（曾詢問過使用者是否要改成樹脂罐也計入總庫存，明確回答**不要**，維持現狀）
+- ⚠ **家族「顯示名稱」也必須能反查回家族代碼**，而且 `inventory.html` 與 `functions/main.py` **兩邊都要有**。只由「完整版本名 → 8 碼」反建是不夠的：實際流進來的常是家族名（`Elastic 50A`）或舊版本名（`Elastic 50A V1`），查不到時會把**名稱字串本身當成家族 key**，同一材料被拆成 `FLFLES` / `Elastic 50A` / `Elastic 50A V1` 三個 key。
+  - 症狀極具誤導性：消耗扣不到庫存 → 累進 `stock_shortfalls` → 跳「消耗紀錄可能有誤」，但**庫存數字完全正常**（因為根本沒被扣）。2026-09-03 實際回報：`Elastic 50A V1 超出 0.0 L`，而 `Elastic 50A` 還有 1.0 L
+  - 前端一直有這段（`Object.entries(FAMILY_TO_NAME).forEach(...)`），**後端漏了**，11/21 個家族中招。兩邊不一致時出事的是後端——它才是實際扣庫存與寫 shortfall 的那一端
+- ⚠ **shortfall 橫幅的門檻與單位**：`> 0` 配 `toFixed(1)` 會讓 1e-9 的浮點殘值顯示成「超出 0.0 L」，看起來像程式壞掉。門檻改 1 mL，小量用 mL 顯示
 - **「是不是已知材料」不可用「家族碼是否含數字」判斷**：家族碼是完整 8 碼截斷成 6 碼的結果，截斷後往往就沒有數字了（`FLGPBK05` → `FLGPBK`）。21 個家族有 12 個會被誤判成未知材料（Clear/White/Grey/Black V5、High Temp、Elastic 50A、Fast/Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material），每次入庫都跳「不是內建材料名稱」，而警告還會建議使用者剛輸入的那個名稱。「含數字」是給**完整 8 碼**用的（避免 Flexible 被誤截成 FLEXIB），別套到家族碼。正解見 `isKnownMaterialInput()`，`tools/test_material_input.js` 有守
 - **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
