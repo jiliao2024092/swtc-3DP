@@ -1902,6 +1902,9 @@ const CODE_TO_NAME = {
     'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
     'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
     'FLRG4001':'Rigid 4000','FLRG1002':'Rigid 10K V1.1','FLRG1011':'Rigid 10K V1.1','FLFLES02':'Elastic 50A V2',
+    // ★ Elastic 50A 的「真實」Formlabs 代碼是 FLELCL（官方料號 RS-F2-ELCL-01，EL astic + CL ear）。
+    //   上面那個 FLFLES 是本專案自編的、對不到 API。實測 2026-09-03 同步 log 回傳 FLELCL。
+    'FLELCL01':'Elastic 50A V1','FLELCL02':'Elastic 50A V2',
     'FLESD001':'ESD Resin','FLSI4001':'Silicone 40A','FLTO1502':'Tough 1500 V2',
     'FLTO2002':'Tough 2000 V2','FLFAMD01':'Fast Model','FLPRMD01':'Precision Model',
     'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
@@ -1932,6 +1935,12 @@ const FAMILY_REMAP = {
     'FLEXIB': 'FLFL80',   // "Flexible 80A" 被誤截成 FLEXIB
     'FLAMER': 'FLFRGR',   // "Flame Retardant" 被誤截成 FLAMER
     'FLRGWH': 'FLRG40',   // FLRGWH 併入 Rigid 4000（使用者確認為同一材料）
+    // ★ 2026-09-03 事故：入庫從下拉選「Elastic 50A」存進 FLFLES，但 Formlabs 回傳的消耗
+    //   是 FLELCL —— 兩個 key 對不起來，消耗永遠扣不到庫存，只會累進 stock_shortfalls，
+    //   畫面每次都跳「消耗紀錄可能有誤」而庫存數字完全正常。
+    //   方向刻意是 FLELCL → FLFLES（而非反過來）：既有庫存與歷史都記在 FLFLES，
+    //   往那邊收斂就不必搬任何資料。FLFLES 雖是自編代碼，但它只是內部 key。
+    'FLELCL': 'FLFLES',   // Elastic 50A：API 實際代碼 → 本專案既有家族 key
 };
 // 取家族代碼（前 6 碼），統一版本
 function familyCode(code) {

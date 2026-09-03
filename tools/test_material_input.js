@@ -104,5 +104,23 @@ eq(new Set(['Elastic 50A', 'Elastic 50A V1', 'Elastic 50A V2', 'FLFLES01', 'FLFL
 eq(matCode('Rigid 4000 V1'), matCode('Rigid 4000'),
    '既有的精確對應不可被家族碼覆蓋（Rigid 4000 V1 → FLRG40）');
 
+// ── FLELCL：Formlabs 實際回傳的 Elastic 50A 代碼（2026-09-03 實際事故）─────
+// 對照表只有本專案自編的 FLFLES，API 回傳的卻是 FLELCL（官方料號 RS-F2-ELCL-01）。
+// 入庫從下拉選「Elastic 50A」→ 存進 FLFLES；消耗進來 → FLELCL。
+// 兩個 key 對不起來 → 消耗永遠扣不到庫存 → 每輪累進 stock_shortfalls →
+// 畫面每次都跳「消耗紀錄可能有誤」，而庫存數字看起來完全正常（根本沒被扣）。
+// 同步 log 實證：[sync] 本輪消耗: {'FLELCL': 9.9}／central 消耗超過庫存 FLELCL 差額 9.9 ml
+console.log('-- FLELCL / FLFLES 必須收斂成同一個家族 --');
+['FLELCL', 'FLELCL01', 'FLELCL02'].forEach(c => {
+  eq(matCode(c), 'FLFLES', `★ API 代碼「${c}」要 remap 成既有家族 key FLFLES`);
+  eq(isKnownMaterialInput(c), true, `API 代碼「${c}」必須被認得（否則入庫誤跳未知材料）`);
+});
+eq(new Set(['FLELCL', 'FLELCL01', 'FLELCL02', 'FLFLES', 'FLFLES02',
+            'Elastic 50A', 'Elastic 50A V1', 'Elastic 50A V2'].map(matCode)).size, 1,
+   '★ Elastic 50A 入庫端與消耗端的所有寫法都要是同一個 key（否則扣不到庫存）');
+// remap 不可波及別的家族
+eq(matCode('FLFL8002'), 'FLFL80', 'Flexible 80A 不受 FLELCL remap 影響');
+eq(matCode('FLESD001'), 'FLESD0', 'ESD Resin 不受影響');
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

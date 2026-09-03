@@ -308,6 +308,11 @@ FAMILY_REMAP = {
     "FLEXIB": "FLFL80",   # "Flexible 80A" 被誤截
     "FLAMER": "FLFRGR",   # "Flame Retardant" 被誤截
     "FLRGWH": "FLRG40",   # FLRGWH 併入 Rigid 4000（使用者確認為同一材料）
+    # ★ 2026-09-03 事故：Elastic 50A 入庫存進 FLFLES（本專案自編代碼），但 Formlabs
+    #   回傳的消耗是 FLELCL（官方料號 RS-F2-ELCL-01）。兩個 key 對不起來 → 消耗扣不到
+    #   庫存 → 累進 stock_shortfalls → 前端每次都跳「消耗紀錄可能有誤」，而庫存數字正常。
+    #   方向往 FLFLES 收斂：既有庫存與歷史都在那裡，不必搬資料。inventory.html 須一致。
+    "FLELCL": "FLFLES",   # Elastic 50A：API 實際代碼 → 本專案既有家族 key
 }
 
 
@@ -1596,6 +1601,14 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             print(f"[sync] 本輪消耗（依區扣減，main 不再扣）: "
                   f"{ {m: round(v, 1) for m, v in stock_deductions.items()} }")
             stats["stock_deducted"] = {m: round(v, 2) for m, v in stock_deductions.items()}
+            # ★ 對照表沒有的家族代碼＝入庫端幾乎一定存在另一個 key 上，消耗會靜默扣不到。
+            #   shortfall 橫幅雖然會跳，但它只說「超出庫存」，看不出是 key 對不起來
+            #   （2026-09-03 的 FLELCL/FLFLES 就查了很久）。把代碼印出來，下次一眼可辨。
+            unknown_fams = sorted(m for m in stock_deductions if m not in FAMILY_TO_NAME)
+            if unknown_fams:
+                print(f"[sync][警示] 消耗到對照表沒有的材料家族代碼 {unknown_fams}"
+                      f" —— 庫存很可能扣不到（入庫端存的是別的 key）。"
+                      f"請補進 FAMILY_TO_NAME，或用 FAMILY_REMAP 併到既有家族。")
 
         # 9b. 消耗依機台所屬區扣到 inventory/{region}（唯一真正扣庫存的地方）
         # ★ 北/南剛納入追蹤時帳上庫存是 0，消耗會直接扣到 0 並把差額累進 stock_shortfalls，
