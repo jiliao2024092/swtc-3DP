@@ -184,6 +184,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - 症狀極具誤導性：消耗扣不到庫存 → 累進 `stock_shortfalls` → 跳「消耗紀錄可能有誤」，但**庫存數字完全正常**（因為根本沒被扣）。2026-09-03 實際回報：`Elastic 50A V1 超出 0.0 L`，而 `Elastic 50A` 還有 1.0 L
   - 前端一直有這段（`Object.entries(FAMILY_TO_NAME).forEach(...)`），**後端漏了**，11/21 個家族中招。兩邊不一致時出事的是後端——它才是實際扣庫存與寫 shortfall 的那一端
 - ⚠ **shortfall 橫幅的門檻與單位**：`> 0` 配 `toFixed(1)` 會讓 1e-9 的浮點殘值顯示成「超出 0.0 L」，看起來像程式壞掉。門檻改 1 mL，小量用 mL 顯示
+- ⚠ **對照表裡的材料代碼不一定等於 API 實際回傳的代碼**（2026-09-03 事故，查了三輪才破案）：Elastic 50A 在表裡登記成 `FLFLES`（本專案自編），Formlabs 實際回傳的是 **`FLELCL`**（官方料號 `RS-F2-ELCL-01`）。入庫走下拉選單存 `FLFLES`、消耗從 API 進來是 `FLELCL`，兩個 key 對不起來 → `apply_stock_deductions` 自建一個 `total_ml=0` 的幽靈 key → 扣 0 → 全額進 `stock_shortfalls` → **每輪都跳「消耗紀錄可能有誤」，而庫存數字完全正常（根本沒被扣到）**。已用 `FAMILY_REMAP['FLELCL']='FLFLES'` 收斂（方向往既有 key 併，才不必搬資料）
+  - **破案靠的是 Cloud Function log，不是讀程式碼**：`[sync] 本輪消耗: {'FLELCL': 9.9}` 一行就看出 key 不對。這類「扣不到庫存」的問題**先看 log**，讀 code 猜會連錯好幾輪
+  - 同步現在會對 `FAMILY_TO_NAME` 沒有的家族代碼印 `[sync][警示] 消耗到對照表沒有的材料家族代碼`，下次一眼可辨
+  - ⚠ **併家族會讓「按家族比對」的地方連坐**：`isDisabled()` 是按家族判定的（停用任一版本＝整個家族停用）。舊資料若停用過被併掉的那個代碼，合併後**有庫存的材料會整列從清單消失**（實際發生）。解法是「已停用材料 → 恢復顯示」（寫進 `disabled_overrides`，優先於停用清單）
 - **「是不是已知材料」不可用「家族碼是否含數字」判斷**：家族碼是完整 8 碼截斷成 6 碼的結果，截斷後往往就沒有數字了（`FLGPBK05` → `FLGPBK`）。21 個家族有 12 個會被誤判成未知材料（Clear/White/Grey/Black V5、High Temp、Elastic 50A、Fast/Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material），每次入庫都跳「不是內建材料名稱」，而警告還會建議使用者剛輸入的那個名稱。「含數字」是給**完整 8 碼**用的（避免 Flexible 被誤截成 FLEXIB），別套到家族碼。正解見 `isKnownMaterialInput()`，`tools/test_material_input.js` 有守
 - **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
