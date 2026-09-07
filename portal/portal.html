@@ -504,7 +504,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 
 <!-- Firebase 設定 -->
 <!-- App Check 設定（在 portal/ 子目錄，檔案在 repo 根目錄；未填 site key 時為 no-op）-->
-<script src="../appcheck.js?v=20260814a"></script>
+<script src="../appcheck.js?v=20260907a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
 <script src="../regions.js?v=20260824a"></script>
 <!-- Firebase 專案設定（唯一來源，五頁共用；檔案在 repo 根目錄）-->
@@ -2213,6 +2213,74 @@ function AdminPanel({ user, isAdmin }) {
   const [bfBusy, setBfBusy] = useSt('');        // '' | 'scan' | 'write'
   const [bfDone, setBfDone] = useSt(null);      // 寫入結果 { written }
 
+  // ── 資料同步（admin 專屬）────────────────────────────────────────
+  // 手動觸發 Cloud Function 的同步，免等 30 分鐘排程。後端是 sync_formlabs_manual /
+  // sync_eiger_manual（functions/main.py），兩支都自己驗 role==='admin'。
+  // ⚠ 刻意不提供 backfill 模式的按鈕：那會清空重建整份 inventory_history、
+  //   重寫所有 stock_deducted。要用就從 console 手動打，「難按到」本身就是防護。
+  const [syncBusy,   setSyncBusy]   = useSt('');    // '' | 'formlabs' | 'eiger'
+  const [syncSec,    setSyncSec]    = useSt(0);     // 已經跑幾秒
+  const [syncResult, setSyncResult] = useSt(null);  // { kind, stats } | { kind, error }
+  const [syncStamp,  setSyncStamp]  = useSt(null);  // { fl, mf } | { err }
+
+  // 上次同步時間：讀 printer_status/current（每輪同步都會蓋寫 updated_at / mf_updated_at）。
+  // ★ 用 onSnapshot 而不是一次性 get：手動同步跑完會自己更新，不必按重新整理。
+  useEff(() => {
+    if (!isAdmin || sub !== 'settings' || settingTab !== 'sync') return;
+    return window.fbDb.collection('printer_status').doc('current').onSnapshot(
+      d => { const v = d.data() || {}; setSyncStamp({ fl: v.updated_at || null, mf: v.mf_updated_at || null }); },
+      // ⚠ 失敗不可以靜默當成「沒資料」—— 那會顯示成「尚無同步紀錄」，
+      //   跟「真的沒同步過」在畫面上完全一樣（見 CLAUDE.md 的查詢失敗處理）。
+      err => { console.warn('[sync] 讀取上次同步時間失敗', err); setSyncStamp({ err: err.code || String(err) }); }
+    );
+  }, [isAdmin, sub, settingTab]);
+
+  // 計時器：Formlabs 那支實測要跑兩分多鐘，沒有秒數會被當成當掉而重複點。
+  useEff(() => {
+    if (!syncBusy) return;
+    const t = setInterval(() => setSyncSec(x => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [syncBusy]);
+
+  const syncErrMsg = (e) => {
+    const code = ((e && e.code) || '').replace(/^functions\//, '');
+    if (code === 'permission-denied') return '僅管理員可手動觸發同步。';
+    if (code === 'unauthenticated')   return '登入狀態已失效，請重新登入後再試。';
+    if (code === 'deadline-exceeded') return '同步逾時。排程仍會照常執行，稍後再回來看即可。';
+    if (code === 'not-found')         return '找不到同步函式（可能正在部署中，請稍候再試）。';
+    return (e && e.message) ? (e.message + (code ? '（' + code + '）' : '')) : String(e);
+  };
+
+  const runSync = async (kind) => {
+    if (syncBusy) return;
+    setSyncBusy(kind); setSyncSec(0); setSyncResult(null);
+    try {
+      // functions 的 compat SDK 不在 portal.html 的固定載入清單裡（只有這個分頁用得到），
+      // 第一次點才載。★ 版號取自 appcheck.js 的單一來源，不可在這裡自己寫死。
+      if (!window.loadFirebaseCompatModule) throw new Error('appcheck.js 未載入，無法取得 Firebase SDK 版本');
+      await window.loadFirebaseCompatModule('functions');
+      // ★ region 一定要顯式帶入：預設是 us-central1，不帶會找不到函式，
+      //   而回傳的錯誤（internal / not-found）完全不會提到 region，很難查。
+      const fn = kind === 'formlabs' ? 'sync_formlabs_manual' : 'sync_eiger_manual';
+      const res = await firebase.app().functions('asia-east1').httpsCallable(fn)({});
+      setSyncResult({ kind, stats: res.data || {} });
+    } catch (e) {
+      console.error('[sync] 手動同步失敗', e);
+      setSyncResult({ kind, error: syncErrMsg(e) });
+    } finally {
+      setSyncBusy('');
+    }
+  };
+
+  const fmtStamp = (ts) => {
+    if (!ts) return null;
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    if (isNaN(d.getTime())) return null;
+    const mins = Math.round((Date.now() - d.getTime()) / 60000);
+    const ago = mins < 1 ? '剛剛' : mins < 60 ? (mins + ' 分鐘前') : (Math.floor(mins / 60) + ' 小時前');
+    return d.toLocaleString('zh-TW', { hour12: false }) + '（' + ago + '）';
+  };
+
   // 需要補 region 的 collection。刻意不含 sample_items / sample_loans——
   // 樣品是全公司共用資產（借用人可能跨廠區借還），先前已決定不分區。
   // inventory_history 由 Cloud Function 寫入時就帶 region，不在這裡處理。
@@ -2552,6 +2620,10 @@ function AdminPanel({ user, isAdmin }) {
     // 地區設定僅開放 admin：它同時控制「分區功能對誰生效」與機台歸屬，屬於全系統層級的開關
     ...(isAdmin ? [{key:'regions', label:'地區'}] : []),
     ...(isAdmin ? [{key:'roles', label:'角色權限'}] : []),  // 角色權限僅開放 admin，主管不可見
+    // 資料同步僅開放 admin：Cloud Function 端只認 role==='admin'（見 main.py 的
+    // sync_formlabs_manual）。若比照其他分頁用 canUsers，主管會看到一顆按下去
+    // 必定 permission-denied 的按鈕。
+    ...(isAdmin ? [{key:'sync', label:'資料同步'}] : []),
   ];
 
   // 角色分頁權限：切換某角色的某權限
@@ -2854,6 +2926,94 @@ function AdminPanel({ user, isAdmin }) {
               </div>
             )}
 
+            {/* 資料同步（admin 專屬）*/}
+            {settingTab==='sync'&&isAdmin&&(
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:6}}>手動觸發同步</div>
+                <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.75,marginBottom:16}}>
+                  系統每 30 分鐘會自動同步一次。這裡可以立刻跑一次，不必等下一輪——
+                  例如剛換完料、或想確認某台機器的狀態有沒有進來。
+                  <br/><b style={{color:'var(--ink-2)'}}>重複執行是安全的</b>：
+                  已經記錄過的列印會自動略過，不會重複扣庫存；跟排程同時跑也不會。
+                </div>
+
+                {syncStamp && syncStamp.err && (
+                  <div style={{padding:'10px 12px',background:'var(--warn-soft)',border:'1px solid var(--warn-border)',borderRadius:7,fontSize:11.5,color:'var(--warn)',lineHeight:1.7,marginBottom:14}}>
+                    ⚠ 讀不到上次同步時間（{syncStamp.err}）。這不代表同步有問題，但下面的「上次同步」會是空白。
+                  </div>
+                )}
+
+                {[
+                  {kind:'formlabs', title:'Formlabs（樹脂）', stampKey:'fl', note:'通常需要 2～3 分鐘',
+                   desc:'列印消耗紀錄、樹脂庫存扣減、Form 系列機台即時狀態。'},
+                  {kind:'eiger', title:'Markforged（線材）', stampKey:'mf', note:'約幾秒',
+                   desc:'線材餘量觀測、纖維庫存扣減、Mark Two／FX／X7 機台即時狀態。'},
+                ].map(c => {
+                  const R = (syncResult && syncResult.kind===c.kind) ? syncResult : null;
+                  const st = R && R.stats;
+                  const lines = [];
+                  if (st && c.kind==='formlabs') {
+                    lines.push('掃描 ' + (st.prints_total||0) + ' 筆列印紀錄，新增 ' + (st.processed_new||0) + ' 筆消耗紀錄');
+                    const ded = st.stock_deducted || {};
+                    const ks  = Object.keys(ded);
+                    // ★ 這裡顯示的是材料「家族代碼」不是中文名：portal 沒有那份對照表，
+                    //   為了顯示而在這裡複製一份，就是 CLAUDE.md 一再警告的「兩份會走偏」。
+                    lines.push(ks.length ? ('扣減庫存：' + ks.map(k => k + ' ' + ded[k] + ' mL').join('、') + '（材料代碼對照見材料庫存頁）')
+                                         : '本次沒有需要扣減的庫存');
+                    if (st.skipped_in_flight) lines.push('有 ' + st.skipped_in_flight + ' 筆列印正在進行中，等它完成後的下一次同步才會入帳');
+                    const rw = st.region_inventory_written || [];
+                    if (rw.length) lines.push('已更新庫存的地區：' + rw.map(r => (window.REGION_LABEL||{})[r] || r).join('、'));
+                  }
+                  if (st && c.kind==='eiger') {
+                    lines.push('掃到 ' + (st.devices_seen||0) + ' 台機器，其中 ' + (st.devices_tracked||0) + ' 台納入管理、' + (st.printing||0) + ' 台列印中');
+                    lines.push(st.observations ? ('寫入 ' + st.observations + ' 筆材料消耗紀錄') : '本次沒有新的材料消耗');
+                  }
+                  const errs = (st && st.errors) || [];
+                  return (
+                    <div key={c.kind} style={{border:'1px solid var(--line)',borderRadius:8,padding:'14px 16px',marginBottom:12}}>
+                      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+                        <div style={{flex:'1 1 260px'}}>
+                          <div style={{fontSize:13,fontWeight:700,color:'var(--ink)'}}>{c.title}</div>
+                          <div style={{fontSize:11.5,color:'var(--ink-4)',marginTop:3,lineHeight:1.7}}>{c.desc}</div>
+                          <div style={{fontSize:11.5,color:'var(--ink-3)',marginTop:6}}>
+                            上次同步：{(syncStamp && !syncStamp.err && fmtStamp(syncStamp[c.stampKey])) || '—'}
+                          </div>
+                        </div>
+                        <button className="btn-save" style={{padding:'0 16px',height:34,fontSize:12,whiteSpace:'nowrap',opacity:syncBusy?.5:1}}
+                          onClick={()=>runSync(c.kind)} disabled={!!syncBusy}>
+                          {syncBusy===c.kind ? ('同步中… ' + syncSec + ' 秒') : '立即同步'}
+                        </button>
+                      </div>
+
+                      {syncBusy===c.kind && (
+                        <div style={{marginTop:10,padding:'8px 10px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:6,fontSize:11.5,color:'var(--ink-4)',lineHeight:1.7}}>
+                          執行中（{c.note}）。離開這一頁不會中斷後端，只是看不到結果。
+                        </div>
+                      )}
+
+                      {R && R.error && (
+                        <div style={{marginTop:10,padding:'9px 11px',background:'var(--warn-soft)',border:'1px solid var(--warn-border)',borderRadius:6,fontSize:12,color:'var(--warn)',lineHeight:1.7}}>
+                          ✕ 同步失敗：{R.error}
+                        </div>
+                      )}
+
+                      {st && (
+                        <div style={{marginTop:10,padding:'9px 11px',background:errs.length?'var(--warn-soft)':'var(--ok-soft)',border:'1px solid',borderColor:errs.length?'var(--warn-border)':'#9acfb4',borderRadius:6,fontSize:12,lineHeight:1.8,color:errs.length?'var(--warn)':'var(--ink-2)'}}>
+                          <div style={{fontWeight:700,marginBottom:2}}>{errs.length ? '⚠ 同步完成，但有錯誤' : '✓ 同步完成'}</div>
+                          {lines.map((t,i)=><div key={i}>・{t}</div>)}
+                          {errs.map((t,i)=><div key={'e'+i} style={{fontFamily:'var(--mono, monospace)',fontSize:11}}>✕ {String(t)}</div>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div style={{marginTop:6,padding:'10px 12px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:7,fontSize:11.5,color:'var(--ink-4)',lineHeight:1.75}}>
+                  只有管理員看得到這個分頁——後端同樣只接受管理員，兩邊條件一致，
+                  不會出現「按得到但一定失敗」的按鈕。
+                </div>
+              </div>
+            )}
             {/* 角色分頁權限設定（admin 專屬） */}
             {settingTab==='roles'&&isAdmin&&(
               <div>
@@ -2905,6 +3065,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-09-07', type:'feat',
+    text:'後台管理的「設定」新增「資料同步」分頁（僅管理員看得到）：可以立刻手動跑一次 Formlabs（樹脂）或 Markforged（線材）的同步，不必等 30 分鐘一次的自動排程——剛換完料、或想馬上確認某台機器的狀態有沒有進來時很有用。畫面會顯示上次同步時間、執行中的經過秒數，以及這次的結果（新增幾筆消耗紀錄、扣了哪些庫存、有沒有列印還在進行中而暫時不計）。重複按是安全的：已經記錄過的列印會自動略過，不會重複扣庫存，跟自動排程同時跑也不會。' },
   { hash:'4a03b80', date:'2026-09-03', type:'fix',
     text:'修正材料庫存「消耗紀錄可能有誤」不斷重複跳出、而且列印消耗完全沒有從庫存扣掉的問題。原因是 Elastic 50A 在系統材料對照表裡登記的代碼，與 Formlabs 實際回傳的代碼不同：入庫時從下拉選單存的是前者，列印消耗傳回來的是後者，兩邊被當成兩種不同的材料，於是消耗永遠扣不到庫存、只會一直累積成「超出庫存」警示，而庫存數字看起來卻完全正常。現已把兩個代碼併為同一種材料，之後的列印會正常扣庫存；材料名稱也不會再顯示成「Elastic 50A V1」。另外同步程式往後遇到對照表裡沒有的材料代碼會主動記錄，不會再靜默扣不到。⚠ 先前沒扣到的量請先手動調整庫存，再按警示上的「已確認，清除警示」。' },
   { hash:'7e54726', date:'2026-09-03', type:'fix',
@@ -2923,8 +3085,6 @@ const CHANGELOG = [
     text:'匯出列印記錄時，若列印目的為「原廠材料工程測試」且備註沒有 APP 單號，業務欄會自動帶入「實威國際股份有限公司」（客戶名稱原本就會帶入）。有單號的仍以 EF 單號比對工作看板的工單，以工單上填的業務為準。' },
   { hash:'a218d32', date:'2026-08-27', type:'tweak',
     text:'後台的「業務清單」移到系統設定的「工作看板」頁籤統一維護，工作看板的業務欄、3D列印機預約、材料庫存的匯出列印記錄三處共用同一份，不再各自一套。工程師清單新增「地區」欄位：設定地區後，該區同仁在工作看板、異常與資源、3D列印機預約都只會看到自己這一區的工程師；留「全區」的人（例如跨區支援）則每一區都看得到，管理員與主管不受限制。匯出列印記錄的「業務」與「責任工程師」改成「中文 (英文)」的形式；列印目的為原廠材料工程測試時，客戶名稱會自動帶入實威國際股份有限公司。' },
-  { hash:'d429537', date:'2026-08-27', type:'tweak',
-    text:'「匯出列印記錄」補上「列印時間」欄，直接從 Formlabs 取實際列印耗時，以 0.5 小時為單位（不足半小時算 0.5）。同樣只有之後新同步的列印才有，先前的紀錄仍需人工填。至此匯出的 19 欄只剩「列印時間（舊紀錄）」與 Ultem9085（我們沒有這台機器）需要人工處理。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

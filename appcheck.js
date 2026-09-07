@@ -39,6 +39,32 @@
     });
   }
 
+  // ── 對外暴露：讓其他頁面也能動態載入 compat SDK 模組 ─────────────
+  // ★ 為什麼放在這裡：SDK_VERSION 是全站版號的單一來源。頁面若自己寫死
+  //   版號去載模組，下次升級一定會漏掉那一處，結果是同時載入兩個版本的
+  //   Firebase SDK —— 這正是 2026-08-27 收斂版本要消除的問題。
+  window.FIREBASE_SDK_VERSION = SDK_VERSION;
+
+  // 依模組名載入 compat SDK（例：'functions' → firebase-functions-compat.js）。
+  // 只有少數頁面的少數功能用得到的模組（如 functions），不必放進每頁的固定載入
+  // 清單裡讓所有人都下載，用到時再呼叫這支即可。
+  // ★ 冪等：已經載過就直接 resolve；同時被呼叫多次也只會真的載一次。
+  const _compatPending = {};
+  window.loadFirebaseCompatModule = function (name) {
+    if (window.firebase && window.firebase[name]) return Promise.resolve();
+    if (!_compatPending[name]) {
+      _compatPending[name] = loadScript(
+        `https://www.gstatic.com/firebasejs/${COMPAT_SDK_VERSION}/firebase-${name}-compat.js`
+      ).catch(err => {
+        // 失敗要把 pending 清掉，否則之後每次呼叫都會拿到同一個 rejected promise，
+        // 使用者按重試永遠不會真的重試（而且畫面上看起來就只是「又失敗了」）。
+        delete _compatPending[name];
+        throw err;
+      });
+    }
+    return _compatPending[name];
+  };
+
   // debug token 必須在 App Check 初始化「之前」設好，設晚了不會生效
   function markDebug() {
     if (USE_DEBUG_TOKEN) self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
