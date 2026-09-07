@@ -1708,12 +1708,11 @@ def sync_formlabs_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
 # ════════════════════════════════════════════════════════════════
 # HTTPS callable function（手動觸發 / backfill）
 # ════════════════════════════════════════════════════════════════
-@https_fn.on_call(
-    timeout_sec=540,
-    memory=options.MemoryOption.MB_512,
-    secrets=[FORMLABS_CLIENT_ID, FORMLABS_CLIENT_SECRET],
-    region="asia-east1",
-)
+# ★ 這支是純內部 helper，不是 callable —— 裝飾器必須留在 sync_formlabs_manual 上。
+#   2026-09-04 踩過：把這支插進「裝飾器與 sync_formlabs_manual 之間」，
+#   裝飾器就被它接走了，結果 sync_formlabs_manual 整支沒被部署，
+#   而它自己被當成 callable 部署卻少了 req 參數（呼叫必 TypeError）且沒有 auth 檢查。
+#   要在這一段插入新函式時，先確認裝飾器還黏在它該黏的那支上面。
 def backfill_ef_no_only():
     """把 ef_no 補到既有的 inventory_history 上（只加這一個欄位）。
 
@@ -1749,6 +1748,12 @@ def backfill_ef_no_only():
     return stats
 
 
+@https_fn.on_call(
+    timeout_sec=540,
+    memory=options.MemoryOption.MB_512,
+    secrets=[FORMLABS_CLIENT_ID, FORMLABS_CLIENT_SECRET],
+    region="asia-east1",
+)
 def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
     """從前端呼叫的手動觸發。
     可傳 { backfill: true } 觸發回填模式。
