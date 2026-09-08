@@ -512,7 +512,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20260827a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260827b"></script>
+<script src="firebase-service.js?v=20260908a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -2568,7 +2568,9 @@ function AdminPanel({ user, isAdmin }) {
     const payload = stripUndefined(s);
 
     try {
-      await FBSettings.save(payload);
+      // ★ 這兩個是 map 欄位，必須整份取代 —— set(merge) 對 map 是逐鍵深合併，
+      //   刪掉的機台不會真的消失（見 firebase-service.js 的 save）。
+      await FBSettings.save(payload, ['machine_regions', 'machine_labels']);
       window.applySettings(payload);
       // 通知樣品模組更新借用人清單
       try {
@@ -3118,6 +3120,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-09-08', type:'fix',
+    text:'修正後台系統設定裡「列印機地區歸屬」刪掉一列、按了儲存之後，重新整理又原樣冒出來的問題（刪不掉且沒有任何錯誤訊息）。'原因是儲存時採用合併寫入，對這種「一台機器一個項目」的設定是逐項合併，刪除的項目不會真的被移除。現在會整份取代，刪除立即生效。' },
   { hash:'aac90ea', date:'2026-09-08', type:'fix',
     text:'修正機台即時狀態卡的「地區」與「名稱」不跟著後台設定走的問題。'（一）在後台把某台機器改到別的地區後，狀態卡要等下一次資料同步（最多 30 分鐘）才會換區，中間看起來像設定沒生效——現在一律以後台設定為準，存檔後立刻反映。'（二）機型名稱會被機器回報的型號蓋掉：Form 4B 在 Formlabs 回報的型號與 Form 4 完全相同，所以就算系統登記的是 Form4B，畫面仍一直顯示 Form4——現在以系統登記／後台設定的名稱優先。'南部的 AbsorbedPuppy 已正確歸到南部並顯示 Form4B。' },
   { hash:'87c238c', date:'2026-09-08', type:'feat',
@@ -3136,8 +3140,6 @@ const CHANGELOG = [
     text:'修正後台系統設定在工程師或機台清單把地區選成「全區」時，按儲存會出現「儲存失敗：Unsupported field value: undefined」而整份設定存不進去的問題。' },
   { hash:'9c797bc', date:'2026-08-27', type:'fix',
     text:'修正工作看板「實際消耗量」自動帶入時，較舊的 EF 單號查不到消耗紀錄的問題——原本只能掃描最近 1000 筆消耗紀錄，而那個額度是三個地區共用的，等於每區只能回溯約三分之一。現在改用單號精準查詢，不再受筆數限制。⚠ 2026-08-27 之前的舊紀錄需要管理員手動觸發一次回填才會生效（在此之前仍走舊的掃描方式，行為與先前相同）。另外前端套件版本統一：Firebase SDK 全站 10.12.5、3D 估價頁的 three.js 由 2021 年的 r128 升到 0.149.0（外觀不變）。' },
-  { hash:'8aaa6c1', date:'2026-08-27', type:'tweak',
-    text:'工作看板「新增／編輯列印工作」移除「預計完成日」欄位，改放「纖維消耗量 (cc)」——Markforged 的碳纖等纖維以 cc 計，與樹脂的 mL 分開記錄，不會混進「實際消耗量」。舊工單原本填過的預計完成日仍會顯示在總表與甘特圖上。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

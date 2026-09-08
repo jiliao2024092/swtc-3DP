@@ -259,8 +259,19 @@
       const snap = await db.collection('settings').doc('workspace').get();
       return snap.exists ? snap.data() : null;
     },
-    async save(data) {
-      await db.collection('settings').doc('workspace').set(data, { merge: true });
+    // replaceFields：要「整份取代」的 map 欄位（如 machine_regions / machine_labels）。
+    // ★ set(..., {merge:true}) 對 map 欄位是**逐鍵深合併**：從 map 裡刪掉一個 key 再存檔，
+    //   Firestore 那邊仍留著舊的 key —— 症狀是「後台刪掉一列、按了儲存，重新整理又冒出來」，
+    //   而且完全沒有錯誤訊息（2026-09-08 實際回報：列印機地區歸屬刪不掉舊機台）。
+    //   update() 的頂層欄位是整個換掉、不會深合併，所以刪除才會真的生效。
+    async save(data, replaceFields) {
+      const ref = db.collection('settings').doc('workspace');
+      await ref.set(data, { merge: true });
+      const reps = (replaceFields || []).filter(f => data[f] && typeof data[f] === 'object');
+      if (reps.length) {
+        // 文件一定存在（上一行剛寫過），所以 update() 不會 not-found
+        await ref.update(reps.reduce((acc, f) => { acc[f] = data[f]; return acc; }, {}));
+      }
     },
     onSnapshot(cb) {
       return db.collection('settings').doc('workspace').onSnapshot(
