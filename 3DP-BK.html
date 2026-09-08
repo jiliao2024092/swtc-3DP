@@ -504,7 +504,7 @@
 <!-- Firebase 專案設定（唯一來源，五頁共用）-->
 <script src="firebase-config.js?v=20260827a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="regions.js?v=20260908b"></script>
+<script src="regions.js?v=20260908c"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
@@ -2277,11 +2277,13 @@ function renderStatusPanel(printers) {
     //     也不會寫進任何設定，重新整理就回到「全部」。
     const canCrossRegion = !!(window.canViewAllRegions && window.canViewAllRegions(currentUser));
 
-    // 機台的區：優先用 Cloud Function 寫進來的 region 欄位；舊資料（同步還沒跑過）
-    // 沒有這個欄位時，前端自己用 regions.js 的對照推導，不要顯示成「未分區」。
-    const regionOfPrinter = p => (p && window.isRegion && window.isRegion(p.region))
-        ? p.region
-        : (window.machineRegion ? window.machineRegion((p&&(p.alias||p.serial||p.display))||'', MACHINE_REGIONS) : 'central');
+    // 機台的區：後台設定 → 前端種子對照 → Cloud Function 寫進來的 region 欄位。
+    // ★ 後端那個欄位是「上一次同步當下」算出來的快照，改完設定或改完程式碼之後最久
+    //   要等 30 分鐘才會更新（函式還沒部署完就更久）。把它排在最前面會讓後台已經
+    //   設成南部的機台一直掛在中部，而畫面上沒有任何提示（2026-09-08 實際發生）。
+    const regionOfPrinter = p => window.machineRegion
+        ? window.machineRegion((p&&(p.alias||p.serial||p.display))||'', MACHINE_REGIONS, p && p.region)
+        : ((p && window.isRegion && window.isRegion(p.region)) ? p.region : 'central');
 
     // ★ 分組「永遠」依北/中/南，不受 region_mode 控制；region_mode 只控制「過濾」。
     //   原本分區未啟用時會退回寫死的「台中 / 其他」，但那份對照只認得 AdroitSauropod /

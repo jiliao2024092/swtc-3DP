@@ -114,8 +114,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
 - 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃）：
   - Formlabs 7 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4B·南，2026-09-08 更正，原記為 Form4L·中；長期關機、API 未回報)、`AbsorbedPuppy`(Form4B·南，2026-09-08 新增)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
-  - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FORM-4-1`=Form4B（推測值，比照 Form3B＝`FORM-3-1`；認錯會退回 alias 對照，不會顯示空白）／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
+  - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
   - **納入消耗扣庫存的 6 台**（2026-08-25 起）：上述 7 台扣掉 `TealMoa`（Fuse 1+ 是 SLS 粉末，只顯示狀態不記消耗）。名單存在**三個地方，必須一起改**：`functions/main.py` 的 `TRACKED_ALIASES`、`inventory.html` 的 `TRACKED_PRINTERS`、`3DP-BK.html` 的 `MATERIAL_PRINTERS`
+  - ⚠ **Form 4B 沒有自己的 `machine_type_id`**：實測（2026-09-08 `AbsorbedPuppy`）回報的就是 **`FORM-4-0`**，與 Form 4 完全相同，API 分不出 B 版。所以 `machineModel()` 的優先序是「對照表裡**完全相同**的 alias > `machine_type_id` > alias 包含比對」——反過來的話，種子與後台都寫 Form4B、畫面卻一直顯示 Form4，**而且看不出是哪裡蓋掉的**（實際踩過）。`machine_type_id` 的用途是「alias 還沒進對照表的新機台」，不是拿來蓋掉人工登記的機型
+  - ⚠ **機台的區：後台設定 > 前端種子 > `printer_status` 的 `region` 欄位**。最後那個是 Cloud Function 在「上一次同步當下」算出來的快照，改完設定或改完程式碼之後最久要等 30 分鐘才更新（函式還沒部署完就更久）。把它排在最前面的症狀：後台已經設成南部、機台卻一直掛在中部，畫面上沒有任何提示（2026-09-08 `AbsorbedPuppy` 實際發生）。三處實作：`regions.js` 的 `machineRegion(alias, overrides, fallback)`、`3DP-BK.html` 的 `regionOfPrinter`、`inventory.html` 的 `regionOfMachine`
   - **機台顯示名稱可由後台覆寫**（2026-09-08）：`settings/workspace.machine_labels`（`{alias: 名稱}`），UI 在後台「地區」分頁的「列印機地區歸屬」，留空＝沿用機型名稱。前端一律走 `window.machineLabel(機台物件或代號, MACHINE_LABELS)`（regions.js）
     - ⚠ **傳「整個機台物件」而不是只傳 alias 字串**：只有物件形式吃得到 `machine_type_id`，對照表還沒收錄的新機台靠它才認得出機型，否則整台只顯示成一串代號
     - ⚠ **儲存時只寫「有填的」名稱**：留空必須不寫入該 key，寫 `undefined` 會讓整份設定存不進去（見上面的後台設定地雷）

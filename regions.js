@@ -65,8 +65,9 @@
   //   （實測見 [region-scan] log）。alias 對照只是給「只有字串、拿不到完整物件」的
   //   呼叫端用（例如消耗紀錄只存 printer 名稱）。
   const MACHINE_TYPE_MODEL = {
+    // ⚠ Form 4B 沒有自己的代碼：實測（2026-09-08，AbsorbedPuppy）回報的就是 FORM-4-0。
+    //   所以「這台是不是 4B」只能靠上面的 alias 對照，不可能從這裡判斷出來。
     'FORM-4-0': 'Form4',
-    'FORM-4-1': 'Form4B',   // Form 4B（生醫版）；外觀與 Form 4 相同，共用同一張產品圖
     'FRML-4-0': 'Form4L',
     'FORM-3-2': 'Form3+',
     'FRML-3-0': 'Form3L',
@@ -86,9 +87,17 @@
   function machineModel(p) {
     if (!p) return '';
     if (typeof p === 'object') {
+      // ★ 對照表裡「完全相同」的 alias 優先於 machine_type_id ——
+      //   實測 Form 4B 回報的 machine_type_id 就是 FORM-4-0（與 Form 4 同一個代碼），
+      //   API 根本分不出 B 版，只有我們自己登記的那一筆知道它是 4B。
+      //   先前反過來（type_id 優先）的症狀：後台設定與種子都寫 Form4B，畫面卻一直
+      //   顯示 Form4，而且完全看不出是哪裡蓋掉的。
+      //   machine_type_id 仍是「alias 還沒進對照表」的新機台的退路，那才是它的用途。
+      const a = String(p.alias || p.serial || '');
+      if (a && Object.prototype.hasOwnProperty.call(SEED_MACHINE_MODEL, a)) return SEED_MACHINE_MODEL[a];
       const t = p.machine_type_id;
       if (t && MACHINE_TYPE_MODEL[t]) return MACHINE_TYPE_MODEL[t];
-      return machineModel(p.alias || p.serial || '');
+      return machineModel(a);
     }
     const a = String(p);
     if (Object.prototype.hasOwnProperty.call(SEED_MACHINE_MODEL, a)) return SEED_MACHINE_MODEL[a];
@@ -124,8 +133,15 @@
     return best;
   }
 
-  function machineRegion(alias, overrides) {
-    if (!alias) return DEFAULT_REGION;
+  // fallback：三份對照都認不出這台時要回哪一區。呼叫端可以傳 Cloud Function 寫在
+  // printer_status 的 region 欄位進來當退路。
+  // ★ 順序刻意是「後台設定 → 前端種子 → 後端寫的值」：後端那個欄位是上一次同步當下
+  //   算出來的快照，改了設定或改了程式碼之後它會停在舊值最久 30 分鐘（函式還沒部署
+  //   完就更久）。先前把它排在最前面，症狀是後台已經設成南部、機台卻一直掛在中部，
+  //   而畫面上沒有任何提示（2026-09-08 AbsorbedPuppy 實際發生）。
+  function machineRegion(alias, overrides, fallback) {
+    const dflt = isRegion(fallback) ? fallback : DEFAULT_REGION;
+    if (!alias) return dflt;
     const a = String(alias);
     if (overrides && typeof overrides === 'object') {
       if (overrides[a]) return normRegion(overrides[a]);
@@ -135,7 +151,7 @@
     if (Object.prototype.hasOwnProperty.call(SEED_MACHINE_REGION, a)) return SEED_MACHINE_REGION[a];
     const k2 = longestContainedKey(a, SEED_MACHINE_REGION);
     if (k2) return SEED_MACHINE_REGION[k2];
-    return DEFAULT_REGION;
+    return dflt;
   }
 
   // ── 機台顯示名稱 ──────────────────────────────────────────────────

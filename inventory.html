@@ -1084,7 +1084,7 @@
 <!-- Firebase 專案設定（唯一來源，五頁共用）-->
 <script src="firebase-config.js?v=20260827a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="regions.js?v=20260908b"></script>
+<script src="regions.js?v=20260908c"></script>
 <script type="module">
 // ══ 設定 ══
 // 納入消耗扣庫存的機台。★ 必須與 functions/main.py 的 TRACKED_ALIASES 完全一致 ——
@@ -1212,11 +1212,15 @@ function subscribeRegionInventory(){
 function viewingOwnRegion(){
     return activeRegion === (window.regionOf ? window.regionOf(currentUser) : 'central');
 }
-// 機台的區：優先用 Cloud Function 寫進來的 region 欄位，沒有才用前端對照推導
+// 機台的區：後台設定 → 前端種子對照 → Cloud Function 寫進來的 region 欄位。
+// ★ 後端那個欄位是上一次同步當下的快照，改完設定後最久要等 30 分鐘才更新；
+//   排在最前面會讓後台已經改好的機台一直留在舊的區，而畫面上沒有任何提示
+//   （2026-09-08 AbsorbedPuppy 實際發生，見 3DP-BK.html 的同一段）。
 function regionOfMachine(p){
-    if (p && window.isRegion && window.isRegion(p.region)) return p.region;
     const key = (typeof p === 'string') ? p : ((p && (p.alias || p.serial || p.display)) || '');
-    return window.machineRegion ? window.machineRegion(key, MACHINE_REGIONS) : 'central';
+    const back = (p && typeof p === 'object') ? p.region : null;
+    if (window.machineRegion) return window.machineRegion(key, MACHINE_REGIONS, back);
+    return (window.isRegion && window.isRegion(back)) ? back : 'central';
 }
 // 頁首的「庫存地區」切換列。可跨區者是三顆可按的按鈕；不可跨區者也要顯示，
 // 只是變成唯讀標籤 —— 現在連消耗記錄／月度分析都依地區過濾，不標出「你正在看哪一區」

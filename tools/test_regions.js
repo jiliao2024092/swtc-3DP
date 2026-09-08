@@ -78,6 +78,17 @@ eq(machineRegion('Form4L-JasperGosling', { JasperGosling:'south' }), 'south',
 eq(machineRegion('Form4-AluminumBowfin'), 'central', 'serial 形式也要對得上');
 eq(machineRegion('Form4B-AdroitSauropod'), 'south', 'serial 形式（Form4B）');
 eq(machineRegion('沒看過的機台'), 'central', '未知機台 → 中區，不可拋錯');
+// 第三個參數＝呼叫端給的退路（Cloud Function 寫在 printer_status 的 region 欄位）。
+// ★ 它必須排在「後台設定」與「前端種子」之後：那是上一次同步當下的快照，改完設定
+//   之後最久 30 分鐘才更新，排前面會讓機台一直掛在舊的區且畫面毫無提示。
+eq(machineRegion('沒看過的機台', null, 'north'), 'north',
+   '★ 三份對照都認不出時，才用呼叫端給的退路');
+eq(machineRegion('AbsorbedPuppy', null, 'central'), 'south',
+   '★ 種子認得出來時不可被過期的後端值蓋掉（AbsorbedPuppy 實際踩過）');
+eq(machineRegion('AbsorbedPuppy', { AbsorbedPuppy:'north' }, 'central'), 'north',
+   '後台設定仍是最優先');
+eq(machineRegion('沒看過的機台', null, '亂填'), 'central', '退路是亂填的值 → 中區');
+eq(machineRegion('', null, 'south'), 'south', '空代號也要吃得到退路');
 eq(machineRegion(''), 'central', '空字串不可拋錯');
 // admin 在後台設定後要蓋過種子值
 eq(machineRegion('AluminumBowfin', { AluminumBowfin: 'south' }), 'south', '後台設定蓋過種子值');
@@ -94,22 +105,21 @@ eq(machineModel('AluminumBowfin'), 'Form4',  'Form 4');
 eq(machineModel('CreativeDragon'), 'Form3+', 'Form 3+');
 eq(machineModel('BoldSturgeon'),   'Form3L', 'Form 3L');
 eq(machineModel('TealMoa'),        'Fuse1+', 'Fuse 1+');
-// ★ 物件形式必須「優先」用 machine_type_id。
+// ★ 物件形式：對照表裡「完全相同」的 alias 優先，machine_type_id 是退路。
 //   ⚠ 測資要挑「machine_type_id 與 alias 會給出不同答案」的組合，否則就算實作根本
-//     沒看 machine_type_id、靠 alias 也能矇對，測試會是假綠燈（第一版就踩到）。
-eq(machineModel({ machine_type_id:'FRML-3-0', alias:'AluminumBowfin' }), 'Form3L',
-   '★ machine_type_id 必須勝過 alias（alias 會給出 Form4）');
-eq(machineModel({ machine_type_id:'FORM-4-0', alias:'BoldSturgeon' }), 'Form4',
-   '★ 反向再驗一次：alias 會給出 Form3L');
+//     沒分優先序、靠其中一邊也能矇對，測試會是假綠燈（第一版就踩到）。
+//   ⚠ 這個優先序在 2026-09-08 反過來了：Form 4B 實測回報的 machine_type_id 就是
+//     FORM-4-0（與 Form 4 同一個代碼），API 分不出 B 版。type_id 優先的話，種子與
+//     後台都寫 Form4B、畫面卻一直顯示 Form4，而且看不出是哪裡蓋掉的。
+eq(machineModel({ machine_type_id:'FORM-4-0', alias:'AbsorbedPuppy' }), 'Form4B',
+   '★ 實測情境：4B 回報的 type_id 是 FORM-4-0，只有 alias 對照知道它是 4B');
+eq(machineModel({ machine_type_id:'FRML-3-0', alias:'AluminumBowfin' }), 'Form4',
+   '★ 對照表有這個 alias 時，它勝過 machine_type_id（type_id 會給出 Form3L）');
+eq(machineModel({ machine_type_id:'FORM-4-0', alias:'BoldSturgeon' }), 'Form3L',
+   '★ 反向再驗一次：type_id 會給出 Form4');
 // 真實情境：新機台的 alias 還沒進對照表，只能靠 machine_type_id 認出機型
 eq(machineModel({ machine_type_id:'FORM-3-2', alias:'BrandNewPrinter' }), 'Form3+',
    '★ alias 不在對照表時，machine_type_id 仍要認得出機型');
-// Form 4B 的 machine_type_id 是推測值（FORM-4-1，比照 Form 3B＝FORM-3-1）。
-// 就算推測錯了也只是退回 alias 對照（下一條），不會顯示成空白。
-eq(machineModel({ machine_type_id:'FORM-4-1', alias:'AdroitSauropod' }), 'Form4B',
-   'Form 4B 的 machine_type_id');
-eq(machineModel({ machine_type_id:'FORM-4-9', alias:'AdroitSauropod' }), 'Form4B',
-   '★ machine_type_id 推測錯時仍要靠 alias 對照回到 Form4B');
 eq(machineModel({ machine_type_id:'FS30-1-0', alias:null, serial:'TealMoa' }), 'Fuse1+',
    'alias 為 None 時（Fuse 1+ 實際如此）仍判得出');
 // machine_type_id 認不得時退回 alias 對照
