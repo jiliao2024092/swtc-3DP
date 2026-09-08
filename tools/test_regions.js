@@ -420,8 +420,17 @@ eq(stripUndefined({ a:{ b:{ c:undefined, d:1 } } }), { a:{ b:{ d:1 } } }, '巢�
 eq(stripUndefined({ a:null, b:0, c:'', d:false }), { a:null, b:0, c:'', d:false },
    '★ null／0／空字串／false 不可被誤刪');
 // 防護網要真的接在儲存路徑上，不能只是定義了沒用
-eq(/await FBSettings\.save\(payload\)/.test(portalSrc), true,
+eq(/await FBSettings\.save\(payload[,)]/.test(portalSrc), true,
    '★ 儲存時送出的是清理過的 payload');
+// ★ machine_regions / machine_labels 是 map 欄位，必須整份取代 ——
+//   set(merge) 對 map 是逐鍵深合併，刪掉的機台不會真的消失（實際回報過）。
+eq(/FBSettings\.save\(payload, \['machine_regions', 'machine_labels'\]\)/.test(portalSrc), true,
+   '★ 兩個 map 欄位有指定整份取代');
+const svcSrc = fs.readFileSync(path.join(__dirname, '..', 'portal', 'firebase-service.js'), 'utf8');
+eq(/async save\(data, replaceFields\)/.test(svcSrc), true,
+   '★ firebase-service.js 的 save 接得住 replaceFields');
+eq(/ref\.update\(/.test(svcSrc), true,
+   '★ 真的有補一次 update()（頂層欄位整個換掉，才刪得掉 map 裡的 key）');
 
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
