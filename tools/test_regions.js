@@ -55,6 +55,7 @@ eq(machineRegion('AluminumBowfin'), 'central', '中區 Form 4');
 eq(machineRegion('AdroitSauropod'), 'south', '★ 南區 Form 4B（先前誤記為中部）');
 eq(machineRegion('JasperGosling'),  'north',   '北區 Form 4L');
 eq(machineRegion('TealMoa'),        'north',   '北區 Fuse 1+');
+eq(machineRegion('AbsorbedPuppy'),  'south',   '南區 Form 4B（2026-09-08 新機台）');
 eq(machineRegion('CreativeDragon'), 'south',   '南區 Form 3+');
 eq(machineRegion('BoldSturgeon'),   'south',   '南區 Form 3L');
 eq(machineRegion('MarkTwo'),        'central', 'Mark Two Taichung');
@@ -87,6 +88,7 @@ eq(machineRegion('AluminumBowfin', { AluminumBowfin: '亂填' }), 'central', '�
 // ── 機台 → 機型（圖示與顯示名稱的 key）─────────────────────────────
 const { machineModel } = win;
 eq(machineModel('AdroitSauropod'), 'Form4B', '★ 南區 Form 4B（先前誤記為 Form 4L）');
+eq(machineModel('AbsorbedPuppy'),  'Form4B', '★ 同機型多台：新機台也要對到 Form4B（否則沒有圖）');
 eq(machineModel('JasperGosling'),  'Form4L', 'Form 4L');
 eq(machineModel('AluminumBowfin'), 'Form4',  'Form 4');
 eq(machineModel('CreativeDragon'), 'Form3+', 'Form 3+');
@@ -118,11 +120,44 @@ eq(machineModel('沒看過的機台'), '', '認不出的機台回空字串（呼
 eq(machineModel(''), '', '空字串不可拋錯');
 eq(machineModel(null), '', 'null 不可拋錯');
 
+// ── 機台顯示名稱（admin 可在後台覆寫）─────────────────────────────
+// 這一組守的是「名字顯示錯了不會有錯誤訊息」那類問題：認不出的機台若回空字串或
+// 「未知」，畫面上就分不出是哪一台；覆寫比對錯了則會把 A 機台的名字掛到 B 機台上。
+const { machineLabel } = win;
+eq(machineLabel('AluminumBowfin'), 'Form4', '沒有覆寫時退回機型');
+eq(machineLabel('AdroitSauropod'), 'Form4B', '沒有覆寫時退回機型（Form4B）');
+eq(machineLabel('AbsorbedPuppy'), 'Form4B', '新機台已進對照表 → 顯示機型');
+eq(machineLabel('BrandNewPrinter'), 'BrandNewPrinter',
+   '★ 對照表沒有的新機台 → 原樣顯示代號，不可回空字串或「未知」');
+eq(machineLabel({ machine_type_id:'FORM-4-0', alias:'BrandNewPrinter' }), 'Form4',
+   '★ 傳整個物件時，對照表沒有的新機台仍能靠 machine_type_id 認出機型');
+eq(machineLabel('AluminumBowfin', { AluminumBowfin:'Form4 台中' }), 'Form4 台中',
+   '後台設定的顯示名稱要蓋過機型');
+eq(machineLabel({ machine_type_id:'FORM-4-0', alias:'AbsorbedPuppy' }, { AbsorbedPuppy:'Form4B 高雄' }),
+   'Form4B 高雄', '★ 後台設定也要蓋過 machine_type_id 推導出來的機型');
+eq(machineLabel('AbsorbedPuppy', { AbsorbedPuppy:'Form4B 高雄' }), 'Form4B 高雄',
+   '只有名稱字串時（消耗紀錄只存名稱）也要吃得到後台設定');
+eq(machineLabel('Form4-AluminumBowfin', { AluminumBowfin:'Form4 台中' }), 'Form4 台中',
+   'serial 形式（包含比對）也要對得上');
+// 子字串碰撞：與 machineRegion 同一個坑，只用「包含」會依鍵順序判錯且毫無提示
+eq(machineLabel('MarkTwoGEN2', { MarkTwo:'中部那台', MarkTwoGEN2:'北部那台' }), '北部那台',
+   '★ 子字串碰撞：GEN2 的名字不可被 MarkTwo 搶走');
+eq(machineLabel('AluminumBowfin', { AluminumBowfin:'' }), 'Form4',
+   '★ 覆寫留空＝沿用系統預設的機型名稱，不是把名字清成空白');
+eq(machineLabel('AluminumBowfin', { AluminumBowfin:'   ' }), 'Form4',
+   '★ 只有空白的覆寫同樣視為沒填');
+eq(machineLabel('AluminumBowfin', null), 'Form4', '沒有設定檔（null）不可拋錯');
+eq(machineLabel(''), '', '空字串不可拋錯');
+eq(machineLabel(null), '', 'null 不可拋錯');
+eq(machineLabel({ alias:null, serial:'CreativeDragon' }), 'Form3+',
+   '★ alias 為 None 的南部機台要用 serial 找得到機型');
+
 // ── 消耗扣庫存 ────────────────────────────────────────────────────
 eq(tracksConsumption('AluminumBowfin'), true,  '樹脂機台要記消耗');
 eq(tracksConsumption('TealMoa'), false, 'Fuse 1+ 不記錄消耗庫存（決策 B）');
 eq(tracksConsumption('Fuse1+-TealMoa'), false, 'serial 形式的 Fuse 1+ 也要排除');
 eq(tracksConsumption('JasperGosling'), true, '同為北區但 Form 4L 要記消耗');
+eq(tracksConsumption('AbsorbedPuppy'), true, '南區新的 Form 4B 要記消耗');
 
 // ── 角色分級 ──────────────────────────────────────────────────────
 eq(regionRoleTier({ permissions: ['admin'] }), 'admin', 'permissions 含 admin');

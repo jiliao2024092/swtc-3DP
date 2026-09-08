@@ -39,6 +39,7 @@
     TealMoa:        'north',    // Fuse 1+ ── 不記錄消耗庫存（SLS 粉末，與樹脂體系不同）
     AluminumBowfin: 'central',  // Form 4
     AdroitSauropod: 'south',    // Form 4B（2026-09-08 更正：先前記成中部 Form 4L）
+    AbsorbedPuppy:  'south',    // Form 4B（2026-09-08 新機台，API 已回報）
     CreativeDragon: 'south',    // Form 3+
     BoldSturgeon:   'south',    // Form 3L
     // Markforged（顯示名稱，與 main.py 的 EIGER_TRACKED_DEVICES 對齊）
@@ -74,6 +75,7 @@
   const SEED_MACHINE_MODEL = {
     AluminumBowfin: 'Form4',
     AdroitSauropod: 'Form4B',
+    AbsorbedPuppy:  'Form4B',
     JasperGosling:  'Form4L',
     TealMoa:        'Fuse1+',
     CreativeDragon: 'Form3+',
@@ -134,6 +136,27 @@
     const k2 = longestContainedKey(a, SEED_MACHINE_REGION);
     if (k2) return SEED_MACHINE_REGION[k2];
     return DEFAULT_REGION;
+  }
+
+  // ── 機台顯示名稱 ──────────────────────────────────────────────────
+  // 預設顯示機型（Form4 / Form4L…），admin 可在後台「列印機地區歸屬」逐台覆寫
+  // （settings/workspace.machine_labels，例如把某台命名成「Form4B 高雄」）。
+  // ★ 比對方式與 machineRegion 完全一致（完全相同優先、包含取最長）：Formlabs 有時
+  //   回 serial（Form4-AluminumBowfin）、有時回 alias，兩種都要對得上。
+  // ★ 傳整個機台物件比傳 alias 字串好：對照表沒有的新機台還能靠 machine_type_id
+  //   認出機型，不會整台只顯示成一串代號（AbsorbedPuppy 就是這樣冒出來的）。
+  // ★ 認不出來時回代號本身，不可回空字串或「未知」—— 畫面上至少要看得出是哪一台。
+  function machineLabel(p, overrides) {
+    const name = (p && typeof p === 'object') ? (p.alias || p.serial || '') : String(p || '');
+    if (!name) return '';
+    if (overrides && typeof overrides === 'object') {
+      const pick = k => (k && overrides[k] != null && String(overrides[k]).trim()) ? String(overrides[k]).trim() : '';
+      const exact = pick(name);
+      if (exact) return exact;
+      const hit = pick(longestContainedKey(name, overrides));
+      if (hit) return hit;
+    }
+    return machineModel(p) || name;
   }
 
   function tracksConsumption(alias) {
@@ -264,6 +287,7 @@
   window.hasExplicitRegion  = hasExplicitRegion;
   window.machineRegion      = machineRegion;
   window.machineModel       = machineModel;
+  window.machineLabel       = machineLabel;
   window.MACHINE_TYPE_MODEL = MACHINE_TYPE_MODEL;
   window.SEED_MACHINE_MODEL = SEED_MACHINE_MODEL;
   window.tracksConsumption  = tracksConsumption;

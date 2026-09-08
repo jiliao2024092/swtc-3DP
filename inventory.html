@@ -588,10 +588,8 @@
                         <option value="">全部材料</option>
                     </select>
                     <select id="history-filter-printer" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
+                        <!-- 選項由 populatePrinterFilters() 依 TRACKED_PRINTERS 產生 -->
                         <option value="">全部機台</option>
-                        <option value="AluminumBowfin">Form4</option>
-                        <option value="AdroitSauropod">Form4B</option>
-                        <option value="備料庫存">備料庫存</option>
                     </select>
                     <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
                         <option value="">全部類型</option>
@@ -650,9 +648,8 @@
                 <p class="text-sm text-[var(--ink-4)]">各材料每月消耗量統計。</p>
                 <div class="flex items-center gap-2">
                     <select id="monthly-printer" onchange="renderMonthly()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none">
+                        <!-- 選項由 populatePrinterFilters() 依 TRACKED_PRINTERS 產生 -->
                         <option value="">全部機台</option>
-                        <option value="AluminumBowfin">Form4 (AluminumBowfin)</option>
-                        <option value="AdroitSauropod">Form4B (AdroitSauropod)</option>
                     </select>
                     <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                     <select id="monthly-month" onchange="onMonthlySelChange()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
@@ -1087,7 +1084,7 @@
 <!-- Firebase 專案設定（唯一來源，五頁共用）-->
 <script src="firebase-config.js?v=20260827a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="regions.js?v=20260908a"></script>
+<script src="regions.js?v=20260908b"></script>
 <script type="module">
 // ══ 設定 ══
 // 納入消耗扣庫存的機台。★ 必須與 functions/main.py 的 TRACKED_ALIASES 完全一致 ——
@@ -1097,6 +1094,7 @@
 const TRACKED_PRINTERS = [
     'AluminumBowfin',   // Form 4  · 中
     'AdroitSauropod',   // Form 4B · 南
+    'AbsorbedPuppy',    // Form 4B · 南（2026-09-08 新機台）
     'JasperGosling',    // Form 4L · 北
     'CreativeDragon',   // Form 3+ · 南
     'BoldSturgeon',     // Form 3L · 南
@@ -1106,6 +1104,7 @@ const TRACKED_PRINTERS = [
 // settings/workspace 的兩個欄位，由 subscribeWorkspaceSettings() 填入。
 let REGION_MODE = 'off';        // off / alpha / beta / on
 let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
+let MACHINE_LABELS  = null;     // { alias: 顯示名稱 }，admin 在後台設定（例：Form4B 高雄）
 // 工程師／業務的 key → 中文名（settings/workspace，與 portal 後台同源）。
 // 只給「匯出列印記錄」把 workboard_orders 存的 key 翻成「中文 (英文)」用。
 let ENG_NAMES   = {};
@@ -1760,6 +1759,8 @@ function subscribeAll() {
         const s = snap.exists() ? snap.data() : {};
         REGION_MODE     = s.region_mode || 'off';
         MACHINE_REGIONS = s.machine_regions || null;
+        MACHINE_LABELS  = s.machine_labels  || null;
+        populatePrinterFilters();   // 顯示名稱可能被 admin 改過，重建下拉
         // 工程師／業務的「中文 (英文)」對照，供「匯出列印記錄」把 workboard 存的
         // key（Jaylen／Ava）還原成人看得懂的名字。與 portal 後台同一份設定。
         // ★ 這裡**不做地區過濾**：對照表是拿來把舊資料的 key 翻成名字的，
@@ -2023,11 +2024,33 @@ PRINTER_IMG['Form4B'] = PRINTER_IMG['Form4'];
 function getMachineImage(key){
     return PRINTER_IMG[window.machineModel ? window.machineModel(key) : ''] || '';
 }
-// 對不到機型就原樣顯示代號，不要顯示成「未知」——之後多的機台才查得出是哪一台
+// 顯示名稱優先用 admin 在後台設的（settings/workspace.machine_labels），沒設就退回
+// 機型；再對不到就原樣顯示代號，不要顯示成「未知」——之後多的機台才查得出是哪一台。
+// ★ 這頁多半只拿得到 printer 名稱字串（消耗紀錄只存名稱），吃不到 machine_type_id。
 function printerDisplay(name) {
     if(!name) return name;
-    return (window.machineModel && window.machineModel(name)) || name;
+    return (window.machineLabel && window.machineLabel(name, MACHINE_LABELS)) || name;
 }
+
+// 「消耗記錄」與「月度分析」的機台下拉：依 TRACKED_PRINTERS 動態產生。
+// ★ 原本是寫死在 HTML 裡的兩個 option（只有中部那兩台）。機隊擴編後其餘機台的
+//   紀錄用篩選器根本挑不出來，而畫面上完全看不出少了選項。
+// ★ 顯示名稱走 printerDisplay()，所以 admin 在後台改了名稱這裡也會跟著變 ——
+//   設定載入後會再呼叫一次（machine_labels 是非同步來的，第一次跑時還沒有）。
+function populatePrinterFilters(){
+    const rebuild = (id, fmt, tail) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const keep = el.value;
+        el.innerHTML = '<option value="">全部機台</option>'
+            + TRACKED_PRINTERS.map(a => `<option value="${escHtml(a)}">${escHtml(fmt(a))}</option>`).join('')
+            + (tail || '');
+        el.value = keep;   // 重建後把使用者原本選的那台選回來
+    };
+    rebuild('history-filter-printer', a => printerDisplay(a), '<option value="備料庫存">備料庫存</option>');
+    rebuild('monthly-printer',        a => `${printerDisplay(a)} (${a})`);
+}
+populatePrinterFilters();
 
 // ══ 合併重複材料名稱（如 FLTO2002 → Tough 2000 V2）══
 function mergeMaterialAliases() {

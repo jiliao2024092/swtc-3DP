@@ -113,9 +113,13 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - 主要 Firestore collection：`users`（`permissions` 陣列為主，`role` 是自動推導的舊系統相容值）、`bookings`（含跨天 `endDate`、用途 `category`）、`inventory/main`（全域帳務：去重用的 print guid、`family_latest_version`、產品層級設定）、`inventory/{north|central|south}`（各廠區樹脂實體庫存：stock／safety／cartridges／stock_shortfalls）、`inventory/markforged_{north|central|south}`（各廠區 Markforged 線材與耗材；舊的單一文件 `inventory/markforged` 保留為中區尚未建立時的唯讀來源）、`inventory_history/{guid}`（doc_id=guid 防重複；刪除消耗類紀錄會自動回補庫存）、`printer_status/current`、`workboard_orders`（`actUsage` 可從 inventory_history 自動帶入）、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`、`settings/quote_materials`、`settings/quote_studio_pricing`、`print_orders`、`print_history`
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
 - 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃）：
-  - Formlabs 6 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4B·南，2026-09-08 更正，原記為 Form4L·中)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
+  - Formlabs 7 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4B·南，2026-09-08 更正，原記為 Form4L·中；長期關機、API 未回報)、`AbsorbedPuppy`(Form4B·南，2026-09-08 新增)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
   - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FORM-4-1`=Form4B（推測值，比照 Form3B＝`FORM-3-1`；認錯會退回 alias 對照，不會顯示空白）／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
-  - **納入消耗扣庫存的 5 台**（2026-08-25 起）：上述 6 台扣掉 `TealMoa`（Fuse 1+ 是 SLS 粉末，只顯示狀態不記消耗）。名單存在**三個地方，必須一起改**：`functions/main.py` 的 `TRACKED_ALIASES`、`inventory.html` 的 `TRACKED_PRINTERS`、`3DP-BK.html` 的 `MATERIAL_PRINTERS`
+  - **納入消耗扣庫存的 6 台**（2026-08-25 起）：上述 7 台扣掉 `TealMoa`（Fuse 1+ 是 SLS 粉末，只顯示狀態不記消耗）。名單存在**三個地方，必須一起改**：`functions/main.py` 的 `TRACKED_ALIASES`、`inventory.html` 的 `TRACKED_PRINTERS`、`3DP-BK.html` 的 `MATERIAL_PRINTERS`
+  - **機台顯示名稱可由後台覆寫**（2026-09-08）：`settings/workspace.machine_labels`（`{alias: 名稱}`），UI 在後台「地區」分頁的「列印機地區歸屬」，留空＝沿用機型名稱。前端一律走 `window.machineLabel(機台物件或代號, MACHINE_LABELS)`（regions.js）
+    - ⚠ **傳「整個機台物件」而不是只傳 alias 字串**：只有物件形式吃得到 `machine_type_id`，對照表還沒收錄的新機台靠它才認得出機型，否則整台只顯示成一串代號
+    - ⚠ **儲存時只寫「有填的」名稱**：留空必須不寫入該 key，寫 `undefined` 會讓整份設定存不進去（見上面的後台設定地雷）
+    - 後台清單會把 `printer_status/current` 回報過的機台**自動列出來**（Formlabs 取 `alias or serial`、Markforged 取 `display`）。沒有這一段，新機台在後台**看不到也改不了**，只會靜默套用預設的中部 —— 2026-09-08 實際發生：`AbsorbedPuppy` 同步回來後掛在中部，畫面上完全沒有提示
   - ⚠ 因為 alias 可能是 `None`，比對機台一律走 `alias or serial`（後端 `machine_key()`/`tracked_alias()`）。只看 `alias` 會讓南部兩台**完全不被追蹤且沒有任何錯誤訊息**：serial 進不了 `tracked_serials` → prints 根本不會被拉回來 → 消耗靜默消失
   - Markforged 納管 7 台（見 `EIGER_TRACKED_DEVICES`）；中國廠的 `Mark Two Dongguan`、`X7 Shanghai` **刻意排除**，白名單以外一律不寫入
   - **Markforged 已納入消耗扣帳**（2026-08-25 起，原為唯讀觀測模式）：靠 `ccs_*_remaining` 的差額判定用量，**只有「餘量下降」才扣**；refill／換料一律不動庫存（餘量上升是換料，那捲料早就從備料扣過了，當成加庫存會憑空生料）。消耗寫進 `inventory_history`（`source=markforged`、`unit=cc`）並扣 `inventory/markforged_{region}`

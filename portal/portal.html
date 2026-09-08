@@ -506,7 +506,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <!-- App Check 設定（在 portal/ 子目錄，檔案在 repo 根目錄；未填 site key 時為 no-op）-->
 <script src="../appcheck.js?v=20260907a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="../regions.js?v=20260908a"></script>
+<script src="../regions.js?v=20260908b"></script>
 <!-- Firebase 專案設定（唯一來源，五頁共用；檔案在 repo 根目錄）-->
 <script src="../firebase-config.js?v=20260827a"></script>
 <script src="firebase-init.js?v=20260827a"></script>
@@ -2401,21 +2401,59 @@ function AdminPanel({ user, isAdmin }) {
     showToast('已匯出 Excel ✓');
   };
 
-  // 實體機台的地區歸屬：把 regions.js 的種子對照與已存設定合併成可編輯的陣列。
+  // 實體機台的地區歸屬與顯示名稱：把 regions.js 的種子對照與已存設定合併成可編輯的陣列。
   // 種子提供「機台有哪些」的預設清單，已存設定覆蓋其區別；設定裡若有種子沒有的機台
   // （日後新增的機器）也一併帶出來，不要吃掉。
-  const mergeMachineRegions = (saved) => {
+  // ★ label 留空＝沿用系統預設的機型名稱（Form4／Form4L…），不是「沒有名字」。
+  const mergeMachineRegions = (savedRegions, savedLabels) => {
     const seed = window.SEED_MACHINE_REGION || {};
-    const out = Object.keys(seed).map(alias => ({ alias, region: seed[alias] }));
-    if (saved && typeof saved === 'object') {
-      Object.keys(saved).forEach(alias => {
-        const hit = out.find(x => x.alias === alias);
-        if (hit) hit.region = window.normRegion ? window.normRegion(saved[alias]) : saved[alias];
-        else out.push({ alias, region: window.normRegion ? window.normRegion(saved[alias]) : saved[alias] });
+    const norm = v => (window.normRegion ? window.normRegion(v) : (v || 'central'));
+    const out = Object.keys(seed).map(alias => ({ alias, region: seed[alias], label: '' }));
+    const rowFor = (alias, region) => {
+      let hit = out.find(x => x.alias === alias);
+      if (!hit) { hit = { alias, region: norm(region), label: '' }; out.push(hit); }
+      else if (region !== undefined) hit.region = norm(region);
+      return hit;
+    };
+    if (savedRegions && typeof savedRegions === 'object') {
+      Object.keys(savedRegions).forEach(alias => rowFor(alias, savedRegions[alias]));
+    }
+    if (savedLabels && typeof savedLabels === 'object') {
+      Object.keys(savedLabels).forEach(alias => {
+        rowFor(alias, undefined).label = savedLabels[alias] == null ? '' : String(savedLabels[alias]);
       });
     }
     return out;
   };
+
+  // API 實際回報的機台代號（printer_status/current）：Formlabs 取 alias or serial
+  // （南部幾台的 alias 是 None），Markforged 取 display（與後端比對地區用的同一個名稱）。
+  // ★ 沒有這一段，同步回來但還沒設定過的新機台在後台「看不到也改不了」，
+  //   只會靜默套用預設的中部 —— AbsorbedPuppy 就是這樣出現在中部的。
+  const [apiMachines, setApiMachines] = useSt([]);
+  useEff(() => {
+    if (!isAdmin || sub !== 'settings' || settingTab !== 'regions') return;
+    return window.fbDb.collection('printer_status').doc('current').onSnapshot(
+      d => {
+        const v = d.data() || {};
+        const fl = (v.printers    || []).map(p => (p && (p.alias || p.serial)) || '');
+        const mf = (v.mf_printers || []).map(p => (p && (p.display || p.name))  || '');
+        setApiMachines(fl.concat(mf).filter(Boolean));
+      },
+      err => { console.warn('[regions] 讀取機台清單失敗', err); }
+    );
+  }, [isAdmin, sub, settingTab]);
+
+  // 只補「清單裡還沒有的」，不動既有列 —— 直接重算會蓋掉正在編輯、還沒儲存的內容。
+  useEff(() => {
+    if (!apiMachines.length) return;
+    setMachineRegions(prev => {
+      const add = apiMachines.filter(a => !prev.some(x => x.alias === a));
+      if (!add.length) return prev;
+      const norm = v => (window.normRegion ? window.normRegion(v) : 'central');
+      return prev.concat(add.map(a => ({ alias: a, region: norm(undefined), label: '' })));
+    });
+  }, [apiMachines]);
 
   useEff(()=>{
     // 使用者清單改為即時訂閱（儲存後自動更新，免 F5）
@@ -2444,13 +2482,13 @@ function AdminPanel({ user, isAdmin }) {
         setRolePresets({ ...JSON.parse(JSON.stringify(DEF_ROLE_PRESETS)), ...(st.role_presets||{}) });
         // 地區設定
         setRegionMode(st.region_mode || 'off');
-        setMachineRegions(mergeMachineRegions(st.machine_regions));
+        setMachineRegions(mergeMachineRegions(st.machine_regions, st.machine_labels));
       } else {
         setWbEng(DEF_ENG); setWbMach(DEF_MACH);
         setIsEng(DEF_ENG); setIsMach(DEF_MACH);
         setBorrowers(DEF_BORR);
         setBkEng(DEF_ENG); setBkMach(DEF_MACH); setBkSales(DEF_SALES); setBkCategories(DEF_CATEGORIES);
-        setMachineRegions(mergeMachineRegions(null));
+        setMachineRegions(mergeMachineRegions(null, null));
       }
       setLoading(false);
     })();
@@ -2499,6 +2537,13 @@ function AdminPanel({ user, isAdmin }) {
       s.region_mode = regionMode;
       s.machine_regions = machineRegions.reduce((acc, m) => {
         if (m.alias && m.alias.trim()) acc[m.alias.trim()] = window.normRegion ? window.normRegion(m.region) : m.region;
+        return acc;
+      }, {});
+      // 顯示名稱：★ 只寫「有填的」。留空＝沿用系統預設的機型名稱，不可寫成 undefined
+      //   （Firestore 會拒收整份設定，而錯誤訊息不會指出是哪個欄位，見上面的 stripUndefined）。
+      s.machine_labels = machineRegions.reduce((acc, m) => {
+        const a = (m.alias || '').trim(), l = (m.label || '').trim();
+        if (a && l) acc[a] = l;
         return acc;
       }, {});
     }
@@ -2847,16 +2892,23 @@ function AdminPanel({ user, isAdmin }) {
                 <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.75,marginBottom:12}}>
                   這裡設定的是 <b style={{color:'var(--ink-2)'}}>Formlabs / Eiger 回報的實體機台</b>（即時狀態卡、消耗紀錄用），
                   與上面各分頁的「機台清單」不同 —— 那裡存的是機型名稱（Form4、Form4L…），預約與工單用。
+                  同步回報過的機台會自動出現在下面，含系統還不認得的新機器。
                 </div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 110px 28px',gap:'0 8px',marginBottom:4}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 110px 28px',gap:'0 8px',marginBottom:4}}>
                   <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>機台代號</div>
+                  <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>顯示名稱</div>
                   <div style={{fontSize:11,fontWeight:600,color:'var(--ink-4)',padding:'0 2px'}}>地區</div>
                   <div/>
                 </div>
                 {machineRegions.map((m,i)=>(
-                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 110px 28px',gap:'0 8px',marginBottom:7,alignItems:'center'}}>
+                  <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 1fr 110px 28px',gap:'0 8px',marginBottom:7,alignItems:'center'}}>
                     <input style={{...INP,width:'100%'}} placeholder="例：AluminumBowfin" value={m.alias||''}
                       onChange={ev=>{const l=[...machineRegions];l[i]={...l[i],alias:ev.target.value};setMachineRegions(l);}}/>
+                    {/* 留空＝沿用系統預設的機型名稱，所以 placeholder 直接顯示那個預設值，
+                        使用者才知道「不填會長什麼樣」。認不出機型時退回代號本身。 */}
+                    <input style={{...INP,width:'100%'}} value={m.label||''}
+                      placeholder={(window.machineModel && window.machineModel(m.alias||'')) || m.alias || '例：Form4B 高雄'}
+                      onChange={ev=>{const l=[...machineRegions];l[i]={...l[i],label:ev.target.value};setMachineRegions(l);}}/>
                     <select style={{...INP,width:'100%'}} value={m.region||'central'}
                       onChange={ev=>{const l=[...machineRegions];l[i]={...l[i],region:ev.target.value};setMachineRegions(l);}}>
                       {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
@@ -2864,10 +2916,11 @@ function AdminPanel({ user, isAdmin }) {
                     <button className="kt-actbtn danger" title="刪除" onClick={()=>setMachineRegions(machineRegions.filter((_,j)=>j!==i))}>✕</button>
                   </div>
                 ))}
-                <button className="btn-cancel" style={{marginTop:2,fontSize:12}} onClick={()=>setMachineRegions([...machineRegions,{alias:'',region:'central'}])}>＋ 新增機台</button>
+                <button className="btn-cancel" style={{marginTop:2,fontSize:12}} onClick={()=>setMachineRegions([...machineRegions,{alias:'',region:'central',label:''}])}>＋ 新增機台</button>
                 <div style={{fontSize:11,color:'var(--ink-4)',marginTop:8,lineHeight:1.7}}>
                   機台代號可填完整 serial 或代號片段，系統以「包含」比對（Formlabs 有時回報 <code>Form4-AluminumBowfin</code>、有時只回 <code>AluminumBowfin</code>）。
-                  沒列在這裡的機台一律歸中部。
+                  沒列在這裡的機台一律歸中部。<br/>
+                  顯示名稱留空就沿用系統預設的機型名稱（灰字提示的那個）；填了之後，機台即時狀態卡與材料庫存的機台名稱都會改用它，例如「Form4B 高雄」。
                 </div>
 
                 <div style={{marginTop:30,paddingTop:22,borderTop:'1px solid var(--line)'}}>
@@ -3065,6 +3118,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-09-08', type:'feat',
+    text:'後台「地區」設定的「列印機地區歸屬」新增「顯示名稱」欄，可以自己命名每一台機器（例如把某台叫「Form4B 高雄」）；填了之後，3D列印機預約的機台即時狀態卡與材料庫存的機台名稱都會改用這個名字，留空則沿用系統預設的機型名稱。另外，同步回報過的機台現在會自動出現在這份清單裡（含系統還不認得的新機器），不必自己輸入代號——先前南部新增的 Form 4B（AbsorbedPuppy）就是因為沒列在清單裡，才被歸到中部又只顯示成一串代號，現已修正為南部並納入消耗扣庫存。材料庫存「消耗記錄」與「月度分析」的機台篩選也改成自動列出全部追蹤中的機台（原本只有兩台）。' },
   { hash:'6a53e3b', date:'2026-09-08', type:'fix',
     text:'更正 AdroitSauropod 這台列印機的資料：它是 Form 4B、放在南部，先前系統裡登記成中部的 Form 4L。3D列印機預約的機台狀態卡、材料庫存的機台名稱與各分頁的篩選選單，都會改顯示「Form4B」（產品圖沿用外觀相同的 Form 4），這台的列印消耗也改記到南部的樹脂庫存。⚠ 如果管理員先前在後台「機台分區」手動把這台設成中部，請一併改成南部——後台設定的優先度高於系統預設值，沒改的話畫面上不會有任何提示。' },
   { hash:'ace08a0', date:'2026-09-07', type:'feat',
@@ -3083,8 +3138,6 @@ const CHANGELOG = [
     text:'工作看板「新增／編輯列印工作」移除「預計完成日」欄位，改放「纖維消耗量 (cc)」——Markforged 的碳纖等纖維以 cc 計，與樹脂的 mL 分開記錄，不會混進「實際消耗量」。舊工單原本填過的預計完成日仍會顯示在總表與甘特圖上。' },
   { hash:'e932f19', date:'2026-08-27', type:'tweak',
     text:'材料庫存的「匯出列印記錄」現在會依照「消耗記錄」分頁上目前的篩選條件匯出，例如日期選 8/1～8/27 就只會匯出這段期間的紀錄（材料、機台、工作類別的篩選也一樣適用）。檔名會帶出日期區間，匯出後的提示也會列出目前套用了哪些篩選，避免誤以為漏抓。' },
-  { hash:'bbb821a', date:'2026-08-27', type:'tweak',
-    text:'匯出列印記錄時，若列印目的為「原廠材料工程測試」且備註沒有 APP 單號，業務欄會自動帶入「實威國際股份有限公司」（客戶名稱原本就會帶入）。有單號的仍以 EF 單號比對工作看板的工單，以工單上填的業務為準。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

@@ -46,11 +46,12 @@ EIGER_SECRET_KEY       = SecretParam("EIGER_SECRET_KEY")
 FORMLABS_API_BASE  = "https://api.formlabs.com/developer/v1"
 # 真的會扣材料的機台。北/南三台於 2026-08-25 納入（決策見 HANDOFF 待辦 1）。
 # ★ TealMoa（Fuse 1+）刻意不列：SLS 粉末與樹脂不是同一套體系，只顯示機台狀態、不記消耗。
-# ★ 這五個名稱彼此都不是對方的子字串，所以下面的 `in` 比對不會互相誤判；
+# ★ 這六個名稱彼此都不是對方的子字串，所以下面的 `in` 比對不會互相誤判；
 #   日後新增機台前務必再確認一次（機台名互為子字串已經害過一次，見 CLAUDE.md）。
 TRACKED_ALIASES    = [
     "AluminumBowfin",   # Form 4  · 中
     "AdroitSauropod",   # Form 4B · 南
+    "AbsorbedPuppy",    # Form 4B · 南（2026-09-08 新機台）
     "JasperGosling",    # Form 4L · 北
     "CreativeDragon",   # Form 3+ · 南
     "BoldSturgeon",     # Form 3L · 南
@@ -381,6 +382,7 @@ SEED_MACHINE_REGION = {
     "TealMoa":        "north",    # Fuse 1+（不記錄消耗庫存）
     "AluminumBowfin": "central",  # Form 4
     "AdroitSauropod": "south",    # Form 4B（2026-09-08 更正：先前記成中部 Form 4L）
+    "AbsorbedPuppy":  "south",    # Form 4B（2026-09-08 新機台，API 已回報）
     "CreativeDragon": "south",    # Form 3+
     "BoldSturgeon":   "south",    # Form 3L
     # Markforged（顯示名稱，與 EIGER_TRACKED_DEVICES 對齊）

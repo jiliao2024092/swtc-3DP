@@ -69,6 +69,7 @@ eq(machine_region("AluminumBowfin"), "central", "中區 Form 4")
 eq(machine_region("AdroitSauropod"), "south", "★ 南區 Form 4B（先前誤記為中部）")
 eq(machine_region("JasperGosling"), "north", "北區 Form 4L")
 eq(machine_region("TealMoa"), "north", "北區 Fuse 1+")
+eq(machine_region("AbsorbedPuppy"), "south", "南區 Form 4B（2026-09-08 新機台）")
 eq(machine_region("CreativeDragon"), "south", "南區 Form 3+")
 eq(machine_region("BoldSturgeon"), "south", "南區 Form 3L")
 eq(machine_region("MarkTwo"), "central", "Mark Two Taichung")
@@ -188,6 +189,8 @@ eq(tracked_alias({"alias": None, "serial": "BoldSturgeon"}), "BoldSturgeon",
    "★ 同上：BoldSturgeon")
 eq(tracked_alias({"alias": None, "serial": "JasperGosling"}), "JasperGosling",
    "北部 Form4L 已納入追蹤")
+eq(tracked_alias({"alias": "AbsorbedPuppy", "serial": "X9"}), "AbsorbedPuppy",
+   "★ 南部新的 Form 4B 必須被追蹤到（沒進名單＝prints 根本不會被拉回來）")
 eq(tracked_alias({"alias": None, "serial": "TealMoa"}), None,
    "★ TealMoa（Fuse 1+）刻意不納入消耗追蹤（SLS 粉末不走樹脂帳）")
 eq(tracked_alias({"alias": "SomeOtherPrinter", "serial": "ZZ"}), None,

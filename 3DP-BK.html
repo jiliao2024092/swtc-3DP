@@ -504,7 +504,7 @@
 <!-- Firebase 專案設定（唯一來源，五頁共用）-->
 <script src="firebase-config.js?v=20260827a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="regions.js?v=20260908a"></script>
+<script src="regions.js?v=20260908b"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
@@ -1863,7 +1863,7 @@ window.exportExcel = function(){
 // ══════════════════════════════════════════════
 // 有樹脂罐餘量可顯示的機台，與 functions/main.py 的 TRACKED_ALIASES、
 // inventory.html 的 TRACKED_PRINTERS 同一份名單（三處要一起改）。
-const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod','JasperGosling','CreativeDragon','BoldSturgeon'];
+const MATERIAL_PRINTERS = ['AluminumBowfin','AdroitSauropod','AbsorbedPuppy','JasperGosling','CreativeDragon','BoldSturgeon'];
 const CODE_TO_NAME = {
     'FLGPCL05':'Clear V5','FLGPWH05':'White V5','FLGPGR05':'Grey V5','FLGPBK05':'Black V5',
     'FLFL8001':'Flexible 80A V1','FLFL8002':'Flexible 80A V2','FLHTAM02':'High Temp V2',
@@ -1873,11 +1873,14 @@ const CODE_TO_NAME = {
     'FLFRGR01':'Flame Retardant','FLTO1501':'Tough 1500 V1.1','FLTO2001':'Tough 2000 V1.1',
 };
 function matNameFE(code){ return CODE_TO_NAME[code] || code; }
-// 機台代號 → 機型顯示名稱。對照集中在 regions.js（六台機器共用一份），
-// 對不到就原樣顯示代號，不要顯示成「未知」——之後多的機台才查得出是哪一台。
-function printerDisplayFE(name){
-    if(!name) return name;
-    return (window.machineModel && window.machineModel(name)) || name;
+// 機台顯示名稱。優先用 admin 在後台設的名稱（settings/workspace.machine_labels），
+// 沒設就退回機型（regions.js 的對照），再對不到就原樣顯示代號 —— 不要顯示成
+// 「未知」，之後多的機台才查得出是哪一台。
+// ★ 傳整個機台物件（不是只傳 alias 字串）才吃得到 machine_type_id：對照表還沒
+//   收錄的新機台靠它才認得出機型，否則整台只會顯示成一串代號。
+function printerDisplayFE(p){
+    if(!p) return p;
+    return (window.machineLabel && window.machineLabel(p, MACHINE_LABELS)) || p;
 }
 // 機台產品圖（base64，200x200 透明 PNG）。**key 是機型不是機台代號** ——
 // 同機型可能有多台，用代號當 key 會漏（Form4B 與 Form4 外觀相同，共用同一張圖）。
@@ -2057,6 +2060,7 @@ async function loadPrinterStatus() {
 // settings/workspace 的兩個欄位，由 subscribeSettings 填入。
 let REGION_MODE = 'off';        // off / alpha / beta / on（見 regions.js）
 let MACHINE_REGIONS = null;     // { alias: region }，admin 在後台設定
+let MACHINE_LABELS  = null;     // { alias: 顯示名稱 }，admin 在後台設定（例：Form4B 高雄）
 
 // 這個使用者「該看到哪些區」：
 //   null  ＝ 不過濾（分區未啟用，維持改動前的行為）
@@ -2165,11 +2169,11 @@ function buildStatusCard(p) {
     card.className = 'border border-[var(--line)] rounded-xl p-4 hover:border-[var(--accent-border)] transition-colors';
     card.innerHTML = `
         <div class="flex items-start gap-3">
-            ${img?`<img src="${img}" alt="${printerDisplayFE(p.alias)||''}" loading="lazy" class="w-16 h-16 object-contain flex-shrink-0 rounded-lg bg-[var(--bg-soft)]">`:''}
+            ${img?`<img src="${img}" alt="${printerDisplayFE(p)||''}" loading="lazy" class="w-16 h-16 object-contain flex-shrink-0 rounded-lg bg-[var(--bg-soft)]">`:''}
             <div class="flex-1 min-w-0 space-y-3">
                 <div class="flex items-start justify-between">
                     <div>
-                        <p class="font-semibold text-[var(--ink)] text-sm">${printerDisplayFE(p.alias)||p.serial}</p>
+                        <p class="font-semibold text-[var(--ink)] text-sm">${printerDisplayFE(p)||p.serial}</p>
                         <p class="text-xs text-[var(--ink-5)] mt-0.5">${ml?ml+' · ':''}${p.alias||p.serial}</p>
                     </div>
                     <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
@@ -2417,7 +2421,7 @@ function renderMaterialPanel(printers) {
         card.innerHTML = `
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="font-semibold text-[var(--ink)]">${printerDisplayFE(p.alias)||p.serial}</p>
+                    <p class="font-semibold text-[var(--ink)]">${printerDisplayFE(p)||p.serial}</p>
                     <p class="text-xs text-[var(--ink-5)]">${ml?ml+' · ':''}${p.alias||''}</p>
                 </div>
                 <span class="flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full ${s.color}">
@@ -2425,7 +2429,7 @@ function renderMaterialPanel(printers) {
                 </span>
             </div>
             <div class="flex items-start gap-3">
-                ${img?`<img src="${img}" alt="${printerDisplayFE(p.alias)||''}" loading="lazy" class="w-24 h-24 object-contain flex-shrink-0 rounded-lg bg-[var(--bg-soft)]">`:''}
+                ${img?`<img src="${img}" alt="${printerDisplayFE(p)||''}" loading="lazy" class="w-24 h-24 object-contain flex-shrink-0 rounded-lg bg-[var(--bg-soft)]">`:''}
                 <div class="flex-1 min-w-0 space-y-2">${cartridgeHTML}</div>
             </div>
             ${syncTime?`<p class="text-[var(--ink-5)] text-right pt-1 border-t border-[var(--line-soft)]" style="font-size:11px">自動同步 · ${syncTime}</p>`:''}
@@ -2549,6 +2553,12 @@ function subscribeSettings(){
         // 兩者都可能不存在（後台還沒設定過），此時 regionActiveFor 會回 false ＝ 維持現況。
         REGION_MODE = (s && s.region_mode) || 'off';
         MACHINE_REGIONS = (s && s.machine_regions) || null;
+        MACHINE_LABELS  = (s && s.machine_labels)  || null;
+        // 顯示名稱／地區改了要立刻重畫，否則要等下一輪同步（30 分鐘）推播才看得到
+        if (cachedPrinters.length) {
+            renderStatusPanel(cachedPrinters);
+            if (printerView === 'material') renderMaterialPanel(cachedPrinters);
+        }
         if (s && Array.isArray(s.bk_machines) && s.bk_machines.length){
             // 機型清單依地區過濾：留空 region 的機型＝全區可見（如「Other」）。
             // 分區未啟用（或使用者可跨區檢視）時不過濾，行為與改動前完全相同。
