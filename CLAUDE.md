@@ -113,7 +113,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - 主要 Firestore collection：`users`（`permissions` 陣列為主，`role` 是自動推導的舊系統相容值）、`bookings`（含跨天 `endDate`、用途 `category`）、`inventory/main`（全域帳務：去重用的 print guid、`family_latest_version`、產品層級設定）、`inventory/{north|central|south}`（各廠區樹脂實體庫存：stock／safety／cartridges／stock_shortfalls）、`inventory/markforged_{north|central|south}`（各廠區 Markforged 線材與耗材；舊的單一文件 `inventory/markforged` 保留為中區尚未建立時的唯讀來源）、`inventory_history/{guid}`（doc_id=guid 防重複；刪除消耗類紀錄會自動回補庫存）、`printer_status/current`、`workboard_orders`（`actUsage` 可從 inventory_history 自動帶入）、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`、`settings/quote_materials`、`settings/quote_studio_pricing`、`print_orders`、`print_history`
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
 - 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃）：
-  - Formlabs 7 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4B·南，2026-09-08 更正，原記為 Form4L·中；長期關機、API 未回報)、`AbsorbedPuppy`(Form4B·南，2026-09-08 新增)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
+  - Formlabs 7 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4L·南，長期關機、API 未回報；預設顯示名稱 Form4L，實際歸屬與名稱以後台設定為準)、`AbsorbedPuppy`(Form4B·南，2026-09-08 新增)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
   - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
   - **納入消耗扣庫存的 6 台**（2026-08-25 起）：上述 7 台扣掉 `TealMoa`（Fuse 1+ 是 SLS 粉末，只顯示狀態不記消耗）。名單存在**三個地方，必須一起改**：`functions/main.py` 的 `TRACKED_ALIASES`、`inventory.html` 的 `TRACKED_PRINTERS`、`3DP-BK.html` 的 `MATERIAL_PRINTERS`
   - ⚠ **Form 4B 沒有自己的 `machine_type_id`**：實測（2026-09-08 `AbsorbedPuppy`）回報的就是 **`FORM-4-0`**，與 Form 4 完全相同，API 分不出 B 版。所以 `machineModel()` 的優先序是「對照表裡**完全相同**的 alias > `machine_type_id` > alias 包含比對」——反過來的話，種子與後台都寫 Form4B、畫面卻一直顯示 Form4，**而且看不出是哪裡蓋掉的**（實際踩過）。`machine_type_id` 的用途是「alias 還沒進對照表的新機台」，不是拿來蓋掉人工登記的機型
@@ -155,6 +155,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ **只過濾「下拉能選誰」，絕不過濾名稱對照表**（`ENG_LABEL`/`ENG_FULLLABEL`）。舊資料可能指向別區的人，對照查不到會直接顯示英文 key，看起來像資料壞掉
   - admin 與可跨區檢視的主管不受限制
 - **業務清單**：UI 在後台「**工作看板**」頁籤（原本在 3D列印機預約），工作看板業務欄／3D列印機預約／列印記錄匯出**三處共用同一份**。⚠ Firestore key 仍叫 `bk_sales` 是歷史因素，刻意不改名：改 key 要遷移既有資料，而三處都在讀它，漏一處的症狀是「業務下拉突然空白」
+- **匯出的「機型」欄以後台手填的顯示名稱優先**（2026-09-08 決策）：`machine_labels` 有填就用它，沒填才退回固定的機型寫法（目標表是有空格的「Form 4」）。判斷「有沒有手填」要用 `window.machineLabelOverride()`，不可用 `machineLabel()` —— 後者沒填時會回機型，分不出兩者
 - **匯出的人名格式**：業務與責任工程師一律「**中文 (英文)**」（`zhEnLabel`），與 3DP-BK 的 `engDisplay`/`salesDisplay` 同一慣例。⚠ 對照查不到時**退回 key 而不是空字串**——空白會被當成「沒填」，但實際上工單有指定人，只是那人已不在清單裡
 - **工程測試掛自家公司**（`ENG_TEST_COMPANY`＝實威國際股份有限公司）：
   - **客戶名稱**：只要是工程測試就帶入（人工登記表該類 7 筆全部如此）

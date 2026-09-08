@@ -75,7 +75,7 @@
   };
   const SEED_MACHINE_MODEL = {
     AluminumBowfin: 'Form4',
-    AdroitSauropod: 'Form4B',
+    AdroitSauropod: 'Form4L',
     AbsorbedPuppy:  'Form4B',
     JasperGosling:  'Form4L',
     TealMoa:        'Fuse1+',
@@ -162,17 +162,19 @@
   // ★ 傳整個機台物件比傳 alias 字串好：對照表沒有的新機台還能靠 machine_type_id
   //   認出機型，不會整台只顯示成一串代號（AbsorbedPuppy 就是這樣冒出來的）。
   // ★ 認不出來時回代號本身，不可回空字串或「未知」—— 畫面上至少要看得出是哪一台。
+  // 只回「後台手填的名稱」，沒填就回空字串。呼叫端需要區分「有沒有手填」時用這支
+  // （例如匯出：有手填就以手填的為準，沒填才用固定的機型寫法）。
+  function machineLabelOverride(p, overrides) {
+    const name = (p && typeof p === 'object') ? (p.alias || p.serial || '') : String(p || '');
+    if (!name || !overrides || typeof overrides !== 'object') return '';
+    const pick = k => (k && overrides[k] != null && String(overrides[k]).trim()) ? String(overrides[k]).trim() : '';
+    return pick(name) || pick(longestContainedKey(name, overrides)) || '';
+  }
+
   function machineLabel(p, overrides) {
     const name = (p && typeof p === 'object') ? (p.alias || p.serial || '') : String(p || '');
     if (!name) return '';
-    if (overrides && typeof overrides === 'object') {
-      const pick = k => (k && overrides[k] != null && String(overrides[k]).trim()) ? String(overrides[k]).trim() : '';
-      const exact = pick(name);
-      if (exact) return exact;
-      const hit = pick(longestContainedKey(name, overrides));
-      if (hit) return hit;
-    }
-    return machineModel(p) || name;
+    return machineLabelOverride(p, overrides) || machineModel(p) || name;
   }
 
   function tracksConsumption(alias) {
@@ -304,6 +306,7 @@
   window.machineRegion      = machineRegion;
   window.machineModel       = machineModel;
   window.machineLabel       = machineLabel;
+  window.machineLabelOverride = machineLabelOverride;
   window.MACHINE_TYPE_MODEL = MACHINE_TYPE_MODEL;
   window.SEED_MACHINE_MODEL = SEED_MACHINE_MODEL;
   window.tracksConsumption  = tracksConsumption;

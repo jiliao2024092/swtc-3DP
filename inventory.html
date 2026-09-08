@@ -1084,7 +1084,7 @@
 <!-- Firebase 專案設定（唯一來源，五頁共用）-->
 <script src="firebase-config.js?v=20260827a"></script>
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
-<script src="regions.js?v=20260908c"></script>
+<script src="regions.js?v=20260908d"></script>
 <script type="module">
 // ══ 設定 ══
 // 納入消耗扣庫存的機台。★ 必須與 functions/main.py 的 TRACKED_ALIASES 完全一致 ——
@@ -1355,6 +1355,10 @@ const MF_MODEL_LABEL = {
 // 目標表用「Form 4」（有空格）但系統內部是「Form4」，輸出時轉成目標表的寫法
 const FL_MODEL_LABEL = { Form4:'Form 4', Form4B:'Form 4B', Form4L:'Form4L', 'Form3+':'Form 3+', Form3L:'Form 3L', 'Fuse1+':'Fuse 1+' };
 function exportModelName(h){
+    // ★ 後台「列印機地區歸屬」手填的顯示名稱優先（2026-09-08 決策：匯出以手填的為主）。
+    //   沒手填才退回固定的機型寫法（目標表用「Form 4」有空格，系統內部是「Form4」）。
+    const ov = window.machineLabelOverride ? window.machineLabelOverride(h.printer, MACHINE_LABELS) : '';
+    if (ov) return ov;
     if (h.source === 'markforged') return MF_MODEL_LABEL[h.printer] || h.printer || '';
     const m = window.machineModel ? window.machineModel(h.printer) : '';
     return FL_MODEL_LABEL[m] || m || h.printer || '';

@@ -137,14 +137,17 @@ const rowSrcs = [
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
   extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
 ];
-function runBuild(history, filters) {
+function runBuild(history, filters, labels) {
   const shim = `const inv={history:${JSON.stringify(history)}};
     const __filters=${JSON.stringify(filters || {})};
+    const MACHINE_LABELS=${JSON.stringify(labels || null)};
     const matName=m=>m||'';
     const matCode=m=>String(m||'').slice(0,6);
     const printerDisplay=p=>p||'';
     const window={regionLabel:r=>({north:'北',central:'中',south:'南'}[r]||''),
-                  machineModel:p=>({AluminumBowfin:'Form4',AdroitSauropod:'Form4B',
+                  machineLabelOverride:(x,ov)=>(ov&&ov[x])?String(ov[x]).trim():'',
+                  machineModel:p=>({AluminumBowfin:'Form4',AdroitSauropod:'Form4L',
+                                    AbsorbedPuppy:'Form4B',
                                     JasperGosling:'Form4L',CreativeDragon:'Form3+',
                                     BoldSturgeon:'Form3L'}[p]||'')};\n`;
   return new Function(shim + srcs.join('\n') + '\n' + rowSrcs.join('\n') +
@@ -371,6 +374,21 @@ check('篩到沒東西 → 0 筆',             runBuild(spread, { from:'2027-01-
 const withStockin = [...spread,
   { id:'s9', ts:'2026-08-10T10:00:00', material:'Grey V5', printer:'備料庫存', type:'stockin', ml:1000, note:'備料入庫（1.0 L）', region:'central', source:'formlabs' }];
 check('入庫紀錄不論篩選都不進匯出',    runBuild(withStockin, { from:'2026-08-01', to:'2026-08-27' }).length, 3);
+
+console.log('── 匯出的「機型」欄以後台手填的名稱為主 ──');
+// 2026-09-08 決策：後台「列印機地區歸屬」填了顯示名稱就以它為準（原本固定走機型寫法）。
+// ★ 沒手填時必須維持原本的寫法（目標表是「Form 4」有空格），否則整份匯出格式會走樣。
+const mdlRec = [{ id:'m1', ts:'2026-08-20T10:00:00', material:'Grey V5', printer:'AbsorbedPuppy',
+                  type:'consume', ml:100, note:'實威-工程測試', region:'south', source:'formlabs' }];
+check('沒手填 → 匯出用的機型寫法（目標表是有空格的 Form 4B）', runBuild(mdlRec)[0]['機型'], 'Form 4B');
+check('★ 有手填 → 以手填的為主',
+      runBuild(mdlRec, null, { AbsorbedPuppy:'Form4B 高雄' })[0]['機型'], 'Form4B 高雄');
+check('手填只有空白視同沒填',
+      runBuild(mdlRec, null, { AbsorbedPuppy:'   ' })[0]['機型'], 'Form 4B');
+const mfRec = [{ id:'m2', ts:'2026-08-20T10:00:00', material:'Onyx', printer:'MarkTwoTainan',
+                 type:'consume', cc:50, note:'實威-代工', region:'south', source:'markforged', slot:'plastic' }];
+check('★ Markforged 也吃得到手填的名稱',
+      runBuild(mfRec, null, { MarkTwoTainan:'Mark Two 台南' })[0]['機型'], 'Mark Two 台南');
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

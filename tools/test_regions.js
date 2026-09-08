@@ -98,7 +98,7 @@ eq(machineRegion('AluminumBowfin', { AluminumBowfin: '亂填' }), 'central', '�
 
 // ── 機台 → 機型（圖示與顯示名稱的 key）─────────────────────────────
 const { machineModel } = win;
-eq(machineModel('AdroitSauropod'), 'Form4B', '★ 南區 Form 4B（先前誤記為 Form 4L）');
+eq(machineModel('AdroitSauropod'), 'Form4L', 'Form 4L（預設顯示名稱，實際名稱可在後台覆寫）');
 eq(machineModel('AbsorbedPuppy'),  'Form4B', '★ 同機型多台：新機台也要對到 Form4B（否則沒有圖）');
 eq(machineModel('JasperGosling'),  'Form4L', 'Form 4L');
 eq(machineModel('AluminumBowfin'), 'Form4',  'Form 4');
@@ -135,7 +135,17 @@ eq(machineModel(null), '', 'null 不可拋錯');
 // 「未知」，畫面上就分不出是哪一台；覆寫比對錯了則會把 A 機台的名字掛到 B 機台上。
 const { machineLabel } = win;
 eq(machineLabel('AluminumBowfin'), 'Form4', '沒有覆寫時退回機型');
-eq(machineLabel('AdroitSauropod'), 'Form4B', '沒有覆寫時退回機型（Form4B）');
+eq(machineLabel('AdroitSauropod'), 'Form4L', '沒有覆寫時退回機型');
+// 只回「有沒有手填」的那支：匯出要靠它區分「手填的名稱」與「固定的機型寫法」
+const { machineLabelOverride } = win;
+eq(machineLabelOverride('AdroitSauropod', null), '', '沒有設定檔 → 空字串（不是機型）');
+eq(machineLabelOverride('AluminumBowfin', {}), '', '沒手填 → 空字串');
+eq(machineLabelOverride('AluminumBowfin', { AluminumBowfin:'Form4 台中' }), 'Form4 台中',
+   '手填的名稱原樣回傳');
+eq(machineLabelOverride('AluminumBowfin', { AluminumBowfin:'  ' }), '', '只有空白視為沒填');
+eq(machineLabelOverride('MarkTwoGEN2', { MarkTwo:'中部那台', MarkTwoGEN2:'北部那台' }), '北部那台',
+   '★ 子字串碰撞：與 machineLabel 同一套比對');
+eq(machineLabelOverride('', { A:'x' }), '', '空代號不可拋錯');
 eq(machineLabel('AbsorbedPuppy'), 'Form4B', '新機台已進對照表 → 顯示機型');
 eq(machineLabel('BrandNewPrinter'), 'BrandNewPrinter',
    '★ 對照表沒有的新機台 → 原樣顯示代號，不可回空字串或「未知」');
