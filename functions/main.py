@@ -50,7 +50,7 @@ FORMLABS_API_BASE  = "https://api.formlabs.com/developer/v1"
 #   日後新增機台前務必再確認一次（機台名互為子字串已經害過一次，見 CLAUDE.md）。
 TRACKED_ALIASES    = [
     "AluminumBowfin",   # Form 4  · 中
-    "AdroitSauropod",   # Form 4L · 中
+    "AdroitSauropod",   # Form 4B · 南
     "JasperGosling",    # Form 4L · 北
     "CreativeDragon",   # Form 3+ · 南
     "BoldSturgeon",     # Form 3L · 南
@@ -380,7 +380,7 @@ SEED_MACHINE_REGION = {
     "JasperGosling":  "north",    # Form 4L
     "TealMoa":        "north",    # Fuse 1+（不記錄消耗庫存）
     "AluminumBowfin": "central",  # Form 4
-    "AdroitSauropod": "central",  # Form 4L
+    "AdroitSauropod": "south",    # Form 4B（2026-09-08 更正：先前記成中部 Form 4L）
     "CreativeDragon": "south",    # Form 3+
     "BoldSturgeon":   "south",    # Form 3L
     # Markforged（顯示名稱，與 EIGER_TRACKED_DEVICES 對齊）
@@ -1266,6 +1266,11 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         # tracked_aliases_seeded 是後加的欄位；既有部署早就在追蹤中部兩台，
         # 沒有這個欄位時視為那兩台已完成種子（不可視為「全部都沒種子過」，
         # 否則中部會在升級當下突然停扣一輪）。
+        # ⚠ AdroitSauropod（南 · Form 4B）長期關機，API 從沒回傳過它，等於它的**整份
+        #   歷史 print 都還沒被抓過**；但它早就在 tracked_aliases_seeded 裡（2026-08-25
+        #   起就寫進去了），所以開機後第一輪會把全部歷史一次扣進南部庫存。真的要避免，
+        #   在它開機前先把 "AdroitSauropod" 從 inventory/main.tracked_aliases_seeded 移掉，
+        #   那一輪就只補紀錄不扣帳（skip_reason=newly_tracked_machine）。
         seeded_aliases = set(inv.get("tracked_aliases_seeded")
                              or ["AluminumBowfin", "AdroitSauropod"])
         newly_tracked = {a for a in TRACKED_ALIASES if a not in seeded_aliases}

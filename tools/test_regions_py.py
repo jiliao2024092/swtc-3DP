@@ -65,7 +65,8 @@ eq(norm_region("亂填"), "central", "無效值 → 中區，不可拋錯")
 
 # ── 機台 → 區（種子對照）──────────────────────────────────────────────
 eq(machine_region("AluminumBowfin"), "central", "中區 Form 4")
-eq(machine_region("AdroitSauropod"), "central", "中區 Form 4L")
+# ★ 2026-09-08：AdroitSauropod 實際是南部的 Form 4B，先前記成中部的 Form 4L。
+eq(machine_region("AdroitSauropod"), "south", "★ 南區 Form 4B（先前誤記為中部）")
 eq(machine_region("JasperGosling"), "north", "北區 Form 4L")
 eq(machine_region("TealMoa"), "north", "北區 Fuse 1+")
 eq(machine_region("CreativeDragon"), "south", "南區 Form 3+")
@@ -85,7 +86,7 @@ eq(machine_region("MarkTwoGEN2", {"MarkTwo": "south", "MarkTwoGEN2": "north"}), 
    "★ 後台設定的子字串碰撞：取完全相同的鍵")
 # Formlabs 的 printer 欄位有時是 serial 而非 alias，兩種都要對得上
 eq(machine_region("Form4-AluminumBowfin"), "central", "serial 形式")
-eq(machine_region("Form4L-AdroitSauropod"), "central", "serial 形式（Form4L）")
+eq(machine_region("Form4B-AdroitSauropod"), "south", "serial 形式（Form4B）")
 eq(machine_region("沒看過的機台"), "central", "未知機台 → 中區")
 eq(machine_region(""), "central", "空字串不可拋錯")
 eq(machine_region(None), "central", "None 不可拋錯")

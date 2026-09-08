@@ -111,7 +111,7 @@ functions/main.py:693   inv_ref = db.collection("inventory").document("main")
 | 北 | JasperGosling | Form 4L | ✅ |
 | 北 | TealMoa | Fuse 1+ | ❌ **不記錄消耗**（SLS 粉末，與樹脂體系不同） |
 | 中 | AluminumBowfin | Form 4 | ✅（現況） |
-| 中 | AdroitSauropod | Form 4L | ✅（現況） |
+| 南 | AdroitSauropod | Form 4B | ✅（2026-09-08 更正，原記為「中／Form 4L」）|
 | 中 | Mark Two Taichung | Mark Two | 觀測模式（現況，見 `docs/markforged-integration-plan.md`） |
 | 南 | CreativeDragon | Form 3+ | ✅ |
 | 南 | BoldSturgeon | Form 3L | ✅ |

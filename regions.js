@@ -38,7 +38,7 @@
     JasperGosling:  'north',    // Form 4L
     TealMoa:        'north',    // Fuse 1+ ── 不記錄消耗庫存（SLS 粉末，與樹脂體系不同）
     AluminumBowfin: 'central',  // Form 4
-    AdroitSauropod: 'central',  // Form 4L
+    AdroitSauropod: 'south',    // Form 4B（2026-09-08 更正：先前記成中部 Form 4L）
     CreativeDragon: 'south',    // Form 3+
     BoldSturgeon:   'south',    // Form 3L
     // Markforged（顯示名稱，與 main.py 的 EIGER_TRACKED_DEVICES 對齊）
@@ -65,6 +65,7 @@
   //   呼叫端用（例如消耗紀錄只存 printer 名稱）。
   const MACHINE_TYPE_MODEL = {
     'FORM-4-0': 'Form4',
+    'FORM-4-1': 'Form4B',   // Form 4B（生醫版）；外觀與 Form 4 相同，共用同一張產品圖
     'FRML-4-0': 'Form4L',
     'FORM-3-2': 'Form3+',
     'FRML-3-0': 'Form3L',
@@ -72,7 +73,7 @@
   };
   const SEED_MACHINE_MODEL = {
     AluminumBowfin: 'Form4',
-    AdroitSauropod: 'Form4L',
+    AdroitSauropod: 'Form4B',
     JasperGosling:  'Form4L',
     TealMoa:        'Fuse1+',
     CreativeDragon: 'Form3+',

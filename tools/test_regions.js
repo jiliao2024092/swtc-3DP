@@ -49,8 +49,10 @@ eq(hasExplicitRegion({}), false, '沒設定 → 後台要標紅');
 eq(hasExplicitRegion({ region: '亂填' }), false, '無效值視同沒設定');
 
 // ── 機台 → 區 ─────────────────────────────────────────────────────
-eq(machineRegion('AluminumBowfin'), 'central', '中區機台（現況兩台之一）');
-eq(machineRegion('AdroitSauropod'), 'central', '中區機台');
+eq(machineRegion('AluminumBowfin'), 'central', '中區 Form 4');
+// ★ 2026-09-08：AdroitSauropod 實際是南部的 Form 4B，先前記成中部的 Form 4L。
+//   分區錯了不會有錯誤訊息，只是消耗默默扣到別區的庫存，所以這一條要守住。
+eq(machineRegion('AdroitSauropod'), 'south', '★ 南區 Form 4B（先前誤記為中部）');
 eq(machineRegion('JasperGosling'),  'north',   '北區 Form 4L');
 eq(machineRegion('TealMoa'),        'north',   '北區 Fuse 1+');
 eq(machineRegion('CreativeDragon'), 'south',   '南區 Form 3+');
@@ -73,7 +75,7 @@ eq(machineRegion('Form4L-JasperGosling', { JasperGosling:'south' }), 'south',
    '後台設定 + serial 形式（包含比對仍要能用）');
 // Formlabs 的 printer 欄位有時是 serial 不是 alias，兩種都要能對上
 eq(machineRegion('Form4-AluminumBowfin'), 'central', 'serial 形式也要對得上');
-eq(machineRegion('Form4L-AdroitSauropod'), 'central', 'serial 形式（Form4L）');
+eq(machineRegion('Form4B-AdroitSauropod'), 'south', 'serial 形式（Form4B）');
 eq(machineRegion('沒看過的機台'), 'central', '未知機台 → 中區，不可拋錯');
 eq(machineRegion(''), 'central', '空字串不可拋錯');
 // admin 在後台設定後要蓋過種子值
@@ -84,9 +86,8 @@ eq(machineRegion('AluminumBowfin', { AluminumBowfin: '亂填' }), 'central', '�
 
 // ── 機台 → 機型（圖示與顯示名稱的 key）─────────────────────────────
 const { machineModel } = win;
-// 同機型多台：兩台 Form 4L 都要對到同一個機型，否則 JasperGosling 會沒有圖
-eq(machineModel('AdroitSauropod'), 'Form4L', '中區 Form 4L');
-eq(machineModel('JasperGosling'),  'Form4L', '★ 北區也是 Form 4L，必須對到同一機型');
+eq(machineModel('AdroitSauropod'), 'Form4B', '★ 南區 Form 4B（先前誤記為 Form 4L）');
+eq(machineModel('JasperGosling'),  'Form4L', 'Form 4L');
 eq(machineModel('AluminumBowfin'), 'Form4',  'Form 4');
 eq(machineModel('CreativeDragon'), 'Form3+', 'Form 3+');
 eq(machineModel('BoldSturgeon'),   'Form3L', 'Form 3L');
@@ -101,6 +102,12 @@ eq(machineModel({ machine_type_id:'FORM-4-0', alias:'BoldSturgeon' }), 'Form4',
 // 真實情境：新機台的 alias 還沒進對照表，只能靠 machine_type_id 認出機型
 eq(machineModel({ machine_type_id:'FORM-3-2', alias:'BrandNewPrinter' }), 'Form3+',
    '★ alias 不在對照表時，machine_type_id 仍要認得出機型');
+// Form 4B 的 machine_type_id 是推測值（FORM-4-1，比照 Form 3B＝FORM-3-1）。
+// 就算推測錯了也只是退回 alias 對照（下一條），不會顯示成空白。
+eq(machineModel({ machine_type_id:'FORM-4-1', alias:'AdroitSauropod' }), 'Form4B',
+   'Form 4B 的 machine_type_id');
+eq(machineModel({ machine_type_id:'FORM-4-9', alias:'AdroitSauropod' }), 'Form4B',
+   '★ machine_type_id 推測錯時仍要靠 alias 對照回到 Form4B');
 eq(machineModel({ machine_type_id:'FS30-1-0', alias:null, serial:'TealMoa' }), 'Fuse1+',
    'alias 為 None 時（Fuse 1+ 實際如此）仍判得出');
 // machine_type_id 認不得時退回 alias 對照

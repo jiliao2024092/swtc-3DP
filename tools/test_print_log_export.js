@@ -144,7 +144,7 @@ function runBuild(history, filters) {
     const matCode=m=>String(m||'').slice(0,6);
     const printerDisplay=p=>p||'';
     const window={regionLabel:r=>({north:'北',central:'中',south:'南'}[r]||''),
-                  machineModel:p=>({AluminumBowfin:'Form4',AdroitSauropod:'Form4L',
+                  machineModel:p=>({AluminumBowfin:'Form4',AdroitSauropod:'Form4B',
                                     JasperGosling:'Form4L',CreativeDragon:'Form3+',
                                     BoldSturgeon:'Form3L'}[p]||'')};\n`;
   return new Function(shim + srcs.join('\n') + '\n' + rowSrcs.join('\n') +
