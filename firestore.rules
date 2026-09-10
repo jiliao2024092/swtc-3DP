@@ -225,9 +225,18 @@ service cloud.firestore {
     }
 
     match /inventory_history/{logId} {
+      // 只改備註：工程師（edit_board/edit_issues）以上都可以改，但**只能動 note 這個欄位**。
+      // ★ 一定要用 affectedKeys().hasOnly(['note'])，不可直接放行整份 update：同一份文件裡
+      //   還有 ml / material / stock_deducted 這些直接牽動庫存數字的欄位，開放整份等於讓
+      //   任何工程師改帳，而且改完帳面完全看不出來（消耗紀錄沒有版本歷程）。
+      // ★ 用 diff(resource.data) 而不是列舉允許欄位：新增欄位時不必回頭改規則，
+      //   而且「多帶一個欄位進來」一律會被擋，不會有漏網的組合。
+      function onlyNoteChanged() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note']);
+      }
       allow read: if isLoggedIn();
       allow create: if isLegacyEditorOrAdmin();
-      allow update: if isAdmin();
+      allow update: if isAdmin() || (isLegacyEditorOrAdmin() && onlyNoteChanged());
       // 刪除消耗紀錄（回補庫存）：admin 或主管（有 delete_board/delete_issues）都可刪，
       // 需與 inventory.html 的 canDeleteRecords() 判斷邏輯一致
       allow delete: if isAdmin() || hasPerm('delete_board') || hasPerm('delete_issues');

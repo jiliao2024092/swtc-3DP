@@ -155,6 +155,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ **只過濾「下拉能選誰」，絕不過濾名稱對照表**（`ENG_LABEL`/`ENG_FULLLABEL`）。舊資料可能指向別區的人，對照查不到會直接顯示英文 key，看起來像資料壞掉
   - admin 與可跨區檢視的主管不受限制
 - **業務清單**：UI 在後台「**工作看板**」頁籤（原本在 3D列印機預約），工作看板業務欄／3D列印機預約／列印記錄匯出**三處共用同一份**。⚠ Firestore key 仍叫 `bk_sales` 是歷史因素，刻意不改名：改 key 要遷移既有資料，而三處都在讀它，漏一處的症狀是「業務下拉突然空白」
+- **Markforged 也有「匯出列印記錄」**（2026-09-10）：與 Formlabs 走同一支 `buildPrintLogRows()`、同一份 19 欄格式，按鈕在「Markforged 消耗記錄」分頁的標頭
+  - ⚠ **MF 紀錄不在 `inv.history` 裡**：`rebuildInvHistory()` 依品牌把紀錄拆成 `inv.history`（Formlabs）與 `mfHistory`（Markforged）。匯出時一定要把清單當 `buildPrintLogRows(filters, sourceList)` 的**第二個參數**傳進去，否則永遠是 0 筆，而畫面只會說「目前沒有列印紀錄可匯出」——看起來像沒資料、不像 bug
+  - ⚠ filters 要傳 `{}` 而不是省略：省略會去讀 Formlabs 那頁的篩選欄位，使用者在另一個分頁選的日期區間會莫名其妙套到 MF 匯出上
+  - 篩選來源是該分頁唯一的搜尋框（`mfHistoryRows()`，表格與匯出共用同一份，理由同 `applyHistoryFilters()`）。MF 舊紀錄沒有 `duration_hr`，列印時間留空給人工填
 - **匯出的「機型」欄以後台手填的顯示名稱優先**（2026-09-08 決策）：`machine_labels` 有填就用它，沒填才退回固定的機型寫法（目標表是有空格的「Form 4」）。判斷「有沒有手填」要用 `window.machineLabelOverride()`，不可用 `machineLabel()` —— 後者沒填時會回機型，分不出兩者
 - **匯出的人名格式**：業務與責任工程師一律「**中文 (英文)**」（`zhEnLabel`），與 3DP-BK 的 `engDisplay`/`salesDisplay` 同一慣例。⚠ 對照查不到時**退回 key 而不是空字串**——空白會被當成「沒填」，但實際上工單有指定人，只是那人已不在清單裡
 - **工程測試掛自家公司**（`ENG_TEST_COMPANY`＝實威國際股份有限公司）：
@@ -173,6 +177,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ **不可用 `estimated_duration_ms` 頂替**：那是排程用的預估值，填進「實際列印時間」是錯資料而且看不出來是估的。拿不到就回 `None`，匯出留空給人工填
   - ⚠ MF 合併列取**最大值不是加總**：塑料與纖維是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍
 
+- **消耗紀錄的備註開放給工程師改**（2026-09-10）：`inventory_history` 的 `update` 從「只有 admin」改成「admin，或工程師以上但**只能單獨改 `note`**」（`request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note'])`）。Formlabs 與 Markforged 兩個消耗記錄分頁共用 `editHistoryNote()`
+  - ⚠ **不可直接放行整份 update**：同一份文件裡的 `ml`／`material`／`stock_deducted` 直接牽動庫存帳，而消耗紀錄沒有版本歷程，改了完全看不出來
+  - ⚠ 前端若把 note 跟其他欄位一起寫（例如順手補個 `updatedAt`），規則會整個擋下並跳權限錯誤——要改成多欄位一起寫就得同步放寬規則
+  - 備註是「工作類別」與 APP 單號的解析來源（月度分析佔比、匯出的收費判定都吃它），所以改完要重繪對應分頁
 - ⚠ **後台設定不可寫入 `undefined`**：Firestore 直接拒收，而錯誤訊息只說「found in document settings/workspace」、**不會指出是哪個欄位**，使用者只看到「儲存失敗」。實際踩過：`ListEditor` 的地區下拉選「全區」時寫 `region: undefined`，整份設定存不進去。
   - 正解：選「全區」要**刪掉那個 key**（`delete item.region`），不是設成 `undefined`
   - `saveSettings` 另有 `stripUndefined()` 防護網遞迴清理，讓單一欄位的疏漏不會拖垮整次儲存。⚠ 只清 `undefined`——`null`／`0`／空字串／`false` 都是有意義的值，用 falsy 判斷會改變設定語意

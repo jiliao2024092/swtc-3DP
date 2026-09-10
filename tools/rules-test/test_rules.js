@@ -96,6 +96,14 @@ async function main() {
     await db.doc('print_history/h_other').set({ act: '旋轉', uid: USERS.viewer.uid });
     await db.doc('print_history/h_legacy').set({ act: '舊紀錄沒有 uid 欄位' });
     await db.doc('bookings_audit/a1').set({ action: 'delete', actorEmail: 'x@swtc.com' });
+    // 消耗紀錄：備註可由工程師改，其餘欄位只有 admin 能動（每個測試各用一筆，
+    // 避免前面的測試改到值之後，後面的斷言跟著失真）
+    for (const id of ['ih_note', 'ih_ml', 'ih_both', 'ih_legacy', 'ih_admin']) {
+      await db.doc(`inventory_history/${id}`).set({
+        ts: '2026-08-21T09:00:00', type: 'consume', material: 'Grey V5', printer: 'AluminumBowfin',
+        ml: 100, region: 'central', note: '原始備註', stock_deducted: true,
+      });
+    }
   });
 
   const as = (u) => testEnv.authenticatedContext(u.uid, { email: u.email }).firestore();
@@ -332,6 +340,26 @@ async function main() {
     as(USERS.mgrFull).doc('inventory/markforged_south').set({ stock: {} }, { merge: true }));
   await ok('markforged_watch（觀測基準）不是分區文件，維持全域可讀',
     as(USERS.engN).doc('inventory/markforged_watch').get());
+
+  // ══ inventory_history：備註開放給工程師改，其餘欄位仍限 admin ══════
+  // ★ 這一組守的是「開放備註」不可變成「開放改帳」：同一份文件裡的 ml／material／
+  //   stock_deducted 直接牽動庫存數字，而消耗紀錄沒有版本歷程，改了帳面看不出來。
+  await ok('工程師可以只改備註（單獨改 note）',
+    as(USERS.engineer).doc('inventory_history/ih_note').update({ note: '鑫元鴻-代工-202607020001' }));
+  await ok('只有舊 role:editor 的帳號同樣可以改備註',
+    as(USERS.legacyEd).doc('inventory_history/ih_legacy').update({ note: '高禎-評估' }));
+  await nok('★ 工程師不可改用量（ml 會直接影響庫存帳）',
+    as(USERS.engineer).doc('inventory_history/ih_ml').update({ ml: 1 }));
+  await nok('★ 工程師不可「順便」連 ml 一起改（多帶一個欄位就要整個擋掉）',
+    as(USERS.engineer).doc('inventory_history/ih_both').update({ note: 'x', ml: 1 }));
+  await nok('★ 工程師不可改 stock_deducted（會讓未扣/已扣的判斷失真）',
+    as(USERS.engineer).doc('inventory_history/ih_both').update({ stock_deducted: false }));
+  await nok('唯讀者不可改備註',
+    as(USERS.pureView).doc('inventory_history/ih_note').update({ note: '不該成功' }));
+  await nok('未登入者不可改備註',
+    anon().doc('inventory_history/ih_note').update({ note: '不該成功' }));
+  await ok('admin 仍可改任何欄位（補扣庫存要用）',
+    as(USERS.admin).doc('inventory_history/ih_admin').update({ stock_deducted: true, ml: 100 }));
 
   // ══ list 查詢（前端真正發出的那一種）══════════════════════════════
   // ★★ 這一整段補的是測試的大洞：上面所有分區測試都是「單一文件 .get()」，

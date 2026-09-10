@@ -133,12 +133,15 @@ const rowSrcs = [
   extract('exportPrintResult',   /function exportPrintResult\(h\)\{[\s\S]*?\n\}/),
   extract('exportModelName',     /function exportModelName\(h\)\{[\s\S]*?\n\}/),
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
-  extract('buildPrintLogRows',   /function buildPrintLogRows\(filters\)\{[\s\S]*?\n\}/),
+  extract('buildPrintLogRows',   /function buildPrintLogRows\(filters, sourceList\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
   extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
 ];
-function runBuild(history, filters, labels) {
-  const shim = `const inv={history:${JSON.stringify(history)}};
+// asSource=true：模擬 Markforged 匯出的呼叫方式 —— inv.history 是空的（MF 紀錄被
+// rebuildInvHistory() 拆到 mfHistory），紀錄改從第二個參數傳進去。
+function runBuild(history, filters, labels, asSource) {
+  const shim = `const inv={history:${JSON.stringify(asSource ? [] : history)}};
+    const __source=${asSource ? JSON.stringify(history) : 'null'};
     const __filters=${JSON.stringify(filters || {})};
     const MACHINE_LABELS=${JSON.stringify(labels || null)};
     const matName=m=>m||'';
@@ -151,7 +154,7 @@ function runBuild(history, filters, labels) {
                                     JasperGosling:'Form4L',CreativeDragon:'Form3+',
                                     BoldSturgeon:'Form3L'}[p]||'')};\n`;
   return new Function(shim + srcs.join('\n') + '\n' + rowSrcs.join('\n') +
-                      '\nreturn buildPrintLogRows(__filters);')();
+                      '\nreturn buildPrintLogRows(__filters, __source);')();
 }
 
 console.log('── ★ Formlabs 每筆列印 1:1，絕不合併 ──');
@@ -389,6 +392,27 @@ const mfRec = [{ id:'m2', ts:'2026-08-20T10:00:00', material:'Onyx', printer:'Ma
                  type:'consume', cc:50, note:'實威-代工', region:'south', source:'markforged', slot:'plastic' }];
 check('★ Markforged 也吃得到手填的名稱',
       runBuild(mfRec, null, { MarkTwoTainan:'Mark Two 台南' })[0]['機型'], 'Mark Two 台南');
+
+console.log('── Markforged 的「匯出列印記錄」走同一套規則 ──');
+// MF 紀錄不在 inv.history 裡（rebuildInvHistory 依品牌拆成兩份），匯出時是把
+// mfHistoryRows() 當第二個參數傳進來。★ 少了那個參數 MF 匯出永遠是 0 筆，而畫面
+//   只會說「目前沒有列印紀錄可匯出」——看起來像沒資料，不像 bug。
+const mfPair = [
+  { id:'p1', ts:'2026-08-21T09:00:10', material:'Onyx',         printer:'MarkTwoTainan', type:'consume', ml:120, category:'plastic', note:'鑫元鴻-代工-202607020001', region:'south', source:'markforged', duration_hr:3.5, stock_deducted:true },
+  { id:'p2', ts:'2026-08-21T09:00:40', material:'Carbon Fiber', printer:'MarkTwoTainan', type:'consume', ml:30,  category:'fiber',   note:'鑫元鴻-代工-202607020001', region:'south', source:'markforged', duration_hr:3.5, stock_deducted:true },
+];
+const mfOut = runBuild(mfPair, null, null, true);
+check('★ 來源清單從第二個參數傳進來也要匯得出來（inv.history 是空的）', mfOut.length, 1);
+check('塑料與纖維併成一列：塑料用量', mfOut[0]['樹脂與塑料用量'], 120);
+check('塑料與纖維併成一列：纖維用量', mfOut[0]['纖維用量'], 30);
+check('品牌欄',                     mfOut[0]['品牌'], 'Markforged');
+check('機型欄與 Formlabs 同一套',    mfOut[0]['機型'], 'Mark Two');
+check('備註解析出 APP 單號',         mfOut[0]['備註(APP單號)'], '202607020001');
+check('代工＝收費',                 mfOut[0]['是否收費'], '是');
+check('列印時間取最大值不是加總',     mfOut[0]['列印時間(hr)'], 3.5);
+check('有扣庫存視為成功',            mfOut[0]['列印結果'], '成功');
+// 不給第二個參數時仍以 inv.history 為準（Formlabs 匯出的原本行為不可變）
+check('★ 不給來源清單時仍走 inv.history', runBuild(mfPair).length, 1);
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

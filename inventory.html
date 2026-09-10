@@ -913,6 +913,9 @@
                     <input type="text" id="mf-hist-filter" oninput="renderMfHistory()" placeholder="搜尋材料 / 機台 / 備註..."
                         class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)] w-52">
                     <span id="mf-hist-count" class="text-xs text-[var(--ink-4)]"></span>
+                    <button onclick="exportMfPrintLogExcel()" title="列印視角：每次列印一列，欄位與 Formlabs 的「匯出列印記錄」完全相同（塑料與纖維會併成一列）。★ 匯出範圍以上面的搜尋條件為準" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                        <i data-lucide="printer" class="w-3.5 h-3.5"></i> 匯出列印記錄
+                    </button>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -3113,14 +3116,25 @@ function renderMfAlerts() {
 }
 
 // ══ Markforged 消耗記錄 ══
+// 分頁上目前的搜尋字串，以及套用它之後的紀錄。
+// ★ 表格與「匯出列印記錄」共用這一份，不可各寫一份：畫面 12 筆、匯出 58 筆這種
+//   不一致兩邊都「看起來正常」，使用者無從察覺（Formlabs 那邊的 applyHistoryFilters
+//   也是同樣的考量，見 CLAUDE.md）。
+function mfHistoryKeyword() {
+    return (document.getElementById('mf-hist-filter')?.value || '').trim().toLowerCase();
+}
+function mfHistoryRows(kw) {
+    const k = (kw === undefined) ? mfHistoryKeyword() : kw;
+    return mfHistory.filter(h => !k
+        || String(h.material||'').toLowerCase().includes(k)
+        || String(h.printer||'').toLowerCase().includes(k)
+        || String(h.note||'').toLowerCase().includes(k));
+}
+
 function renderMfHistory() {
     const tbody = document.getElementById('mf-hist-body');
     if (!tbody) return;
-    const kw = (document.getElementById('mf-hist-filter')?.value || '').trim().toLowerCase();
-    const rows = mfHistory.filter(h => !kw
-        || String(h.material||'').toLowerCase().includes(kw)
-        || String(h.printer||'').toLowerCase().includes(kw)
-        || String(h.note||'').toLowerCase().includes(kw));
+    const rows = mfHistoryRows();
     const cnt = document.getElementById('mf-hist-count');
     if (cnt) cnt.textContent = mfHistory.length ? `共 ${rows.length} 筆` : '';
     if (!rows.length) {
@@ -3143,9 +3157,17 @@ function renderMfHistory() {
             <td class="p-3">${isAbort
                 ? '<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full">中止</span>'
                 : '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full">消耗</span>'}</td>
-            <td class="p-3 text-xs text-[var(--ink-3)]">${escHtml(h.note || '')}</td>
+            <td class="p-3 text-xs text-[var(--ink-3)]">
+                <div class="flex items-center gap-1.5">
+                    <span class="truncate max-w-[260px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
+                    ${isEditor?`<button onclick="editHistoryNote('${h.id}')" title="編輯備註" class="text-[var(--ink-6)] hover:text-[var(--accent)] flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
+                </div>
+            </td>
         </tr>`;
     }).join('');
+    // ★ 這一段是 innerHTML 整個換掉，上面新增的鉛筆圖示要重新產生，
+    //   否則按鈕會是一個看不見的空格（data-lucide 沒被展開）。
+    lucide.createIcons();
 }
 
 // ══ Markforged 月度分析 ══
@@ -5343,8 +5365,10 @@ function printLogGroupKey(h){
 // filters 傳入時用它，否則讀畫面上目前的篩選（匯出走這條）。
 // ★ 匯出的筆數以「消耗記錄」分頁目前的篩選為準：使用者選了 8/1～8/27，
 //   匯出就只該有那段期間的紀錄，而不是整份 history。
-function buildPrintLogRows(filters){
-    const printRows = applyHistoryFilters(inv.history, filters)
+// sourceList 預設是 inv.history（Formlabs）。Markforged 的紀錄被 rebuildInvHistory()
+// 拆到 mfHistory，不在 inv.history 裡 —— 不給這個參數的話 MF 匯出永遠是 0 筆。
+function buildPrintLogRows(filters, sourceList){
+    const printRows = applyHistoryFilters(sourceList || inv.history, filters)
         .filter(h => h.type === 'consume' || h.type === 'aborted');
     const groups = new Map();
     printRows.forEach(h => {
@@ -5454,7 +5478,34 @@ async function exportPrintLogExcel(){
             : '目前沒有列印紀錄可匯出', 'error');
         return;
     }
+    // 檔名帶篩選的日期區間，避免多份匯出檔混在一起分不出誰是誰
+    const span = (f.from || f.to) ? `_${f.from || '最早'}~${f.to || '最新'}` : '';
+    await finishPrintLogExport(rows, { active, span });
+}
 
+// ══ Markforged 的「匯出列印記錄」═══════════════════════════════════
+// 與 Formlabs 走同一套規則、同一份 19 欄格式（PRINT_LOG_HEADERS）：塑料與纖維
+// 併成一列、備註解析出客戶／工作類別／APP 單號、以 EF 單號 join 工單補三欄。
+// ★ 差別只有「篩選從哪來」：這一頁只有一個搜尋框，沒有日期／材料／類別下拉。
+// ★ 舊的 MF 紀錄沒有 duration_hr（後端沒寫），列印時間那欄會留空給人工填；
+//   列印結果一律走 exportPrintResult()，MF 有扣庫存＝成功。
+async function exportMfPrintLogExcel(){
+    const kw = mfHistoryKeyword();
+    const active = kw ? [`搜尋「${kw}」`] : [];
+    // ★ 第二個參數一定要給 mfHistoryRows()：MF 紀錄不在 inv.history 裡。
+    //   filters 傳空物件而不是省略 —— 省略會去讀 Formlabs 那頁的篩選欄位，
+    //   使用者在另一個分頁選的日期區間會莫名其妙套到這裡來。
+    const rows = buildPrintLogRows({}, mfHistoryRows(kw));
+    if (!rows.length) {
+        showToast(kw ? `搜尋「${kw}」沒有列印紀錄` : '目前沒有 Markforged 列印紀錄可匯出', 'error');
+        return;
+    }
+    await finishPrintLogExport(rows, { active, span: '', prefix: 'Markforged列印記錄' });
+}
+
+// 兩個匯出共用的後半段：join 工單 → 寫檔 → 回報有幾欄要人工補。
+// ★ 刻意共用：欄位對齊人工登記表這件事只要有一邊漏改，兩份檔案的格式就會悄悄走偏。
+async function finishPrintLogExport(rows, { active = [], span = '', prefix = '列印記錄' } = {}){
     // 用 EF 單號補三欄（沒單號或對不到就維持空白）
     const wbMap = await fetchWorkboardByEF();
     let matched = 0;
@@ -5478,9 +5529,7 @@ async function exportPrintLogExcel(){
     const ws = XLSX.utils.json_to_sheet(rows, { header: PRINT_LOG_HEADERS });
     ws['!cols'] = PRINT_LOG_HEADERS.map(hd => ({ wch: Math.max(10, Math.min(28, hd.length * 2)) }));
     XLSX.utils.book_append_sheet(wb, ws, '列印記錄');
-    // 檔名帶篩選的日期區間，避免多份匯出檔混在一起分不出誰是誰
-    const span = (f.from || f.to) ? `_${f.from || '最早'}~${f.to || '最新'}` : '';
-    const fname = `列印記錄${span}_${fmtDateLocalInv(new Date())}.xlsx`;
+    const fname = `${prefix}${span}_${fmtDateLocalInv(new Date())}.xlsx`;
     XLSX.writeFile(wb, fname);
     // ★ 明確告知有多少欄要人工補：不講的話使用者會以為那些空白是系統壞了
     const withEF = rows.filter(r => r['備註(APP單號)']).length;
@@ -5669,16 +5718,21 @@ async function fixHistoryDeduction(id) {
     }
 }
 
-// ══ 編輯單筆消耗/歷史紀錄的備註 (editor/admin) ══
+// ══ 編輯單筆消耗/歷史紀錄的備註 (工程師/主管/admin) ══
 // 備註建議格式：客戶簡稱-工作類別-EF單號（例：鑫元鴻-代工-202607020001），
-// 用於「工作類別」篩選與月度分析的解析依據；不影響庫存數字，僅修正顯示文字
+// 用於「工作類別」篩選與月度分析的解析依據；不影響庫存數字，僅修正顯示文字。
+// ★ Formlabs 與 Markforged 兩邊共用這一支：rebuildInvHistory() 把紀錄依品牌拆成
+//   inv.history / mfHistory 兩份，只找其中一份會讓另一個分頁按了沒反應（而且不報錯）。
+// ★ firestore.rules 對 inventory_history 的 update 只放行「單獨改 note」，
+//   其餘欄位（ml／material／stock_deducted）仍限 admin —— 這裡若改成一次寫多個欄位，
+//   工程師會直接被規則擋下並跳權限錯誤。
 async function editHistoryNote(id) {
     if (!isEditor) {
-        showToast('僅編輯者/admin 可執行此操作', 'error');
+        showToast('僅工程師以上可執行此操作', 'error');
         return;
     }
     if (!id) return;
-    const h = inv.history.find(x => x.id === id);
+    const h = inv.history.find(x => x.id === id) || mfHistory.find(x => x.id === id);
     if (!h) return;
     const newNote = prompt(
         '編輯備註（建議格式：客戶簡稱-工作類別-EF單號）\n' +
@@ -5696,8 +5750,10 @@ async function editHistoryNote(id) {
         if (inExtra) inExtra.note = trimmed;
         const inSub = historyFromSubscription.find(x => x.id === id);
         if (inSub) inSub.note = trimmed;
-        renderHistory();
-        if (currentTab === 'monthly') renderMonthly();
+        if (currentTab === 'mf-history') renderMfHistory(); else renderHistory();
+        // 備註是「工作類別」的解析來源，月度分析的佔比會跟著變
+        if (currentTab === 'monthly')    renderMonthly();
+        if (currentTab === 'mf-monthly') renderMfMonthly();
         showToast('備註已更新', 'success');
     } catch (err) {
         console.error('[editHistoryNote] 失敗:', err);
@@ -5766,6 +5822,7 @@ window.closeStockModal = closeStockModal;
 window.deleteStock = deleteStock;
 window.exportInventoryExcel = exportInventoryExcel;
 window.exportPrintLogExcel  = exportPrintLogExcel;
+window.exportMfPrintLogExcel = exportMfPrintLogExcel;
 window.historySortBy = historySortBy;
 window.openCartridgeModal = openCartridgeModal;
 window.resetHistoryFilters = resetHistoryFilters;
