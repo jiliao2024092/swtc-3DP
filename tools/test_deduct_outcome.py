@@ -184,6 +184,46 @@ check("只有 estimated_duration_ms → None",
 check("main.py 沒把 estimated_duration_ms 當來源",
       bool(re.search(r'\.get\(\s*["\']estimated_duration_ms', _dfn.group(0))), False)
 
+print("── fl_operator()：Formlabs 的列印人員 ──")
+# 2026-09-11 的 [sync][DEBUG欄位] 確認 print 物件有 user 與 user_custom_label，
+# 但當時只印 key 沒印 value（log 不可外流 PII），所以對「值的形狀」保持防禦性。
+_ofn = re.search(r"^FL_USER_NAME_KEYS = .*?(?=^def family_code)", src, re.M | re.S)
+if not _ofn:
+    print("✗ 在 functions/main.py 找不到 fl_operator()")
+    sys.exit(1)
+_ons = {"Optional": None}
+exec(_ofn.group(0).replace("-> Optional[str]", ""), _ons)
+fop = _ons["fl_operator"]
+
+check("user 是字串 → 直接用",        fop({"user": "Jack Tao"}),                     "Jack Tao")
+check("字串前後空白會去掉",          fop({"user": "  Jack Tao  "}),                 "Jack Tao")
+check("只有空白的字串 → None",       fop({"user": "   "}),                          None)
+check("user 是物件、有 name",        fop({"user": {"name": "Jack Tao"}}),           "Jack Tao")
+check("沒有 name 時退而用 username", fop({"user": {"username": "jtao"}}),           "jtao")
+check("first_name + last_name",      fop({"user": {"first_name": "Jack", "last_name": "Tao"}}), "Jack Tao")
+check("只有 first_name",             fop({"user": {"first_name": "Jack"}}),         "Jack")
+check("name 優先於 username",
+      fop({"user": {"name": "Jack Tao", "username": "jtao"}}),                      "Jack Tao")
+
+print("── ★ 認不出來寧可回 None，不可拿 id／email 充數 ──")
+# 把 uuid 當人名寫進去，畫面上會出現一串亂碼而且沒有任何錯誤訊息，比留空糟得多。
+check("只有 id 與 email → None",
+      fop({"user": {"id": "9f1c-uuid", "email": "jtao@swtc.com"}}),                 None)
+check("★ email 不可被當成人名（只存名稱是既有決策）",
+      fop({"user": {"email": "jtao@swtc.com"}}),                                    None)
+check("沒有 user 欄位 → None",       fop({}),                                       None)
+check("user 是 None → None",         fop({"user": None}),                           None)
+check("user 是數字 → None",          fop({"user": 12345}),                          None)
+check("傳進來不是 dict → None",      fop(None),                                     None)
+
+print("── 接線：列印人員要真的寫進消耗紀錄 ──")
+check("Formlabs 的紀錄有寫 operator",
+      bool(re.search(r'"operator": fl_operator\(pr\)', src)), True)
+check("★ 抽不到就不寫這個 key（寫 None 會在畫面變成一格 null）",
+      bool(re.search(r'if fl_operator\(pr\) else \{\}', src)), True)
+check("★ debug 只印型別與 key，不印 value",
+      bool(re.search(r"type\(_u\)\.__name__", src)) and not re.search(r"user=\{_u", src), True)
+
 print("── mf_job_duration_hours()：Markforged 的列印時間 ──")
 # Eiger 沒有現成的耗時欄位，只能 ended_at - started_at 自己算。
 # ★★ 但 ended_at 不見得是「這次列印真正結束的時間」：實測 dump 193 筆終態工作裡
@@ -261,7 +301,8 @@ check("★ 內容相同就跳過（Firestore 即使值沒變也計費一次寫�
 check("★ 回填失敗不可拖垮機台狀態同步（獨立 try/except）",
       bool(re.search(r"工作欄位回填失敗", src)), True)
 check("★ Formlabs 的欄位 debug 只印 key 不印 value（log 不可外流 PII）",
-      bool(re.search(r"sorted\(pr\.keys\(\)\)", src)), True)
+      bool(re.search(r"sorted\(_u\.keys\(\)\)", src))
+      and not re.search(r"DEBUG欄位.*\{_u\}", src), True)
 check("★ 該 debug 放在「已處理就跳過」之前（否則穩定狀態永遠不會執行到）",
       src.index("_dumped_print_keys = True") < src.index("if guid in processed:"), True)
 check("MF 消耗紀錄有寫 job_id（沒有它就對不到工作）",

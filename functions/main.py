@@ -197,6 +197,7 @@ def print_duration_hours(pr):
     return math.ceil(hours * 2) / 2
 
 
+
 def print_outcome(status, prs):
     """把 API 的 status + print_run_success 併成 Dashboard「Outcome」那五種分類。
 
@@ -315,6 +316,38 @@ FAMILY_REMAP = {
     #   方向往 FLFLES 收斂：既有庫存與歷史都在那裡，不必搬資料。inventory.html 須一致。
     "FLELCL": "FLFLES",   # Elastic 50A：API 實際代碼 → 本專案既有家族 key
 }
+
+
+# 從 print 物件抽「列印人員」。抽不出來回 None（留空給人工填）。
+#
+# ★ 實測（2026-09-11 的 [sync][DEBUG欄位]）Formlabs 的 print 物件確實有 `user`
+#   與 `user_custom_label` 兩個欄位 —— 但當時**只印了 key 沒印 value**
+#   （log 是所有 admin 都看得到的地方，值可能是員工姓名或 email），
+#   所以這裡對「值的形狀」保持防禦性：字串直接用，dict 就依序找常見的名稱欄位。
+# ★ **只取名稱、不取 email**：與 Markforged 那邊同一個原則（消耗紀錄是全公司
+#   登入者都讀得到的 collection，規劃文件 §6 已決定員工 email 不寫進 Firestore）。
+# ★ 認不出來寧可回 None：把 id 之類的東西當成人名寫進去，畫面上會出現一串 uuid，
+#   而且沒有任何錯誤訊息 —— 比留空糟糕得多。
+FL_USER_NAME_KEYS = ("name", "full_name", "display_name", "username", "nickname")
+
+
+def fl_operator(pr) -> Optional[str]:
+    u = pr.get("user") if isinstance(pr, dict) else None
+    if isinstance(u, str):
+        s = u.strip()
+        return s or None
+    if isinstance(u, dict):
+        for k in FL_USER_NAME_KEYS:
+            v = u.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        # first_name + last_name 是另一種常見形狀
+        fn = (u.get("first_name") or "").strip() if isinstance(u.get("first_name"), str) else ""
+        ln = (u.get("last_name") or "").strip() if isinstance(u.get("last_name"), str) else ""
+        both = (fn + " " + ln).strip()
+        if both:
+            return both
+    return None
 
 
 def family_code(code: Optional[str]) -> Optional[str]:
@@ -1502,16 +1535,20 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         _dumped_print_keys = False   # 見下方 [sync][DEBUG欄位]：每輪只印一次
         for pr in all_prints:
             try:
-                # ★ 每輪印一次 print 物件的「欄位名稱清單」——目的是查 Formlabs 到底有沒有
-                #   回傳列印人員（Markforged 的 /print_jobs 有 initiator={id,email,name}，
-                #   Formlabs 這邊沒人驗過，而這個專案已經踩過好幾次「文件寫的與實際不符」）。
-                # ★★ 只印 key、不印 value：欄位值可能含員工姓名或 email，而 log 是所有
-                #   admin 都看得到的地方，印值等於把 PII 攤在那裡。
-                # ★ 位置必須在「已處理過就 continue」之前 —— 穩定狀態下 1486 筆全部都是
+                # ★ 每輪印一次 `user` 欄位的「形狀」，確認 fl_operator() 抽得到人名。
+                #   2026-09-11 第一版印的是整份欄位名稱清單，已經確認有 user 與
+                #   user_custom_label（結果記在 CLAUDE.md），所以這裡收斂成只看 user。
+                # ★★ 只印型別與 key、不印 value：值可能是員工姓名或 email，而 log 是
+                #   所有 admin 都看得到的地方，印值等於把 PII 攤在那裡。
+                #   「抽得到嗎」只印布林值，同樣不外流內容。
+                # ★ 位置必須在「已處理過就 continue」之前 —— 穩定狀態下 1491 筆全部都是
                 #   已處理，放在後面永遠不會執行到（改過一次才發現）。
-                # ⚠ 查到答案後就把這段拿掉，不要長期留著洗版。
+                # ⚠ 確認抽得到之後就把這段拿掉，不要長期留著洗版。
                 if not _dumped_print_keys:
-                    print(f"[sync][DEBUG欄位] print 物件的欄位名稱: {sorted(pr.keys())}")
+                    _u = pr.get("user")
+                    print(f"[sync][DEBUG欄位] user 型別={type(_u).__name__} "
+                          f"keys={sorted(_u.keys()) if isinstance(_u, dict) else '—'} "
+                          f"抽得到人名={fl_operator(pr) is not None}")
                     _dumped_print_keys = True
 
                 guid = pr.get("guid", "")
@@ -1709,6 +1746,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                         # 實際列印耗時（小時，已進位到 0.5 為單位）。對不出來就不寫，
                         # 匯出時留空給人工填。只有 2026-08-27 之後同步的紀錄才有。
                         "duration_hr": print_duration_hours(pr),
+                        # 列印人員（只存名稱不存 email，與 Markforged 同一原則）。
+                        # 抽不到就不寫這個 key —— 寫 None 會在前端變成一格「null」，
+                        # 而「沒有這個欄位」前端本來就會顯示成空白。
+                        **({"operator": fl_operator(pr)} if fl_operator(pr) else {}),
                         "printer":     alias,
                         # 北中南分區：消耗紀錄跟著機台走（哪一台印的就算哪一區的用量）
                         "region":      machine_region(alias, machine_regions),

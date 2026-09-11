@@ -141,7 +141,6 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
     - ⚠ **只存 `name`，不存 `email` 與 `id`**：消耗紀錄是全公司登入者都讀得到的 collection，規劃文件 §6 已決定員工 email 不寫進 Firestore
     - 顯示與匯出走 `zhEnLabel()`＝「中文 (英文)」，與匯出的業務／責任工程師同一套。Eiger 給的是顯示名稱（如 `Jack Tao`），多半對不到 `settings/workspace` 的工程師對照 → **退回原名而不是留空**（留空會被當成「沒有人員資料」）
     - 匯出的「列印人員」是**第 20 欄，加在最後面**。⚠ 前 19 欄的內容與順序是對齊人工登記表的，新欄位一律加在最後、不可插進中間（`tools/test_print_log_export.js` 有守）
-    - ⚠ **Formlabs 有沒有人員欄位目前未知**：2026-09-11 在同步加了 `[sync][DEBUG欄位]`，每輪印一次 print 物件的**欄位名稱清單**（只印 key 不印 value，log 是所有 admin 都看得到的地方）。查到答案後要把那段拿掉
   - ⚠ 差額式追蹤的基準存在 `inventory/markforged_watch`，**基準更新與消耗寫入必須在同一個 batch**——分開寫會在「history 寫成功、基準寫失敗」時，讓下一輪用更舊的基準算出更大的一段差額，同一段消耗被記兩次、庫存也扣兩次
   - ⚠ Markforged 材料是**純名稱**（Onyx／Carbon Fiber），不可套 `canon_material()`／`family_code()` 那套 FL 家族代碼邏輯；扣庫存走 `apply_mf_deductions()`（比對純名稱、扣 `total_cc`），與樹脂的 `total_ml` 完全分開。耗材（`kind='consumable'`，以「個」計）不可被 cc 消耗扣到
   - ⚠ 機台顯示名稱有互為子字串的情況（`MarkTwo` ⊂ `MarkTwoGEN2` / `MarkTwoTainan`）。`machine_region()` 必須「完全相同優先、包含取最長」，只用包含比對會依 dict 鍵順序判錯區，且完全沒有錯誤訊息（`tools/test_regions*` 有守）
@@ -177,6 +176,11 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ filters 要傳 `{}` 而不是省略：省略會去讀 Formlabs 那頁的篩選欄位，使用者在另一個分頁選的日期區間會莫名其妙套到 MF 匯出上
   - 篩選來源是該分頁唯一的搜尋框（`mfHistoryRows()`，表格與匯出共用同一份，理由同 `applyHistoryFilters()`）。MF 舊紀錄沒有 `duration_hr`，列印時間留空給人工填
 - **匯出的「機型」欄以後台手填的顯示名稱優先**（2026-09-08 決策）：`machine_labels` 有填就用它，沒填才退回固定的機型寫法（目標表是有空格的「Form 4」）。判斷「有沒有手填」要用 `window.machineLabelOverride()`，不可用 `machineLabel()` —— 後者沒填時會回機型，分不出兩者
+- **列印人員**（2026-09-11）：Formlabs 與 Markforged 都有，寫進 `inventory_history.operator`，匯出是**第 20 欄「列印人員」**（加在最後，前 19 欄順序不可變）
+  - Formlabs：實測 print 物件有 `user` 與 `user_custom_label`（2026-09-11 `[sync][DEBUG欄位]` 撈到的完整欄位清單：`adaptive_thickness / back_cartridge / cartridge / cloud_queue_item / created_at / currently_printing_layer / cylinder / elapsed_duration_ms / estimated_duration_ms / estimated_time_remaining_ms / firmware_version / form_auto_fw_version / form_auto_serial / front_cartridge / group / guid / harvest_status / layer_count / layer_thickness_mm / material / material_name / message / name / note / parts / post_print_photo_url / print_finished_at / print_intent / print_job / print_run_success / print_settings_code / print_settings_name / print_started_at / print_thumbnail / printer / status / tank / timelapse_video_url / user / user_custom_label / using_open_mode / volume_ml / z_height_offset_mm`）。⚠ **當時只印 key 沒印 value**（log 是所有 admin 看得到的地方），所以 `fl_operator()` 對值的形狀保持防禦性：字串直接用、dict 依序找 `name`/`full_name`/`display_name`/`username`/`nickname`、再退回 `first_name + last_name`；**認不出來回 None**，絕不拿 id 或 email 充數
+  - Markforged：`/print_jobs` 的 `initiator.name`（見上面的 Markforged 段落）
+  - ⚠ **兩邊都只存名稱、不存 email 與 id**：消耗紀錄是全公司登入者都讀得到的 collection
+  - ⚠ **都只有新紀錄才有**：Formlabs 的寫在 print 完成時、Markforged 的靠 `job_id` 在工作結案後回填，2026-09-11 之前的舊紀錄一律留空給人工填
 - **匯出的人名格式**：業務與責任工程師一律「**中文 (英文)**」（`zhEnLabel`），與 3DP-BK 的 `engDisplay`/`salesDisplay` 同一慣例。⚠ 對照查不到時**退回 key 而不是空字串**——空白會被當成「沒填」，但實際上工單有指定人，只是那人已不在清單裡
 - **工程測試掛自家公司**（`ENG_TEST_COMPANY`＝實威國際股份有限公司）：
   - **客戶名稱**：只要是工程測試就帶入（人工登記表該類 7 筆全部如此）
