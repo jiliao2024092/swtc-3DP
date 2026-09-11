@@ -136,6 +136,7 @@ const rowSrcs = [
   extract('tagMfJobs',           /function tagMfJobs\(list\) \{[\s\S]*?\n\}/),
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
   extract('buildPrintLogRows',   /function buildPrintLogRows\(filters, sourceList\)\{[\s\S]*?\n\}/),
+  extract('OPERATOR_NONE',       /const OPERATOR_NONE = [^\n]*;/),
   extract('operatorLabel',       /function operatorLabel\(h\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
   extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
@@ -224,17 +225,16 @@ check('4 筆裡只有 2 筆列印（consume/aborted）', runBuild(mix).length, 2
 
 console.log('── 欄位完整性 ──');
 const one = runBuild([sameNote[0]])[0];
-// ★ 2026-09-11 起是 20 欄：最後面多一欄「列印人員」（Markforged 才有值）。
-//   ⚠ 守的不是「幾欄」而是「**前 19 欄的內容與順序不可變**」—— 那 19 欄是對齊
-//   人工登記表的，順序錯掉貼進表格就全錯位，而且看起來完全正常。
-//   新欄位一律加在最後面，不可插進中間。
+// ⚠ 守的不是只有「幾欄」，而是「**內容與順序不可變**」—— 這 19 欄是對齊人工
+//   登記表的，順序錯掉貼進表格就全錯位，而且看起來完全正常。
+//   2026-09-11 曾經多加一欄「列印人員」，後來決定併進既有的「責任工程師」，
+//   欄數回到 19。日後真要加欄位，一律加在最後面、不可插進中間。
 const SHEET_19 = ['時間戳記','日期','地區','業務','客戶名稱','品牌','機型','列印目的',
   '活動名稱與事由','責任工程師','列印時間(hr)','使用材料(樹脂與塑料)','樹脂與塑料用量',
   'Ultem9085 Support 用量','使用材料(纖維/蠟支撐)','纖維用量','是否收費','備註(APP單號)','列印結果'];
-check('★ 前 19 欄的內容與順序不可變',
-      JSON.stringify(Object.keys(one).slice(0, 19)), JSON.stringify(SHEET_19));
-check('第 20 欄是列印人員',     Object.keys(one)[19], '列印人員');
-check('恰好 20 欄',            Object.keys(one).length, 20);
+check('★ 19 欄的內容與順序不可變',
+      JSON.stringify(Object.keys(one)), JSON.stringify(SHEET_19));
+check('恰好 19 欄',            Object.keys(one).length, 19);
 check('內部排序鍵已刪除',       '_sort' in one, false);
 check('Ultem9085 恆空（無此機型）', one['Ultem9085 Support 用量'], '');
 check('無纖維時顯示「無」',     one['使用材料(纖維/蠟支撐)'], '無');
@@ -484,25 +484,46 @@ check('塑料與纖維仍是同一列', fbRows.length, 1);
 check('纖維用量也要加總',     fbRows[0]['纖維用量'], 1);
 check('塑料用量不受纖維影響', fbRows[0]['樹脂與塑料用量'], 10.92);
 
-console.log('── 列印人員：與業務／責任工程師同一套「中文 (英文)」──');
+console.log('── 責任工程師＝實際執行列印的人（與業務同一套「中文 (英文)」）──');
 // 來源是 Eiger 的 initiator.name（工作結案後由同步回填）。Formlabs 目前沒有已知的
 // 人員欄位，所以這一欄只有 MF 會有值。
 const opRec = [{ id:'o1', ts:'2026-09-10T10:00:00', material:'Onyx', printer:'MarkTwoTainan',
                  type:'consume', ml:20, category:'plastic', note:'客戶-代工-202609100001',
                  region:'south', source:'markforged', operator:'Jaylen', job_id:'jo1' }];
-check('對得到對照 → 中文 (英文)', runBuild(opRec, null, null, true)[0]['列印人員'], '何哲綸 (Jaylen)');
+check('對得到對照 → 中文 (英文)', runBuild(opRec, null, null, true)[0]['責任工程師'], '何哲綸 (Jaylen)');
 const opRaw = [{ ...opRec[0], id:'o2', operator:'Jack Tao' }];
 check('★ 對不到對照 → 退回原名，不可留空',
-      runBuild(opRaw, null, null, true)[0]['列印人員'], 'Jack Tao');
+      runBuild(opRaw, null, null, true)[0]['責任工程師'], 'Jack Tao');
 const opNone = [{ ...opRec[0], id:'o3', operator:undefined }];
-check('沒有人員資料 → 空字串', runBuild(opNone, null, null, true)[0]['列印人員'], '');
-check('Formlabs 的紀錄沒有這個欄位 → 空字串', runBuild([sameNote[0]])[0]['列印人員'], '');
+check('沒有人員資料 → 空字串', runBuild(opNone, null, null, true)[0]['責任工程師'], '');
+check('沒有人員資料的紀錄 → 空字串（留給工單 join 或人工填）',
+      runBuild([sameNote[0]])[0]['責任工程師'], '');
 // 合併列（同一次列印被切成好幾筆）取得到值的那一筆
 const opMix = [{ ...opRec[0], id:'m1', ts:'2026-09-10T10:00:00', operator:undefined },
                { ...opRec[0], id:'m2', ts:'2026-09-10T10:30:00', operator:'Jack Tao' }];
 const opMerged = runBuild(opMix, null, null, true);
 check('合併列只有一列', opMerged.length, 1);
-check('★ 合併列取得到人員的那一筆', opMerged[0]['列印人員'], 'Jack Tao');
+check('★ 合併列取得到人員的那一筆', opMerged[0]['責任工程師'], 'Jack Tao');
+// ⚠ 有對到工單時，工單上的責任工程師會蓋過實際操作者（見 finishPrintLogExport）——
+//   那段是 async 的 join，這支測試只涵蓋 buildPrintLogRows 的預設值。
+
+console.log('── 匯出範圍依「責任工程師」篩選（表格與匯出共用 applyHistoryFilters）──');
+// ★ 比對的是原始值 operator，不是畫面上的「中文 (英文)」—— 對照表一改，
+//   先前選好的篩選就會突然對不到而變成 0 筆，而且看起來像沒資料。
+const opFilterSet = [
+  { id:'q1', ts:'2026-09-11T10:00:00', material:'Grey V5', printer:'AluminumBowfin', type:'consume', ml:10, note:'客戶-代工-202609110001', region:'central', source:'formlabs', operator:'Jaylen' },
+  { id:'q2', ts:'2026-09-11T11:00:00', material:'Grey V5', printer:'AluminumBowfin', type:'consume', ml:10, note:'客戶-代工-202609110002', region:'central', source:'formlabs', operator:'Jack Tao' },
+  { id:'q3', ts:'2026-09-11T12:00:00', material:'Grey V5', printer:'AluminumBowfin', type:'consume', ml:10, note:'客戶-代工-202609110003', region:'central', source:'formlabs' },
+];
+check('不篩 → 3 筆',            runBuild(opFilterSet).length, 3);
+check('選某個人 → 只剩他的',    runBuild(opFilterSet, { operator:'Jaylen' }).length, 1);
+check('★ 比對原始值不是顯示名稱',
+      runBuild(opFilterSet, { operator:'何哲綸 (Jaylen)' }).length, 0);
+check('★ 選「未填」→ 只剩沒有這個欄位的舊紀錄',
+      runBuild(opFilterSet, { operator:'__none__' })[0]['備註(APP單號)'], '202609110003');
+check('選「未填」只有 1 筆',    runBuild(opFilterSet, { operator:'__none__' }).length, 1);
+check('★ 特殊值與 main 程式碼一致（寫死字串會在改名時靜默失效）',
+      /const OPERATOR_NONE = '__none__';/.test(html), true);
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

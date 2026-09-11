@@ -607,6 +607,11 @@
                         <option value="其他">其他</option>
                         <option value="未分類">未分類（備註不符格式）</option>
                     </select>
+                    <!-- 選項由 populateOperatorFilter() 依目前載入的紀錄產生：
+                         寫死清單會與實際資料走偏，而且多數舊紀錄根本沒有這個欄位 -->
+                    <select id="history-filter-operator" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="依實際執行列印的人篩選（2026-09-11 之前的紀錄沒有這個欄位）">
+                        <option value="">全部責任工程師</option>
+                    </select>
                     <input type="date" id="history-filter-from" onchange="applyHistoryDateRange()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="起始日期（早於目前載入範圍時會自動補撈）">
                     <span class="text-xs text-[var(--ink-5)]">～</span>
                     <input type="date" id="history-filter-to" onchange="applyHistoryDateRange()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="結束日期">
@@ -629,6 +634,7 @@
                             <th class="p-3 border-b font-medium whitespace-nowrap cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('material')">材料<span id="hist-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium whitespace-nowrap cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('printer')">機台<span id="hist-sort-printer" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium whitespace-nowrap">類型</th>
+                            <th class="p-3 border-b font-medium whitespace-nowrap w-28">責任工程師</th>
                             <th class="p-3 border-b font-medium whitespace-nowrap text-right w-28 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="historySortBy('ml')">數量 (L)<span id="hist-sort-ml" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="p-3 border-b font-medium whitespace-nowrap">備註</th>
                             <th class="p-3 border-b font-medium whitespace-nowrap w-32" title="對應 Formlabs Dashboard 的 Outcome：成功／不成功／已列印（印完未評價）／失敗／已中止。列印中不顯示，等列印結束才會有結果。2026-08-27 前的舊紀錄多半判不出來，顯示 —">列印結果</th>
@@ -700,6 +706,16 @@
                     </div>
                     <p id="workcat-material-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
                 </div>
+            </div>
+
+            <!-- 責任工程師佔比（依同步回填的實際執行者）-->
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="operator-title" class="text-sm font-semibold text-[var(--ink-2)]">當月責任工程師佔比</h3>
+                    <span class="text-xs text-[var(--ink-5)]">依同步回填的實際執行者；2026-09-11 之前的紀錄歸「未填」</span>
+                </div>
+                <div id="operator-breakdown" class="space-y-2"></div>
+                <p id="operator-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
             </div>
 
             <!-- 當月消耗紀錄（依用量排序，看哪些列印佔比大）-->
@@ -912,7 +928,7 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <input type="text" id="mf-hist-filter" oninput="renderMfHistory()" placeholder="搜尋材料 / 機台 / 備註..."
+                    <input type="text" id="mf-hist-filter" oninput="renderMfHistory()" placeholder="搜尋材料 / 機台 / 責任工程師 / 備註..."
                         class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)] w-52">
                     <span id="mf-hist-count" class="text-xs text-[var(--ink-4)]"></span>
                     <button onclick="exportMfPrintLogExcel()" title="列印視角：每次列印一列，欄位與 Formlabs 的「匯出列印記錄」完全相同（塑料與纖維會併成一列）。★ 匯出範圍以上面的搜尋條件為準" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
@@ -929,7 +945,7 @@
                             <th class="whitespace-nowrap p-3 border-b font-medium w-32">機台</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">用量 (cc)</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium w-24">類型</th>
-                            <th class="whitespace-nowrap p-3 border-b font-medium w-28">列印人員</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-28">責任工程師</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium">列印 / 備註</th>
                         </tr>
                     </thead>
@@ -959,6 +975,14 @@
                 </div>
             </div>
             <div id="mf-month-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-[var(--line-soft)] border border-[var(--line)] rounded-xl overflow-hidden mb-6"></div>
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="mf-operator-title" class="text-sm font-semibold text-[var(--ink-2)]">當月責任工程師佔比</h3>
+                    <span class="text-xs text-[var(--ink-5)]">依工作結案後回填的實際執行者</span>
+                </div>
+                <div id="mf-operator-breakdown" class="space-y-2"></div>
+                <p id="mf-operator-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
                     <thead>
@@ -2044,6 +2068,30 @@ function getMachineImage(key){
 function printerDisplay(name) {
     if(!name) return name;
     return (window.machineLabel && window.machineLabel(name, MACHINE_LABELS)) || name;
+}
+
+// 篩選下拉裡代表「這筆紀錄沒有責任工程師」的特殊值。
+// ★ 用一個不可能與人名相同的字串：直接用空字串當選項值的話，與「全部」分不出來。
+const OPERATOR_NONE = '__none__';
+
+// 「責任工程師」篩選下拉：選項依**目前載入的紀錄**動態產生。
+// ★ 不寫死清單：這個欄位的值來自 Formlabs／Eiger 的帳號名稱，不是系統的工程師清單，
+//   寫死一定會與實際資料走偏。
+// ★ 只列「真的出現過的人」＋一個「未填」；2026-09-11 之前的紀錄都沒有這個欄位，
+//   沒有「未填」這個選項就挑不出那些待補的舊紀錄。
+function populateOperatorFilter(){
+    const el = document.getElementById('history-filter-operator');
+    if (!el) return;
+    const keep = el.value;
+    const names = [...new Set(inv.history.map(h => (h.operator || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    const hasBlank = inv.history.some(h => !(h.operator || '').trim());
+    el.innerHTML = '<option value="">全部責任工程師</option>'
+        + names.map(n => `<option value="${escHtml(n)}">${escHtml(operatorLabel({ operator: n }))}</option>`).join('')
+        + (hasBlank ? `<option value="${OPERATOR_NONE}">（未填）</option>` : '');
+    el.value = keep;
+    // 先前選的人這次資料裡沒有了（例如切換地區）→ value 會被瀏覽器清成空字串，
+    // 等於自動退回「全部」，不會停在一個挑不到東西的篩選上
 }
 
 // 「消耗記錄」與「月度分析」的機台下拉：依 TRACKED_PRINTERS 動態產生。
@@ -3177,7 +3225,8 @@ function mfHistoryMerged(rows) {
             return;
         }
         g.ml += Math.abs(+h.ml || 0);
-        // 列印人員是工作結案後才回填的，同一組理論上都一樣；取第一個有值的比較保險
+        // 責任工程師（實際執行的人）是工作結案後才回填的，同一組理論上都一樣；
+        // 取第一個有值的比較保險
         if (!g.operator && h.operator) g.operator = h.operator;
         g._ids.push(h.id);
         g._n++;
@@ -3205,6 +3254,7 @@ function mfHistoryRows(kw) {
     return mfHistory.filter(h => !k
         || String(h.material||'').toLowerCase().includes(k)
         || String(h.printer||'').toLowerCase().includes(k)
+        || String(h.operator||'').toLowerCase().includes(k)
         || String(h.note||'').toLowerCase().includes(k));
 }
 
@@ -3247,8 +3297,8 @@ function renderMfHistory() {
             <td class="p-3">${isAbort
                 ? '<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full">中止</span>'
                 : '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full">消耗</span>'}</td>
-            <!-- 列印人員：工作結案後由同步回填（Eiger 的 initiator）；還沒結案或
-                 2026-09-11 之前的舊紀錄沒有 job_id，對不到就顯示 — -->
+            <!-- 責任工程師＝實際執行列印的人，工作結案後由同步回填（Eiger 的 initiator）；
+                 還沒結案、或 2026-09-11 之前的舊紀錄沒有 job_id，對不到就顯示 — -->
             <td class="p-3 text-xs text-[var(--ink-3)] whitespace-nowrap">${escHtml(operatorLabel(h)) || '—'}</td>
             <td class="p-3 text-xs text-[var(--ink-3)]">
                 <div class="flex items-center gap-1.5">
@@ -3277,6 +3327,13 @@ function renderMfMonthly() {
 
     const key = mfMonthKey(mfMonthCursor);
     const rows = mfHistory.filter(h => h.ts && mfMonthKey(new Date(h.ts)) === key);
+
+    // 責任工程師佔比。★ 用「原始那幾筆」而不是併過的列：佔比算的是用量，
+    //   併不併都一樣；筆數則以實際的同步紀錄為準，與表格上方的數字一致。
+    const mfOpTitle = document.getElementById('mf-operator-title');
+    if (mfOpTitle) mfOpTitle.textContent = `${mfMonthCursor.getFullYear()} 年 ${mfMonthCursor.getMonth()+1} 月 責任工程師佔比`;
+    renderOperatorBreakdown('mf-operator-breakdown', 'mf-operator-empty', rows,
+        cc => cc.toFixed(1) + ' cc');
 
     // 依材料彙總
     const agg = {};
@@ -4560,6 +4617,7 @@ function resetHistoryFilters(){
     document.getElementById('history-filter-printer').value='';
     document.getElementById('history-filter-type').value='';
     document.getElementById('history-filter-workcat').value='';
+    document.getElementById('history-filter-operator').value='';
     document.getElementById('history-filter-from').value='';
     document.getElementById('history-filter-to').value='';
     renderHistory();
@@ -4738,6 +4796,7 @@ function historyFilters() {
     return {
         material: val('history-filter'),
         printer:  val('history-filter-printer'),
+        operator: val('history-filter-operator'),
         type:     val('history-filter-type'),
         workcat:  val('history-filter-workcat'),
         from:     val('history-filter-from'),
@@ -4750,6 +4809,13 @@ function applyHistoryFilters(list, f) {
     return list.filter(h => {
         if (f.material && matCode(h.material) !== matCode(f.material)) return false;
         if (f.printer  && !(h.printer||'').includes(f.printer)) return false;
+        // 責任工程師：比對原始值（operator），不是畫面上的「中文 (英文)」，
+        // 否則對照表一改，先前選好的篩選就會突然對不到而變成 0 筆。
+        // '(未填)' 是特例：專門用來挑出還沒有這個欄位的舊紀錄。
+        if (f.operator) {
+            const op = (h.operator || '').trim();
+            if (f.operator === OPERATOR_NONE ? op !== '' : op !== f.operator) return false;
+        }
         // 「列印消耗」這個選項同時涵蓋 consume 與 aborted（中止也是一次列印）
         if (f.type === 'consume' && !(h.type === 'consume' || h.type === 'aborted')) return false;
         else if (f.type && f.type !== 'consume' && h.type !== f.type) return false;
@@ -4768,6 +4834,7 @@ function activeFilterSummary(f) {
     if (f.material) parts.push(`材料 ${matName(f.material) || f.material}`);
     if (f.printer)  parts.push(`機台 ${printerDisplay(f.printer) || f.printer}`);
     if (f.workcat)  parts.push(`類別 ${f.workcat}`);
+    if (f.operator) parts.push(`責任工程師 ${f.operator === OPERATOR_NONE ? '未填' : operatorLabel({ operator: f.operator })}`);
     if (f.type)     parts.push(`類型 ${({consume:'列印消耗',stockin:'備料入庫',manual:'手動調整'})[f.type] || f.type}`);
     return parts;
 }
@@ -4780,6 +4847,8 @@ function renderHistory() {
     sel.innerHTML='<option value="">全部材料</option>';
     getAllMaterials().forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=matName(m);sel.appendChild(o);});
     sel.value=cur;
+
+    populateOperatorFilter();
 
     // 取得所有篩選值（與匯出共用同一份，見 historyFilters/applyHistoryFilters）
     let filtered = applyHistoryFilters(inv.history);
@@ -4803,7 +4872,7 @@ function renderHistory() {
     const page=filtered.slice((historyPage-1)*HISTORY_PAGE_SIZE,historyPage*HISTORY_PAGE_SIZE);
 
     const tbody=document.getElementById('history-body');
-    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="8" class="p-8 text-center text-[var(--ink-5)]">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
+    if(!filtered.length){ tbody.innerHTML='<tr><td colspan="9" class="p-8 text-center text-[var(--ink-5)]">'+(inv.history.length?'沒有符合篩選條件的資料':'尚無紀錄')+'</td></tr>'; document.getElementById('history-pagination').classList.add('hidden'); return; }
     tbody.innerHTML='';
     page.forEach(h=>{
         const typeMap={
@@ -4830,6 +4899,9 @@ function renderHistory() {
             <td class="p-3 font-medium text-[var(--ink)] text-sm">${matName(h.material)||'—'}</td>
             <td class="p-3 text-sm text-[var(--ink-3)]">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3 whitespace-nowrap"><span class="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${t.color}">${t.label}</span></td>
+            <!-- 責任工程師＝實際執行這次列印的人（Formlabs 的 user／Markforged 的 initiator）。
+                 2026-09-11 之前的紀錄沒有這個欄位，顯示 — 給人工判讀。 -->
+            <td class="p-3 text-xs text-[var(--ink-3)] whitespace-nowrap">${escHtml(operatorLabel(h)) || '—'}</td>
             <td class="p-3 text-right font-medium text-sm whitespace-nowrap ${mlColor}">
                 <div class="inline-flex items-center justify-end gap-1 whitespace-nowrap">
                     <span>${mlCell}</span>${
@@ -5122,6 +5194,56 @@ function renderMonthlyConsume() {
 }
 
 // 當月工作類別佔比（依備註解析：客戶簡稱-工作類別-EF單號，取第2欄位）
+// ══ 責任工程師佔比（月度分析）══════════════════════════════════════
+// 與「工作類別佔比」同一種呈現，只是分組鍵換成 operator。
+// ★ 沒有這個欄位的紀錄歸「未填」而不是丟掉：2026-09-11 之前的紀錄全都沒有，
+//   丟掉的話佔比會以一個不完整的母數計算，看起來卻完全正常（百分比照樣加到 100%）。
+// ★ 單位由呼叫端給（樹脂是 mL/L、Markforged 是 cc），這支不自己猜。
+const OPERATOR_BAR_COLORS = ['bg-sky-500','bg-teal-500','bg-purple-500','bg-amber-500',
+                             'bg-rose-500','bg-indigo-500','bg-lime-600','bg-cyan-600'];
+function renderOperatorBreakdown(boxId, emptyId, recs, fmtQty){
+    const box = document.getElementById(boxId);
+    const empty = document.getElementById(emptyId);
+    if (!box) return;
+    if (!recs.length) {
+        box.innerHTML = '';
+        if (empty) empty.classList.remove('hidden');
+        return;
+    }
+    if (empty) empty.classList.add('hidden');
+
+    const by = new Map();
+    recs.forEach(h => {
+        const key = (h.operator || '').trim() || OPERATOR_NONE;
+        const g = by.get(key) || { ml: 0, count: 0 };
+        g.ml += Math.abs(+h.ml || 0);
+        g.count += 1;
+        by.set(key, g);
+    });
+    const total = [...by.values()].reduce((s, g) => s + g.ml, 0);
+    // 用量大的排前面；「未填」永遠排最後（它不是一個人，是待補的資料）
+    const rows = [...by.entries()].sort((a, b) => {
+        if (a[0] === OPERATOR_NONE) return 1;
+        if (b[0] === OPERATOR_NONE) return -1;
+        return b[1].ml - a[1].ml;
+    });
+    box.innerHTML = rows.map(([key, g], i) => {
+        const pct = total > 0 ? (g.ml / total * 100) : 0;
+        const isNone = key === OPERATOR_NONE;
+        const label = isNone ? '未填' : operatorLabel({ operator: key });
+        const color = isNone ? 'bg-gray-400' : OPERATOR_BAR_COLORS[i % OPERATOR_BAR_COLORS.length];
+        return `<div class="flex items-center gap-2">
+            <span class="text-sm ${isNone ? 'text-[var(--ink-5)]' : 'text-[var(--ink-2)]'} w-32 flex-shrink-0 truncate" title="${escHtml(label)}">${escHtml(label)}</span>
+            <div class="flex-1 h-3 bg-[var(--bg-panel)] rounded-full overflow-hidden">
+                <div class="h-full ${color} rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
+            </div>
+            <span class="text-xs text-[var(--ink-4)] w-16 text-right">${g.count} 筆</span>
+            <span class="text-xs text-[var(--ink-2)] font-medium w-20 text-right">${fmtQty(g.ml)}</span>
+            <span class="text-xs text-[var(--ink-5)] w-10 text-right">${Math.round(pct)}%</span>
+        </div>`;
+    }).join('');
+}
+
 function renderMonthlyWorkCategory() {
     const curYear  = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
     const curMonth = getCurMonthSel();
@@ -5134,6 +5256,14 @@ function renderMonthlyWorkCategory() {
     const recs = inv.history.filter(h=>(h.type==='consume'||h.type==='aborted')
         && (!printerFilter || (h.printer||'').includes(printerFilter))
         && h.ts && new Date(h.ts).getFullYear()===curYear && matchesCurMonth(h.ts, curMonth));
+
+    // 責任工程師佔比吃同一份 recs（同樣的年／月／機台篩選）。
+    // ★ 一定要放在下面「沒有紀錄就 return」之前：放後面的話，切到沒有資料的月份時
+    //   這一塊會留著上個月的內容，而且看起來完全正常。
+    const opTitle = document.getElementById('operator-title');
+    if (opTitle) opTitle.textContent = `${curYear}年 ${monthLabel} 責任工程師佔比${printerFilter?` · ${printerFilter}`:''}`;
+    renderOperatorBreakdown('operator-breakdown', 'operator-empty', recs,
+        ml => ml >= 1000 ? (ml/1000).toFixed(2)+' L' : Math.round(ml)+' mL');
 
     const box   = document.getElementById('workcat-breakdown');
     const empty = document.getElementById('workcat-empty');
@@ -5407,6 +5537,7 @@ function exportInventoryExcel() {
             '時間':   new Date(h.ts).toLocaleString('zh-TW'),
             '材料':   matName(h.material)||'',
             '機台':   printerDisplay(h.printer)||'',
+            '責任工程師': operatorLabel(h),
             '類型':   typeLabels[h.type] || h.type,
             '數量 (L)': isConsumeLike ? -Math.abs(mlL) : mlL,
             '列印結果': OUTCOME_LABEL_TW[historyOutcome(h)] || '',
@@ -5435,14 +5566,13 @@ const PRINT_LOG_HEADERS = [
     '時間戳記','日期','地區','業務','客戶名稱','品牌','機型','列印目的',
     '活動名稱與事由','責任工程師','列印時間(hr)','使用材料(樹脂與塑料)',
     '樹脂與塑料用量','Ultem9085 Support 用量','使用材料(纖維/蠟支撐)','纖維用量',
-    '是否收費','備註(APP單號)','列印結果','列印人員',
+    '是否收費','備註(APP單號)','列印結果',
 ];
-// 列印人員的顯示格式：與匯出的「業務／責任工程師」同一套「中文 (英文)」（zhEnLabel）。
-// ★ 來源是 Eiger 的 initiator.name（實測如 "Jack Tao"），不是系統的工程師 key，
-//   多半對不到 settings/workspace 的對照表 —— 依既有慣例**退回原名而不是留空**，
+// 責任工程師的顯示格式：與匯出的「業務」同一套「中文 (英文)」（zhEnLabel）。
+// ★ 來源：Formlabs 是 print 的 user、Markforged 是 /print_jobs 的 initiator.name
+//   （實測如 "Jack Tao"）。兩者都不是系統的工程師 key，多半對不到
+//   settings/workspace 的對照表 —— 依既有慣例**退回原名而不是留空**，
 //   空白會被當成「沒有人員資料」，但實際上是有的，只是不在清單裡。
-// ★ Formlabs 目前沒有已知的人員欄位（2026-09-11 加了 [sync][DEBUG欄位] 去查），
-//   所以這一欄目前只有 Markforged 會有值。
 function operatorLabel(h){
     return zhEnLabel((h && h.operator) || '', ENG_NAMES);
 }
@@ -5523,7 +5653,11 @@ function buildPrintLogRows(filters, sourceList){
             '機型':      exportModelName(h),
             '列印目的':  PURPOSE_MAP[p.category] || '',
             '活動名稱與事由': p.event,
-            '責任工程師': '',                      // 由 EF 單號 join workboard 補上（見 exportPrintLogExcel）
+            // 責任工程師：先帶「實際執行這次列印的人」（同步從 API 抓回來的）。
+            // ★ 有對到工單時會被工單上的責任工程師蓋過去（見 finishPrintLogExport）——
+            //   工單上指定的人才是「責任」歸屬，實際操作者只是沒有工單時的退路。
+            //   這與「業務」欄的規則一致：有單號一律以工單為準。
+            '責任工程師': operatorLabel(items.find(x => x.operator) || h),
             // 實際列印耗時。MF 合併列取「同一次列印」的最大值而非加總——塑料與纖維
             // 是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍。
             '列印時間(hr)': (() => {
@@ -5538,8 +5672,6 @@ function buildPrintLogRows(filters, sourceList){
             '是否收費':  isChargeable(p),
             '備註(APP單號)': p.appNo || h.note || '',
             '列印結果':  exportPrintResult(h),
-            // 合併列（同一次列印被切成好幾筆）取第一個有值的，理論上整組都一樣
-            '列印人員':  operatorLabel(items.find(x => x.operator) || h),
         });
     });
     // 日期新到舊（用時間數值，不是格式化後的字串）

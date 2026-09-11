@@ -176,10 +176,13 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ filters 要傳 `{}` 而不是省略：省略會去讀 Formlabs 那頁的篩選欄位，使用者在另一個分頁選的日期區間會莫名其妙套到 MF 匯出上
   - 篩選來源是該分頁唯一的搜尋框（`mfHistoryRows()`，表格與匯出共用同一份，理由同 `applyHistoryFilters()`）。MF 舊紀錄沒有 `duration_hr`，列印時間留空給人工填
 - **匯出的「機型」欄以後台手填的顯示名稱優先**（2026-09-08 決策）：`machine_labels` 有填就用它，沒填才退回固定的機型寫法（目標表是有空格的「Form 4」）。判斷「有沒有手填」要用 `window.machineLabelOverride()`，不可用 `machineLabel()` —— 後者沒填時會回機型，分不出兩者
-- **列印人員**（2026-09-11）：Formlabs 與 Markforged 都有，寫進 `inventory_history.operator`，匯出是**第 20 欄「列印人員」**（加在最後，前 19 欄順序不可變）
+- **責任工程師＝實際執行列印的人**（2026-09-11）：Formlabs 與 Markforged 都有，寫進 `inventory_history.operator`
   - Formlabs：實測 print 物件有 `user` 與 `user_custom_label`（2026-09-11 `[sync][DEBUG欄位]` 撈到的完整欄位清單：`adaptive_thickness / back_cartridge / cartridge / cloud_queue_item / created_at / currently_printing_layer / cylinder / elapsed_duration_ms / estimated_duration_ms / estimated_time_remaining_ms / firmware_version / form_auto_fw_version / form_auto_serial / front_cartridge / group / guid / harvest_status / layer_count / layer_thickness_mm / material / material_name / message / name / note / parts / post_print_photo_url / print_finished_at / print_intent / print_job / print_run_success / print_settings_code / print_settings_name / print_started_at / print_thumbnail / printer / status / tank / timelapse_video_url / user / user_custom_label / using_open_mode / volume_ml / z_height_offset_mm`）。⚠ **當時只印 key 沒印 value**（log 是所有 admin 看得到的地方），所以 `fl_operator()` 對值的形狀保持防禦性：字串直接用、dict 依序找 `name`/`full_name`/`display_name`/`username`/`nickname`、再退回 `first_name + last_name`；**認不出來回 None**，絕不拿 id 或 email 充數
   - Markforged：`/print_jobs` 的 `initiator.name`（見上面的 Markforged 段落）
   - ⚠ **兩邊都只存名稱、不存 email 與 id**：消耗紀錄是全公司登入者都讀得到的 collection
+  - **匯出併進既有的「責任工程師」欄（第 10 欄），不另開欄位**：先做成第 20 欄，2026-09-11 使用者決定統一用這個命名。⚠ **有對到工單時以工單上的責任工程師為準**（與「業務」同一條規則：有單號一律交給工單 join），實際操作者只是沒有工單時的退路
+  - 兩個消耗記錄分頁都有「責任工程師」欄；「消耗記錄」另有篩選下拉（選項依目前載入的紀錄動態產生，含一個「（未填）」專門挑出待補的舊紀錄）。⚠ **篩選比對的是原始值 `operator`，不是畫面上的「中文 (英文)」** —— 比對顯示名稱的話，對照表一改，先前選好的篩選就會突然變成 0 筆而且看起來像沒資料
+  - 月度分析（樹脂與 Markforged 各一）有「責任工程師佔比」，沒有值的歸「未填」並固定排最後。⚠ **不可把沒有值的丟掉**：母數會變小，佔比照樣加到 100%，看起來完全正常
   - ⚠ **都只有新紀錄才有**：Formlabs 的寫在 print 完成時、Markforged 的靠 `job_id` 在工作結案後回填，2026-09-11 之前的舊紀錄一律留空給人工填
 - **匯出的人名格式**：業務與責任工程師一律「**中文 (英文)**」（`zhEnLabel`），與 3DP-BK 的 `engDisplay`/`salesDisplay` 同一慣例。⚠ 對照查不到時**退回 key 而不是空字串**——空白會被當成「沒填」，但實際上工單有指定人，只是那人已不在清單裡
 - **工程測試掛自家公司**（`ENG_TEST_COMPANY`＝實威國際股份有限公司）：
