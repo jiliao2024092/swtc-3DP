@@ -172,10 +172,12 @@
             </div>
             <div class="space-y-1.5">
                 <label class="text-sm font-medium text-[var(--ink-2)]" id="stock-qty-label">數量 (L)</label>
-                <!-- ★ step 要跟著單位走：這欄是「L」，而 placeholder 與下方提示都明寫
-                     「可輸入小數」，step="1" 卻把使用者擋在整數 —— 自己跟自己打架。
-                     切到「耗材」時單位變成「個」，setStockKind() 會把 step 改回 1。 -->
-                <input type="number" id="stock-qty" min="0" step="0.01" value="1" placeholder="例：1.5 = 1500 ml"
+                <!-- ★ 用 step="any" 不是 "0.01"：step 同時管「能不能打」與「上下鍵一次跳多少」。
+                     step="1"    → 打 0.97 被擋（2026-09-03 的災情）
+                     step="0.01" → 打得進去，但上下鍵一次只跳 0.01，要按 100 下才加 1 L
+                     step="any"  → 兩者都對：小數照打，上下鍵一次跳 1（瀏覽器實測，見下方註解）
+                     切到「耗材」時單位變成「個」，setStockKind() 會把 step 改回 1（擋小數）。 -->
+                <input type="number" id="stock-qty" min="0" step="any" value="1" placeholder="例：1.5 = 1500 ml"
                     class="w-full p-2.5 border border-[var(--line-strong)] rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                 <p class="text-xs text-[var(--ink-5)]" id="stock-qty-hint">可輸入小數（如 1.5 L = 1500 ml）</p>
             </div>
@@ -2971,7 +2973,8 @@ function renderStockTable() {
                         : '<span class="text-[var(--ink-6)] text-xs">—</span>')}
             </td>
             <td class="p-3 text-right">
-                <input type="number" min="0" step="0.01" value="${stockLiters.toFixed(2)}" ${inputDisabled?'disabled':''}
+                <!-- step="any"：小數照打，上下鍵一次加減 1 L（step="0.01" 會變成一次 0.01） -->
+                <input type="number" min="0" step="any" value="${stockLiters.toFixed(2)}" ${inputDisabled?'disabled':''}
                     class="stock-liters-input w-24 px-2 py-1 text-right rounded-md border ${isStockEditMode?'border-[var(--accent-border)] bg-[var(--bg)]':'border-[var(--line)]'} focus:border-[var(--accent-border)] focus:ring-1 focus:ring-blue-500 outline-none text-sm transition-colors disabled:bg-[var(--bg-soft)] disabled:text-[var(--ink-5)] ${low&&!isStockEditMode?'text-[var(--danger)] font-medium':''}">
                 <span class="text-xs text-[var(--ink-5)] ml-1">L</span>
             </td>
@@ -4236,7 +4239,11 @@ function setStockKind(kind) {
     document.getElementById('stock-qty-hint').textContent = kind==='consumable' ? '耗材以「個」計算' : '可輸入小數（如 1.5 L = 1500 ml）';
     // ★ step 要跟著單位走，不能只改標籤：耗材以「個」計不該讓人打 0.5 個，
     //   材料以「L」計則必須能打小數（列印消耗常常只有 0.03 L）。
-    document.getElementById('stock-qty').step = kind==='consumable' ? '1' : '0.01';
+    // ★ 材料用 'any' 不是 '0.01'：step 同時決定「上下鍵一次跳多少」，
+    //   0.01 會讓箭頭一次只加 0.01（使用者 2026-09-11 回報）。
+    //   瀏覽器實測（Chrome）：step=1 打 0.97 被擋；step=0.01 打得進去但箭頭跳 0.01；
+    //   step=any 打得進去且箭頭跳 1。
+    document.getElementById('stock-qty').step = kind==='consumable' ? '1' : 'any';
 
     // 依類型重新填充 datalist：材料給材料清單，耗材給既有耗材清單（不混在一起，避免誤選）
     const dl = document.getElementById('material-options');
