@@ -909,6 +909,117 @@ def lg_doc_id_of(e, m, now_iso: str) -> str:
             f"{now_iso.replace(':','').replace('-','')[:15]}")
 
 
+# ── Markforged 的列印時間 ────────────────────────────────────────────────
+# ★ Eiger **沒有**現成的「耗時」欄位（Formlabs 有 elapsed_duration_ms，這裡沒有），
+#   只能用 ended_at - started_at 自己算。實測 dump（tools/_eiger_dump/print_jobs.json）
+#   193 筆終態工作（Completed 127 / Canceled 46 / Failed 18 / Unknown 2）
+#   **每一筆的兩個欄位都有值**，所以算得出來。
+MF_DURATION_LOOKBACK_HOURS = 48
+# ended_at 合理性檢查的倍率（實際耗時不可超過切片預估的這麼多倍）。
+# 實測 1.5〜10 倍之間結果幾乎一樣（48 vs 50 筆），門檻不敏感，取中間的 3。
+MF_DURATION_SANITY_RATIO = 3
+
+
+def mf_job_duration_hours(job: dict):
+    """Eiger 工作的實際耗時（小時，無條件進位到 0.5）。算不出來或不合理回 None。
+
+    ★ ended_at 是 null 的一律回 None：實測「進行中」那份 43 筆裡有 42 筆
+      state="Printing" 且 ended_at 永遠是 null（規劃文件 §0.6.4），
+      那些工作永遠算不出實際耗時，留空給人工填才是對的。
+
+    ★★ **`ended_at` 不見得是「這次列印真正結束的時間」** —— 這是這支函式最重要的一點。
+      實測 dump（tools/_eiger_dump/print_jobs.json）193 筆終態工作裡，**143 筆的
+      ended_at 是同一個時間戳**：83 筆都是 2026-08-03T05:45:26.938Z、60 筆都是
+      2026-05-07T10:30:38.612Z。那是 Eiger 把一堆永遠卡在 Printing 的陳舊工作
+      「一次性結案」時蓋上去的，相減會得到幾千小時（最長 36556 小時 ＝ 4.17 年）。
+      直接寫進「列印時間」不會有任何錯誤訊息，只會在匯出檔裡多一格離譜的數字。
+      所以要用切片預估值做**合理性上限**（只當守門員，絕不拿來當數值）。
+
+    ★ 預估值**不可**拿來頂替實際耗時：實測 Completed 的實際/預估是 1.04〜1.50 倍、
+      Canceled 只有 0.01〜0.08 倍（印到 1% 就被取消）。填進「實際列印時間」
+      是錯資料，而且看不出來是估的。沒有預估值可比對時一律回 None。
+
+    ★ 0.5 小時的進位規則與 Formlabs 的 print_duration_hours() 一致 ——
+      兩邊都要對齊人工登記表的填寫習慣，規則走偏會讓同一份匯出檔有兩種標準。
+    """
+    st = parse_valid_ts(job.get("started_at"))
+    en = parse_valid_ts(job.get("ended_at"))
+    if not st or not en or en <= st:
+        return None
+    hours = (en - st).total_seconds() / 3600.0
+    if hours <= 0:
+        return None
+    est_sec = (job.get("build") or {}).get("estimated_print_seconds")
+    try:
+        est_h = float(est_sec) / 3600.0 if est_sec else 0.0
+    except (TypeError, ValueError):
+        est_h = 0.0
+    if est_h <= 0:
+        return None
+    if hours > est_h * MF_DURATION_SANITY_RATIO + 0.5:
+        return None
+    return math.ceil(hours * 2) / 2
+
+
+def _mf_fill_durations(db, access_key: str, secret_key: str) -> int:
+    """把已結案工作的實際耗時回填到對應的消耗紀錄（duration_hr）。
+
+    ★ 為什麼是「回填」而不是寫入當下就填：MF 的消耗是 ccs_*_remaining 的差額，
+      寫入時間點是「列印進行中」，那時 ended_at 還是 null、耗時根本還不存在。
+      只有等工作結案之後才算得出來，所以每輪同步回頭補最近結案的那幾筆。
+    ★ 靠 job_id 對應（2026-09-11 起才寫進消耗紀錄）。舊紀錄沒有這個欄位 →
+      對不到就維持空白給人工填，不要用任何預估值補上去。
+    ★ 已處理過的 job_id 記在 inventory/markforged_watch.duration_filled，
+      **這是成本控制不是最佳化**：不記的話每輪都會把近 48 小時的每個工作重查一次，
+      一個長時間列印可能有上百筆消耗紀錄（每 30 分鐘一輪 × 兩個槽位），
+      每天會吃掉上萬次讀取（免費額度 5 萬/天）。
+    """
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    watch = db.collection("inventory").document("markforged_watch")
+    wsnap = watch.get()
+    wdata = (wsnap.to_dict() or {}) if wsnap.exists else {}
+    done = list(wdata.get("duration_filled") or [])
+    done_set = set(done)
+
+    since = (datetime.datetime.utcnow()
+             - datetime.timedelta(hours=MF_DURATION_LOOKBACK_HOURS)
+             ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    jobs = eiger_get_all("/print_jobs", access_key, secret_key,
+                         {"filter[ended_at][ge]": since})
+
+    updated, matched_jobs = 0, []
+    for j in jobs:
+        jid = j.get("id")
+        if not jid or jid in done_set:
+            continue
+        hrs = mf_job_duration_hours(j)
+        if hrs is None:
+            continue
+        # ★ 單一欄位的相等查詢，Firestore 自動索引就夠，不必建複合索引。
+        #   limit 抓寬一點：一次長時間列印會被切成很多筆（30 分鐘一輪 × 兩個槽位）。
+        q = (db.collection("inventory_history")
+               .where(filter=FieldFilter("job_id", "==", jid))
+               .limit(300))
+        for snap in q.stream():
+            cur = (snap.to_dict() or {}).get("duration_hr")
+            if cur == hrs:
+                continue          # ★ 內容相同也計費一次寫入，一定要跳過
+            snap.reference.update({"duration_hr": hrs})
+            updated += 1
+        # 不論這一輪有沒有對到紀錄都記成已處理：對不到通常是舊紀錄沒有 job_id，
+        # 再查幾百次也不會變出來。
+        done_set.add(jid)
+        matched_jobs.append(jid)
+
+    if matched_jobs:
+        # 只留最近 300 個，避免這個欄位無限長大
+        done = (done + matched_jobs)[-300:]
+        watch.set({"duration_filled": done}, merge=True)
+        print(f"[eiger] 列印時間回填：工作 {len(matched_jobs)} 個、消耗紀錄 {updated} 筆")
+    return updated
+
+
 def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
     """Markforged 機台狀態同步 + 材料消耗追蹤。
 
@@ -917,7 +1028,7 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
     ★ 2026-08-25 之前這裡是唯讀的觀測模式，完全不碰庫存；現在會扣了。
     """
     stats = {"devices_seen": 0, "devices_tracked": 0, "printing": 0,
-             "observations": 0, "errors": []}
+             "observations": 0, "durations_filled": 0, "errors": []}
     try:
         devices = eiger_get_all("/devices", access_key, secret_key)
         stats["devices_seen"] = len(devices)
@@ -1003,6 +1114,15 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
                 machine_regions)
         except Exception as oe:
             msg = f"[eiger] 消耗追蹤失敗（機台狀態已正常寫入）: {oe}"
+            print(msg)
+            stats["errors"].append(msg)
+
+        # 列印時間回填。★ 同樣不可影響機台狀態與消耗追蹤：這是「錦上添花」的欄位，
+        #   /print_jobs 掛掉不該讓整輪同步失敗。
+        try:
+            stats["durations_filled"] = _mf_fill_durations(db, access_key, secret_key)
+        except Exception as de:
+            msg = f"[eiger] 列印時間回填失敗（狀態與消耗都已正常寫入）: {de}"
             print(msg)
             stats["errors"].append(msg)
 

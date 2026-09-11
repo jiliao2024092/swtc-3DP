@@ -184,6 +184,76 @@ check("只有 estimated_duration_ms → None",
 check("main.py 沒把 estimated_duration_ms 當來源",
       bool(re.search(r'\.get\(\s*["\']estimated_duration_ms', _dfn.group(0))), False)
 
+print("── mf_job_duration_hours()：Markforged 的列印時間 ──")
+# Eiger 沒有現成的耗時欄位，只能 ended_at - started_at 自己算。
+# ★★ 但 ended_at 不見得是「這次列印真正結束的時間」：實測 dump 193 筆終態工作裡
+#    有 143 筆的 ended_at 是同一個時間戳（Eiger 把一堆卡在 Printing 的陳舊工作
+#    一次性結案），相減會得到幾千小時（最長 36556 小時＝4.17 年）。這一組守這件事。
+_mfn = re.search(r"^def mf_job_duration_hours\(.*?(?=^\ndef _mf_fill_durations)", src, re.M | re.S)
+if not _mfn:
+    print("✗ 在 functions/main.py 找不到 mf_job_duration_hours()")
+    sys.exit(1)
+_vts = re.search(r"^def parse_valid_ts\(.*?(?=^\n# ═)", src, re.M | re.S)
+_rat = re.search(r"^MF_DURATION_SANITY_RATIO\s*=\s*(\d+)", src, re.M)
+check("合理性倍率有定義", bool(_rat), True)
+_mns = {"math": math, "datetime": __import__("datetime"),
+        "MF_DURATION_SANITY_RATIO": int(_rat.group(1)) if _rat else 3}
+exec(_vts.group(0), _mns)
+exec(_mfn.group(0), _mns)
+mdur = _mns["mf_job_duration_hours"]
+
+def _job(start, end, est_hours):
+    return {"started_at": start, "ended_at": end,
+            "build": ({"estimated_print_seconds": est_hours * 3600} if est_hours else {})}
+
+check("3 小時列印（預估 2.5h）",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T13:00:00Z", 2.5)), 3.0)
+check("10 分鐘 → 進位成 0.5",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T10:10:00Z", 0.2)), 0.5)
+check("2 小時 1 分 → 2.5",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T12:01:00Z", 2.0)), 2.5)
+
+print("── 算不出來的一律 None，留空給人工填 ──")
+check("★ ended_at 是 null（卡在 Printing 的工作永遠這樣）→ None",
+      mdur(_job("2026-09-10T10:00:00Z", None, 2.5)), None)
+check("結束早於開始 → None",
+      mdur(_job("2026-09-10T13:00:00Z", "2026-09-10T10:00:00Z", 2.5)), None)
+check("起訖相同 → None",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T10:00:00Z", 2.5)), None)
+check("★ 沒有切片預估值 → None（無從檢查合理性，不硬填）",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T13:00:00Z", None)), None)
+
+print("── ★ 一次性結案的 ended_at 必須擋掉（實測數字）──")
+# 下面三筆是 tools/_eiger_dump/print_jobs.json 的真實資料：
+# 83 筆工作共用 ended_at=2026-08-03T05:45:26.938Z、60 筆共用 2026-05-07T10:30:38.612Z
+check("2022 開始、2026 被一次性結案（預估 3.67h）→ None",
+      mdur(_job("2022-06-02T01:22:37.534Z", "2026-08-03T05:45:26.938Z", 3.67)), None)
+check("同一批的另一筆（預估 5.53h）→ None",
+      mdur(_job("2022-06-12T04:24:49.940Z", "2026-08-03T05:45:26.938Z", 5.53)), None)
+check("另一個批次時間戳（預估 0.12h）→ None",
+      mdur(_job("2022-06-06T06:48:26.245Z", "2026-05-07T10:30:38.612Z", 0.12)), None)
+check("預估 2h、實際 6.5h（剛好在寬限內）→ 6.5",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T16:30:00Z", 2.0)), 6.5)
+check("預估 2h、實際 7h（超過寬限）→ None",
+      mdur(_job("2026-09-10T10:00:00Z", "2026-09-10T17:00:00Z", 2.0)), None)
+# ★ 預估值只當守門員，絕不可拿來當數值（Canceled 的實際只有預估的 0.01〜0.08 倍）
+check("main.py 沒把 estimated_print_seconds 當成回傳值",
+      bool(re.search(r"return\s+.*estimated_print_seconds", _mfn.group(0))), False)
+
+print("── 回填接線：耗時要真的寫進 inventory_history ──")
+check("perform_sync_eiger 有呼叫 _mf_fill_durations",
+      bool(re.search(r"_mf_fill_durations\(db, access_key, secret_key\)", src)), True)
+check("回填寫的是 duration_hr 欄位",
+      bool(re.search(r'update\(\{"duration_hr": hrs\}\)', src)), True)
+check("★ 用 job_id 對應消耗紀錄",
+      bool(re.search(r'FieldFilter\("job_id", "==", jid\)', src)), True)
+check("★ 內容相同就跳過（Firestore 即使值沒變也計費一次寫入）",
+      bool(re.search(r"if cur == hrs:\s*\n\s*continue", src)), True)
+check("★ 回填失敗不可拖垮機台狀態同步（獨立 try/except）",
+      bool(re.search(r"列印時間回填失敗", src)), True)
+check("MF 消耗紀錄有寫 job_id（沒有它就對不到工作）",
+      bool(re.search(r'"job_id":\s*e\.get\("job_id"\)', src)), True)
+
 print("── 備援：finished - started ──")
 _dns2 = dict(_dns)
 _dns2["parse_valid_ts"] = lambda v, floor_year=2000: (
