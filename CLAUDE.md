@@ -125,6 +125,11 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - ⚠ 因為 alias 可能是 `None`，比對機台一律走 `alias or serial`（後端 `machine_key()`/`tracked_alias()`）。只看 `alias` 會讓南部兩台**完全不被追蹤且沒有任何錯誤訊息**：serial 進不了 `tracked_serials` → prints 根本不會被拉回來 → 消耗靜默消失
   - Markforged 納管 7 台（見 `EIGER_TRACKED_DEVICES`）；中國廠的 `Mark Two Dongguan`、`X7 Shanghai` **刻意排除**，白名單以外一律不寫入
   - **Markforged 已納入消耗扣帳**（2026-08-25 起，原為唯讀觀測模式）：靠 `ccs_*_remaining` 的差額判定用量，**只有「餘量下降」才扣**；refill／換料一律不動庫存（餘量上升是換料，那捲料早就從備料扣過了，當成加庫存會憑空生料）。消耗寫進 `inventory_history`（`source=markforged`、`unit=cc`）並扣 `inventory/markforged_{region}`
+  - ⚠ **一次列印會被切成好幾筆消耗紀錄**：餘量是「列印中即時遞減」的（規劃文件 §0.6.7），而同步 30 分鐘一輪，所以每一輪都會寫一筆。實測 2026-09-10 log，`MarkTwoGEN2` 的工作 `6157N112_Black_Buna-N_Rubber (1)`：`13:14 483.84→482.78`（1.06 cc）／`13:44 →481.77`／`14:14 →480.79`／`14:44 →479.77`／`22:44 →472.92`（6.85 cc）＝**一次列印 5 筆、合計 10.92 cc**。庫存扣帳沒錯（總量一樣），但「消耗記錄」與匯出看起來就不是實際發生的事
+    - 前端用 `tagMfJobs()` 把同一次列印標成同一個 `_mfJob`：**`job_id` 優先**（2026-09-11 起後端才寫），舊紀錄退回「機台＋工作名稱」再用**時間間隔 12 小時**切段
+    - ⚠ **間隔門檻不能抓 30 分鐘那種短值**：上面實測最後一段隔了 **8 小時**（中間機台沒回報變化），抓太短會把同一次列印切成兩段
+    - ⚠ **只看工作名稱不夠**：同一個檔名重印很常見。沒有 `job_id` 的舊紀錄，同一天同檔名的兩次列印會被併成一列 —— 這是刻意取捨，反過來（一次列印拆成 5 列、每列 1 cc）與事實差更遠
+    - 消耗記錄表格用 `mfHistoryMerged()`（同一次列印**同一種材料**併一列，塑料與纖維仍分開；匯出的 19 欄格式才把兩者放同一列）。合併列的備註編輯會**整組一起改**，否則被改的那一筆會從該列分裂出去
   - ⚠ 差額式追蹤的基準存在 `inventory/markforged_watch`，**基準更新與消耗寫入必須在同一個 batch**——分開寫會在「history 寫成功、基準寫失敗」時，讓下一輪用更舊的基準算出更大的一段差額，同一段消耗被記兩次、庫存也扣兩次
   - ⚠ Markforged 材料是**純名稱**（Onyx／Carbon Fiber），不可套 `canon_material()`／`family_code()` 那套 FL 家族代碼邏輯；扣庫存走 `apply_mf_deductions()`（比對純名稱、扣 `total_cc`），與樹脂的 `total_ml` 完全分開。耗材（`kind='consumable'`，以「個」計）不可被 cc 消耗扣到
   - ⚠ 機台顯示名稱有互為子字串的情況（`MarkTwo` ⊂ `MarkTwoGEN2` / `MarkTwoTainan`）。`machine_region()` 必須「完全相同優先、包含取最長」，只用包含比對會依 dict 鍵順序判錯區，且完全沒有錯誤訊息（`tools/test_regions*` 有守）

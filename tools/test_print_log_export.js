@@ -132,6 +132,8 @@ const rowSrcs = [
   extract('historyOutcome',      /function historyOutcome\(h\)\{[\s\S]*?\n\}/),
   extract('exportPrintResult',   /function exportPrintResult\(h\)\{[\s\S]*?\n\}/),
   extract('exportModelName',     /function exportModelName\(h\)\{[\s\S]*?\n\}/),
+  extract('MF_JOB_GAP_MS',       /const MF_JOB_GAP_MS = [^\n]*;/),
+  extract('tagMfJobs',           /function tagMfJobs\(list\) \{[\s\S]*?\n\}/),
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
   extract('buildPrintLogRows',   /function buildPrintLogRows\(filters, sourceList\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
@@ -185,10 +187,19 @@ check('纖維欄放纖維',   mfRows[0]['使用材料(纖維/蠟支撐)'], 'Carb
 check('纖維用量',       mfRows[0]['纖維用量'], 7.39);
 check('品牌判為 Markforged', mfRows[0]['品牌'], 'Markforged');
 check('MF 機型對照',    mfRows[0]['機型'], 'Mark Two');
-// 不同分鐘的 MF 紀錄是不同次列印，不可合併
-const mf2 = [...mf, { ...mf[0], id:'m3', ts:'2026-08-20T14:30:00', ml:60 },
-                    { ...mf[1], id:'m4', ts:'2026-08-20T14:30:00', ml:9 }];
-check('不同時間的 MF 列印各自成列', runBuild(mf2).length, 2);
+// 兩次不同的列印不可合併。★ 判準是 job_id，不是「時間不同」——
+// MF 的一次列印本來就會被 30 分鐘一輪的同步切成好幾筆不同時間的紀錄（見下一段）。
+const mf2 = [...mf.map(x => ({ ...x, job_id:'j1' })),
+             { ...mf[0], id:'m3', ts:'2026-08-20T14:30:00', ml:60, job_id:'j2' },
+             { ...mf[1], id:'m4', ts:'2026-08-20T14:30:00', ml:9,  job_id:'j2' }];
+check('★ job_id 不同的兩次列印各自成列', runBuild(mf2).length, 2);
+// ⚠ 已知限制：2026-09-11 之前的舊紀錄沒有 job_id，同一天、同一台、同一個檔名的
+//   兩次列印會被併成一列（門檻 12 小時內）。這是刻意的取捨——反過來（把一次列印
+//   拆成 5 列、每列 1 cc）與實際發生的事差更遠，而且使用者已經回報過。
+const mf2NoJob = [...mf, { ...mf[0], id:'m3', ts:'2026-08-20T14:30:00', ml:60 },
+                         { ...mf[1], id:'m4', ts:'2026-08-20T14:30:00', ml:9 }];
+check('舊紀錄沒有 job_id → 同一天同檔名會被併成一列（已知限制）',
+      runBuild(mf2NoJob).length, 1);
 
 console.log('── ★ 排序用時間數值，不是格式化字串 ──');
 // 「時間戳記」欄是 toLocaleString('zh-TW')（2026/8/7）。拿它做字典序排序，
@@ -413,6 +424,53 @@ check('列印時間取最大值不是加總',     mfOut[0]['列印時間(hr)'], 
 check('有扣庫存視為成功',            mfOut[0]['列印結果'], '成功');
 // 不給第二個參數時仍以 inv.history 為準（Formlabs 匯出的原本行為不可變）
 check('★ 不給來源清單時仍走 inv.history', runBuild(mfPair).length, 1);
+
+console.log('── ★ 同一次列印被同步切成好幾筆 → 匯出要併回一列 ──');
+// MF 的消耗是 device 餘量的差額，而餘量在列印中即時遞減；同步 30 分鐘一輪，
+// 所以一次列印每輪都會產生一筆紀錄。下面用 2026-09-10 Cloud Function log 的真實數字：
+//   MarkTwoGEN2 / 6157N112_Black_Buna-N_Rubber (1)
+//   13:14 483.84→482.78 / 13:44 →481.77 / 14:14 →480.79 / 14:44 →479.77 / 22:44 →472.92
+// ★ 最後一段隔了 8 小時（機台中間沒回報變化），所以間隔門檻不能抓 30 分鐘那種短值。
+const realJob = [
+  { id:'g1', ts:'2026-09-10T13:14:06', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:1.06, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+  { id:'g2', ts:'2026-09-10T13:44:07', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:1.01, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+  { id:'g3', ts:'2026-09-10T14:14:06', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:0.98, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+  { id:'g4', ts:'2026-09-10T14:44:05', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:1.02, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+  { id:'g5', ts:'2026-09-10T22:44:06', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:6.85, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+];
+const jobRows = runBuild(realJob, null, null, true);
+check('★ 5 筆同步紀錄 → 1 列', jobRows.length, 1);
+check('★ 用量要加總（不是只留其中一筆）', jobRows[0]['樹脂與塑料用量'], 10.92);
+
+// 同一個檔名「又印了一次」不可被併進來：job_id 不同就是不同次列印
+const reprint = realJob.concat([
+  { id:'r1', ts:'2026-09-10T23:14:06', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:2.0, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-B', stock_deducted:true },
+]);
+check('★ job_id 不同＝又印了一次，不可併', runBuild(reprint, null, null, true).length, 2);
+
+// 舊紀錄沒有 job_id（2026-09-11 之前）→ 退回「機台＋名稱＋時間間隔」
+const legacy = realJob.map(x => { const c = { ...x }; delete c.job_id; return c; });
+check('舊紀錄沒有 job_id 也要併得起來', runBuild(legacy, null, null, true).length, 1);
+const legacyFar = legacy.concat([
+  { id:'f1', ts:'2026-09-12T09:00:00', material:'Smooth TPU Black', printer:'MarkTwoGEN2', type:'consume', ml:3.0, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', stock_deducted:true },
+]);
+check('★ 舊紀錄隔了超過門檻（隔天再印）要切成兩次', runBuild(legacyFar, null, null, true).length, 2);
+
+// 不同機台同名工作不可混在一起
+const twoDevices = realJob.concat([
+  { id:'d1', ts:'2026-09-10T13:20:00', material:'Onyx', printer:'FX20', type:'consume', ml:5.0, category:'plastic', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-C', stock_deducted:true },
+]);
+check('不同機台不可併', runBuild(twoDevices, null, null, true).length, 2);
+
+// 塑料與纖維仍要在同一列（目標表的格式）
+const withFiber = realJob.concat([
+  { id:'fb1', ts:'2026-09-10T13:14:06', material:'Carbon Fiber', printer:'MarkTwoGEN2', type:'consume', ml:0.4, category:'fiber', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+  { id:'fb2', ts:'2026-09-10T14:44:05', material:'Carbon Fiber', printer:'MarkTwoGEN2', type:'consume', ml:0.6, category:'fiber', note:'6157N112_Black_Buna-N_Rubber (1)', region:'north', source:'markforged', job_id:'job-A', stock_deducted:true },
+]);
+const fbRows = runBuild(withFiber, null, null, true);
+check('塑料與纖維仍是同一列', fbRows.length, 1);
+check('纖維用量也要加總',     fbRows[0]['纖維用量'], 1);
+check('塑料用量不受纖維影響', fbRows[0]['樹脂與塑料用量'], 10.92);
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

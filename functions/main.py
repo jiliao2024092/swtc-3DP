@@ -844,6 +844,13 @@ def _mf_observe(db, entries: list, now_iso: str, machine_regions=None) -> int:
                         "category":  "fiber" if m.get("slot") == "secondary" else "plastic",
                         "printer":   dev,
                         "region":    rk,
+                        # ★ 同一次列印會被 30 分鐘一輪的同步切成好幾筆（餘量是即時遞減的，
+                        #   見 docs/markforged-integration-plan.md §0.6.7）。實測 2026-09-10
+                        #   MarkTwoGEN2 的一個工作被切成 5 筆、各約 1 cc。前端要把它們併回
+                        #   一次列印顯示，光靠 note（工作名稱）不夠——同一個檔名重印很常見，
+                        #   只有 job_id 能區分「還是同一次」與「又印了一次」。
+                        "job_id":    e.get("job_id"),
+                        "job_name":  e.get("print_name") or None,
                         "ml":        used,     # 欄位沿用 ml，單位由 unit 欄位決定
                         "note":      e.get("print_name") or f"{dev} {m.get('slot')}",
                         "stock_deducted":     True,

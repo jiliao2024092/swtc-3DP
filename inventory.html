@@ -3115,6 +3115,77 @@ function renderMfAlerts() {
     }).join('');
 }
 
+// ══ 把「同一次列印」的多筆 Markforged 消耗併回一次 ══════════════════
+// 為什麼會被切開：MF 的消耗是「device 的 ccs_*_remaining 差額」，而餘量在列印過程中
+// 是即時遞減的（見 docs/markforged-integration-plan.md §0.6.7）。同步每 30 分鐘跑一輪，
+// 所以一次列印每一輪都會產生一筆紀錄。
+// 實測（2026-09-10 Cloud Function log，MarkTwoGEN2，工作 6157N112_Black_Buna-N_Rubber (1)）：
+//   13:14 483.84→482.78（1.06 cc）／13:44 →481.77（1.01）／14:14 →480.79（0.98）
+//   14:44 →479.77（1.02）／22:44 →472.92（6.85）   ＝ 一次列印被寫成 5 筆、合計 10.92 cc
+// 庫存扣帳沒有錯（總量一樣），但「消耗記錄」與匯出看起來就不是實際發生的事。
+//
+// ★ 分組鍵優先用 job_id：同一個檔名重印很常見（Formlabs 那邊實測「實威-工程測試」
+//   有 8 筆），只看名稱會把「又印了一次」誤併成同一次。job_id 是 2026-09-11 才開始寫的，
+//   舊紀錄沒有 → 退回「機台＋名稱」，再用時間間隔切段。
+// ★ 間隔門檻 12 小時：不能只抓「相鄰 30 分鐘」——上面實測那筆最後一段隔了 8 小時
+//   （中間機台沒有回報變化），抓太短會把同一次列印切成兩段。
+const MF_JOB_GAP_MS = 12 * 3600 * 1000;
+
+// 就地在每筆紀錄掛上 _mfJob（同一次列印共用）。同一份清單重複呼叫結果相同。
+// 回傳傳進來的陣列，方便串接。
+function tagMfJobs(list) {
+    const buckets = new Map();
+    (list || []).forEach(h => {
+        if (!h || (h.source || 'formlabs') !== 'markforged') return;
+        const jobKey = h.job_id || `n:${h.note || ''}`;
+        const k = `${h.printer || ''}|${jobKey}`;
+        if (!buckets.has(k)) buckets.set(k, []);
+        buckets.get(k).push(h);
+    });
+    buckets.forEach((items, k) => {
+        // 由舊到新掃描，間隔超過門檻就切下一段（同一個檔名的下一次列印）
+        items.sort((a, b) => String(a.ts || '').localeCompare(String(b.ts || '')));
+        let seg = 0, prev = null;
+        items.forEach(h => {
+            const t = h.ts ? new Date(h.ts).getTime() : NaN;
+            // ts 壞掉的舊資料自成一段：寧可該併的沒併（多一列，看得出來），
+            // 也不要不該併的併了（數字被加總，看不出來）
+            if (!isFinite(t)) { h._mfJob = `${k}#bad:${h.id || Math.random()}`; return; }
+            if (prev !== null && t - prev > MF_JOB_GAP_MS) seg++;
+            prev = t;
+            h._mfJob = `${k}#${seg}`;
+        });
+    });
+    return list;
+}
+
+// 消耗記錄表格用：把同一次列印、同一種材料的紀錄併成一列。
+// ★ 材料（塑料／纖維）不併：那是兩種材料、兩個庫存項目，併起來數字沒有意義。
+//   匯出的 19 欄格式才要把塑料與纖維放同一列（見 printLogGroupKey）。
+function mfHistoryMerged(rows) {
+    const map = new Map();
+    tagMfJobs(rows).forEach(h => {
+        const k = `${h._mfJob}|${h.category || ''}|${h.material || ''}`;
+        const g = map.get(k);
+        if (!g) {
+            map.set(k, { ...h, ml: Math.abs(+h.ml || 0), _ids: [h.id], _n: 1,
+                         _firstTs: h.ts, _lastTs: h.ts });
+            return;
+        }
+        g.ml += Math.abs(+h.ml || 0);
+        g._ids.push(h.id);
+        g._n++;
+        // rows 是新到舊排序，所以後進來的是更早的那一筆
+        if (String(h.ts || '') < String(g._firstTs || '')) g._firstTs = h.ts;
+        if (String(h.ts || '') > String(g._lastTs  || '')) g._lastTs  = h.ts;
+        // 顯示用的時間一律取「這次列印的最後一筆」，與 ts 欄位一致
+        if (String(h.ts || '') > String(g.ts || '')) g.ts = h.ts;
+        // 中止只要有一筆就整組算中止
+        if (h.type === 'aborted') g.type = 'aborted';
+    });
+    return [...map.values()].sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
+}
+
 // ══ Markforged 消耗記錄 ══
 // 分頁上目前的搜尋字串，以及套用它之後的紀錄。
 // ★ 表格與「匯出列印記錄」共用這一份，不可各寫一份：畫面 12 筆、匯出 58 筆這種
@@ -3134,20 +3205,33 @@ function mfHistoryRows(kw) {
 function renderMfHistory() {
     const tbody = document.getElementById('mf-hist-body');
     if (!tbody) return;
-    const rows = mfHistoryRows();
+    const raw  = mfHistoryRows();
+    const rows = mfHistoryMerged(raw);
     const cnt = document.getElementById('mf-hist-count');
-    if (cnt) cnt.textContent = mfHistory.length ? `共 ${rows.length} 筆` : '';
+    // 兩個數字都要顯示：只寫合併後的筆數會讓人以為紀錄不見了
+    if (cnt) cnt.textContent = mfHistory.length
+        ? (raw.length === rows.length ? `共 ${rows.length} 筆`
+                                      : `共 ${rows.length} 筆（由 ${raw.length} 筆同步紀錄合併）`)
+        : '';
     if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-[var(--ink-5)]">${
             mfHistory.length ? '沒有符合搜尋條件的紀錄'
                              : '尚無 Markforged 消耗紀錄（接上 Eiger API 後自動產生）'}</td></tr>`;
         return;
     }
+    const fmtTs = t => { const d = t ? new Date(t) : null;
+        return d && !isNaN(d.getTime())
+            ? d.toLocaleString('zh-TW',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+            : '—'; };
     tbody.innerHTML = rows.map(h => {
-        const d = h.ts ? new Date(h.ts) : null;
         const isAbort = h.type === 'aborted';
+        // 合併列：時間顯示「這次列印的最後一筆」，hover 看得到完整區間與原始筆數
+        const spanTitle = h._n > 1
+            ? `這次列印分 ${h._n} 段同步記錄：${fmtTs(h._firstTs)} ～ ${fmtTs(h._lastTs)}`
+            : '';
         return `<tr class="hover:bg-[var(--bg-soft)]">
-            <td class="p-3 text-xs text-[var(--ink-3)] whitespace-nowrap">${d ? d.toLocaleString('zh-TW',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+            <td class="p-3 text-xs text-[var(--ink-3)] whitespace-nowrap" title="${escHtml(spanTitle)}">${fmtTs(h.ts)}${
+                h._n > 1 ? `<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-[var(--ink-4)]">併 ${h._n} 段</span>` : ''}</td>
             <td class="p-3">
                 <span class="font-medium text-[var(--ink)]">${escHtml(h.material || '—')}</span>
                 ${h.category ? `<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${h.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-4)]'}">${MF_CATEGORY_LABEL[h.category]}</span>` : ''}
@@ -3160,7 +3244,7 @@ function renderMfHistory() {
             <td class="p-3 text-xs text-[var(--ink-3)]">
                 <div class="flex items-center gap-1.5">
                     <span class="truncate max-w-[260px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
-                    ${isEditor?`<button onclick="editHistoryNote('${h.id}')" title="編輯備註" class="text-[var(--ink-6)] hover:text-[var(--accent)] flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
+                    ${isEditor?`<button onclick="editHistoryNote('${(h._ids||[h.id]).join(',')}')" title="編輯備註${h._n>1?`（會一起改這次列印的 ${h._n} 筆紀錄）`:''}" class="text-[var(--ink-6)] hover:text-[var(--accent)] flex-shrink-0"><i data-lucide="pencil" class="w-3 h-3"></i></button>`:''}
                 </div>
             </td>
         </tr>`;
@@ -5356,6 +5440,11 @@ function printLogGroupKey(h){
     if ((h.source || 'formlabs') !== 'markforged') {
         return `single|${h.id || h.print_guid || Math.random()}`;   // Formlabs：不合併
     }
+    // ★ 以「同一次列印」為單位，不是「同一分鐘」：MF 的消耗是餘量差額，同步每 30 分鐘
+    //   一輪，一次列印會被切成好幾筆（實測 2026-09-10 一個工作切成 5 筆）。用分鐘當鍵
+    //   等於完全不合併，匯出會出現一次列印 5 列、每列 1 cc —— 與實際發生的事對不上。
+    //   _mfJob 由 tagMfJobs() 掛上（job_id 優先、舊資料退回 機台＋名稱＋時間間隔）。
+    if (h._mfJob) return `mf|${h._mfJob}`;
     const t = h.ts ? new Date(h.ts) : null;
     const minute = (t && !isNaN(t.getTime())) ? t.toISOString().slice(0,16) : null;
     if (minute === null) return `single|${h.id || h.print_guid || Math.random()}`;
@@ -5370,6 +5459,9 @@ function printLogGroupKey(h){
 function buildPrintLogRows(filters, sourceList){
     const printRows = applyHistoryFilters(sourceList || inv.history, filters)
         .filter(h => h.type === 'consume' || h.type === 'aborted');
+    // Markforged：先標出「同一次列印」，下面才併得起來（對 Formlabs 的紀錄不做任何事）。
+    // ★ 在這裡標而不是只在畫面那邊標：匯出有可能拿到還沒經過表格的清單。
+    tagMfJobs(printRows);
     const groups = new Map();
     printRows.forEach(h => {
         const k = printLogGroupKey(h);
@@ -5726,13 +5818,18 @@ async function fixHistoryDeduction(id) {
 // ★ firestore.rules 對 inventory_history 的 update 只放行「單獨改 note」，
 //   其餘欄位（ml／material／stock_deducted）仍限 admin —— 這裡若改成一次寫多個欄位，
 //   工程師會直接被規則擋下並跳權限錯誤。
+// ★ 參數可以是「以逗號分隔的多個 id」：Markforged 的一列代表同一次列印被同步切成的
+//   好幾筆紀錄（見 tagMfJobs）。只改其中一筆會讓那一筆的備註與同組的不同，
+//   而備註正是舊資料的分組鍵 —— 那一筆會從這一列分裂出去，看起來像「改了之後多一列」。
 async function editHistoryNote(id) {
     if (!isEditor) {
         showToast('僅工程師以上可執行此操作', 'error');
         return;
     }
     if (!id) return;
-    const h = inv.history.find(x => x.id === id) || mfHistory.find(x => x.id === id);
+    const ids = String(id).split(',').map(s => s.trim()).filter(Boolean);
+    const find = x => inv.history.find(y => y.id === x) || mfHistory.find(y => y.id === x);
+    const h = find(ids[0]);
     if (!h) return;
     const newNote = prompt(
         '編輯備註（建議格式：客戶簡稱-工作類別-EF單號）\n' +
@@ -5743,18 +5840,25 @@ async function editHistoryNote(id) {
     if (newNote === null) return;   // 取消
     const trimmed = newNote.trim();
     try {
-        await updateDoc(doc(db, 'inventory_history', id), { note: trimmed });
+        if (ids.length === 1) {
+            await updateDoc(doc(db, 'inventory_history', ids[0]), { note: trimmed });
+        } else {
+            // 整組一起改。★ 每筆仍然只寫 note 一個欄位，否則會被 firestore.rules 擋下
+            const batch = writeBatch(db);
+            ids.forEach(x => batch.update(doc(db, 'inventory_history', x), { note: trimmed }));
+            await batch.commit();
+        }
         // 樂觀更新本地快取，立即反映（Firestore onSnapshot 稍後會再確認一次）
-        h.note = trimmed;
-        const inExtra = extraHistory.find(x => x.id === id);
-        if (inExtra) inExtra.note = trimmed;
-        const inSub = historyFromSubscription.find(x => x.id === id);
-        if (inSub) inSub.note = trimmed;
+        ids.forEach(x => {
+            const rec = find(x);              if (rec)    rec.note    = trimmed;
+            const inExtra = extraHistory.find(y => y.id === x);          if (inExtra) inExtra.note = trimmed;
+            const inSub = historyFromSubscription.find(y => y.id === x); if (inSub)   inSub.note   = trimmed;
+        });
         if (currentTab === 'mf-history') renderMfHistory(); else renderHistory();
         // 備註是「工作類別」的解析來源，月度分析的佔比會跟著變
         if (currentTab === 'monthly')    renderMonthly();
         if (currentTab === 'mf-monthly') renderMfMonthly();
-        showToast('備註已更新', 'success');
+        showToast(ids.length > 1 ? `備註已更新（這次列印的 ${ids.length} 筆紀錄）` : '備註已更新', 'success');
     } catch (err) {
         console.error('[editHistoryNote] 失敗:', err);
         showToast('更新失敗：' + err.message, 'error');
