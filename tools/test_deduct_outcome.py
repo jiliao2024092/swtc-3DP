@@ -189,7 +189,7 @@ print("── mf_job_duration_hours()：Markforged 的列印時間 ──")
 # ★★ 但 ended_at 不見得是「這次列印真正結束的時間」：實測 dump 193 筆終態工作裡
 #    有 143 筆的 ended_at 是同一個時間戳（Eiger 把一堆卡在 Printing 的陳舊工作
 #    一次性結案），相減會得到幾千小時（最長 36556 小時＝4.17 年）。這一組守這件事。
-_mfn = re.search(r"^def mf_job_duration_hours\(.*?(?=^\ndef _mf_fill_durations)", src, re.M | re.S)
+_mfn = re.search(r"^def mf_job_duration_hours\(.*?(?=^\ndef _mf_fill_job_fields)", src, re.M | re.S)
 if not _mfn:
     print("✗ 在 functions/main.py 找不到 mf_job_duration_hours()")
     sys.exit(1)
@@ -241,16 +241,29 @@ check("main.py 沒把 estimated_print_seconds 當成回傳值",
       bool(re.search(r"return\s+.*estimated_print_seconds", _mfn.group(0))), False)
 
 print("── 回填接線：耗時要真的寫進 inventory_history ──")
-check("perform_sync_eiger 有呼叫 _mf_fill_durations",
-      bool(re.search(r"_mf_fill_durations\(db, access_key, secret_key\)", src)), True)
+check("perform_sync_eiger 有呼叫 _mf_fill_job_fields",
+      bool(re.search(r"_mf_fill_job_fields\(db, access_key, secret_key\)", src)), True)
 check("回填寫的是 duration_hr 欄位",
-      bool(re.search(r'update\(\{"duration_hr": hrs\}\)', src)), True)
+      bool(re.search(r'payload\["duration_hr"\] = hrs', src)), True)
+check("列印人員取的是 initiator.name",
+      bool(re.search(r'initiator"\)\s*or\s*\{\}\)\.get\("name"', src)), True)
+# ★ 不可用「原始碼裡有沒有 email 這個字」判斷 —— 函式的 docstring 正好就寫著
+#   「initiator 實測是 {id, email, name}」，那樣比對會誤判（第一版就踩到）。
+#   要驗的是「寫進 Firestore 的欄位裡沒有 email」，所以只看 payload 的賦值。
+check("★ 寫進消耗紀錄的欄位不含 email／id（消耗紀錄全公司讀得到）",
+      bool(re.search(r'payload\["[^"]*(email|_id)', src)), False)
+check("列印人員寫進 operator 欄位",
+      bool(re.search(r'payload\["operator"\] = op', src)), True)
 check("★ 用 job_id 對應消耗紀錄",
       bool(re.search(r'FieldFilter\("job_id", "==", jid\)', src)), True)
 check("★ 內容相同就跳過（Firestore 即使值沒變也計費一次寫入）",
-      bool(re.search(r"if cur == hrs:\s*\n\s*continue", src)), True)
+      bool(re.search(r"if not payload:\s*\n\s*continue", src)), True)
 check("★ 回填失敗不可拖垮機台狀態同步（獨立 try/except）",
-      bool(re.search(r"列印時間回填失敗", src)), True)
+      bool(re.search(r"工作欄位回填失敗", src)), True)
+check("★ Formlabs 的欄位 debug 只印 key 不印 value（log 不可外流 PII）",
+      bool(re.search(r"sorted\(pr\.keys\(\)\)", src)), True)
+check("★ 該 debug 放在「已處理就跳過」之前（否則穩定狀態永遠不會執行到）",
+      src.index("_dumped_print_keys = True") < src.index("if guid in processed:"), True)
 check("MF 消耗紀錄有寫 job_id（沒有它就對不到工作）",
       bool(re.search(r'"job_id":\s*e\.get\("job_id"\)', src)), True)
 

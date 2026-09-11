@@ -536,7 +536,7 @@
             </div>
             <div id="stock-table-wrap" class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                    <th class="whitespace-nowrap"ead>
+                    <thead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                             <th class="whitespace-nowrap p-3 border-b font-medium cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('material')">材料名稱<span id="stock-sort-material" class="ml-1 text-[var(--ink-6)]"></span></th>
                             <th class="whitespace-nowrap p-3 border-b font-medium text-center w-24 cursor-pointer select-none hover:bg-[var(--line-soft)]" onclick="stockSortBy('ltank')" title="是否配有 Form 4L 樹脂槽">L樹脂槽<span id="stock-sort-ltank" class="ml-1 text-[var(--ink-6)]"></span></th>
@@ -563,7 +563,7 @@
                 </summary>
                 <div class="p-4 border-t border-[var(--line-soft)] overflow-x-auto">
                     <table class="w-full text-left border-collapse text-sm">
-                        <th class="whitespace-nowrap"ead>
+                        <thead>
                             <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                                 <th class="whitespace-nowrap p-3 border-b font-medium">名稱</th>
                                 <th class="whitespace-nowrap p-3 border-b font-medium text-right">庫存</th>
@@ -856,7 +856,7 @@
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                    <th class="whitespace-nowrap"ead>
+                    <thead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                             <th class="whitespace-nowrap p-3 border-b font-medium">材料名稱</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium text-center w-24">類別</th>
@@ -884,7 +884,7 @@
                 </summary>
                 <div class="p-4 border-t border-[var(--line-soft)] overflow-x-auto">
                     <table class="w-full text-left border-collapse text-sm">
-                        <th class="whitespace-nowrap"ead>
+                        <thead>
                             <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                                 <th class="whitespace-nowrap p-3 border-b font-medium">名稱</th>
                                 <th class="whitespace-nowrap p-3 border-b font-medium text-right">庫存</th>
@@ -922,13 +922,14 @@
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse text-sm">
-                    <th class="whitespace-nowrap"ead>
+                    <thead>
                         <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
                             <th class="whitespace-nowrap p-3 border-b font-medium w-36">日期</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium">材料</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium w-32">機台</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">用量 (cc)</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium w-24">類型</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium w-28">列印人員</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium">列印 / 備註</th>
                         </tr>
                     </thead>
@@ -3176,6 +3177,8 @@ function mfHistoryMerged(rows) {
             return;
         }
         g.ml += Math.abs(+h.ml || 0);
+        // 列印人員是工作結案後才回填的，同一組理論上都一樣；取第一個有值的比較保險
+        if (!g.operator && h.operator) g.operator = h.operator;
         g._ids.push(h.id);
         g._n++;
         // rows 是新到舊排序，所以後進來的是更早的那一筆
@@ -3217,7 +3220,7 @@ function renderMfHistory() {
                                       : `共 ${rows.length} 筆（由 ${raw.length} 筆同步紀錄合併）`)
         : '';
     if (!rows.length) {
-        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-[var(--ink-5)]">${
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-[var(--ink-5)]">${
             mfHistory.length ? '沒有符合搜尋條件的紀錄'
                              : '尚無 Markforged 消耗紀錄（接上 Eiger API 後自動產生）'}</td></tr>`;
         return;
@@ -3244,6 +3247,9 @@ function renderMfHistory() {
             <td class="p-3">${isAbort
                 ? '<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full">中止</span>'
                 : '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full">消耗</span>'}</td>
+            <!-- 列印人員：工作結案後由同步回填（Eiger 的 initiator）；還沒結案或
+                 2026-09-11 之前的舊紀錄沒有 job_id，對不到就顯示 — -->
+            <td class="p-3 text-xs text-[var(--ink-3)] whitespace-nowrap">${escHtml(operatorLabel(h)) || '—'}</td>
             <td class="p-3 text-xs text-[var(--ink-3)]">
                 <div class="flex items-center gap-1.5">
                     <span class="truncate max-w-[260px]" title="${escHtml(h.note||'')}">${escHtml(h.note)||'—'}</span>
@@ -5429,8 +5435,17 @@ const PRINT_LOG_HEADERS = [
     '時間戳記','日期','地區','業務','客戶名稱','品牌','機型','列印目的',
     '活動名稱與事由','責任工程師','列印時間(hr)','使用材料(樹脂與塑料)',
     '樹脂與塑料用量','Ultem9085 Support 用量','使用材料(纖維/蠟支撐)','纖維用量',
-    '是否收費','備註(APP單號)','列印結果',
+    '是否收費','備註(APP單號)','列印結果','列印人員',
 ];
+// 列印人員的顯示格式：與匯出的「業務／責任工程師」同一套「中文 (英文)」（zhEnLabel）。
+// ★ 來源是 Eiger 的 initiator.name（實測如 "Jack Tao"），不是系統的工程師 key，
+//   多半對不到 settings/workspace 的對照表 —— 依既有慣例**退回原名而不是留空**，
+//   空白會被當成「沒有人員資料」，但實際上是有的，只是不在清單裡。
+// ★ Formlabs 目前沒有已知的人員欄位（2026-09-11 加了 [sync][DEBUG欄位] 去查），
+//   所以這一欄目前只有 Markforged 會有值。
+function operatorLabel(h){
+    return zhEnLabel((h && h.operator) || '', ENG_NAMES);
+}
 
 // Markforged 的塑料與纖維在 inventory_history 是**兩筆獨立紀錄**（doc_id 帶 slot），
 // 但目標表是一列同時有樹脂用量與纖維用量，所以要合併。
@@ -5523,6 +5538,8 @@ function buildPrintLogRows(filters, sourceList){
             '是否收費':  isChargeable(p),
             '備註(APP單號)': p.appNo || h.note || '',
             '列印結果':  exportPrintResult(h),
+            // 合併列（同一次列印被切成好幾筆）取第一個有值的，理論上整組都一樣
+            '列印人員':  operatorLabel(items.find(x => x.operator) || h),
         });
     });
     // 日期新到舊（用時間數值，不是格式化後的字串）

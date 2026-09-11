@@ -131,11 +131,17 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
     - ⚠ **只看工作名稱不夠**：同一個檔名重印很常見。沒有 `job_id` 的舊紀錄，同一天同檔名的兩次列印會被併成一列 —— 這是刻意取捨，反過來（一次列印拆成 5 列、每列 1 cc）與事實差更遠
     - 消耗記錄表格用 `mfHistoryMerged()`（同一次列印**同一種材料**併一列，塑料與纖維仍分開；匯出的 19 欄格式才把兩者放同一列）。合併列的備註編輯會**整組一起改**，否則被改的那一筆會從該列分裂出去
   - **列印時間（2026-09-11）**：Eiger **沒有**現成的耗時欄位（Formlabs 有 `elapsed_duration_ms`，這裡沒有），只能用 `/print_jobs` 的 `ended_at - started_at` 自己算，並**回填**到消耗紀錄的 `duration_hr`
-    - ⚠ **必須回填、不能寫入當下就填**：MF 的消耗是餘量差額，寫入時機是「列印進行中」，那時 `ended_at` 還是 null。每輪同步回頭補近 48 小時結案的工作（`_mf_fill_durations()`），靠 `job_id` 對應
+    - ⚠ **必須回填、不能寫入當下就填**：MF 的消耗是餘量差額，寫入時機是「列印進行中」，那時 `ended_at` 還是 null。每輪同步回頭補近 48 小時結案的工作（`_mf_fill_job_fields()`，同時回填列印時間與列印人員），靠 `job_id` 對應
     - ⚠⚠ **`ended_at` 不見得是「這次列印真正結束的時間」**：實測 dump 193 筆終態工作裡 **143 筆的 `ended_at` 是同一個時間戳**（83 筆是 `2026-08-03T05:45:26.938Z`、60 筆是 `2026-05-07T10:30:38.612Z`）—— 那是 Eiger 把一堆永遠卡在 `Printing` 的陳舊工作**一次性結案**蓋上去的，相減會得到幾千小時（最長 **36556 小時＝4.17 年**）。直接寫進「列印時間」不會有任何錯誤訊息，只會在匯出檔多一格離譜的數字
     - 防線是拿 `build.estimated_print_seconds` 當**合理性上限**（`實際 ≤ 預估×3 + 0.5h`，`MF_DURATION_SANITY_RATIO`）。實測門檻不敏感：1.5 倍留 48 筆、10 倍留 50 筆，取 3。套用後 193 筆留下 49 筆（Completed 35／Canceled 13／Unknown 1），一次性結案那 83 筆**全被擋掉**
     - ⚠ 預估值**只當守門員、絕不當數值**：Completed 的實際/預估是 1.04〜1.50 倍，Canceled 只有 0.01〜0.08 倍（印到 1% 就取消）。沒有預估值可比對時一律回 None，留空給人工填
-    - 已處理過的 `job_id` 記在 `inventory/markforged_watch.duration_filled`（上限 300）。**這是成本控制不是最佳化**：不記的話每輪都會把近 48 小時的每個工作重查一次，一次長列印有上百筆消耗紀錄，每天上萬次讀取（免費額度 5 萬/天）
+    - 已處理過的 `job_id` 記在 `inventory/markforged_watch.job_fields_filled`（上限 300）。**這是成本控制不是最佳化**：不記的話每輪都會把近 48 小時的每個工作重查一次，一次長列印有上百筆消耗紀錄，每天上萬次讀取（免費額度 5 萬/天）
+  - **列印人員（2026-09-11）**：`/print_jobs` 的 `initiator` 實測是 `{id, email, name}`（193 筆中 160 筆有值、33 筆 null）；`requester` 恆為 null、`source` 恆為 `"Eiger"`
+    - ⚠ **`active_job` 沒有 `initiator`**（只有 `/print_jobs` 有），所以與列印時間一樣只能在工作結案後回填（`_mf_fill_job_fields()`）
+    - ⚠ **只存 `name`，不存 `email` 與 `id`**：消耗紀錄是全公司登入者都讀得到的 collection，規劃文件 §6 已決定員工 email 不寫進 Firestore
+    - 顯示與匯出走 `zhEnLabel()`＝「中文 (英文)」，與匯出的業務／責任工程師同一套。Eiger 給的是顯示名稱（如 `Jack Tao`），多半對不到 `settings/workspace` 的工程師對照 → **退回原名而不是留空**（留空會被當成「沒有人員資料」）
+    - 匯出的「列印人員」是**第 20 欄，加在最後面**。⚠ 前 19 欄的內容與順序是對齊人工登記表的，新欄位一律加在最後、不可插進中間（`tools/test_print_log_export.js` 有守）
+    - ⚠ **Formlabs 有沒有人員欄位目前未知**：2026-09-11 在同步加了 `[sync][DEBUG欄位]`，每輪印一次 print 物件的**欄位名稱清單**（只印 key 不印 value，log 是所有 admin 都看得到的地方）。查到答案後要把那段拿掉
   - ⚠ 差額式追蹤的基準存在 `inventory/markforged_watch`，**基準更新與消耗寫入必須在同一個 batch**——分開寫會在「history 寫成功、基準寫失敗」時，讓下一輪用更舊的基準算出更大的一段差額，同一段消耗被記兩次、庫存也扣兩次
   - ⚠ Markforged 材料是**純名稱**（Onyx／Carbon Fiber），不可套 `canon_material()`／`family_code()` 那套 FL 家族代碼邏輯；扣庫存走 `apply_mf_deductions()`（比對純名稱、扣 `total_cc`），與樹脂的 `total_ml` 完全分開。耗材（`kind='consumable'`，以「個」計）不可被 cc 消耗扣到
   - ⚠ 機台顯示名稱有互為子字串的情況（`MarkTwo` ⊂ `MarkTwoGEN2` / `MarkTwoTainan`）。`machine_region()` 必須「完全相同優先、包含取最長」，只用包含比對會依 dict 鍵順序判錯區，且完全沒有錯誤訊息（`tools/test_regions*` 有守）

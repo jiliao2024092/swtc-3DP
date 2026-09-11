@@ -136,6 +136,7 @@ const rowSrcs = [
   extract('tagMfJobs',           /function tagMfJobs\(list\) \{[\s\S]*?\n\}/),
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
   extract('buildPrintLogRows',   /function buildPrintLogRows\(filters, sourceList\)\{[\s\S]*?\n\}/),
+  extract('operatorLabel',       /function operatorLabel\(h\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
   extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
 ];
@@ -146,6 +147,7 @@ function runBuild(history, filters, labels, asSource) {
     const __source=${asSource ? JSON.stringify(history) : 'null'};
     const __filters=${JSON.stringify(filters || {})};
     const MACHINE_LABELS=${JSON.stringify(labels || null)};
+    const ENG_NAMES={Jaylen:'何哲綸', Barry:'Barry'};   // 列印人員的「中文 (英文)」對照
     const matName=m=>m||'';
     const matCode=m=>String(m||'').slice(0,6);
     const printerDisplay=p=>p||'';
@@ -222,7 +224,17 @@ check('4 筆裡只有 2 筆列印（consume/aborted）', runBuild(mix).length, 2
 
 console.log('── 欄位完整性 ──');
 const one = runBuild([sameNote[0]])[0];
-check('恰好 19 欄',            Object.keys(one).length, 19);
+// ★ 2026-09-11 起是 20 欄：最後面多一欄「列印人員」（Markforged 才有值）。
+//   ⚠ 守的不是「幾欄」而是「**前 19 欄的內容與順序不可變**」—— 那 19 欄是對齊
+//   人工登記表的，順序錯掉貼進表格就全錯位，而且看起來完全正常。
+//   新欄位一律加在最後面，不可插進中間。
+const SHEET_19 = ['時間戳記','日期','地區','業務','客戶名稱','品牌','機型','列印目的',
+  '活動名稱與事由','責任工程師','列印時間(hr)','使用材料(樹脂與塑料)','樹脂與塑料用量',
+  'Ultem9085 Support 用量','使用材料(纖維/蠟支撐)','纖維用量','是否收費','備註(APP單號)','列印結果'];
+check('★ 前 19 欄的內容與順序不可變',
+      JSON.stringify(Object.keys(one).slice(0, 19)), JSON.stringify(SHEET_19));
+check('第 20 欄是列印人員',     Object.keys(one)[19], '列印人員');
+check('恰好 20 欄',            Object.keys(one).length, 20);
 check('內部排序鍵已刪除',       '_sort' in one, false);
 check('Ultem9085 恆空（無此機型）', one['Ultem9085 Support 用量'], '');
 check('無纖維時顯示「無」',     one['使用材料(纖維/蠟支撐)'], '無');
@@ -471,6 +483,26 @@ const fbRows = runBuild(withFiber, null, null, true);
 check('塑料與纖維仍是同一列', fbRows.length, 1);
 check('纖維用量也要加總',     fbRows[0]['纖維用量'], 1);
 check('塑料用量不受纖維影響', fbRows[0]['樹脂與塑料用量'], 10.92);
+
+console.log('── 列印人員：與業務／責任工程師同一套「中文 (英文)」──');
+// 來源是 Eiger 的 initiator.name（工作結案後由同步回填）。Formlabs 目前沒有已知的
+// 人員欄位，所以這一欄只有 MF 會有值。
+const opRec = [{ id:'o1', ts:'2026-09-10T10:00:00', material:'Onyx', printer:'MarkTwoTainan',
+                 type:'consume', ml:20, category:'plastic', note:'客戶-代工-202609100001',
+                 region:'south', source:'markforged', operator:'Jaylen', job_id:'jo1' }];
+check('對得到對照 → 中文 (英文)', runBuild(opRec, null, null, true)[0]['列印人員'], '何哲綸 (Jaylen)');
+const opRaw = [{ ...opRec[0], id:'o2', operator:'Jack Tao' }];
+check('★ 對不到對照 → 退回原名，不可留空',
+      runBuild(opRaw, null, null, true)[0]['列印人員'], 'Jack Tao');
+const opNone = [{ ...opRec[0], id:'o3', operator:undefined }];
+check('沒有人員資料 → 空字串', runBuild(opNone, null, null, true)[0]['列印人員'], '');
+check('Formlabs 的紀錄沒有這個欄位 → 空字串', runBuild([sameNote[0]])[0]['列印人員'], '');
+// 合併列（同一次列印被切成好幾筆）取得到值的那一筆
+const opMix = [{ ...opRec[0], id:'m1', ts:'2026-09-10T10:00:00', operator:undefined },
+               { ...opRec[0], id:'m2', ts:'2026-09-10T10:30:00', operator:'Jack Tao' }];
+const opMerged = runBuild(opMix, null, null, true);
+check('合併列只有一列', opMerged.length, 1);
+check('★ 合併列取得到人員的那一筆', opMerged[0]['列印人員'], 'Jack Tao');
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

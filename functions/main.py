@@ -961,15 +961,21 @@ def mf_job_duration_hours(job: dict):
     return math.ceil(hours * 2) / 2
 
 
-def _mf_fill_durations(db, access_key: str, secret_key: str) -> int:
-    """把已結案工作的實際耗時回填到對應的消耗紀錄（duration_hr）。
+def _mf_fill_job_fields(db, access_key: str, secret_key: str) -> int:
+    """把已結案工作的「實際耗時」與「列印人員」回填到對應的消耗紀錄。
 
     ★ 為什麼是「回填」而不是寫入當下就填：MF 的消耗是 ccs_*_remaining 的差額，
-      寫入時間點是「列印進行中」，那時 ended_at 還是 null、耗時根本還不存在。
-      只有等工作結案之後才算得出來，所以每輪同步回頭補最近結案的那幾筆。
+      寫入時間點是「列印進行中」，那時 ended_at 還是 null、耗時根本還不存在；
+      而列印人員只在 /print_jobs 有，同步機台狀態用的 /devices.active_job
+      **沒有** initiator 這個欄位（規劃文件 §0.6.3）。兩個欄位都只能事後補。
     ★ 靠 job_id 對應（2026-09-11 起才寫進消耗紀錄）。舊紀錄沒有這個欄位 →
-      對不到就維持空白給人工填，不要用任何預估值補上去。
-    ★ 已處理過的 job_id 記在 inventory/markforged_watch.duration_filled，
+      對不到就維持空白給人工填，不要用任何預估值或推測補上去。
+
+    ★★ 列印人員只存 `name`，**不存 email 與 id**：initiator 實測是
+      {id, email, name}（真實員工信箱），規劃文件 §6 已決定員工 email 不寫進
+      Firestore。消耗紀錄是全公司登入者都讀得到的 collection。
+
+    ★ 已處理過的 job_id 記在 inventory/markforged_watch.job_fields_filled，
       **這是成本控制不是最佳化**：不記的話每輪都會把近 48 小時的每個工作重查一次，
       一個長時間列印可能有上百筆消耗紀錄（每 30 分鐘一輪 × 兩個槽位），
       每天會吃掉上萬次讀取（免費額度 5 萬/天）。
@@ -979,7 +985,7 @@ def _mf_fill_durations(db, access_key: str, secret_key: str) -> int:
     watch = db.collection("inventory").document("markforged_watch")
     wsnap = watch.get()
     wdata = (wsnap.to_dict() or {}) if wsnap.exists else {}
-    done = list(wdata.get("duration_filled") or [])
+    done = list(wdata.get("job_fields_filled") or [])
     done_set = set(done)
 
     since = (datetime.datetime.utcnow()
@@ -988,13 +994,18 @@ def _mf_fill_durations(db, access_key: str, secret_key: str) -> int:
     jobs = eiger_get_all("/print_jobs", access_key, secret_key,
                          {"filter[ended_at][ge]": since})
 
-    updated, matched_jobs = 0, []
+    updated, seen_jobs = 0, []
     for j in jobs:
         jid = j.get("id")
         if not jid or jid in done_set:
             continue
         hrs = mf_job_duration_hours(j)
-        if hrs is None:
+        # 列印人員：Eiger 給的是顯示名稱（實測如 "Jack Tao"）。前端再用
+        # settings/workspace 的對照轉成「中文 (英文)」，與 Formlabs 那邊的人名格式一致。
+        op = ((j.get("initiator") or {}).get("name") or "").strip()
+        if hrs is None and not op:
+            done_set.add(jid)
+            seen_jobs.append(jid)
             continue
         # ★ 單一欄位的相等查詢，Firestore 自動索引就夠，不必建複合索引。
         #   limit 抓寬一點：一次長時間列印會被切成很多筆（30 分鐘一輪 × 兩個槽位）。
@@ -1002,21 +1013,27 @@ def _mf_fill_durations(db, access_key: str, secret_key: str) -> int:
                .where(filter=FieldFilter("job_id", "==", jid))
                .limit(300))
         for snap in q.stream():
-            cur = (snap.to_dict() or {}).get("duration_hr")
-            if cur == hrs:
+            cur = snap.to_dict() or {}
+            payload = {}
+            if hrs is not None and cur.get("duration_hr") != hrs:
+                payload["duration_hr"] = hrs
+            if op and cur.get("operator") != op:
+                payload["operator"] = op
+            if not payload:
                 continue          # ★ 內容相同也計費一次寫入，一定要跳過
-            snap.reference.update({"duration_hr": hrs})
+            snap.reference.update(payload)
             updated += 1
         # 不論這一輪有沒有對到紀錄都記成已處理：對不到通常是舊紀錄沒有 job_id，
         # 再查幾百次也不會變出來。
         done_set.add(jid)
-        matched_jobs.append(jid)
+        seen_jobs.append(jid)
 
-    if matched_jobs:
+    if seen_jobs:
         # 只留最近 300 個，避免這個欄位無限長大
-        done = (done + matched_jobs)[-300:]
-        watch.set({"duration_filled": done}, merge=True)
-        print(f"[eiger] 列印時間回填：工作 {len(matched_jobs)} 個、消耗紀錄 {updated} 筆")
+        done = (done + seen_jobs)[-300:]
+        watch.set({"job_fields_filled": done}, merge=True)
+        print(f"[eiger] 工作欄位回填：工作 {len(seen_jobs)} 個、消耗紀錄 {updated} 筆"
+              f"（列印時間與列印人員）")
     return updated
 
 
@@ -1028,7 +1045,7 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
     ★ 2026-08-25 之前這裡是唯讀的觀測模式，完全不碰庫存；現在會扣了。
     """
     stats = {"devices_seen": 0, "devices_tracked": 0, "printing": 0,
-             "observations": 0, "durations_filled": 0, "errors": []}
+             "observations": 0, "job_fields_filled": 0, "errors": []}
     try:
         devices = eiger_get_all("/devices", access_key, secret_key)
         stats["devices_seen"] = len(devices)
@@ -1117,12 +1134,12 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
             print(msg)
             stats["errors"].append(msg)
 
-        # 列印時間回填。★ 同樣不可影響機台狀態與消耗追蹤：這是「錦上添花」的欄位，
-        #   /print_jobs 掛掉不該讓整輪同步失敗。
+        # 列印時間與列印人員回填。★ 同樣不可影響機台狀態與消耗追蹤：這兩個都是
+        #   「錦上添花」的欄位，/print_jobs 掛掉不該讓整輪同步失敗。
         try:
-            stats["durations_filled"] = _mf_fill_durations(db, access_key, secret_key)
+            stats["job_fields_filled"] = _mf_fill_job_fields(db, access_key, secret_key)
         except Exception as de:
-            msg = f"[eiger] 列印時間回填失敗（狀態與消耗都已正常寫入）: {de}"
+            msg = f"[eiger] 工作欄位回填失敗（狀態與消耗都已正常寫入）: {de}"
             print(msg)
             stats["errors"].append(msg)
 
@@ -1482,8 +1499,21 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         # ★ 這裡只是把每筆 print 寫成歷史紀錄供統計分析用
         new_history_entries = []
         _in_flight_names = []      # 這輪因「還在列印」而跳過的，印進 log 供追蹤（見 IN_FLIGHT_STATUSES）
+        _dumped_print_keys = False   # 見下方 [sync][DEBUG欄位]：每輪只印一次
         for pr in all_prints:
             try:
+                # ★ 每輪印一次 print 物件的「欄位名稱清單」——目的是查 Formlabs 到底有沒有
+                #   回傳列印人員（Markforged 的 /print_jobs 有 initiator={id,email,name}，
+                #   Formlabs 這邊沒人驗過，而這個專案已經踩過好幾次「文件寫的與實際不符」）。
+                # ★★ 只印 key、不印 value：欄位值可能含員工姓名或 email，而 log 是所有
+                #   admin 都看得到的地方，印值等於把 PII 攤在那裡。
+                # ★ 位置必須在「已處理過就 continue」之前 —— 穩定狀態下 1486 筆全部都是
+                #   已處理，放在後面永遠不會執行到（改過一次才發現）。
+                # ⚠ 查到答案後就把這段拿掉，不要長期留著洗版。
+                if not _dumped_print_keys:
+                    print(f"[sync][DEBUG欄位] print 物件的欄位名稱: {sorted(pr.keys())}")
+                    _dumped_print_keys = True
+
                 guid = pr.get("guid", "")
                 if not guid:
                     stats["skipped_invalid"] += 1
