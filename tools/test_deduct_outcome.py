@@ -202,6 +202,9 @@ check("user 是物件、有 name",        fop({"user": {"name": "Jack Tao"}}),  
 check("沒有 name 時退而用 username", fop({"user": {"username": "jtao"}}),           "jtao")
 check("first_name + last_name",      fop({"user": {"first_name": "Jack", "last_name": "Tao"}}), "Jack Tao")
 check("只有 first_name",             fop({"user": {"first_name": "Jack"}}),         "Jack")
+check("★ 實測形狀：first_name + last_name 優先於 username（對照表的 key 是英文名）",
+      fop({"user": {"email": "x@swtc.com", "first_name": "Jaylen", "id": "u1",
+                    "last_name": "Ho", "username": "jho"}}),                   "Jaylen Ho")
 check("name 優先於 username",
       fop({"user": {"name": "Jack Tao", "username": "jtao"}}),                      "Jack Tao")
 

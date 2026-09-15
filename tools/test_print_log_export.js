@@ -137,6 +137,7 @@ const rowSrcs = [
   extract('printLogGroupKey',    /function printLogGroupKey\(h\)\{[\s\S]*?\n\}/),
   extract('buildPrintLogRows',   /function buildPrintLogRows\(filters, sourceList\)\{[\s\S]*?\n\}/),
   extract('OPERATOR_NONE',       /const OPERATOR_NONE = [^\n]*;/),
+  extract('operatorKey',         /function operatorKey\(raw\)\{[\s\S]*?\n\}/),
   extract('operatorLabel',       /function operatorLabel\(h\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
   extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
@@ -524,6 +525,51 @@ check('★ 選「未填」→ 只剩沒有這個欄位的舊紀錄',
 check('選「未填」只有 1 筆',    runBuild(opFilterSet, { operator:'__none__' }).length, 1);
 check('★ 特殊值與 main 程式碼一致（寫死字串會在改名時靜默失效）',
       /const OPERATOR_NONE = '__none__';/.test(html), true);
+
+console.log('── ★ mapHistoryDoc：後端寫的欄位前端要讀得到 ──');
+// mapHistoryDoc 是欄位白名單，沒列進去的欄位前端一律讀不到、而且沒有任何錯誤訊息。
+// 2026-09-15 實際踩到：operator／job_id／region 後端早就寫了，前端從來沒拿到 ——
+// 責任工程師全是「—」、匯出的「地區」每列都是「中部」。
+// ★ 這一組是「實際執行」mapHistoryDoc，不是比對原始碼字串：上面其他測試的假資料是
+//   直接餵進 buildPrintLogRows 的，完全繞過這一層，所以才會讓這個洞長期存在。
+const mapSrc = html.match(/function mapHistoryDoc\(d\) \{[\s\S]*?\n\}/);
+check('抓得到 mapHistoryDoc', !!mapSrc, true);
+const mapHistoryDoc = new Function(mapSrc[0] + '\nreturn mapHistoryDoc;')();
+const fakeDoc = (data) => ({ id: 'doc1', data: () => data });
+const mapped = mapHistoryDoc(fakeDoc({
+  ts: '2026-09-15T01:10:00Z', type: 'consume', material: 'FLFL80', printer: 'AluminumBowfin',
+  ml: 300, note: '天心工業-代工-202609020002', source: 'formlabs',
+  region: 'south', operator: 'jaylen', job_id: 'job-xyz',
+  outcome: 'successful', duration_hr: 2.5, stock_deducted: true, category: 'plastic',
+}));
+check('★ operator 要讀得到（否則「責任工程師」全是 —）', mapped.operator, 'jaylen');
+check('★ region 要讀得到（否則匯出的「地區」每列都是中部）', mapped.region, 'south');
+check('★ job_id 要讀得到（否則 MF 合併永遠走退路）', mapped.job_id, 'job-xyz');
+check('outcome 仍讀得到', mapped.outcome, 'successful');
+check('duration_hr 仍讀得到', mapped.duration_hr, 2.5);
+check('stock_deducted 仍讀得到', mapped.stock_deducted, true);
+check('舊紀錄沒有 source → 視為 formlabs（不可預設成 markforged）',
+      mapHistoryDoc(fakeDoc({ type: 'consume' })).source, 'formlabs');
+// 端到端：經過 mapHistoryDoc 之後再匯出，地區不可變成中部
+check('★ 經過 mapHistoryDoc 後匯出的「地區」是南部',
+      runBuild([mapped])[0]['地區'], '南');
+check('★ 經過 mapHistoryDoc 後匯出的「責任工程師」有值（小寫也對得到對照表）',
+      runBuild([mapped])[0]['責任工程師'], '何哲綸 (Jaylen)');
+
+console.log('── 責任工程師的名字比對：對照表 key 是英文名，API 給的是全名或帳號 ──');
+// 工程師對照表的 key 是 Jimmy／Jaylen／Bill／Barry；Formlabs 存的是 first_name + last_name，
+// Markforged 是 initiator.name（如 Jack Tao）。只做完全相同比對的話幾乎永遠對不上。
+const nm = op => runBuild([{ ...opRec[0], id:'n-'+op, operator:op }], null, null, true)[0]['責任工程師'];
+check('完全相同 → 中文 (英文)',          nm('Jaylen'),     '何哲綸 (Jaylen)');
+check('★ 大小寫不同也要對得到',           nm('jaylen'),     '何哲綸 (Jaylen)');
+check('★ 全名（first + last）取名字去對', nm('Jaylen Ho'),  '何哲綸 (Jaylen)');
+check('帳號形式（jaylen.ho）也取名字去對', nm('jaylen.ho'),  '何哲綸 (Jaylen)');
+check('對照表沒有的人 → 退回原字串',      nm('Jack Tao'),   'Jack Tao');
+check('中文與 key 相同時只顯示一次',      nm('Barry'),      'Barry');
+// ★ 只影響顯示，篩選仍比對原始值：選 "Jaylen Ho" 不可把 "Jaylen" 也挑進來
+check('★ 篩選比對原始值，不受寬鬆顯示比對影響',
+      runBuild([{ ...opFilterSet[0], operator:'Jaylen Ho' }, { ...opFilterSet[1], operator:'Jaylen' }],
+               { operator:'Jaylen Ho' }).length, 1);
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

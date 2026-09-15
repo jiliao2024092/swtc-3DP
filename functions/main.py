@@ -328,7 +328,13 @@ FAMILY_REMAP = {
 #   登入者都讀得到的 collection，規劃文件 §6 已決定員工 email 不寫進 Firestore）。
 # ★ 認不出來寧可回 None：把 id 之類的東西當成人名寫進去，畫面上會出現一串 uuid，
 #   而且沒有任何錯誤訊息 —— 比留空糟糕得多。
-FL_USER_NAME_KEYS = ("name", "full_name", "display_name", "username", "nickname")
+# ★ 實測（2026-09-15 [sync][DEBUG欄位]）：user 是 dict，keys＝
+#   ['email', 'first_name', 'id', 'last_name', 'username']。
+# ★ 優先序「真實姓名 > username」：前端要把人名轉成「中文 (英文)」，對照表的 key 是
+#   英文名（Jimmy／Jaylen／Bill／Barry，見 portal.html 的 ENG_ORDER）。first_name
+#   才對得上；username 是登入帳號，格式不一定是名字，對不上就只能顯示一串帳號。
+FL_USER_NAME_KEYS = ("name", "full_name", "display_name")
+FL_USER_FALLBACK_KEYS = ("username", "nickname")
 
 
 def fl_operator(pr) -> Optional[str]:
@@ -341,12 +347,17 @@ def fl_operator(pr) -> Optional[str]:
             v = u.get(k)
             if isinstance(v, str) and v.strip():
                 return v.strip()
-        # first_name + last_name 是另一種常見形狀
-        fn = (u.get("first_name") or "").strip() if isinstance(u.get("first_name"), str) else ""
-        ln = (u.get("last_name") or "").strip() if isinstance(u.get("last_name"), str) else ""
+        # first_name + last_name（Formlabs 實際就是這個形狀）
+        fn = u.get("first_name").strip() if isinstance(u.get("first_name"), str) else ""
+        ln = u.get("last_name").strip() if isinstance(u.get("last_name"), str) else ""
         both = (fn + " " + ln).strip()
         if both:
             return both
+        # 沒有真實姓名才退回帳號
+        for k in FL_USER_FALLBACK_KEYS:
+            v = u.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
     return None
 
 

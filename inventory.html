@@ -1756,6 +1756,17 @@ function applyRoleUI() {
 // ★ 一定要走這支，不要在各處自己 map。曾因訂閱與補撈各寫一份、都漏掉 stock_deducted，
 //   導致 h.stock_deducted 永遠是 undefined：「未扣庫存」標籤從未顯示，且刪除舊版本紀錄時
 //   會誤判成「當初有扣」而憑空回補庫存。新增欄位請一律加在這裡。
+// ★★ 這是一份「欄位白名單」—— 後端寫進 inventory_history 的欄位，**沒列在這裡的
+//    前端一律讀不到**，而且不會有任何錯誤訊息，只會在畫面上是空的。
+//    2026-09-15 實際踩到：後端早就寫了 operator／job_id／region，前端卻從來沒拿到 ——
+//      - operator 缺 → 兩個消耗記錄的「責任工程師」全部是 —（使用者回報才發現）
+//      - job_id   缺 → Markforged 的「同一次列印合併」從來沒用過 job_id，一直在走
+//                      「機台＋名稱＋12 小時」的退路
+//      - region   缺 → 列印記錄匯出的「地區」欄**每一列都寫成「中部」**
+//                      （regionLabel(undefined) 會退回預設區）；頁面分區看起來正常，
+//                      是因為 regionOfHistory() 另外用機台推導，剛好把問題蓋掉了
+//    後端新增欄位、前端要讀的時候，**一定要回來這裡加**。tools/test_print_log_export.js
+//    有一條測試守著前端會讀的欄位都在這份清單裡。
 function mapHistoryDoc(d) {
     const data = d.data();
     return {
@@ -1779,6 +1790,12 @@ function mapHistoryDoc(d) {
         source: data.source || 'formlabs',
         unit:   data.unit   || 'ml',
         category: data.category,                     // Markforged 專用：plastic / fiber
+        // 消耗紀錄所屬區（寫入當下依機台判定）。★ 匯出的「地區」欄讀這個，缺了會全部寫成中部
+        region:   data.region,
+        // 責任工程師＝實際執行這次列印的人（Formlabs 的 user／Markforged 的 initiator，只存名稱）
+        operator: data.operator,
+        // Markforged 專用：同一次列印的識別。tagMfJobs() 靠它合併被同步切開的多筆紀錄
+        job_id:   data.job_id,
     };
 }
 
@@ -5573,8 +5590,28 @@ const PRINT_LOG_HEADERS = [
 //   （實測如 "Jack Tao"）。兩者都不是系統的工程師 key，多半對不到
 //   settings/workspace 的對照表 —— 依既有慣例**退回原名而不是留空**，
 //   空白會被當成「沒有人員資料」，但實際上是有的，只是不在清單裡。
+// ★ 比對對照表的方式要比「完全相同」寬鬆：工程師對照表的 key 是英文名
+//   （Jimmy／Jaylen／Bill／Barry），但 API 給的是全名或帳號 ——
+//   Formlabs 是 first_name + last_name（如 "Jaylen Ho"），Markforged 是 "Jack Tao"。
+//   依序試：完全相同 → 不分大小寫 → 只取第一個字（名字）不分大小寫。
+//   對到就用對照表的 key 當英文（「何哲綸 (Jaylen)」），與匯出的業務欄完全同一種寫法；
+//   都對不到才退回原字串。
+// ★ 這只影響「顯示」。篩選比對的是原始值，不經過這裡（見 applyHistoryFilters）。
+function operatorKey(raw){
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const dict = ENG_NAMES || {};
+    if (Object.prototype.hasOwnProperty.call(dict, s)) return s;
+    const keys = Object.keys(dict);
+    const lower = s.toLowerCase();
+    const exactCI = keys.find(k => k.toLowerCase() === lower);
+    if (exactCI) return exactCI;
+    const first = lower.split(/[\s._@-]+/)[0];
+    const firstCI = first && keys.find(k => k.toLowerCase() === first);
+    return firstCI || s;
+}
 function operatorLabel(h){
-    return zhEnLabel((h && h.operator) || '', ENG_NAMES);
+    return zhEnLabel(operatorKey(h && h.operator), ENG_NAMES);
 }
 
 // Markforged 的塑料與纖維在 inventory_history 是**兩筆獨立紀錄**（doc_id 帶 slot），
