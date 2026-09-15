@@ -259,6 +259,9 @@ NAME_TO_CODE = {
     "Tough 2000 V1.1":   "FLTO2001",
     "Tough 2000 V2":     "FLTO2002",
     "Flexible 80A V1":   "FLFL8001",
+    # ★ 南部 Form 3 回傳的是「名稱」而不是代碼（2026-09-15 使用者回報 V1.1 被當成 V2 扣）。
+    #   V1.1 與 V1 同為舊版，對到 FLFL8001，版本號才比得出比 V2（FLFL8002）舊。
+    "Flexible 80A V1.1": "FLFL8001",
     "Flexible 80A V2":   "FLFL8002",
     "Elastic 50A V2":    "FLFLES02",
     "Rigid 10K V1.1":    "FLRG1002",
@@ -623,6 +626,30 @@ def merge_shortfalls(existing: dict, new: dict, now_iso: str) -> dict:
     return existing
 
 
+def version_code_of(raw) -> Optional[str]:
+    """把「代碼或名稱」轉成可以比新舊的完整 8 碼代碼；轉不出來回 None。
+
+    ★★ 為什麼需要：版本判斷原本只認得代碼（取末 2 碼）。但有些機台回傳的是**名稱**
+       （實測南部 Form 3 回 "Flexible 80A V1.1"），名稱解析不出版本號 → 依保守規則
+       「看不出新舊就照常扣」→ **舊版被當成最新版扣庫存**，而畫面上也看不出異狀。
+       2026-09-15 使用者回報：南部列印的 80A V1.1 被算成 V2。
+    ★ 只接受 NAME_TO_CODE 裡「完整 8 碼」的對應：家族名稱反查會把 "Flexible 80A"
+      對到 6 碼的家族碼 FLFL80，那裡面沒有版本資訊，不能拿來比新舊（回 None＝照常扣）。
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    up = s.upper()
+    if re.fullmatch(r"FL[A-Z0-9]{6}", up) and any(ch.isdigit() for ch in up):
+        return up
+    code = NAME_TO_CODE.get(s)
+    if code:
+        cu = str(code).upper()
+        if re.fullmatch(r"FL[A-Z0-9]{6}", cu) and cu[6:8].isdigit():
+            return cu
+    return None
+
+
 def raw_version_num(code: Optional[str]) -> Optional[int]:
     """取 Formlabs 代碼末 2 碼當版本號（數字），供比較同家族的新舊版本。非標準代碼回傳 None。
     VERSION_ALIAS 中的代碼改用對照表指定的版本號（同版本不同代碼的特例）。"""
@@ -643,6 +670,7 @@ def is_outdated_version(raw_code: Optional[str], *latest_dicts) -> bool:
     不扣備料庫存（備料存的是新版本，舊版罐的用量不該扣新版庫存）。
     保守判定：無法解析版本號、或該家族尚未看過更新版本時一律回 False（照常扣）。
     """
+    raw_code = version_code_of(raw_code) or raw_code
     v = raw_version_num(raw_code)
     if v is None:
         return False
@@ -661,9 +689,11 @@ def note_family_latest_version(raw_code: Optional[str], family_latest: dict) -> 
     """記錄每個材料家族目前看過的最新版本原始代碼（只認可解析出版本號的標準代碼），
     供前端自動判斷「最新版本」使用，取代過去手動維護 DEFAULT_DISABLED_NAMES 的做法。
     只累加/更新，不刪除舊資料——本來就只影響「以後同步進來的新資料」。"""
-    if not raw_code:
+    # ★ 先轉成代碼：名稱直接存進 family_latest_version 會讓「最新版」變成一串名稱，
+    #   之後所有代碼形式的列印都比不出新舊（raw_version_num 對名稱回 None）。
+    c = version_code_of(raw_code)
+    if not c:
         return
-    c = str(raw_code).upper()
     v = raw_version_num(c)
     if v is None:
         return

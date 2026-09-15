@@ -2027,6 +2027,31 @@ function matCode(input) {
     // matCode 一律回傳家族代碼（統一版本，供合併/比對/儲存 key 用）
     return canonCode(input);
 }
+// 消耗紀錄「這一次列印實際用的版本」的顯示名稱。
+// ★ matName() 是「庫存視角」：整個材料家族一律顯示最新版的名稱，所以舊版的列印也會
+//   顯示成新版 —— 2026-09-15 使用者回報南部列印的 Flexible 80A V1.1 顯示成 V2。
+//   庫存照規則只扣最新版，但「紀錄」要看得到實際用的是哪一版（使用者決定）。
+// ★ 只在「這筆實際版本與家族最新版不同」時才改顯示：最新版的紀錄維持 matName()
+//   的結果（含後台自訂的材料名稱），不會連帶改掉其他材料的顯示。
+// ★ 比的是名稱結尾的版本號（V1.1 vs V2），不比整串名稱：機台回傳的名稱寫法可能與
+//   對照表不同（例如多了 Resin），整串比對會讓「同一版本」也被當成不同而改掉顯示。
+const VERSION_SUFFIX_RE = /\sV(\d+(?:\.\d+)?)\s*$/i;
+function historyMaterialName(h){
+    const fallback = matName(h && h.material);
+    const raw = String((h && h.material_raw) || '').trim();
+    if (!raw) return fallback;
+    const isCode = /^FL[A-Z0-9]{6}$/i.test(raw);
+    // 原始值是代碼就查對照表，是名稱就用機台自己回報的名稱
+    const rawName = isCode ? (CODE_TO_NAME[raw.toUpperCase()] || '') : raw;
+    const rawVer = (rawName.match(VERSION_SUFFIX_RE) || [])[1];
+    if (!rawVer) return fallback;
+    const fam = familyCode(canonCode(h.material));
+    const latestRaw = inv.family_latest_version && inv.family_latest_version[fam];
+    const latestName = latestRaw && CODE_TO_NAME[latestRaw];
+    const latestVer = latestName && (latestName.match(VERSION_SUFFIX_RE) || [])[1];
+    return (latestVer && rawVer !== latestVer) ? rawName : fallback;
+}
+
 function matName(input) {
     if(!input) return input;
     const fam = familyCode(canonCode(input));
@@ -4913,7 +4938,7 @@ function renderHistory() {
         const canDelRec = canDeleteRecords();
         tr.innerHTML=`
             <td class="p-3 text-xs text-[var(--ink-4)]">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-            <td class="p-3 font-medium text-[var(--ink)] text-sm">${matName(h.material)||'—'}</td>
+            <td class="p-3 font-medium text-[var(--ink)] text-sm">${historyMaterialName(h)||'—'}</td>
             <td class="p-3 text-sm text-[var(--ink-3)]">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3 whitespace-nowrap"><span class="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${t.color}">${t.label}</span></td>
             <!-- 責任工程師＝實際執行這次列印的人（Formlabs 的 user／Markforged 的 initiator）。
@@ -5666,7 +5691,8 @@ function buildPrintLogRows(filters, sourceList){
         const fiber   = items.filter(x => x.category === 'fiber');
         const plastic = items.filter(x => x.category !== 'fiber');
         const sumMl = arr => arr.reduce((s,x)=>s + Math.abs(+x.ml||0), 0);
-        const names = arr => [...new Set(arr.map(x=>matName(x.material)||x.material||''))].filter(Boolean).join(', ');
+        // 材料名稱用「實際版本」：舊版的列印不可被寫成新版（見 historyMaterialName）
+        const names = arr => [...new Set(arr.map(x=>historyMaterialName(x)||x.material||''))].filter(Boolean).join(', ');
         const r1 = v => v ? +v.toFixed(2) : '';
         const ts = h.ts ? new Date(h.ts) : null;
         const valid = ts && !isNaN(ts.getTime());

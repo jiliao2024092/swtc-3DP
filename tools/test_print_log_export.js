@@ -139,13 +139,19 @@ const rowSrcs = [
   extract('OPERATOR_NONE',       /const OPERATOR_NONE = [^\n]*;/),
   extract('operatorKey',         /function operatorKey\(raw\)\{[\s\S]*?\n\}/),
   extract('operatorLabel',       /function operatorLabel\(h\)\{[\s\S]*?\n\}/),
+  extract('VERSION_SUFFIX_RE',   /const VERSION_SUFFIX_RE = [^\n]*;/),
+  extract('historyMaterialName', /function historyMaterialName\(h\)\{[\s\S]*?\n\}/),
   extract('fmtDateLocalInv',     /function fmtDateLocalInv\(d\)\{[\s\S]*?\n\}/),
   extract('applyHistoryFilters', /function applyHistoryFilters\(list, f\) \{[\s\S]*?\n\}/),
 ];
 // asSource=true：模擬 Markforged 匯出的呼叫方式 —— inv.history 是空的（MF 紀錄被
 // rebuildInvHistory() 拆到 mfHistory），紀錄改從第二個參數傳進去。
 function runBuild(history, filters, labels, asSource) {
-  const shim = `const inv={history:${JSON.stringify(asSource ? [] : history)}};
+  const shim = `const inv={history:${JSON.stringify(asSource ? [] : history)},
+                      family_latest_version:{FLFL80:'FLFL8002'}};   // 80A 家族最新＝V2
+    const CODE_TO_NAME={FLFL8001:'Flexible 80A V1', FLFL8002:'Flexible 80A V2'};
+    const familyCode=c=>String(c||'').slice(0,6);
+    const canonCode=c=>c;
     const __source=${asSource ? JSON.stringify(history) : 'null'};
     const __filters=${JSON.stringify(filters || {})};
     const MACHINE_LABELS=${JSON.stringify(labels || null)};
@@ -570,6 +576,20 @@ check('中文與 key 相同時只顯示一次',      nm('Barry'),      'Barry');
 check('★ 篩選比對原始值，不受寬鬆顯示比對影響',
       runBuild([{ ...opFilterSet[0], operator:'Jaylen Ho' }, { ...opFilterSet[1], operator:'Jaylen' }],
                { operator:'Jaylen Ho' }).length, 1);
+
+console.log('── ★ 舊版本的列印，紀錄要顯示實際版本（庫存照規則只扣最新）──');
+// 2026-09-15 使用者回報：南部 Form 3 列印的 Flexible 80A V1.1 顯示成 V2。
+// matName() 是庫存視角，整個家族一律顯示最新版名稱；紀錄要看得到實際用的是哪一版。
+const verRec = (raw, extra) => ({ id:'v-'+raw, ts:'2026-09-15T10:00:00', material:'FLFL80', material_raw:raw,
+  printer:'CreativeDragon', type:'consume', ml:50, note:'客戶-代工-202609150001', region:'south', source:'formlabs', ...(extra||{}) });
+const matCol = raw => runBuild([verRec(raw)])[0]['使用材料(樹脂與塑料)'];
+check('★ 南部 Form 3 回傳名稱 V1.1 → 顯示 V1.1（不可被寫成 V2）', matCol('Flexible 80A V1.1'), 'Flexible 80A V1.1');
+check('原始值是舊版代碼 FLFL8001 → 顯示 V1',                      matCol('FLFL8001'),          'Flexible 80A V1');
+check('原始值就是最新版代碼 → 維持原本名稱（不改顯示）',            matCol('FLFL8002'),          'FLFL80');
+check('原始值是最新版名稱 → 維持原本名稱',                          matCol('Flexible 80A V2'),   'FLFL80');
+check('★ 同版本但寫法不同（多了 Resin）→ 不可被當成不同版本',        matCol('Flexible 80A Resin V2'), 'FLFL80');
+check('原始值沒有版本號 → 維持原本名稱',                            matCol('Flexible 80A'),      'FLFL80');
+check('沒有原始值（舊資料）→ 維持原本名稱',                          runBuild([verRec('')])[0]['使用材料(樹脂與塑料)'], 'FLFL80');
 
 const total = pass + fail;
 console.log(`\n${total} 項：${pass} PASS / ${fail} FAIL`);

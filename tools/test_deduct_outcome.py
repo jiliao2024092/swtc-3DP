@@ -227,6 +227,53 @@ check("★ 抽不到就不寫這個 key（寫 None 會在畫面變成一格 null
 check("★ debug 只印型別與 key，不印 value",
       bool(re.search(r"type\(_u\)\.__name__", src)) and not re.search(r"user=\{_u", src), True)
 
+print("── 材料以「名稱」回傳時也要判得出新舊版（2026-09-15 南部 80A V1.1）──")
+# 版本判斷原本只認得代碼（取末 2 碼）。南部 Form 3 回傳的是名稱 "Flexible 80A V1.1"，
+# 解析不出版本號 → 保守規則「看不出新舊就照常扣」→ 舊版被當成最新版扣庫存。
+# ★ 這一組是實際執行 main.py 的函式（不是比對原始碼字串）。
+import re as _re
+_vns = {"re": _re}
+def _g(p):
+    m = _re.search(p, src, _re.S | _re.M)
+    assert m, p
+    return m.group(0)
+for _b in [r"^NAME_TO_CODE = \{.*?^\}", r"^FAMILY_TO_NAME = \{.*?^\}", r"^FAMILY_REMAP = \{.*?^\}",
+           r"^VERSION_ALIAS = \{.*?^\}", r"^for _fam, _name in FAMILY_TO_NAME\.items\(\):.*?(?=^\S)"]:
+    exec(_g(_b), _vns)
+for _fn in ("family_code", "canon_material", "version_code_of", "raw_version_num",
+            "is_outdated_version", "note_family_latest_version"):
+    exec(_g(r"^def %s\(.*?(?=^def |^# ──|^[A-Z_]+ = )" % _fn)
+         .replace("Optional[str]", "object").replace("Optional[int]", "object"), _vns)
+_vc, _iov, _note, _cm = (_vns["version_code_of"], _vns["is_outdated_version"],
+                         _vns["note_family_latest_version"], _vns["canon_material"])
+_latest = {"FLFL80": "FLFL8002"}
+
+check("★ 名稱 V1.1 → 判成舊版（不扣）",        _iov("Flexible 80A V1.1", _latest), True)
+check("名稱 V1 → 判成舊版（不扣）",             _iov("Flexible 80A V1", _latest),   True)
+check("★ 名稱 V2 → 不是舊版（照常扣）",         _iov("Flexible 80A V2", _latest),   False)
+check("代碼形式行為不變：FLFL8001 → 舊版",      _iov("FLFL8001", _latest),          True)
+check("代碼形式行為不變：FLFL8002 → 不是舊版",  _iov("FLFL8002", _latest),          False)
+check("★ 名稱沒有版本（Flexible 80A）→ 看不出新舊，照常扣（保守規則不變）",
+      _iov("Flexible 80A", _latest), False)
+check("★ 沒見過的名稱 → 照常扣（不可因為看不懂就停扣）",
+      _iov("某個沒見過的材料 V9", _latest), False)
+check("V1.1 仍歸在 Flexible 80A 家族（庫存扣帳的 key 不變）", _cm("Flexible 80A V1.1"), "FLFL80")
+
+check("version_code_of：代碼原樣回傳",           _vc("flfl8002"),          "FLFL8002")
+check("version_code_of：名稱轉成完整代碼",       _vc("Flexible 80A V1.1"), "FLFL8001")
+check("★ version_code_of：家族名稱只對到 6 碼家族碼 → None（沒有版本資訊，不可拿來比）",
+      _vc("Flexible 80A"), None)
+check("version_code_of：空值 → None",            _vc(None),                None)
+
+_fl = {}
+_note("Flexible 80A V1.1", _fl)
+_note("Flexible 80A V2", _fl)
+check("★ 名稱形式記錄最新版時，存進去的是代碼而且是 V2（不可存成名稱字串）",
+      _fl, {"FLFL80": "FLFL8002"})
+_fl2 = {"FLFL80": "FLFL8002"}
+_note("Flexible 80A V1.1", _fl2)
+check("★ 看到舊版名稱不可把最新版往回拉", _fl2, {"FLFL80": "FLFL8002"})
+
 print("── 帳號名稱設錯的例外（OPERATOR_ALIASES）──")
 # 使用者 2026-09-15：Formlabs 帳號名稱設成 2024092，實際是 廖璟程 (Jimmy)。
 # 要在寫進 Firestore 之前就換掉 —— 篩選、月度佔比、匯出讀的都是存進去的值。

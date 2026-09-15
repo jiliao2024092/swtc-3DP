@@ -241,6 +241,12 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - 同步現在會對 `FAMILY_TO_NAME` 沒有的家族代碼印 `[sync][警示] 消耗到對照表沒有的材料家族代碼`，下次一眼可辨
   - ⚠ **併家族會讓「按家族比對」的地方連坐**：`isDisabled()` 是按家族判定的（停用任一版本＝整個家族停用）。舊資料若停用過被併掉的那個代碼，合併後**有庫存的材料會整列從清單消失**（實際發生）。解法是「已停用材料 → 恢復顯示」（寫進 `disabled_overrides`，優先於停用清單）
 - **「是不是已知材料」不可用「家族碼是否含數字」判斷**：家族碼是完整 8 碼截斷成 6 碼的結果，截斷後往往就沒有數字了（`FLGPBK05` → `FLGPBK`）。21 個家族有 12 個會被誤判成未知材料（Clear/White/Grey/Black V5、High Temp、Elastic 50A、Fast/Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material），每次入庫都跳「不是內建材料名稱」，而警告還會建議使用者剛輸入的那個名稱。「含數字」是給**完整 8 碼**用的（避免 Flexible 被誤截成 FLEXIB），別套到家族碼。正解見 `isKnownMaterialInput()`，`tools/test_material_input.js` 有守
+- ⚠⚠ **材料可能以「名稱」回傳，版本判斷不可只認代碼**（2026-09-15 使用者回報）：南部 Form 3 回傳的是 `"Flexible 80A V1.1"` 這種名稱。版本號原本只從代碼末 2 碼取，名稱解析不出版本 → 依保守規則「看不出新舊就照常扣」→ **舊版被當成最新版扣庫存**，而且畫面上一切正常
+  - 修法：`version_code_of()` 先把名稱經 `NAME_TO_CODE` 轉成**完整 8 碼**代碼再比新舊（`is_outdated_version` 與 `note_family_latest_version` 都走它）。V1.1 登記成 `"Flexible 80A V1.1": "FLFL8001"`，與 `Tough 2000 V1.1 → FLTO2001` 同一種寫法
+  - ⚠ **家族名稱反查得到的是 6 碼家族碼**（`"Flexible 80A" → FLFL80`），裡面沒有版本資訊，`version_code_of` 必須回 None（照常扣），不可拿來比
+  - ⚠ `note_family_latest_version` **存進去的必須是代碼、不可是名稱字串**：存成名稱的話之後所有代碼形式的列印都比不出新舊
+  - 名稱查不到對照（新材料、寫法不同）一律維持「照常扣」—— 寧可多扣看得出來，也不要靜默停扣
+  - **紀錄顯示實際版本、庫存照規則只扣最新**（使用者決定）：`matName()` 是庫存視角，整個家族一律顯示最新版名稱，所以舊版列印會被顯示成新版。消耗記錄表格與列印記錄匯出改用 `historyMaterialName()`：**只有實際版本與家族最新版不同時**才顯示原始版本名稱，最新版維持原本名稱（含後台自訂名稱）。比的是名稱結尾的版本號（`V1.1` vs `V2`），不比整串名稱（機台回傳的寫法可能多了 `Resin`）
 - **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
 - **消耗抓取**：用 `prints/?printer={serial}` 按 serial 過濾、無 date、無 sort、per-printer 分頁去重（勿改回 date+sort 全抓，會漏最新）
