@@ -241,7 +241,8 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - 同步現在會對 `FAMILY_TO_NAME` 沒有的家族代碼印 `[sync][警示] 消耗到對照表沒有的材料家族代碼`，下次一眼可辨
   - ⚠ **併家族會讓「按家族比對」的地方連坐**：`isDisabled()` 是按家族判定的（停用任一版本＝整個家族停用）。舊資料若停用過被併掉的那個代碼，合併後**有庫存的材料會整列從清單消失**（實際發生）。解法是「已停用材料 → 恢復顯示」（寫進 `disabled_overrides`，優先於停用清單）
 - **「是不是已知材料」不可用「家族碼是否含數字」判斷**：家族碼是完整 8 碼截斷成 6 碼的結果，截斷後往往就沒有數字了（`FLGPBK05` → `FLGPBK`）。21 個家族有 12 個會被誤判成未知材料（Clear/White/Grey/Black V5、High Temp、Elastic 50A、Fast/Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material），每次入庫都跳「不是內建材料名稱」，而警告還會建議使用者剛輸入的那個名稱。「含數字」是給**完整 8 碼**用的（避免 Flexible 被誤截成 FLEXIB），別套到家族碼。正解見 `isKnownMaterialInput()`，`tools/test_material_input.js` 有守
-- ⚠⚠ **材料可能以「名稱」回傳，版本判斷不可只認代碼**（2026-09-15 使用者回報）：南部 Form 3 回傳的是 `"Flexible 80A V1.1"` 這種名稱。版本號原本只從代碼末 2 碼取，名稱解析不出版本 → 依保守規則「看不出新舊就照常扣」→ **舊版被當成最新版扣庫存**，而且畫面上一切正常
+- ⚠⚠ **材料可能以「名稱」回傳，版本判斷不可只認代碼**（2026-09-15 使用者回報：南部 **Form4B（`AbsorbedPuppy`）** 列印的 Flexible 80A V1.1 被當成 V2）。版本號原本只從代碼末 2 碼取；**若**機台回傳的是 `"Flexible 80A V1.1"` 這種名稱，就解析不出版本 → 依保守規則「看不出新舊就照常扣」→ **舊版被當成最新版扣庫存**，而且畫面上一切正常（實際執行 `is_outdated_version()` 餵名稱字串已確認這個行為）
+  - ⚠ **「AbsorbedPuppy 回傳的是名稱」目前是推定、未實測**：它與中部 Form 4 同系列，而中部回傳的是代碼。另一種可能是它回 `FLFL8001` —— 那樣的話修正前**本來就沒扣**，只是顯示錯。分辨方式：消耗記錄該列的材料名稱顯示 **V1.1**＝名稱形式（修正完整）；顯示 **V1**＝代碼形式（扣帳原本就對，只需把顯示改成 V1.1）
   - 修法：`version_code_of()` 先把名稱經 `NAME_TO_CODE` 轉成**完整 8 碼**代碼再比新舊（`is_outdated_version` 與 `note_family_latest_version` 都走它）。V1.1 登記成 `"Flexible 80A V1.1": "FLFL8001"`，與 `Tough 2000 V1.1 → FLTO2001` 同一種寫法
   - ⚠ **家族名稱反查得到的是 6 碼家族碼**（`"Flexible 80A" → FLFL80`），裡面沒有版本資訊，`version_code_of` 必須回 None（照常扣），不可拿來比
   - ⚠ `note_family_latest_version` **存進去的必須是代碼、不可是名稱字串**：存成名稱的話之後所有代碼形式的列印都比不出新舊

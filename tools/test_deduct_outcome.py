@@ -228,7 +228,7 @@ check("★ debug 只印型別與 key，不印 value",
       bool(re.search(r"type\(_u\)\.__name__", src)) and not re.search(r"user=\{_u", src), True)
 
 print("── 材料以「名稱」回傳時也要判得出新舊版（2026-09-15 南部 80A V1.1）──")
-# 版本判斷原本只認得代碼（取末 2 碼）。南部 Form 3 回傳的是名稱 "Flexible 80A V1.1"，
+# 版本判斷原本只認得代碼（取末 2 碼）。若機台回傳名稱 "Flexible 80A V1.1"（2026-09-15 南部 Form4B 的推定），
 # 解析不出版本號 → 保守規則「看不出新舊就照常扣」→ 舊版被當成最新版扣庫存。
 # ★ 這一組是實際執行 main.py 的函式（不是比對原始碼字串）。
 import re as _re

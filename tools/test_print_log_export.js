@@ -578,12 +578,12 @@ check('★ 篩選比對原始值，不受寬鬆顯示比對影響',
                { operator:'Jaylen Ho' }).length, 1);
 
 console.log('── ★ 舊版本的列印，紀錄要顯示實際版本（庫存照規則只扣最新）──');
-// 2026-09-15 使用者回報：南部 Form 3 列印的 Flexible 80A V1.1 顯示成 V2。
+// 2026-09-15 使用者回報：南部 Form4B（AbsorbedPuppy）列印的 Flexible 80A V1.1 顯示成 V2。
 // matName() 是庫存視角，整個家族一律顯示最新版名稱；紀錄要看得到實際用的是哪一版。
 const verRec = (raw, extra) => ({ id:'v-'+raw, ts:'2026-09-15T10:00:00', material:'FLFL80', material_raw:raw,
-  printer:'CreativeDragon', type:'consume', ml:50, note:'客戶-代工-202609150001', region:'south', source:'formlabs', ...(extra||{}) });
+  printer:'AbsorbedPuppy', type:'consume', ml:50, note:'客戶-代工-202609150001', region:'south', source:'formlabs', ...(extra||{}) });
 const matCol = raw => runBuild([verRec(raw)])[0]['使用材料(樹脂與塑料)'];
-check('★ 南部 Form 3 回傳名稱 V1.1 → 顯示 V1.1（不可被寫成 V2）', matCol('Flexible 80A V1.1'), 'Flexible 80A V1.1');
+check('★ 機台回傳名稱 V1.1 → 顯示 V1.1（不可被寫成 V2）', matCol('Flexible 80A V1.1'), 'Flexible 80A V1.1');
 check('原始值是舊版代碼 FLFL8001 → 顯示 V1',                      matCol('FLFL8001'),          'Flexible 80A V1');
 check('原始值就是最新版代碼 → 維持原本名稱（不改顯示）',            matCol('FLFL8002'),          'FLFL80');
 check('原始值是最新版名稱 → 維持原本名稱',                          matCol('Flexible 80A V2'),   'FLFL80');
