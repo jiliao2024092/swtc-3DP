@@ -338,6 +338,10 @@ FL_USER_FALLBACK_KEYS = ("username", "nickname")
 
 
 def fl_operator(pr) -> Optional[str]:
+    return normalize_operator(_fl_operator_raw(pr))
+
+
+def _fl_operator_raw(pr) -> Optional[str]:
     u = pr.get("user") if isinstance(pr, dict) else None
     if isinstance(u, str):
         s = u.strip()
@@ -359,6 +363,44 @@ def fl_operator(pr) -> Optional[str]:
             if isinstance(v, str) and v.strip():
                 return v.strip()
     return None
+
+
+# ── 帳號名稱設錯的例外 ───────────────────────────────────────────────────
+# Formlabs／Eiger 上的帳號名稱是各自設定的，偶爾會設錯。這裡把「已知設錯的名稱」
+# 對回工程師清單的 key（Jimmy／Jaylen／Bill／Barry，見 portal.html 的 ENG_ORDER），
+# 前端再依對照表顯示成「中文 (英文)」。
+# ★ 在**寫進 Firestore 之前**就換掉，而不是只在畫面上換：資料本身要是對的名字，
+#   否則篩選、月度佔比、匯出看到的都是錯的，而且每個讀資料的地方都得各自記得換一次。
+# ★ 已經寫進去的舊紀錄由 _migrate_operator_aliases() 一次性改掉。
+#   **新增或修改這份對照表時，那支會自動再跑一次**（靠下面的簽章比對）。
+# ⚠ 使用者 2026-09-15 確認：這是唯一一個設定名稱時的錯誤，不要把它當成通用機制亂加。
+OPERATOR_ALIASES = {
+    "2024092": "Jimmy",     # Formlabs 帳號名稱設成 2024092，實際是 廖璟程 (Jimmy)
+}
+# 對照表的簽章。內容一變就不同，遷移就會重跑一次（寫在 inventory/main.operator_alias_sig）
+OPERATOR_ALIAS_SIG = ";".join(f"{k}={v}" for k, v in sorted(OPERATOR_ALIASES.items()))
+
+
+def normalize_operator(name):
+    """把已知設錯的帳號名稱換成正確的人名。沒命中就原樣回傳（None 仍是 None）。
+
+    ★ 比對「整個字串」或「其中一段」：同一個錯誤名稱可能以不同組合出現
+      （例如 first_name 是 2024092、last_name 另有內容，或帳號是 jiliao.2024092）。
+      2024092 這種純數字片段不會與真實人名撞在一起，所以用片段比對是安全的。
+    ★ 刻意不用 re：這支會被測試抽出來單獨執行，減少相依。
+    """
+    if not name:
+        return name
+    s = str(name).strip()
+    if s in OPERATOR_ALIASES:
+        return OPERATOR_ALIASES[s]
+    tokens = s
+    for sep in (".", "_", "@", "-"):       # 空白與 tab 交給下面的 split() 處理
+        tokens = tokens.replace(sep, " ")
+    for t in tokens.split():
+        if t in OPERATOR_ALIASES:
+            return OPERATOR_ALIASES[t]
+    return s
 
 
 def family_code(code: Optional[str]) -> Optional[str]:
@@ -1046,7 +1088,7 @@ def _mf_fill_job_fields(db, access_key: str, secret_key: str) -> int:
         hrs = mf_job_duration_hours(j)
         # 列印人員：Eiger 給的是顯示名稱（實測如 "Jack Tao"）。前端再用
         # settings/workspace 的對照轉成「中文 (英文)」，與 Formlabs 那邊的人名格式一致。
-        op = ((j.get("initiator") or {}).get("name") or "").strip()
+        op = normalize_operator(((j.get("initiator") or {}).get("name") or "").strip()) or ""
         if hrs is None and not op:
             done_set.add(jid)
             seen_jobs.append(jid)
@@ -1204,6 +1246,51 @@ def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
 # ════════════════════════════════════════════════════════════════
 # 主同步函式（被 scheduled function 和 manual trigger 共用）
 # ════════════════════════════════════════════════════════════════
+# operator 欄位是 2026-09-11 才開始寫的，更早的紀錄不可能有，遷移只掃這之後的
+OPERATOR_FIELD_SINCE = datetime.datetime(2026, 9, 10, tzinfo=datetime.timezone.utc)
+
+
+def _migrate_operator_aliases(db, inv_ref, inv) -> int:
+    """把「已經寫進 Firestore」的設錯名稱一次性改成正確的名字（OPERATOR_ALIASES）。
+
+    ★ 為什麼要改資料而不是只在畫面換：使用者要 Firestore 裡就是正確的名字 ——
+      篩選、月度佔比、匯出都直接讀這個值，只在某個畫面換掉的話其他地方還是錯的。
+    ★ 只跑一次：完成後把 OPERATOR_ALIAS_SIG 寫進 inventory/main.operator_alias_sig，
+      之後每輪比對簽章相同就直接跳過（0 次讀取）。**對照表改了簽章就不同，會自動再跑一次。**
+    ★ 用時間範圍掃描而不是 where('operator','==','2024092')：同一個錯誤名稱可能以
+      不同組合存進去（舊版抽的是 username、新版抽的是 first+last），等值查詢會漏掉；
+      掃出來之後用與寫入時同一支 normalize_operator() 判斷，兩邊規則不會走偏。
+    ★ 只寫「真的有變」的文件，而且只動 operator 一個欄位。
+    """
+    if (inv or {}).get("operator_alias_sig") == OPERATOR_ALIAS_SIG:
+        return 0
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    q = (db.collection("inventory_history")
+           .where(filter=FieldFilter("tsDate", ">=", OPERATOR_FIELD_SINCE)))
+    scanned = changed = 0
+    batch, pending = db.batch(), 0
+    for snap in q.stream():
+        scanned += 1
+        cur = (snap.to_dict() or {}).get("operator")
+        if not cur:
+            continue
+        fixed = normalize_operator(cur)
+        if fixed == cur:
+            continue
+        batch.update(snap.reference, {"operator": fixed})
+        pending += 1
+        changed += 1
+        if pending >= 400:          # Firestore 一個 batch 上限 500 筆，留點餘裕
+            batch.commit()
+            batch, pending = db.batch(), 0
+    if pending:
+        batch.commit()
+    # ★ 全部寫完才記簽章：中途失敗的話下一輪會整批重來（每筆都有「沒變就跳過」，重跑安全）
+    inv_ref.set({"operator_alias_sig": OPERATOR_ALIAS_SIG}, merge=True)
+    print(f"[sync] 責任工程師名稱更正（{OPERATOR_ALIAS_SIG}）：掃描 {scanned} 筆、更正 {changed} 筆")
+    return changed
+
+
 def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> dict:
     """執行一次完整同步：拉 printers + prints，更新 Firestore。回傳 stats。"""
     db = get_db()
@@ -1383,6 +1470,13 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         inv.setdefault("disabled_overrides", [])
         inv.setdefault("family_latest_version", {})
         inv.setdefault("stock_shortfalls", {})   # 消耗超過庫存的累計差額（使用者查明後可從前端清除）
+
+        # 已寫進 Firestore 的設錯名稱一次性更正（見 OPERATOR_ALIASES）。
+        # ★ 獨立 try/except：這是資料修正，不可因為它失敗就讓整輪同步（扣庫存）停擺
+        try:
+            stats["operator_aliases_fixed"] = _migrate_operator_aliases(db, inv_ref, inv)
+        except Exception as _me:
+            print(f"[sync][警示] 責任工程師名稱更正失敗（不影響本輪同步）: {_me}")
         family_latest = inv["family_latest_version"]
 
         # 4b. 北中南分區的庫存文件 inventory/{region}

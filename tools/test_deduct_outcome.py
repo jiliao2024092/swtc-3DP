@@ -227,6 +227,79 @@ check("★ 抽不到就不寫這個 key（寫 None 會在畫面變成一格 null
 check("★ debug 只印型別與 key，不印 value",
       bool(re.search(r"type\(_u\)\.__name__", src)) and not re.search(r"user=\{_u", src), True)
 
+print("── 帳號名稱設錯的例外（OPERATOR_ALIASES）──")
+# 使用者 2026-09-15：Formlabs 帳號名稱設成 2024092，實際是 廖璟程 (Jimmy)。
+# 要在寫進 Firestore 之前就換掉 —— 篩選、月度佔比、匯出讀的都是存進去的值。
+nop = _ons["normalize_operator"]
+check("★ 2024092 → Jimmy",                     nop("2024092"),          "Jimmy")
+check("前後空白也要對得到",                     nop("  2024092 "),       "Jimmy")
+check("★ 出現在全名裡（first + last）也要換",   nop("2024092 Liao"),     "Jimmy")
+check("★ 帳號形式（jiliao.2024092）也要換",     nop("jiliao.2024092"),   "Jimmy")
+check("底線／@ 分隔也要換",                     nop("jiliao_2024092@x"), "Jimmy")
+check("★ 不相干的人不可被動到",                 nop("Jaylen Ho"),        "Jaylen Ho")
+check("★ 只是剛好包含那串數字不算（12024092）", nop("12024092"),         "12024092")
+check("空字串原樣回傳",                         nop(""),                 "")
+check("None 原樣回傳",                          nop(None),               None)
+check("★ fl_operator 抽出來就已經換好（寫進 Firestore 的是正確名字）",
+      fop({"user": {"first_name": "2024092", "last_name": "", "username": "jiliao2024092"}}), "Jimmy")
+check("Markforged 的回填也套同一個正規化",
+      bool(re.search(r"op = normalize_operator\(", src)), True)
+
+print("── 已寫進 Firestore 的舊值一次性更正（_migrate_operator_aliases）──")
+# 用假的 db 實際執行：這支會改正式資料，只驗原始碼字串不夠。
+_mig = re.search(r"^OPERATOR_FIELD_SINCE = .*?(?=^def perform_sync\()", src, re.M | re.S)
+check("抓得到遷移函式", bool(_mig), True)
+import types, datetime as _dt
+_mns2 = {"datetime": _dt, "normalize_operator": nop,
+         "OPERATOR_ALIAS_SIG": _ons["OPERATOR_ALIAS_SIG"]}
+# 函式裡 from google.cloud... import FieldFilter —— 測試環境沒有這個套件，塞一個假的
+_fake_mod = types.ModuleType("google.cloud.firestore_v1.base_query")
+_fake_mod.FieldFilter = lambda *a, **k: ("filter", a)
+for _name in ("google", "google.cloud", "google.cloud.firestore_v1"):
+    sys.modules.setdefault(_name, types.ModuleType(_name))
+sys.modules["google.cloud.firestore_v1.base_query"] = _fake_mod
+exec(_mig.group(0), _mns2)
+migrate = _mns2["_migrate_operator_aliases"]
+
+class _Snap:
+    def __init__(s, id_, data): s.id, s._d, s.reference = id_, data, ("ref", id_)
+    def to_dict(s): return dict(s._d)
+class _Batch:
+    def __init__(s, log): s.log, s.ops = log, []
+    def update(s, ref, data): s.ops.append((ref, data))
+    def commit(s): s.log.extend(s.ops); s.ops = []
+class _DB:
+    def __init__(s, docs): s.docs, s.written = docs, []
+    def collection(s, _): return s
+    def where(s, **_): return s
+    def stream(s): return iter(s.docs)
+    def batch(s): return _Batch(s.written)
+class _InvRef:
+    def __init__(s): s.sets = []
+    def set(s, data, merge=False): s.sets.append((data, merge))
+
+_docs = [_Snap("a", {"operator": "2024092"}),
+         _Snap("b", {"operator": "jiliao2024092"}),     # 舊版抽 username 存進去的形式
+         _Snap("c", {"operator": "Jaylen Ho"}),
+         _Snap("d", {"note": "沒有 operator 的舊紀錄"}),
+         _Snap("e", {"operator": "Jimmy"})]
+_db, _ref = _DB(_docs), _InvRef()
+_n = migrate(_db, _ref, {})
+check("★ 只更正真的設錯的那筆（a）", _n, 1)
+check("★ 寫進去的只有 operator 一個欄位", _db.written, [(("ref", "a"), {"operator": "Jimmy"})])
+check("★ 完成後記下簽章（下一輪就不會再掃）",
+      _ref.sets, [({"operator_alias_sig": _ons["OPERATOR_ALIAS_SIG"]}, True)])
+_db2, _ref2 = _DB(_docs), _InvRef()
+check("★ 簽章相同 → 直接跳過，一次都不讀",
+      migrate(_db2, _ref2, {"operator_alias_sig": _ons["OPERATOR_ALIAS_SIG"]}), 0)
+check("跳過時也不寫簽章", _ref2.sets, [])
+check("★ 更正失敗不可拖垮整輪同步（呼叫處有獨立 try/except）",
+      bool(re.search(r"責任工程師名稱更正失敗", src)), True)
+# jiliao2024092（沒有分隔符號）不會被片段比對換掉 —— 這是刻意的：
+# 片段比對只切 . _ @ - 與空白，避免把任何含這串數字的字都當成同一個人
+check("沒有分隔符號的 jiliao2024092 不會被動到（刻意保守）",
+      nop("jiliao2024092"), "jiliao2024092")
+
 print("── mf_job_duration_hours()：Markforged 的列印時間 ──")
 # Eiger 沒有現成的耗時欄位，只能 ended_at - started_at 自己算。
 # ★★ 但 ended_at 不見得是「這次列印真正結束的時間」：實測 dump 193 筆終態工作裡
