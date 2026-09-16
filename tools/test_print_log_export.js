@@ -149,7 +149,7 @@ const rowSrcs = [
 function runBuild(history, filters, labels, asSource) {
   const shim = `const inv={history:${JSON.stringify(asSource ? [] : history)},
                       family_latest_version:{FLFL80:'FLFL8002'}};   // 80A 家族最新＝V2
-    const CODE_TO_NAME={FLFL8001:'Flexible 80A V1', FLFL8002:'Flexible 80A V2'};
+    const CODE_TO_NAME={FLFL8001:'Flexible 80A V1', FLFL8011:'Flexible 80A V1.1', FLFL8002:'Flexible 80A V2'};
     const familyCode=c=>String(c||'').slice(0,6);
     const canonCode=c=>c;
     const __source=${asSource ? JSON.stringify(history) : 'null'};
@@ -585,6 +585,7 @@ const verRec = (raw, extra) => ({ id:'v-'+raw, ts:'2026-09-15T10:00:00', materia
 const matCol = raw => runBuild([verRec(raw)])[0]['使用材料(樹脂與塑料)'];
 check('★ 機台回傳名稱 V1.1 → 顯示 V1.1（不可被寫成 V2）', matCol('Flexible 80A V1.1'), 'Flexible 80A V1.1');
 check('原始值是舊版代碼 FLFL8001 → 顯示 V1',                      matCol('FLFL8001'),          'Flexible 80A V1');
+check('★ 南部 Form4B 實際回傳的 FLFL8011 → 顯示 V1.1（2026-09-16 實測值）', matCol('FLFL8011'), 'Flexible 80A V1.1');
 check('原始值就是最新版代碼 → 維持原本名稱（不改顯示）',            matCol('FLFL8002'),          'FLFL80');
 check('原始值是最新版名稱 → 維持原本名稱',                          matCol('Flexible 80A V2'),   'FLFL80');
 check('★ 同版本但寫法不同（多了 Resin）→ 不可被當成不同版本',        matCol('Flexible 80A Resin V2'), 'FLFL80');

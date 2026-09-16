@@ -260,7 +260,7 @@ check("★ 沒見過的名稱 → 照常扣（不可因為看不懂就停扣）"
 check("V1.1 仍歸在 Flexible 80A 家族（庫存扣帳的 key 不變）", _cm("Flexible 80A V1.1"), "FLFL80")
 
 check("version_code_of：代碼原樣回傳",           _vc("flfl8002"),          "FLFL8002")
-check("version_code_of：名稱轉成完整代碼",       _vc("Flexible 80A V1.1"), "FLFL8001")
+check("version_code_of：名稱轉成完整代碼（V1.1 的真實代碼是 FLFL8011）", _vc("Flexible 80A V1.1"), "FLFL8011")
 check("★ version_code_of：家族名稱只對到 6 碼家族碼 → None（沒有版本資訊，不可拿來比）",
       _vc("Flexible 80A"), None)
 check("version_code_of：空值 → None",            _vc(None),                None)
@@ -273,6 +273,27 @@ check("★ 名稱形式記錄最新版時，存進去的是代碼而且是 V2（
 _fl2 = {"FLFL80": "FLFL8002"}
 _note("Flexible 80A V1.1", _fl2)
 check("★ 看到舊版名稱不可把最新版往回拉", _fl2, {"FLFL80": "FLFL8002"})
+
+print("── ★ FLFL8011＝Flexible 80A V1.1（末 2 碼 11 不是版本 11）──")
+# 2026-09-16 使用者從 tooltip 讀到南部 Form4B 的 API 原始值是 FLFL8011。
+# 修正前：11 > V2 的 02 → V1.1 被當成最新版扣庫存，還把家族最新版拉成 FLFL8011，
+# 連帶讓中部 V2 被判成舊版不扣（log：「舊版本不扣庫存: 'FLFL8002'」）。
+check("★ FLFL8011 的版本號是 1（不是 11）",            _vns["raw_version_num"]("FLFL8011"), 1)
+check("★ 最新版是 V2 時，FLFL8011 判成舊版（不扣）",    _iov("FLFL8011", {"FLFL80": "FLFL8002"}), True)
+check("最新版是 V2 時，FLFL8002 照常扣",                _iov("FLFL8002", {"FLFL80": "FLFL8002"}), False)
+# Firestore 裡家族最新版可能已經被拉成 FLFL8011 —— 部署後要能自己恢復，不必手動清資料
+check("★ 最新版被拉成 FLFL8011 的狀態下，V2 立刻恢復照常扣",
+      _iov("FLFL8002", {"FLFL80": "FLFL8011"}), False)
+_heal = {"FLFL80": "FLFL8011"}
+_note("FLFL8002", _heal)
+check("★ 看到一次 FLFL8002 就把最新版自動拉回 V2", _heal, {"FLFL80": "FLFL8002"})
+_keep = {"FLFL80": "FLFL8002"}
+_note("FLFL8011", _keep)
+check("★ 之後再看到 FLFL8011 不可再把最新版拉走", _keep, {"FLFL80": "FLFL8002"})
+check("FLFL8011 仍歸在 Flexible 80A 家族（庫存 key 不變）", _cm("FLFL8011"), "FLFL80")
+# 既有兩筆 11 結尾的特例不可被這次改動影響（它們是「同版本」，方向相反）
+check("既有特例不受影響：FLTO2011 仍＝V2（2）", _vns["raw_version_num"]("FLTO2011"), 2)
+check("既有特例不受影響：FLRG1011 仍＝2",       _vns["raw_version_num"]("FLRG1011"), 2)
 
 print("── 帳號名稱設錯的例外（OPERATOR_ALIASES）──")
 # 使用者 2026-09-15：Formlabs 帳號名稱設成 2024092，實際是 廖璟程 (Jimmy)。

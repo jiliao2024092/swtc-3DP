@@ -259,11 +259,9 @@ NAME_TO_CODE = {
     "Tough 2000 V1.1":   "FLTO2001",
     "Tough 2000 V2":     "FLTO2002",
     "Flexible 80A V1":   "FLFL8001",
-    # ★ 2026-09-15 使用者回報：南部 Form4B（AbsorbedPuppy）列印的 V1.1 被當成 V2。
-    #   若機台回傳的是名稱，要靠這筆才轉得成代碼、比得出比 V2（FLFL8002）舊。
-    #   V1.1 與 V1 同為舊版，對到 FLFL8001（與 Tough 2000 V1.1 → FLTO2001 同一種寫法）。
-    #   ⚠ 「該機台回傳名稱」是推定，尚待消耗記錄畫面確認（見 CLAUDE.md 同段）。
-    "Flexible 80A V1.1": "FLFL8001",
+    # ★ V1.1 的真實代碼是 FLFL8011（2026-09-16 使用者從消耗記錄 tooltip 讀到的 API 原始值，
+    #   南部 Form4B／AbsorbedPuppy）。版本號見下方 VERSION_ALIAS：末 2 碼 11 不是版本 11。
+    "Flexible 80A V1.1": "FLFL8011",
     "Flexible 80A V2":   "FLFL8002",
     "Elastic 50A V2":    "FLFLES02",
     "Rigid 10K V1.1":    "FLRG1002",
@@ -452,7 +450,16 @@ def material_display_name(code: Optional[str]) -> Optional[str]:
 VERSION_ALIAS = {
     "FLRG1011": 2,   # = FLRG1002，同為 Rigid 10K V1.1
     "FLTO2011": 2,   # = FLTO2002，同為 Tough 2000 V2
+    "FLFL8011": 1,   # = Flexible 80A V1.1，**比 V2（FLFL8002）舊**
 }
+# 2026-09-16 追加 FLFL8011（與上面兩筆方向相反：那兩筆是「同版本被判成舊版」，
+# 這筆是「舊版被判成新版」）。南部 Form4B 列印 Flexible 80A V1.1，API 回 FLFL8011，
+# 末 2 碼 11 直接壓過 V2 的 02 → V1.1 被當成最新版照常扣庫存、family_latest_version
+# 也被拉成 FLFL8011，連帶讓中部 V2（FLFL8002）的列印被判成舊版不扣
+# （log 實證：「舊版本不扣庫存: 'FLFL8002'(家族最新非此版)」）。
+# 版本號給 1：與 V1（FLFL8001）同級，兩者都比 V2 舊。已存成 FLFL8011 的
+# family_latest_version 不必手動清：下一次看到 FLFL8002（2 > 1）就會自動拉回 V2。
+# ★ 判讀：「末 2 碼 11」在三個家族分別代表 V1.1／V2／V1.1，不能當成規律，一律看實際產品版本。
 # 2026-08-17 追加 FLTO2011：使用者回報一筆 Tough 2000 被標成「未扣庫存」，但那次列印
 # 用的就是 V2。查 inventory/main.family_latest_version 得 FLTO20 = "FLTO2011"，末 2 碼 11
 # 直接壓過 FLTO2002 的 02 → FLTO2002 被誤判成舊版。與 Rigid 10K 完全同一個模式。
