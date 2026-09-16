@@ -2036,6 +2036,16 @@ function matCode(input) {
 // ★ 比的是名稱結尾的版本號（V1.1 vs V2），不比整串名稱：機台回傳的名稱寫法可能與
 //   對照表不同（例如多了 Resin），整串比對會讓「同一版本」也被當成不同而改掉顯示。
 const VERSION_SUFFIX_RE = /\sV(\d+(?:\.\d+)?)\s*$/i;
+// 「API 實際回報的材料值」——滑鼠停在材料名稱上就看得到。
+// ★ 為什麼要露出來：顯示名稱是家族視角（一律顯示最新版），看不出這筆實際是哪個版本，
+//   也看不出機台回報的是代碼還是名稱。2026-09-15 查南部 80A V1.1 被算成 V2 時，
+//   就是因為這個值只藏在「未扣庫存」的 tooltip 裡（而那筆有扣，所以沒有 tooltip），
+//   只能靠反覆猜。露出來之後這類問題一眼就能判讀。
+function materialRawTitle(raw){
+    const s = raw ? String(raw).trim() : '';
+    return s ? `API 回報的原始材料：${s}` : 'API 回報的原始材料：（這筆沒有記錄）';
+}
+
 function historyMaterialName(h){
     const fallback = matName(h && h.material);
     const raw = String((h && h.material_raw) || '').trim();
@@ -2846,7 +2856,7 @@ function cartridgeCardHTML(printer) {
             <div class="flex justify-between items-center mb-2">
                 <div>
                     <span class="text-xs font-medium text-[var(--ink-4)]">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
-                    <p class="font-semibold text-[var(--ink)] text-sm">${matName(s.material)||'—'}</p>
+                    <p class="font-semibold text-[var(--ink)] text-sm" title="${escHtml(materialRawTitle(s.material_raw))}">${matName(s.material)||'—'}</p>
                 </div>
                 <div class="text-right">
                     ${noCapacity
@@ -4938,7 +4948,7 @@ function renderHistory() {
         const canDelRec = canDeleteRecords();
         tr.innerHTML=`
             <td class="p-3 text-xs text-[var(--ink-4)]">${new Date(h.ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</td>
-            <td class="p-3 font-medium text-[var(--ink)] text-sm">${historyMaterialName(h)||'—'}</td>
+            <td class="p-3 font-medium text-[var(--ink)] text-sm" title="${escHtml(materialRawTitle(h.material_raw))}">${historyMaterialName(h)||'—'}</td>
             <td class="p-3 text-sm text-[var(--ink-3)]">${printerDisplay(h.printer)||'—'}</td>
             <td class="p-3 whitespace-nowrap"><span class="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${t.color}">${t.label}</span></td>
             <!-- 責任工程師＝實際執行這次列印的人（Formlabs 的 user／Markforged 的 initiator）。
