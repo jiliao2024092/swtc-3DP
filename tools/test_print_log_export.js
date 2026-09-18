@@ -336,8 +336,13 @@ check('代工 → 客戶名稱留空（等 join）',
       runBuild([{ ...engTest, note:'博大-代工-202607160001' }])[0]['客戶名稱'], '');
 check('評估 → 客戶名稱留空（等 join）',
       runBuild([{ ...engTest, note:'裕田動能-評估-202608170001' }])[0]['客戶名稱'], '');
-check('未分類 → 客戶名稱留空',
-      runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['客戶名稱'], '');
+// ★ 備註沒照格式 → 掛實威國際（使用者 2026-09-18 決定）
+check('★ 未照格式 → 客戶名稱帶入實威國際',
+      runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['客戶名稱'], '實威國際股份有限公司');
+check('空備註 → 客戶名稱帶入實威國際',
+      runBuild([{ ...engTest, note:'' }])[0]['客戶名稱'], '實威國際股份有限公司');
+check('類別對不到但有單號 → 不算未照格式（交給 join）',
+      runBuild([{ ...engTest, note:'博大-急件-202607160001' }])[0]['客戶名稱'], '');
 
 console.log('── 工程測試且無單號 → 業務也帶入實威國際 ──');
 // 人工登記表「原廠材料工程測試且無單號」5 筆，業務全部是實威國際（5/5）。
@@ -358,8 +363,10 @@ check('代工 → 業務留空',
       runBuild([{ ...engTest, note:'博大-代工-202607160001' }])[0]['業務'], '');
 check('評估（無單號）→ 業務留空',
       runBuild([{ ...engTest, note:'高禎-評估' }])[0]['業務'], '');
-check('未分類 → 業務留空',
-      runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['業務'], '');
+check('★ 未照格式 → 業務帶入實威國際',
+      runBuild([{ ...engTest, note:'palm_pad_silicon' }])[0]['業務'], '實威國際股份有限公司');
+check('類別對不到但有單號 → 業務留空（交給 join）',
+      runBuild([{ ...engTest, note:'博大-急件-202607160001' }])[0]['業務'], '');
 
 // ══ 業務／工程師的「中文 (英文)」顯示 ═══════════════════════════
 console.log('── 業務／工程師以「中文 (英文)」匯出 ──');
@@ -511,8 +518,28 @@ const opMix = [{ ...opRec[0], id:'m1', ts:'2026-09-10T10:00:00', operator:undefi
 const opMerged = runBuild(opMix, null, null, true);
 check('合併列只有一列', opMerged.length, 1);
 check('★ 合併列取得到人員的那一筆', opMerged[0]['責任工程師'], 'Jack Tao');
-// ⚠ 有對到工單時，工單上的責任工程師會蓋過實際操作者（見 finishPrintLogExport）——
-//   那段是 async 的 join，這支測試只涵蓋 buildPrintLogRows 的預設值。
+
+console.log('── 工單 join：消耗紀錄有記到人就以它為準（2026-09-18）──');
+const joinFn = new Function(
+  'const ENG_NAMES={Jaylen:"何哲綸",Bill:"林志明"}; const SALES_NAMES={Ava:"曾采秢"};\n' +
+  extract('zhEnLabel', /function zhEnLabel\(key, dict\)\{[\s\S]*?\n\}/) + '\n' +
+  extract('applyWorkboardJoin', /function applyWorkboardJoin\(rows, wbMap\)\{[\s\S]*?\n\}/) +
+  '\nreturn applyWorkboardJoin;')();
+const wb = new Map([['202609100001', { sales:'Ava', customer:'某某股份有限公司', engineer:'Bill' }],
+                    ['202609100002', { sales:'',   customer:'',               engineer:'' }]]);
+const jr = [
+  { '備註(APP單號)':'202609100001', '責任工程師':'何哲綸 (Jaylen)', '業務':'', '客戶名稱':'' },
+  { '備註(APP單號)':'202609100001', '責任工程師':'',              '業務':'', '客戶名稱':'' },
+  { '備註(APP單號)':'202609100002', '責任工程師':'', '業務':'實威國際股份有限公司', '客戶名稱':'實威國際股份有限公司' },
+  { '備註(APP單號)':'999',          '責任工程師':'', '業務':'', '客戶名稱':'' },
+];
+check('比對到的筆數', joinFn(jr, wb), 3);
+check('★ 有記到實際列印的人 → 不被工單蓋掉', jr[0]['責任工程師'], '何哲綸 (Jaylen)');
+check('沒記到人 → 用工單的責任工程師',       jr[1]['責任工程師'], '林志明 (Bill)');
+check('業務仍以工單為準',                     jr[0]['業務'], '曾采秢 (Ava)');
+check('客戶名稱由工單補',                     jr[1]['客戶名稱'], '某某股份有限公司');
+check('★ 工單沒填業務 → 不可把已帶入的值洗掉', jr[2]['業務'], '實威國際股份有限公司');
+check('對不到工單 → 不動',                     jr[3]['責任工程師'], '');
 
 console.log('── 匯出範圍依「責任工程師」篩選（表格與匯出共用 applyHistoryFilters）──');
 // ★ 比對的是原始值 operator，不是畫面上的「中文 (英文)」—— 對照表一改，

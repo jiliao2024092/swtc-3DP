@@ -5702,6 +5702,9 @@ function buildPrintLogRows(filters, sourceList){
     groups.forEach(items => {
         const h = items[0];
         const p = parseNote(h.note);
+        // 備註沒照「客戶-類別-單號」格式（對不到工作類別、也沒有單號）→ 業務與客戶名稱
+        // 都掛實威國際（使用者 2026-09-18 決定）。有單號的不算：那種交給工單 join。
+        const unformatted = !p.category && !p.appNo;
         // 纖維只有 Markforged 有（category==='fiber'）；樹脂／塑料是其餘的
         const fiber   = items.filter(x => x.category === 'fiber');
         const plastic = items.filter(x => x.category !== 'fiber');
@@ -5722,19 +5725,18 @@ function buildPrintLogRows(filters, sourceList){
             // 工程測試且沒有單號時，業務也掛實威國際（人工登記表 5/5 相符）。
             // ★ 限「無單號」：有單號的走下面的工單 join，那邊的業務才是真的指定人。
             // 沒單號的列不會進 join（那段開頭就 return），所以這裡填的值不會被蓋掉。
-            '業務':      (p.category === '工程測試' && !p.appNo) ? ENG_TEST_COMPANY : '',
+            '業務':      (unformatted || (p.category === '工程測試' && !p.appNo)) ? ENG_TEST_COMPANY : '',
             // 工程測試一律是自家的原廠材料測試，客戶就是實威國際（對照人工登記表，
             // 該類 7 筆全部都是這一家）。其餘類別的客戶全名要靠單號 join 工單，
             // 因為備註第一段只有客戶「簡稱」，不是 EIP 上的公司全名。
-            '客戶名稱':  p.category === '工程測試' ? ENG_TEST_COMPANY : '',
+            '客戶名稱':  (unformatted || p.category === '工程測試') ? ENG_TEST_COMPANY : '',
             '品牌':      h.source === 'markforged' ? 'Markforged' : 'Formlabs',
             '機型':      exportModelName(h),
             '列印目的':  PURPOSE_MAP[p.category] || '',
             '活動名稱與事由': p.event,
-            // 責任工程師：先帶「實際執行這次列印的人」（同步從 API 抓回來的）。
-            // ★ 有對到工單時會被工單上的責任工程師蓋過去（見 finishPrintLogExport）——
-            //   工單上指定的人才是「責任」歸屬，實際操作者只是沒有工單時的退路。
-            //   這與「業務」欄的規則一致：有單號一律以工單為準。
+            // 責任工程師：消耗紀錄有記到「實際執行這次列印的人」就直接用它
+            // （使用者 2026-09-18 決定）。工單上的責任工程師只補沒有記到人的列，
+            // 見 applyWorkboardJoin()。
             '責任工程師': operatorLabel(items.find(x => x.operator) || h),
             // 實際列印耗時。MF 合併列取「同一次列印」的最大值而非加總——塑料與纖維
             // 是同一次列印的兩條料，時間本來就是同一段，相加會變兩倍。
@@ -5771,6 +5773,30 @@ function fmtDateLocalInv(d){
 //   （workboard.js 有同樣的考量，見該檔 loadRecentHistory 的註解）。
 // ★ 沒有單號、或單號在工單裡找不到 → 三欄留空給人工填（使用者 2026-08-27 決定），
 //   不做模糊比對。客戶簡稱撞名的風險比留空高太多。
+// 以 EF 單號把工單的 業務／客戶全名／責任工程師 補進匯出列，回傳比對到的筆數。
+// 獨立成同步函式是為了能測（finishPrintLogExport 是 async 又要讀 Firestore）。
+function applyWorkboardJoin(rows, wbMap){
+    let matched = 0;
+    rows.forEach(r => {
+        const ef = r['備註(APP單號)'];
+        if (!ef) return;
+        const o = wbMap.get(String(ef).trim());
+        if (!o) return;
+        matched++;
+        // key → 「中文 (英文)」。workboard 存的是 key（Jaylen／Ava），
+        // 直接匯出英文代號人看不懂，而中文名在 settings/workspace 就有。
+        // ★ 工單沒填業務時不可把已帶入的值洗成空白
+        if (o.sales) r['業務'] = zhEnLabel(o.sales, SALES_NAMES);
+        // ★ 消耗紀錄有記到實際列印的人就以它為準（使用者 2026-09-18 決定），
+        //   工單上的責任工程師只補空白。
+        if (!r['責任工程師'] && o.engineer) r['責任工程師'] = zhEnLabel(o.engineer, ENG_NAMES);
+        // ★ 不覆蓋已經填好的客戶名稱：工程測試那類已固定帶入實威國際，
+        //   工單上若填了別的（例如借用同一張單號）不該把它蓋掉。
+        if (!r['客戶名稱']) r['客戶名稱'] = o.customer || '';
+    });
+    return matched;
+}
+
 async function fetchWorkboardByEF(){
     const map = new Map();
     try {
@@ -5834,23 +5860,7 @@ async function exportMfPrintLogExcel(){
 async function finishPrintLogExport(rows, { active = [], span = '', prefix = '列印記錄' } = {}){
     // 用 EF 單號補三欄（沒單號或對不到就維持空白）
     const wbMap = await fetchWorkboardByEF();
-    let matched = 0;
-    if (wbMap) {
-        rows.forEach(r => {
-            const ef = r['備註(APP單號)'];
-            if (!ef) return;
-            const o = wbMap.get(String(ef).trim());
-            if (!o) return;
-            matched++;
-            // key → 「中文 (英文)」。workboard 存的是 key（Jaylen／Ava），
-            // 直接匯出英文代號人看不懂，而中文名在 settings/workspace 就有。
-            r['業務']       = zhEnLabel(o.sales, SALES_NAMES);
-            r['責任工程師'] = zhEnLabel(o.engineer, ENG_NAMES);
-            // ★ 不覆蓋已經填好的客戶名稱：工程測試那類已固定帶入實威國際，
-            //   工單上若填了別的（例如借用同一張單號）不該把它蓋掉。
-            if (!r['客戶名稱']) r['客戶名稱'] = o.customer || '';
-        });
-    }
+    const matched = wbMap ? applyWorkboardJoin(rows, wbMap) : 0;
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows, { header: PRINT_LOG_HEADERS });
     ws['!cols'] = PRINT_LOG_HEADERS.map(hd => ({ wch: Math.max(10, Math.min(28, hd.length * 2)) }));
