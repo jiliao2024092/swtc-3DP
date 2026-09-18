@@ -1916,8 +1916,10 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 if _is_debug_print:
                     print(f"[sync][DEBUG目標print] 採用時間 ts={finished!r} → tsDate={ts_dt.isoformat()}")
 
-                # 消耗以最新版本計算：舊版本代碼（如家族已看過 FLTO2002 時的 FLTO2001）
-                # 只記錄不扣庫存 —— 備料存的是新版本，舊版罐用量不該扣新版庫存。
+                # 舊版本代碼（如家族已看過 FLTO2002 時的 FLTO2001）**照樣扣庫存**
+                # （使用者 2026-09-18 決定，取代原本「舊版只記錄不扣」的規則）：
+                # 舊版罐是實際存在、實際用掉的樹脂，不扣的話帳上庫存永遠比實際多。
+                # 仍判斷出來只是為了印 log，方便日後對帳。
                 outdated = is_outdated_version(raw_material, family_latest, family_latest_seen)
                 # 新納管機台的歷史 print 不追溯扣帳（見上方 newly_tracked 說明）
                 is_new_machine_history = any(a in alias for a in newly_tracked)
@@ -1929,13 +1931,13 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 #   而 print_run_success 沒有——用有文件保證的那個當扣帳依據。
                 bad_outcome = status in NO_DEDUCT_OUTCOME_STATUSES
                 will_deduct = ((not backfill) and (guid not in deducted)
-                               and (not outdated) and (not is_new_machine_history)
+                               and (not is_new_machine_history)
                                and (not bad_outcome))
                 if bad_outcome:
                     stats["skipped_bad_outcome"] = stats.get("skipped_bad_outcome", 0) + 1
                 if outdated:
-                    stats["skipped_outdated_deduct"] = stats.get("skipped_outdated_deduct", 0) + 1
-                    print(f"[sync] 舊版本不扣庫存: {raw_material!r}(家族最新非此版) "
+                    stats["outdated_deducted"] = stats.get("outdated_deducted", 0) + 1
+                    print(f"[sync] 舊版本（照扣庫存）: {raw_material!r}(家族最新非此版) "
                           f"guid={guid[:8]} ml={volume_num}")
 
                 # 這筆是否真的扣過備料庫存；前端刪除紀錄時據此決定要不要回補
@@ -1949,8 +1951,6 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
                 elif bad_outcome:
                     # 前端「未扣庫存」tooltip 會顯示這個原因
                     skip_reason = "failed_or_aborted"
-                elif outdated:
-                    skip_reason = "outdated_version"
                 elif backfill:
                     skip_reason = "backfill"
                 elif is_new_machine_history:

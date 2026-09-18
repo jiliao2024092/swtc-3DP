@@ -592,6 +592,12 @@ check("outcome 有被寫進 inventory_history",
       bool(re.search(r'"outcome":\s*outcome', src)), True)
 check("outcome 由 print_outcome() 產生",
       bool(re.search(r'outcome\s*=\s*print_outcome\(', src)), True)
+# ★ 舊版本也要扣庫存（使用者 2026-09-18 決定）：will_deduct 不可再串 not outdated，
+#   也不可再寫出 outdated_version 這個未扣原因
+check("★ will_deduct 不再排除舊版本",
+      bool(re.search(r"will_deduct\s*=.{0,300}?\(not\s+outdated\)", src, re.S)), False)
+check("★ 不再寫 outdated_version 當未扣原因",
+      bool(re.search(r'skip_reason\s*=\s*"outdated_version"', src)), False)
 # 探針是暫時的，任務完成後必須移除，否則每輪都白算 1475 次
 check("暫時探針已移除",  "outcome_probe" in src, False)
 

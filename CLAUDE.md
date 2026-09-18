@@ -166,7 +166,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - **飛行中不記消耗**（`IN_FLIGHT_STATUSES`，2026-08-27 起）：`PRINTING/PAUSED/PAUSING/PRECOAT/POSTCOAT` 這輪跳過，等變 FINISHED 再寫。原因：`doc_id=guid` 且處理過就**永不重寫**，飛行中寫入會讓 `apiStatus`/`outcome` 永遠停在當下那一刻（那 27 筆陳舊值就是這樣來的）
   - ⚠ **FC-118 風險**：Formlabs 偶爾對已印完的 print 永遠回傳 `PRINTING`，那種會被無限期跳過、消耗永不入帳。為此每輪把飛行中的檔名印進 log（`[sync] 飛行中`）——**同一個名字連續多天出現就是踩到了**
   - `PRINTING` **仍留在 `DONE_STATUSES`**：兩者分工不同（前者決定「這輪要不要現在寫」，後者決定「這個狀態算不算已結束」），不衝突
-- ⚠ **「沒扣庫存」≠ 列印失敗**：四種未扣原因裡有三種（`outdated_version`/`backfill`/`newly_tracked_machine`）其實列印是成功的，只有 `failed_or_aborted` 才是失敗。匯出的成功/失敗判定見 `exportPrintResult()`
+- ⚠ **「沒扣庫存」≠ 列印失敗**：四種未扣原因裡有三種（`outdated_version`（2026-09-18 起不再產生，只有舊紀錄有）/`backfill`/`newly_tracked_machine`）其實列印是成功的，只有 `failed_or_aborted` 才是失敗。匯出的成功/失敗判定見 `exportPrintResult()`
 - **工程師／業務／機台清單分區**（2026-08-27）：後台三個工程師清單都有「地區」欄，**留空＝全區可見**（跨區支援的人一定要留空，否則那些區的人永遠指派不到他，畫面上毫無提示）。過濾在兩處實作：`portal/portal.html` 的 `inScope`（工作看板／異常與資源／機台共用）與 `3DP-BK.html` 的 `subscribeSettings`
   - ⚠ **只過濾「下拉能選誰」，絕不過濾名稱對照表**（`ENG_LABEL`/`ENG_FULLLABEL`）。舊資料可能指向別區的人，對照查不到會直接顯示英文 key，看起來像資料壞掉
   - admin 與可跨區檢視的主管不受限制
@@ -256,6 +256,9 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - `version_code_of()`（名稱先經 `NAME_TO_CODE` 轉完整 8 碼再比新舊）保留當防護：名稱形式確實可能流進來（`canon_material` 的註解就列了 `'Flexible 80A V1.1'`）。⚠ 家族名稱反查得到的 6 碼家族碼（`"Flexible 80A" → FLFL80`）沒有版本資訊，必須回 None（照常扣）；`note_family_latest_version` 存進去的必須是代碼、不可是名稱字串
   - **紀錄顯示實際版本、庫存照規則只扣最新**（使用者決定）：`matName()` 是庫存視角，整個家族一律顯示最新版名稱。消耗記錄表格與列印記錄匯出改用 `historyMaterialName()`：**只有實際版本與家族最新版不同時**才顯示原始版本名稱，最新版維持原本名稱（含後台自訂名稱）。⚠ 前端有**三份** `CODE_TO_NAME`（`inventory.html`／`3DP-BK.html`／`portal/firebase-service.js`），新增代碼要三份一起加，否則同一個代碼在不同頁顯示不同名稱
   - ⚠ 修正前被誤扣的 V1.1 列印**不會自動回補**（會動庫存數字，交給使用者決定）
+- ⚠⚠ **舊版本材料也扣庫存**（2026-09-18 使用者決定，**取代** 2026-07-27 起的「消耗以最新版本計算、舊版只記錄不扣」）：`perform_sync` 的 `will_deduct` 不再排除 `is_outdated_version()`，舊版只印 log `[sync] 舊版本（照扣庫存）`、計入 `stats.outdated_deducted`。理由：舊版罐是實際用掉的樹脂，不扣的話帳上永遠比實際多。`is_outdated_version()`／`VERSION_ALIAS` 保留，只用於 log 與前端 tooltip。`tools/test_deduct_outcome.py` 有守（`will_deduct` 不可再串 `not outdated`）
+  - 只影響之後同步的新紀錄；先前標 `outdated_version` 未扣的舊紀錄不會自動補扣，要扣請用消耗記錄上的「補扣」按鈕
+  - 下面幾條提到「只扣最新」「V1.1 的列印不扣」的地方是**當時的規則**，保留作為背景
 - **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
 - **消耗抓取**：用 `prints/?printer={serial}` 按 serial 過濾、無 date、無 sort、per-printer 分頁去重（勿改回 date+sort 全抓，會漏最新）
