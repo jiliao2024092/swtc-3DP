@@ -598,6 +598,9 @@ check("★ will_deduct 不再排除舊版本",
       bool(re.search(r"will_deduct\s*=.{0,300}?\(not\s+outdated\)", src, re.S)), False)
 check("★ 不再寫 outdated_version 當未扣原因",
       bool(re.search(r'skip_reason\s*=\s*"outdated_version"', src)), False)
+# ★ alias 是 None 的機台 alias==serial，樹脂罐清單會被加兩次（Form3+ 一罐變兩罐）
+check("★ 機台樹脂罐依罐子 serial 去重",
+      "_seen_carts" in src and "mounted_carts = carts_by_inside.get(serial, []) + carts_by_inside.get(alias, [])" not in src, True)
 # 探針是暫時的，任務完成後必須移除，否則每輪都白算 1475 次
 check("暫時探針已移除",  "outcome_probe" in src, False)
 

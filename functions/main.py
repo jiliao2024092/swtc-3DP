@@ -1489,7 +1489,17 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
 
             # 取得這台機台目前裝著的 cartridges
             # 優先：用 /cartridges/ 結果按 inside_printer 配對（serial 或 alias 都試）
-            mounted_carts = carts_by_inside.get(serial, []) + carts_by_inside.get(alias, [])
+            # ★ 要去重：alias 是 None 的機台（南部 CreativeDragon／BoldSturgeon）上一行會
+            #   退回 serial，alias == serial → 同一份清單被加兩次，一個樹脂罐變兩個、
+            #   機台存量也跟著算成兩倍（2026-09-18 使用者回報 Form3+ 出現兩個 Elastic 50A）。
+            mounted_carts = []
+            _seen_carts = set()
+            for c in carts_by_inside.get(serial, []) + carts_by_inside.get(alias, []):
+                _ck = c.get("serial") or id(c)
+                if _ck in _seen_carts:
+                    continue
+                _seen_carts.add(_ck)
+                mounted_carts.append(c)
 
             # 若 /cartridges/ 沒結果，退回從 cartridge_status 內 serial 字串組裝
             if not mounted_carts:
