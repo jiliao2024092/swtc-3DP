@@ -248,7 +248,8 @@ _vc, _iov, _note, _cm = (_vns["version_code_of"], _vns["is_outdated_version"],
                          _vns["note_family_latest_version"], _vns["canon_material"])
 _latest = {"FLFL80": "FLFL8002"}
 
-check("★ 名稱 V1.1 → 判成舊版（不扣）",        _iov("Flexible 80A V1.1", _latest), True)
+# ★ 2026-09-18 起 V1.1 拆成獨立材料（FLFL8V），不再與 V2 比新舊 → 扣它自己的庫存
+check("★ 名稱 V1.1 → 獨立材料，不與 V2 比新舊（照常扣自己的庫存）", _iov("Flexible 80A V1.1", _latest), False)
 check("名稱 V1 → 判成舊版（不扣）",             _iov("Flexible 80A V1", _latest),   True)
 check("★ 名稱 V2 → 不是舊版（照常扣）",         _iov("Flexible 80A V2", _latest),   False)
 check("代碼形式行為不變：FLFL8001 → 舊版",      _iov("FLFL8001", _latest),          True)
@@ -257,7 +258,7 @@ check("★ 名稱沒有版本（Flexible 80A）→ 看不出新舊，照常扣�
       _iov("Flexible 80A", _latest), False)
 check("★ 沒見過的名稱 → 照常扣（不可因為看不懂就停扣）",
       _iov("某個沒見過的材料 V9", _latest), False)
-check("V1.1 仍歸在 Flexible 80A 家族（庫存扣帳的 key 不變）", _cm("Flexible 80A V1.1"), "FLFL80")
+check("★ 名稱 V1.1 → 獨立家族 FLFL8V（不再併進 V2 的 FLFL80）", _cm("Flexible 80A V1.1"), "FLFL8V")
 
 check("version_code_of：代碼原樣回傳",           _vc("flfl8002"),          "FLFL8002")
 check("version_code_of：名稱轉成完整代碼（V1.1 的真實代碼是 FLFL8011）", _vc("Flexible 80A V1.1"), "FLFL8011")
@@ -268,11 +269,11 @@ check("version_code_of：空值 → None",            _vc(None),                
 _fl = {}
 _note("Flexible 80A V1.1", _fl)
 _note("Flexible 80A V2", _fl)
-check("★ 名稱形式記錄最新版時，存進去的是代碼而且是 V2（不可存成名稱字串）",
-      _fl, {"FLFL80": "FLFL8002"})
+check("★ 名稱形式記錄最新版時，存進去的是代碼（不可存成名稱字串），V1.1 與 V2 各記各的",
+      _fl, {"FLFL8V": "FLFL8011", "FLFL80": "FLFL8002"})
 _fl2 = {"FLFL80": "FLFL8002"}
 _note("Flexible 80A V1.1", _fl2)
-check("★ 看到舊版名稱不可把最新版往回拉", _fl2, {"FLFL80": "FLFL8002"})
+check("★ 看到 V1.1 名稱不可動到 V2 的最新版（只會另外記 FLFL8V）", _fl2, {"FLFL80": "FLFL8002", "FLFL8V": "FLFL8011"})
 
 print("── ★ FLFL8011＝Flexible 80A V1.1（末 2 碼 11 不是版本 11）──")
 # 2026-09-16 使用者從 tooltip 讀到南部 Form4B 的 API 原始值是 FLFL8011。
@@ -280,7 +281,8 @@ print("── ★ FLFL8011＝Flexible 80A V1.1（末 2 碼 11 不是版本 11）
 # 之後正常印完的 V2 都會被判成舊版而不扣（中部 9/15 那筆 log 是中止的列印，本來就不扣，
 # 實際沒有漏扣 —— 下面這組防的是「之後」的誤判）。
 check("★ FLFL8011 的版本號是 1（不是 11）",            _vns["raw_version_num"]("FLFL8011"), 1)
-check("★ 最新版是 V2 時，FLFL8011 判成舊版（不扣）",    _iov("FLFL8011", {"FLFL80": "FLFL8002"}), True)
+check("★ FLFL8011 是獨立材料，不會因為 V2 是最新版就被判成舊版（扣它自己的庫存）",
+      _iov("FLFL8011", {"FLFL80": "FLFL8002"}), False)
 check("最新版是 V2 時，FLFL8002 照常扣",                _iov("FLFL8002", {"FLFL80": "FLFL8002"}), False)
 # Firestore 裡家族最新版可能已經被拉成 FLFL8011 —— 部署後要能自己恢復，不必手動清資料
 check("★ 最新版被拉成 FLFL8011 的狀態下，V2 立刻恢復照常扣",
@@ -290,8 +292,10 @@ _note("FLFL8002", _heal)
 check("★ 看到一次 FLFL8002 就把最新版自動拉回 V2", _heal, {"FLFL80": "FLFL8002"})
 _keep = {"FLFL80": "FLFL8002"}
 _note("FLFL8011", _keep)
-check("★ 之後再看到 FLFL8011 不可再把最新版拉走", _keep, {"FLFL80": "FLFL8002"})
-check("FLFL8011 仍歸在 Flexible 80A 家族（庫存 key 不變）", _cm("FLFL8011"), "FLFL80")
+check("★ 之後再看到 FLFL8011 不可動到 V2 的最新版", _keep, {"FLFL80": "FLFL8002", "FLFL8V": "FLFL8011"})
+check("★ FLFL8011 → 獨立家族 FLFL8V（庫存、消耗、停用都與 V2 分開）", _cm("FLFL8011"), "FLFL8V")
+check("V2 仍是 FLFL80（拆分不可動到 V2）",               _cm("FLFL8002"), "FLFL80")
+check("V1 仍是 FLFL80（只拆 V1.1）",                     _cm("FLFL8001"), "FLFL80")
 # 既有兩筆 11 結尾的特例不可被這次改動影響（它們是「同版本」，方向相反）
 check("既有特例不受影響：FLTO2011 仍＝V2（2）", _vns["raw_version_num"]("FLTO2011"), 2)
 check("既有特例不受影響：FLRG1011 仍＝2",       _vns["raw_version_num"]("FLRG1011"), 2)
@@ -368,6 +372,59 @@ check("★ 更正失敗不可拖垮整輪同步（呼叫處有獨立 try/except�
 # 片段比對只切 . _ @ - 與空白，避免把任何含這串數字的字都當成同一個人
 check("沒有分隔符號的 jiliao2024092 不會被動到（刻意保守）",
       nop("jiliao2024092"), "jiliao2024092")
+
+print("── ★ 材料拆分的舊資料更正（_migrate_material_splits）──")
+# 拆分前南部 V1.1 的列印都存成 FLFL80（寫入當下就決定家族），不改的話月度分析會一直算成 V2。
+# ★ 這支會改正式資料，所以用假 db **實際執行**，不只比對原始碼字串。
+exec(_g(r"^def material_splits\(.*?(?=^def )"), _vns)
+check("拆分清單由 FAMILY_REMAP 推導：只有 FLFL8011", _vns["material_splits"](), {"FLFL8011": "FLFL8V"})
+check("FLEXIB／FLELCL 這種 6 碼修正不算拆分", "FLELCL" in _vns["material_splits"](), False)
+
+class _FakeField:  DELETE = "<DELETE_FIELD>"
+_fs = types.SimpleNamespace(DELETE_FIELD=_FakeField.DELETE)
+_vns["firestore"] = _fs
+exec(_g(r"^def _migrate_material_splits\(.*?(?=^def perform_sync\()"), _vns)
+_msplit = _vns["_migrate_material_splits"]
+
+class _Q:
+    def __init__(s, db, raw): s.db, s.raw = db, raw
+    def stream(s): return iter([d for d in s.db.docs if d.to_dict().get("material_raw") == s.raw])
+class _DB2:
+    def __init__(s, docs): s.docs, s.written = docs, []
+    def collection(s, _): return s
+    def where(s, filter=None): return _Q(s, filter[1][2])
+    def batch(s): return _Batch(s.written)
+class _InvRef2:
+    def __init__(s): s.sets, s.updates = [], []
+    def set(s, data, merge=False): s.sets.append((data, merge))
+    def update(s, data): s.updates.append(data)
+
+_docs2 = [
+    _Snap("v11_code", {"material_raw": "FLFL8011",          "material": "FLFL80"}),   # 拆分前寫進去的
+    _Snap("v11_name", {"material_raw": "Flexible 80A V1.1", "material": "FLFL80"}),   # 名稱形式
+    _Snap("v11_done", {"material_raw": "FLFL8011",          "material": "FLFL8V"}),   # 已經是對的
+    _Snap("v2",       {"material_raw": "FLFL8002",          "material": "FLFL80"}),   # V2 不可被動到
+]
+_db2, _ref2b = _DB2(_docs2), _InvRef2()
+_inv2 = {"family_latest_version": {"FLFL80": "FLFL8011", "FLTO20": "FLTO2002"}}
+_n2 = _msplit(_db2, _ref2b, _inv2)
+check("★ 只改拆分前的兩筆（代碼形式＋名稱形式）", _n2, 2)
+check("★ 寫進去的只有 material 一個欄位、改成 FLFL8V",
+      sorted(_db2.written), sorted([(("ref", "v11_code"), {"material": "FLFL8V"}),
+                                    (("ref", "v11_name"), {"material": "FLFL8V"})]))
+check("★ V2 的紀錄不可被動到", any(r == ("ref", "v2") for r, _ in _db2.written), False)
+check("★ 被拉歪的最新版（FLFL80＝FLFL8011）要送 DELETE_FIELD，不能只從 dict 移除",
+      _ref2b.updates, [{"family_latest_version.FLFL80": _FakeField.DELETE}])
+check("正確的最新版不可被刪（FLTO20）", _inv2["family_latest_version"], {"FLTO20": "FLTO2002"})
+check("★ 完成後記下簽章", _ref2b.sets, [({"material_split_sig": "FLFL8011>FLFL8V"}, True)])
+_db3, _ref3 = _DB2(_docs2), _InvRef2()
+check("★ 簽章相同 → 直接跳過（一次都不讀、不寫）",
+      _msplit(_db3, _ref3, {"material_split_sig": "FLFL8011>FLFL8V"}), 0)
+check("跳過時什麼都不寫", (_ref3.sets, _ref3.updates, _db3.written), ([], [], []))
+check("★ 更正失敗不可拖垮整輪同步（呼叫處有獨立 try/except）",
+      bool(re.search(r"材料拆分更正失敗", src)), True)
+check("★ 更正要在取出 family_latest 之前（它會清掉歪掉的最新版）",
+      src.index("_migrate_material_splits(db, inv_ref, inv)") < src.index('family_latest = inv["family_latest_version"]'), True)
 
 print("── mf_job_duration_hours()：Markforged 的列印時間 ──")
 # Eiger 沒有現成的耗時欄位，只能 ended_at - started_at 自己算。

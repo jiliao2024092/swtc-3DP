@@ -288,6 +288,7 @@ FAMILY_TO_NAME = {
     "FLESD0": "ESD Resin",     "FLSI40": "Silicone 40A",  "FLFAMD": "Fast Model",
     "FLPRMD": "Precision Model","FLFRGR": "Flame Retardant","FLDU20": "Durable",
     "FLCEBL": "Ceramic",       "FLPUBK": "Polyurethane",  "FLOPEN": "Open Material",
+    "FLFL8V": "Flexible 80A V1.1",   # 自編家族碼，見 FAMILY_REMAP 的說明
 }
 
 
@@ -318,6 +319,17 @@ FAMILY_REMAP = {
     #   庫存 → 累進 stock_shortfalls → 前端每次都跳「消耗紀錄可能有誤」，而庫存數字正常。
     #   方向往 FLFLES 收斂：既有庫存與歷史都在那裡，不必搬資料。inventory.html 須一致。
     "FLELCL": "FLFLES",   # Elastic 50A：API 實際代碼 → 本專案既有家族 key
+    # ★ 2026-09-18 使用者決定：Flexible 80A V1.1 與 V2 **拆成兩個獨立材料**
+    #   （各自的庫存、消耗、月度分析，停用互不影響；V1.1 的列印扣 V1.1 自己的庫存）。
+    #   做法是把 V1.1 的完整代碼導到一個獨立的家族碼 FLFL8V。
+    #   ★ FLFL8V 是**本專案自編的家族碼**，不是 Formlabs 的真實代碼（V＝版本拆分）。
+    #     刻意不用 FLFL81 這種數字結尾：萬一 Formlabs 將來出了 FLFL81xx 的材料，
+    #     會被靜默併進這個家族。也不可用 8 碼（FLFL8011）當家族碼 —— 8 碼會被
+    #     family_code() 再截成前 6 碼 FLFL80，又併回去。
+    #   ★ 拆分只能用「完整 8 碼」當 key：前 6 碼 FLFL80 是 V2 在用的家族碼。
+    #   ★ 已寫進去的舊紀錄由 _migrate_material_splits() 一次性改到新家族。
+    #   inventory.html 與 portal/firebase-service.js 的同名表必須一致。
+    "FLFL8011": "FLFL8V", # Flexible 80A V1.1 → 獨立材料（南部 Form4B 在用）
 }
 
 
@@ -452,6 +464,9 @@ VERSION_ALIAS = {
     "FLTO2011": 2,   # = FLTO2002，同為 Tough 2000 V2
     "FLFL8011": 1,   # = Flexible 80A V1.1，**比 V2（FLFL8002）舊**
 }
+# ★ 2026-09-18 起 FLFL8011 已經拆成獨立家族（FAMILY_REMAP → FLFL8V），不再與 V2 比新舊。
+#   這筆別名仍保留：萬一 inventory/main.family_latest_version 還殘留 FLFL80＝FLFL8011
+#   （拆分前被拉歪的值），它的版本號是 1，V2 一出現就會把它蓋回去，不會卡住 V2 的扣帳。
 # 2026-09-16 追加 FLFL8011（與上面兩筆方向相反：那兩筆是「同版本被判成舊版」，
 # 這筆是「舊版被判成新版」）。南部 Form4B 列印 Flexible 80A V1.1，API 回 FLFL8011，
 # 末 2 碼 11 直接壓過 V2 的 02 → V1.1 被當成最新版照常扣庫存、family_latest_version
@@ -1332,6 +1347,71 @@ def _migrate_operator_aliases(db, inv_ref, inv) -> int:
     return changed
 
 
+# ── 材料拆分（某個完整代碼從原本的家族拆出去）的一次性資料更正 ────────────
+# 拆分清單直接從 FAMILY_REMAP 推導，不另外維護一份（兩份遲早對不上）：
+# 「完整 8 碼」且導向的家族「不是它自己的前 6 碼」＝拆分。
+def material_splits() -> dict:
+    return {c: f for c, f in FAMILY_REMAP.items()
+            if len(c) == 8 and f != c[:6]}
+
+
+def _migrate_material_splits(db, inv_ref, inv) -> int:
+    """把「拆分之前」就寫進 Firestore 的紀錄改到新家族，並清掉被拉歪的最新版。
+
+    ★ 為什麼需要：材料家族是在**寫入當下**就決定並存進 material 欄位的
+      （canon_material 執行完只剩家族碼）。2026-09-18 之前南部 Form4B 的 V1.1 列印
+      都存成 FLFL80（跟 V2 同一個家族），不改的話它們在月度分析、消耗統計裡
+      會一直被算成 V2 —— 正是使用者回報的問題。
+    ★ 只改 material 一個欄位。**不動庫存數字**：拆分前被扣掉的量扣在 V2 身上，
+      要不要搬回來是使用者的決定（會改變帳上數字），這裡只修正「這筆是哪種材料」。
+    ★ 靠 material_raw 判斷（寫入時保留的原始代碼／名稱），比對用與寫入時同一支
+      canon_material()，兩邊規則不會走偏。
+    ★ 只跑一次：完成後把拆分清單的簽章寫進 inventory/main.material_split_sig，
+      之後每輪比對相同就跳過（0 次讀取）。FAMILY_REMAP 新增拆分時簽章會變，自動重跑。
+    """
+    splits = material_splits()
+    sig = ";".join(f"{c}>{f}" for c, f in sorted(splits.items()))
+    if (inv or {}).get("material_split_sig") == sig:
+        return 0
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    # 1) 家族最新版：拆分前可能被拉歪（例：FLFL80 被記成 FLFL8011）。
+    #    ★ 前端顯示家族名稱直接讀這個值，歪掉的話 V2 會被顯示成「V1.1」。
+    #    ★ 一定要送 DELETE_FIELD：最後寫回 inventory/main 用的是 merge=True，
+    #      對 map 欄位是逐鍵深合併 —— 只從 dict 移除的話 Firestore 那邊不會消失
+    #      （2026-09-10 後台設定「刪不掉的列」同一個坑）。
+    fl = inv.setdefault("family_latest_version", {})
+    stale = [fam for fam, code in list(fl.items()) if code and family_code(code) != fam]
+    if stale:
+        inv_ref.update({f"family_latest_version.{fam}": firestore.DELETE_FIELD for fam in stale})
+        for fam in stale:
+            fl.pop(fam, None)
+
+    # 2) 舊紀錄的 material 改到新家族
+    raw_keys = set(splits)                       # 代碼形式
+    raw_keys |= {n for n, c in NAME_TO_CODE.items() if str(c).upper() in splits}   # 名稱形式
+    changed = 0
+    batch, pending = db.batch(), 0
+    for raw in sorted(raw_keys):
+        q = db.collection("inventory_history").where(filter=FieldFilter("material_raw", "==", raw))
+        for snap in q.stream():
+            want = canon_material(raw)
+            if (snap.to_dict() or {}).get("material") == want:
+                continue                          # 已經是對的，不寫（內容相同也計費）
+            batch.update(snap.reference, {"material": want})
+            pending += 1
+            changed += 1
+            if pending >= 400:
+                batch.commit()
+                batch, pending = db.batch(), 0
+    if pending:
+        batch.commit()
+    # ★ 全部寫完才記簽章：中途失敗下一輪整批重來（每筆都有「已經是對的就跳過」，重跑安全）
+    inv_ref.set({"material_split_sig": sig}, merge=True)
+    print(f"[sync] 材料拆分更正（{sig}）：舊紀錄改家族 {changed} 筆、清除歪掉的最新版 {stale or '無'}")
+    return changed
+
+
 def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> dict:
     """執行一次完整同步：拉 printers + prints，更新 Firestore。回傳 stats。"""
     db = get_db()
@@ -1518,6 +1598,13 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             stats["operator_aliases_fixed"] = _migrate_operator_aliases(db, inv_ref, inv)
         except Exception as _me:
             print(f"[sync][警示] 責任工程師名稱更正失敗（不影響本輪同步）: {_me}")
+        # 材料拆分的舊資料更正（見 FAMILY_REMAP 的 FLFL8011）。
+        # ★ 必須在下一行取出 family_latest 之前：它會清掉被拉歪的最新版
+        # ★ 獨立 try/except：資料修正失敗不可讓整輪同步（扣庫存）停擺
+        try:
+            stats["material_splits_fixed"] = _migrate_material_splits(db, inv_ref, inv)
+        except Exception as _se:
+            print(f"[sync][警示] 材料拆分更正失敗（不影響本輪同步）: {_se}")
         family_latest = inv["family_latest_version"]
 
         # 4b. 北中南分區的庫存文件 inventory/{region}

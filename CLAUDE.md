@@ -241,7 +241,13 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - 同步現在會對 `FAMILY_TO_NAME` 沒有的家族代碼印 `[sync][警示] 消耗到對照表沒有的材料家族代碼`，下次一眼可辨
   - ⚠ **併家族會讓「按家族比對」的地方連坐**：`isDisabled()` 是按家族判定的（停用任一版本＝整個家族停用）。舊資料若停用過被併掉的那個代碼，合併後**有庫存的材料會整列從清單消失**（實際發生）。解法是「已停用材料 → 恢復顯示」（寫進 `disabled_overrides`，優先於停用清單）
 - **「是不是已知材料」不可用「家族碼是否含數字」判斷**：家族碼是完整 8 碼截斷成 6 碼的結果，截斷後往往就沒有數字了（`FLGPBK05` → `FLGPBK`）。21 個家族有 12 個會被誤判成未知材料（Clear/White/Grey/Black V5、High Temp、Elastic 50A、Fast/Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material），每次入庫都跳「不是內建材料名稱」，而警告還會建議使用者剛輸入的那個名稱。「含數字」是給**完整 8 碼**用的（避免 Flexible 被誤截成 FLEXIB），別套到家族碼。正解見 `isKnownMaterialInput()`，`tools/test_material_input.js` 有守
-- ⚠⚠ **`FLFL8011`＝Flexible 80A V1.1，末 2 碼 `11` 不是版本 11**（2026-09-16 定案）：南部 Form4B（`AbsorbedPuppy`）列印 80A V1.1，API 回 `FLFL8011`。末 2 碼 11 壓過 V2 的 02 → **舊版被當成最新版照常扣庫存**、顯示成 V2，還把 `family_latest_version.FLFL80` 拉成 `FLFL8011`。已加 `VERSION_ALIAS["FLFL8011"] = 1`
+- ⚠⚠ **Flexible 80A V1.1 已拆成獨立材料 `FLFL8V`**（2026-09-18 使用者決定）：V1.1 與 V2 各自的庫存、消耗、月度分析，停用互不影響；**V1.1 的列印扣 V1.1 自己的庫存**（不再套「只扣最新」）。做法是 `FAMILY_REMAP["FLFL8011"] = "FLFL8V"`，三份表（`main.py`／`inventory.html`／`portal/firebase-service.js`）與 `FAMILY_TO_NAME["FLFL8V"]` 一起加
+  - ⚠ 拆分前的根本問題：材料是**以家族（代碼前 6 碼）為單位**合併的，所以 V1.1 被算進 V2、顯示成 V2；而且**停用是以家族為單位**，停用 V1.1 就等於連 V2 一起停用（使用者的已停用清單裡同時出現兩筆「Flexible 80A V2」就是這樣來的）
+  - ⚠ `FLFL8V` 是**自編家族碼**（V＝版本拆分）。刻意不用 `FLFL81`：萬一 Formlabs 將來出了 `FLFL81xx` 會被靜默併進來；也不可用 8 碼 `FLFL8011` 當家族碼 —— `family_code()` 會把它再截成 `FLFL80` 併回去。拆分**只能用完整 8 碼當 key**，前 6 碼是 V2 在用的
+  - 拆分前寫進去的舊紀錄由 `_migrate_material_splits()` 一次性改 `material` 欄位（簽章存在 `inventory/main.material_split_sig`，拆分清單從 `FAMILY_REMAP` 推導＝「完整 8 碼且導向的家族不是它自己的前 6 碼」）。**不動庫存數字**：拆分前扣在 V2 身上的量要不要搬，交給使用者
+  - ⚠ 它同時清掉被拉歪的 `family_latest_version`（例如 `FLFL80` 被記成 `FLFL8011`）。**一定要送 `firestore.DELETE_FIELD`**：`inventory/main` 最後是用 `merge=True` 寫回，map 欄位逐鍵深合併，只從 dict 移除不會真的刪掉
+  - ⚠ 拆分後南部要**先入庫 V1.1 的數量**，否則 V1.1 的列印扣不到庫存，會累進 `stock_shortfalls` 跳「消耗紀錄可能有誤」（那是正確的提醒，不是 bug）
+- ⚠⚠ **`FLFL8011`＝Flexible 80A V1.1，末 2 碼 `11` 不是版本 11**（2026-09-16 定案；2026-09-18 起已拆成獨立材料，見上一條）：南部 Form4B（`AbsorbedPuppy`）列印 80A V1.1，API 回 `FLFL8011`。末 2 碼 11 壓過 V2 的 02 → **舊版被當成最新版照常扣庫存**、顯示成 V2，還把 `family_latest_version.FLFL80` 拉成 `FLFL8011`。已加 `VERSION_ALIAS["FLFL8011"] = 1`
   - ⚠ **中部實際上沒有漏扣**（使用者 2026-09-16 確認）：log 有一筆 `舊版本不扣庫存: 'FLFL8002'`，但那筆是中部 9/15 **中止**的列印，本來就不扣，判成舊版不改變結果；其餘中部 V2 正常印完的都沒有「未扣庫存」標籤＝有扣。**不可把「log 出現判成舊版」直接講成「漏扣」**——要先對照那筆的列印結果（`skipped_status` 裡的 `ABORTED` 就是線索）。別名防的是「之後」中部正常印完的 V2 被誤判
   - ⚠ **這是第三次踩到「末 2 碼 11」**，而三次代表的版本都不同：`FLRG1011`＝V1.1（與 02 同版）、`FLTO2011`＝V2（與 02 同版）、`FLFL8011`＝V1.1（**比 02 舊**）。**不能當成規律**，一律看實際產品版本再決定 `VERSION_ALIAS` 的值
   - 已被拉成 `FLFL8011` 的家族最新版**不必手動清**：別名生效後它的版本號是 1，下一次同步看到 `FLFL8002`（2）就會自動拉回 V2，之後 `FLFL8011` 也拉不走

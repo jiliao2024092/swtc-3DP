@@ -301,8 +301,10 @@
     'FLRG40':'Rigid 4000','FLFL80':'Flexible 80A','FLHTAM':'High Temp','FLFLES':'Elastic 50A',
     'FLESD0':'ESD Resin','FLSI40':'Silicone 40A','FLFAMD':'Fast Model','FLPRMD':'Precision Model',
     'FLFRGR':'Flame Retardant','FLDU20':'Durable','FLCEBL':'Ceramic','FLPUBK':'Polyurethane',
+    'FLFL8V':'Flexible 80A V1.1',
   };
-  const FAMILY_REMAP = { 'FLEXIB':'FLFL80', 'FLAMER':'FLFRGR' };
+  const FAMILY_REMAP = { 'FLEXIB':'FLFL80', 'FLAMER':'FLFRGR',
+    'FLFL8011':'FLFL8V' };   // 80A V1.1 拆成獨立材料（2026-09-18），與 inventory.html／main.py 一致
   const NAME_TO_CODE_FE = {};
   Object.entries(CODE_TO_NAME).forEach(([code,name]) => { NAME_TO_CODE_FE[name] = code; });
   NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';

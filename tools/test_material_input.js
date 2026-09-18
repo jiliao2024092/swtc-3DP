@@ -65,6 +65,29 @@ Object.keys(FAMILY_TO_NAME).forEach(fam => {
   eq(isKnownMaterialInput(fam), true, `家族碼「${fam}」必須被認得`);
 });
 
+// ── ★ Flexible 80A V1.1 拆成獨立材料（2026-09-18 使用者決定）──────────
+// 家族碼決定庫存扣哪一格、停用影響誰、月度分析怎麼分組 —— 前端判錯的話，
+// 入庫會記到 V2、停用 V1.1 會連 V2 一起藏起來（拆分前正是這個狀況）。
+eq(matCode('FLFL8011'),          'FLFL8V', '★ V1.1 代碼 → 獨立家族 FLFL8V');
+eq(matCode('Flexible 80A V1.1'), 'FLFL8V', '★ V1.1 名稱（入庫下拉）→ 獨立家族 FLFL8V');
+eq(matCode('FLFL8002'),          'FLFL80', '★ V2 不可被拆分動到');
+eq(matCode('Flexible 80A V2'),   'FLFL80', 'V2 名稱仍是 FLFL80');
+eq(matCode('FLFL8001'),          'FLFL80', '只拆 V1.1，V1 仍在 FLFL80');
+eq(matCode('FLFL8V'),            'FLFL8V', '家族碼本身要穩定（再算一次不可變）');
+eq(isKnownMaterialInput('Flexible 80A V1.1'), true, '★ 入庫可以選 V1.1（否則沒辦法建立 V1.1 的庫存）');
+// 顯示名稱：已停用清單、庫存總覽、月度分析都用 matName()
+{
+  const mn = new Function('inv', src + '\n' + html.match(/function matName\(input\) \{[\s\S]*?\n\}/)[0] + '\nreturn matName;');
+  const inv2 = { stock:{}, family_latest_version: { FLFL80:'FLFL8002', FLFL8V:'FLFL8011' } };
+  const matName = mn(inv2);
+  eq(matName('Flexible 80A V1.1'), 'Flexible 80A V1.1', '★ 已停用清單的 V1.1 要顯示 V1.1（拆分前顯示成 V2）');
+  eq(matName('FLFL8V'),            'Flexible 80A V1.1', 'V1.1 家族顯示 V1.1');
+  eq(matName('FLFL80'),            'Flexible 80A V2',   '★ V2 家族仍顯示 V2');
+  // 拆分前被拉歪的最新版若還沒清掉（FLFL80＝FLFL8011），V2 會被顯示成 V1.1 —— 後端遷移會清
+  const inv3 = { stock:{}, family_latest_version: { FLFL80:'FLFL8002' } };
+  eq(mn(inv3)('Flexible 80A V1.1'), 'Flexible 80A V1.1', '還沒同步到 V1.1 的最新版時，靠 FAMILY_TO_NAME 也要顯示 V1.1');
+}
+
 // ── 回歸：這幾個就是原本被誤判的（家族碼不含數字）────────────────
 ['Black V5', 'Clear V5', 'White V5', 'Grey V5', 'High Temp V2',
  'Fast Model', 'Precision Model', 'Flame Retardant'].forEach(n => {

@@ -1983,6 +1983,7 @@ const FAMILY_TO_NAME = {
     'FLESD0':'ESD Resin',     'FLSI40':'Silicone 40A',  'FLFAMD':'Fast Model',
     'FLPRMD':'Precision Model','FLFRGR':'Flame Retardant','FLDU20':'Durable',
     'FLCEBL':'Ceramic',       'FLPUBK':'Polyurethane',   'FLOPEN':'Open Material',
+    'FLFL8V':'Flexible 80A V1.1',   // 自編家族碼，見 FAMILY_REMAP
 };
 // 家族名稱 → 家族代碼（讓 'Tough 1000' 這類家族名也能解析、合併）
 Object.entries(FAMILY_TO_NAME).forEach(([fam,name])=>{ if(!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name]=fam; });
@@ -1997,6 +1998,10 @@ const FAMILY_REMAP = {
     //   方向刻意是 FLELCL → FLFLES（而非反過來）：既有庫存與歷史都記在 FLFLES，
     //   往那邊收斂就不必搬任何資料。FLFLES 雖是自編代碼，但它只是內部 key。
     'FLELCL': 'FLFLES',   // Elastic 50A：API 實際代碼 → 本專案既有家族 key
+    // ★ 2026-09-18 使用者決定：Flexible 80A V1.1 與 V2 拆成兩個獨立材料（各自的庫存、
+    //   消耗、月度分析，停用互不影響）。FLFL8V 是本專案自編的家族碼，不是 Formlabs 代碼。
+    //   只能用完整 8 碼當 key —— 前 6 碼 FLFL80 是 V2 在用的。與 functions/main.py 必須一致。
+    'FLFL8011': 'FLFL8V', // Flexible 80A V1.1 → 獨立材料（南部 Form4B 在用）
 };
 // 取家族代碼（前 6 碼），統一版本
 function familyCode(code) {
