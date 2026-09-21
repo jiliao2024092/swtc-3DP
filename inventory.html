@@ -286,6 +286,7 @@
         <div class="mb-4 p-3 bg-[var(--accent-soft)] border border-[var(--accent-border)] rounded-lg text-xs text-[var(--accent)]">
             <p class="font-semibold mb-1">💡 停用機制說明</p>
             <ul class="list-disc list-inside ml-1 space-y-0.5">
+                <li><strong>停用是分地區的</strong>：只影響目前檢視的地區，其他地區照舊</li>
                 <li>停用的材料不會在「庫存總覽」、「備料庫存」、「月度分析」中顯示</li>
                 <li>使用者刪除材料後會自動加入此清單</li>
                 <li>系統預設停用部分舊版本材料（如 V1.1 等）</li>
@@ -1163,6 +1164,9 @@ let regionInvLoaded = false;
 let mainLoaded = false;
 // 相容用：region 文件還沒被 Cloud Function 播種時，中區沿用 main 的值
 let mainStockFallback = {}, mainSafetyFallback = {}, mainCartFallback = {};
+// 停用清單分區前存在 inventory/main，三區共用一份。留著當「還沒分過家的那一區」
+// 的退路（見 applyRegionInv），不可再直接寫進 inv —— 那正是三區互相影響的原因。
+let mainDisabledFallback = [], mainOverridesFallback = [];
 
 function applyRegionInv(){
     const d = regionInvData;
@@ -1176,6 +1180,16 @@ function applyRegionInv(){
     inv.safety           = seeded ? (d.safety || {})           : (useFallback ? mainSafetyFallback : {});
     inv.cartridges       = seeded ? (d.cartridges || {})       : (useFallback ? mainCartFallback : {});
     inv.stock_shortfalls = seeded ? (d.stock_shortfalls || {}) : {};
+    // ★ 停用／恢復顯示也是分區的（2026-09-21 使用者決定）：南部停用某個材料，
+    //   不該讓北部與中部也看不到 —— 三區是三份實體庫存，能不能用是各區自己的事。
+    //   相容：region 文件還沒有這兩個欄位時沿用 main 的舊清單（＝既有設定複製到三區），
+    //   該區第一次存檔就會寫成自己的那一份。
+    //   ⚠ 要用 Array.isArray 判斷「有沒有這個欄位」，不可用真假值：該區把材料全部恢復
+    //     顯示之後就是空陣列，用真假值判斷會又掉回 main 的舊清單，看起來像存不進去。
+    inv.disabled_materials = (seeded && Array.isArray(d.disabled_materials))
+        ? d.disabled_materials : [...mainDisabledFallback];
+    inv.disabled_overrides = (seeded && Array.isArray(d.disabled_overrides))
+        ? d.disabled_overrides : [...mainOverridesFallback];
 }
 
 // ── Markforged 線材／耗材的分區庫存（inventory/markforged_{region}）──────────
@@ -1873,8 +1887,9 @@ function subscribeAll() {
                 inv.partno     = d.partno     || {};
                 inv.matNames   = d.matNames   || {};
                 inv.last_processed_prints = d.last_processed_prints || [];
-                inv.disabled_materials    = d.disabled_materials    || [];
-                inv.disabled_overrides    = d.disabled_overrides    || [];
+                // ★ 不直接寫進 inv：停用清單改成分區，main 的這兩份只當舊資料退路
+                mainDisabledFallback      = d.disabled_materials    || [];
+                mainOverridesFallback     = d.disabled_overrides    || [];
                 inv.family_latest_version = d.family_latest_version || {};
                 inv.l_tank_materials      = d.l_tank_materials      || [];
                 mainLoaded = true;
@@ -2251,6 +2266,9 @@ async function saveAll(reason) {
             safety:           inv.safety           || {},
             cartridges:       inv.cartridges       || {},
             stock_shortfalls: inv.stock_shortfalls || {},   // 清除警示要能真的寫回空值
+            // 停用／恢復顯示：各區一份（見 applyRegionInv）
+            disabled_materials: inv.disabled_materials || [],
+            disabled_overrides: inv.disabled_overrides || [],
             region:         activeRegion,
             updatedAt:      serverTimestamp(),
             updatedBy:      currentUser.uid,
@@ -2261,8 +2279,9 @@ async function saveAll(reason) {
             partno:     inv.partno     || {},
             matNames:   inv.matNames   || {},
             last_processed_prints: inv.last_processed_prints || [],
-            disabled_materials: inv.disabled_materials || [],
-            disabled_overrides: inv.disabled_overrides || [],
+            // ★ disabled_materials / disabled_overrides 已改寫進 inventory/{region}，
+            //   這裡不可再寫 —— 寫了就會把目前這一區的清單蓋成全公司的退路值，
+            //   其他還沒分過家的區下次載入就被污染。
             l_tank_materials:   inv.l_tank_materials   || [],
             updatedAt:      serverTimestamp(),
             updatedBy:      currentUser.uid,

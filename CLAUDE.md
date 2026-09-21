@@ -242,6 +242,10 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - **破案靠的是 Cloud Function log，不是讀程式碼**：`[sync] 本輪消耗: {'FLELCL': 9.9}` 一行就看出 key 不對。這類「扣不到庫存」的問題**先看 log**，讀 code 猜會連錯好幾輪
   - 同步現在會對 `FAMILY_TO_NAME` 沒有的家族代碼印 `[sync][警示] 消耗到對照表沒有的材料家族代碼`，下次一眼可辨
   - ⚠ **併家族會讓「按家族比對」的地方連坐**：`isDisabled()` 是按家族判定的（停用任一版本＝整個家族停用）。舊資料若停用過被併掉的那個代碼，合併後**有庫存的材料會整列從清單消失**（實際發生）。解法是「已停用材料 → 恢復顯示」（寫進 `disabled_overrides`，優先於停用清單）
+  - ⚠ **停用／恢復顯示是「分區」的**（2026-09-21 使用者決定）：`disabled_materials`／`disabled_overrides` 存在 **`inventory/{region}`**，不再是 `inventory/main`。三區是三份實體庫存，南部不用的材料不該讓北部也看不到（使用者回報「北中南的庫存顯示停用似乎混在一起」）
+    - 相容：region 文件還沒有這兩個欄位時沿用 `main` 的舊清單（＝既有設定複製到三區），該區第一次存檔就寫成自己的。⚠ 判斷「有沒有這個欄位」要用 `Array.isArray`，**不可用真假值** —— 某區把材料全部恢復顯示後就是空陣列，用真假值會又掉回 main 的舊清單，看起來像存不進去
+    - ⚠ `saveAll` **不可再把這兩份寫回 `inventory/main`**：會把目前這一區的清單蓋成全公司退路值，污染其他還沒分家的區
+    - 後端 `REGION_INV_FIELDS` **刻意不加**這兩個欄位：播種時北/南會拿到 `{}`（dict 不是 list），前端 `Array.isArray` 判不過又會掉回 main。前端的退路已經夠用
   - ⚠ **停用與「恢復顯示」以「最後一次動作」為準**：`isDisabled()` 先看 `disabled_materials`（停用）再看 `disabled_overrides`（恢復顯示，用途是覆寫 `DEFAULT_DISABLED_NAMES`）。反過來排的症狀：先按過「恢復顯示」的材料之後再刪除，刪完看起來成功、重新整理又回到清單，而且**同一個材料會同時出現在備料庫存與「已停用材料」兩邊**（2026-09-21 使用者回報，第一次只清覆寫沒改順序，沒修好）。兩個動作都要把對方清單裡**同家族**的項目清掉（`markMaterialDisabled()` / `restoreMaterial()`）—— 一邊存代碼（`FLFL8V`）一邊存名稱（`Flexible 80A V1.1`）是常態，字串完全相同比對會漏掉。`tools/test_material_input.js` 有守
   - ⚠ **（原記錄）`disabled_overrides` 優先於 `disabled_materials`，刪除材料時必須一起清**（2026-09-21 使用者回報中部 Flexible 80A V1.1）：只加黑名單的話，刪除當下看起來成功（`stock` 的 key 真的刪了），重新整理就又從 history／cartridges 被撈回清單，畫面上沒有任何線索。統一走 `markMaterialDisabled()`（比對**家族碼**，兩份清單存的形式可能一個是代碼一個是名稱），`tools/test_material_input.js` 有守
 - **「是不是已知材料」不可用「家族碼是否含數字」判斷**：家族碼是完整 8 碼截斷成 6 碼的結果，截斷後往往就沒有數字了（`FLGPBK05` → `FLGPBK`）。21 個家族有 12 個會被誤判成未知材料（Clear/White/Grey/Black V5、High Temp、Elastic 50A、Fast/Precision Model、Flame Retardant、Ceramic、Polyurethane、Open Material），每次入庫都跳「不是內建材料名稱」，而警告還會建議使用者剛輸入的那個名稱。「含數字」是給**完整 8 碼**用的（避免 Flexible 被誤截成 FLEXIB），別套到家族碼。正解見 `isKnownMaterialInput()`，`tools/test_material_input.js` 有守

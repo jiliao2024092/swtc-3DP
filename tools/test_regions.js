@@ -442,5 +442,61 @@ eq(/async save\(data, replaceFields\)/.test(svcSrc), true,
 eq(/ref\.update\(/.test(svcSrc), true,
    '★ 真的有補一次 update()（頂層欄位整個換掉，才刪得掉 map 裡的 key）');
 
+// ══ 停用清單分區（2026-09-21 使用者決定）═══════════════════════════════
+// 停用／恢復顯示原本存在 inventory/main，三區共用一份：南部停用一個材料，
+// 北部與中部也跟著看不到（使用者回報「北中南的庫存顯示停用似乎混在一起」）。
+// 現在改存 inventory/{region}，還沒有那兩個欄位的區沿用 main 的舊清單
+// （＝既有設定複製到三區），該區第一次存檔就寫成自己的。
+console.log('── 停用清單分區 ──');
+{
+  const invHtml = fs.readFileSync(path.join(__dirname, '..', 'inventory.html'), 'utf8');
+  const body = invHtml.match(/function applyRegionInv\(\)\{[\s\S]*?\n\}/);
+  if (!body) { console.log('FAIL  inventory.html 找不到 applyRegionInv'); fail++; }
+  const run = (regionInvData, activeRegion, mainDisabled, mainOverrides) => {
+    const inv = {};
+    new Function('inv', 'regionInvData', 'activeRegion', 'mainStockFallback',
+                 'mainSafetyFallback', 'mainCartFallback', 'mainDisabledFallback',
+                 'mainOverridesFallback', 'console',
+                 body[0] + '\napplyRegionInv();')(
+      inv, regionInvData, activeRegion, {}, {}, {}, mainDisabled, mainOverrides,
+      { warn(){} });
+    return inv;
+  };
+  const MAIN_DIS = ['FLFL80', 'FLFL8V'], MAIN_OVR = ['FLFLES'];
+
+  // 該區已經有自己的清單 → 完全以它為準，不可混到別區的
+  const south = run({ stock:{}, disabled_materials:['FLFL8V'], disabled_overrides:[] },
+                    'south', MAIN_DIS, MAIN_OVR);
+  eq(south.disabled_materials.join(','), 'FLFL8V', '★ 該區的停用清單以該區文件為準');
+  eq(south.disabled_overrides.length, 0, '該區的恢復顯示清單也是各自一份');
+
+  // ★ 空陣列＝「這一區沒有停用任何材料」，不可掉回 main 的舊清單
+  const cleared = run({ stock:{}, disabled_materials:[], disabled_overrides:[] },
+                      'north', MAIN_DIS, MAIN_OVR);
+  eq(cleared.disabled_materials.length, 0,
+     '★ 全部恢復顯示後是空陣列，不可又掉回全公司的舊清單（會像存不進去）');
+
+  // 還沒分家的區（region 文件沒有這兩個欄位）→ 沿用 main 的舊清單
+  const legacy = run({ stock:{} }, 'north', MAIN_DIS, MAIN_OVR);
+  eq(legacy.disabled_materials.join(','), 'FLFL80,FLFL8V', '舊資料沿用 main 的停用清單');
+  eq(legacy.disabled_overrides.join(','), 'FLFLES', '舊資料沿用 main 的恢復顯示清單');
+  legacy.disabled_materials.push('FLTO20');
+  eq(MAIN_DIS.length, 2, '★ 退路要複製一份，不可讓某一區改到其他區共用的那個陣列');
+
+  // region 文件還沒播種（北/南 為空）也不可炸
+  const unseeded = run(null, 'south', MAIN_DIS, MAIN_OVR);
+  eq(Array.isArray(unseeded.disabled_materials), true, 'region 文件不存在時仍回陣列');
+
+  // 寫入端：停用清單要寫進 inventory/{region}，且不可再寫回 main
+  const regionWrite = invHtml.match(/updateDoc\(doc\(db, 'inventory', activeRegion\), \{[\s\S]*?\}\);/);
+  const mainWrite   = invHtml.match(/updateDoc\(doc\(db, 'inventory', 'main'\), \{[\s\S]*?\}\);/);
+  eq(/disabled_materials/.test(regionWrite[0]), true, '★ 停用清單要寫進 inventory/{region}');
+  eq(/disabled_overrides/.test(regionWrite[0]), true, '★ 恢復顯示清單要寫進 inventory/{region}');
+  // ★ 去掉註解再比對：那段註解本來就寫著「不可再寫 disabled_materials」
+  const mainWriteCode = mainWrite[0].replace(/^\s*\/\/.*$/gm, '');
+  eq(/disabled_materials|disabled_overrides/.test(mainWriteCode), false,
+     '★ 不可再寫回 inventory/main（會把該區的清單蓋成全公司退路值，污染其他區）');
+}
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
