@@ -145,5 +145,49 @@ eq(new Set(['FLELCL', 'FLELCL01', 'FLELCL02', 'FLFLES', 'FLFLES02',
 eq(matCode('FLFL8002'), 'FLFL80', 'Flexible 80A 不受 FLELCL remap 影響');
 eq(matCode('FLESD001'), 'FLESD0', 'ESD Resin 不受影響');
 
+// ── ★ 刪除材料必須同時解除「恢復顯示」（2026-09-21 使用者回報）──────────
+// isDisabled() 先看 disabled_overrides，它的優先序高於 disabled_materials。
+// 舊寫法只把材料加進黑名單，先前按過「恢復顯示」的材料刪完重新整理又會回來
+// （stock 的 key 真的刪掉了，所以刪除當下看起來是成功的）—— 中部 Flexible 80A V1.1。
+{
+  const mkSrc = src
+    + "\nconst DEFAULT_DISABLED_NAMES = ['Flexible 80A V1', 'FLFL8001'];\n"
+    + grab(/function matName\(input\) \{[\s\S]*?^\}/m, 'matName') + '\n'
+    + grab(/function markMaterialDisabled\(material\)\{[\s\S]*?^\}/m, 'markMaterialDisabled') + '\n'
+    + grab(/function isDisabled\(material\) \{[\s\S]*?^\}/m, 'isDisabled')
+    + '\nreturn { markMaterialDisabled, isDisabled };';
+  const mk = inv => new Function('inv', mkSrc)(inv);
+
+  // 情境：先按過「恢復顯示」（進了 disabled_overrides），之後又刪除
+  const inv1 = { stock:{}, family_latest_version:{}, disabled_materials:[], disabled_overrides:['FLFL8V'] };
+  const a = mk(inv1);
+  eq(a.isDisabled('FLFL8V'), false, '恢復顯示後本來就不該算停用');
+  a.markMaterialDisabled('FLFL8V');
+  eq(a.isDisabled('FLFL8V'), true, '★ 刪除後必須真的停用（先前的「恢復顯示」要被解除）');
+  eq(inv1.disabled_overrides.length, 0, '★ 覆寫清單要清掉那一筆');
+  eq(inv1.disabled_materials.includes('FLFL8V'), true, '仍要留在停用清單裡（才管理得到）');
+
+  // 覆寫存的是名稱、刪的是代碼（兩份清單存的形式可能不同）→ 仍要比對得到
+  const inv2 = { stock:{}, family_latest_version:{}, disabled_materials:[],
+                 disabled_overrides:['Flexible 80A V1.1'] };
+  const b = mk(inv2);
+  b.markMaterialDisabled('FLFL8V');
+  eq(b.isDisabled('FLFL8V'), true, '★ 覆寫存名稱、刪除傳代碼也要對得起來（比對家族碼）');
+
+  // 不可波及別的材料
+  const inv3 = { stock:{}, family_latest_version:{}, disabled_materials:[],
+                 disabled_overrides:['FLFLES', 'FLFL8V'] };
+  const c = mk(inv3);
+  c.markMaterialDisabled('FLFL8V');
+  eq(inv3.disabled_overrides.join(','), 'FLFLES', '只清掉被刪的那個家族');
+  eq(c.isDisabled('FLFLES'), false, 'Elastic 50A 的「恢復顯示」不受影響');
+
+  // 沒有 disabled_overrides 欄位時也不可炸
+  const inv4 = { stock:{}, family_latest_version:{}, disabled_materials:[] };
+  const d = mk(inv4);
+  d.markMaterialDisabled('FLFL80');
+  eq(d.isDisabled('FLFL80'), true, '沒有覆寫清單時照樣停用');
+}
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

@@ -4313,6 +4313,19 @@ function updateStockEditButtons() {
     }
 }
 
+// 把材料加入停用清單，並解除先前對它按過的「恢復顯示」。
+// ★ 兩份清單一定要一起改：isDisabled() 先看 disabled_overrides，它的優先序高於
+//   disabled_materials。只加黑名單不清覆寫的話，刪除當下看起來成功（stock 的 key
+//   真的被刪了），但重新整理後又會從 history／cartridges 被撈回清單，
+//   而畫面上沒有任何線索（2026-09-21 使用者回報中部 Flexible 80A V1.1）。
+// ★ 比對用家族碼：兩份清單存的形式可能不同（代碼／名稱），用字串完全相同比對會漏掉。
+function markMaterialDisabled(material){
+    const fam = matCode(material);
+    if (!inv.disabled_materials) inv.disabled_materials = [];
+    if (!inv.disabled_materials.includes(material)) inv.disabled_materials.push(material);
+    inv.disabled_overrides = (inv.disabled_overrides || []).filter(m => matCode(m) !== fam);
+}
+
 async function deleteStock(material) {
     const onMachine = getCartridgeTotal(material) > 0;
     let msg = `確定要刪除「${matName(material)}」嗎？\n\n刪除後此材料會從備料庫存、庫存總覽、月度分析中完全隱藏，且不會被消耗紀錄自動加回。`;
@@ -4327,10 +4340,7 @@ async function deleteStock(material) {
     // 清除與此材料相關的「備料/手動」歷史（保留列印消耗紀錄供月度分析）
     inv.history = inv.history.filter(h => !(h.material===material && (h.type==='stockin'||h.type==='manual')));
     // 加入黑名單，這樣即使後續 history/cartridges 還有相關紀錄，UI 也不會再撈進來
-    if (!inv.disabled_materials) inv.disabled_materials = [];
-    if (!inv.disabled_materials.includes(material)) {
-        inv.disabled_materials.push(material);
-    }
+    markMaterialDisabled(material);
 
     renderAll();
     await saveAll(`刪除並停用：${matName(material)}`);
