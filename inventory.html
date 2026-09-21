@@ -1184,12 +1184,15 @@ function applyRegionInv(){
     //   不該讓北部與中部也看不到 —— 三區是三份實體庫存，能不能用是各區自己的事。
     //   相容：region 文件還沒有這兩個欄位時沿用 main 的舊清單（＝既有設定複製到三區），
     //   該區第一次存檔就會寫成自己的那一份。
-    //   ⚠ 要用 Array.isArray 判斷「有沒有這個欄位」，不可用真假值：該區把材料全部恢復
-    //     顯示之後就是空陣列，用真假值判斷會又掉回 main 的舊清單，看起來像存不進去。
-    inv.disabled_materials = (seeded && Array.isArray(d.disabled_materials))
-        ? d.disabled_materials : [...mainDisabledFallback];
-    inv.disabled_overrides = (seeded && Array.isArray(d.disabled_overrides))
-        ? d.disabled_overrides : [...mainOverridesFallback];
+    //   ⚠ 判斷依據是 disabled_split_v1 這個旗標，**不可看「有沒有那兩個欄位」**：
+    //     region 文件裡可能留著更早以前寫進去的同名欄位（多半是空陣列），
+    //     那會讓該區看起來「什麼都沒停用」，其他區隱藏的材料在這一區全部冒出來
+    //     （2026-09-21 使用者回報：切到南部，中部隱藏的材料又出現）。
+    //     旗標只有本頁存檔時才會寫，所以「該區真的自己存過」與「舊欄位殘留」分得開；
+    //     該區把材料全部恢復顯示後是空陣列，有旗標就不會再掉回 main 的舊清單。
+    const splitDone = seeded && d.disabled_split_v1 === true;
+    inv.disabled_materials = splitDone ? (d.disabled_materials || []) : [...mainDisabledFallback];
+    inv.disabled_overrides = splitDone ? (d.disabled_overrides || []) : [...mainOverridesFallback];
 }
 
 // ── Markforged 線材／耗材的分區庫存（inventory/markforged_{region}）──────────
@@ -2269,6 +2272,9 @@ async function saveAll(reason) {
             // 停用／恢復顯示：各區一份（見 applyRegionInv）
             disabled_materials: inv.disabled_materials || [],
             disabled_overrides: inv.disabled_overrides || [],
+            // ★ 旗標：代表「這一區的停用清單已經是自己的了」。沒有它就沿用 main 的舊清單，
+            //   分得開「該區自己存過」與「更早以前殘留的同名欄位」。
+            disabled_split_v1: true,
             region:         activeRegion,
             updatedAt:      serverTimestamp(),
             updatedBy:      currentUser.uid,
