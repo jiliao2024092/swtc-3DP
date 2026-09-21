@@ -1691,7 +1691,7 @@ window.DashboardView = DashboardView;
 
 <!-- ⑥ workboard.js + issues.js -->
 <script type="text/babel" data-presets="react" src="workboard.js?v=20260827d"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20260825a"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20260921a"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -3120,6 +3120,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-09-21', type:'tweak',
+    text:'異常與資源的「新增／編輯異常」多了兩個提醒：一、儲存時如果一筆後續進度都沒有，會先問一次再存；二、進度說明打了字卻還沒按 Enter 或「＋」就關視窗，會提醒那段文字會消失。' },
   { hash:'370726c', date:'2026-09-21', type:'tweak',
     text:'材料的「停用／恢復顯示」改成各地區獨立：在南部停用一個材料，北部與中部不會再跟著消失。原本三區共用同一份清單。目前已經停用的材料會原封不動套用到三個地區，之後各區可以各自調整——切到某一區，該區的「已停用材料」就只管那一區。' },
   { hash:'09d648a', date:'2026-09-21', type:'fix',
@@ -3137,9 +3139,7 @@ const CHANGELOG = [
   { hash:'172bcba', date:'2026-09-15', type:'fix',
     text:'修正南部列印的 Flexible 80A V1.1 被當成 V2 的問題。系統沒有把南部 Form4B 列印的 V1.1 正確判斷成舊版，畫面上顯示成 V2，也可能因此被當成最新版扣了庫存。現在名稱也能正確判斷版本：依既有規則，庫存只扣最新版本（V1.1 的列印不扣），但消耗記錄與列印記錄匯出會如實顯示「Flexible 80A V1.1」。⚠ 修正前已經被誤扣的 V1.1 列印不會自動回補，需要時請手動調整南部的 Flexible 80A 庫存。' },
   { hash:'0cb43a7', date:'2026-09-15', type:'fix',
-    text:'修正責任工程師顯示成「2024092」的問題：那是 Formlabs 上帳號名稱設定錯誤，現在一律更正為「廖璟程 (Jimmy)」。不只是畫面換掉，資料庫裡已存的紀錄也會在下一次同步時一併更正，所以篩選、月度佔比與匯出看到的都是正確的名字。' },
-  { hash:'a9cdc39', date:'2026-09-15', type:'fix',
-    text:'修正消耗記錄的「責任工程師」一直顯示「—」的問題：資料其實已經同步進來了，但頁面讀取紀錄時漏掉了這個欄位。同一個原因也修好另外兩件事：一是列印記錄匯出的「地區」欄先前每一列都寫成「中部」（北部、南部的列印也一樣），二是 Markforged「同一次列印合併」現在會正確使用工作編號判斷，同名的兩次列印不會再被誤併。另外名字會盡量對上工程師清單、顯示成「中文 (英文)」（例如 何哲綸 (Jaylen)），對不到才顯示原本的英文名。' }
+    text:'修正責任工程師顯示成「2024092」的問題：那是 Formlabs 上帳號名稱設定錯誤，現在一律更正為「廖璟程 (Jimmy)」。不只是畫面換掉，資料庫裡已存的紀錄也會在下一次同步時一併更正，所以篩選、月度佔比與匯出看到的都是正確的名字。' }
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

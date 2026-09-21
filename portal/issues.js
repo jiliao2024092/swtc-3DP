@@ -26,8 +26,16 @@
       set('progresses', [...form.progresses, { date: noteDate || new Date().toISOString().split('T')[0], status:note.trim() }]);
       setNote('');
     };
+    // 關閉前確認：進度欄打了字卻沒按 Enter／＋ 的話那段字會直接消失，
+    // 而畫面上完全沒有提示（使用者 2026-09-21 要求補這個提醒）。
+    const closeWithCheck = () => {
+      if (note.trim() && !confirm('進度說明還沒新增（要按 Enter 或 ＋），關閉後這段文字會消失。確定關閉？')) return;
+      onClose();
+    };
     const save = async () => {
       if (!form.customer||!form.product) { showToast('請填客戶與品名','err'); return; }
+      // 一筆進度都沒有就儲存，多半是忘了按 Enter／＋（使用者 2026-09-21 要求補這個提醒）
+      if (!form.progresses.length && !confirm('尚未新增任何後續進度，確定要儲存嗎？')) return;
       setBusy(true);
       try { await onSave(form); onClose(); }
       catch(e) { showToast(e.message||'失敗','err'); }
@@ -36,7 +44,7 @@
     return (
       <div className="m-overlay">
         <div className="m-box">
-          <div className="m-hd"><h3>{item?'✏️ 編輯異常':'➕ 新增異常'}</h3><button className="m-close" onClick={onClose}>×</button></div>
+          <div className="m-hd"><h3>{item?'✏️ 編輯異常':'➕ 新增異常'}</h3><button className="m-close" onClick={closeWithCheck}>×</button></div>
           <div className="m-body">
             <div className="m-row">
               <div className="m-field"><label style={LBL}>客戶 *</label><input style={S_INP} value={form.customer} onChange={e=>set('customer',e.target.value)}/></div>
@@ -74,7 +82,7 @@
               </div>
             </div>
           </div>
-          <div className="m-foot"><button className="btn-cancel" onClick={onClose}>取消</button><button className="btn-save" onClick={save} disabled={busy}>{busy?'儲存中...':'💾 儲存'}</button></div>
+          <div className="m-foot"><button className="btn-cancel" onClick={closeWithCheck}>取消</button><button className="btn-save" onClick={save} disabled={busy}>{busy?'儲存中...':'💾 儲存'}</button></div>
         </div>
       </div>
     );
