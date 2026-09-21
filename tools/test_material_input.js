@@ -189,5 +189,37 @@ eq(matCode('FLESD001'), 'FLESD0', 'ESD Resin 不受影響');
   eq(d.isDisabled('FLFL80'), true, '沒有覆寫清單時照樣停用');
 }
 
+// ── ★ 停用與「恢復顯示」的優先序（2026-09-21 使用者回報第二輪）──────────
+// 實際畫面：「已停用材料」列著 Flexible 80A V1.1（FLFL8V 手動停用），
+// 備料庫存卻同時還有一列 Flexible 80A V1.1 —— 同一個材料在兩邊各出現一次。
+// 原因：isDisabled() 把 disabled_overrides 排在 disabled_materials 之前，
+// 舊資料裡殘留的「恢復顯示」永遠蓋過後來的停用。
+{
+  const mkSrc2 = src
+    + "\nconst DEFAULT_DISABLED_NAMES = ['Flexible 80A V1', 'FLFL8001'];\n"
+    + grab(/function matName\(input\) \{[\s\S]*?^\}/m, 'matName') + '\n'
+    + grab(/function isDisabled\(material\) \{[\s\S]*?^\}/m, 'isDisabled')
+    + '\nreturn isDisabled;';
+  const isDis = inv => new Function('inv', mkSrc2)(inv);
+
+  const stale = isDis({ stock:{}, family_latest_version:{},
+                        disabled_materials:['FLFL8V'], disabled_overrides:['Flexible 80A V1.1'] });
+  eq(stale('FLFL8V'), true,
+     '★ 舊資料兩邊都有時以「停用」為準（否則材料會同時出現在庫存與停用清單）');
+
+  // 「恢復顯示」仍要能覆寫系統預設停用，否則舊版本材料永遠拿不回來
+  const def = isDis({ stock:{}, family_latest_version:{},
+                      disabled_materials:[], disabled_overrides:['FLFL8001'] });
+  eq(def('FLFL8001'), false, '恢復顯示仍要能覆寫系統預設停用清單');
+  const def2 = isDis({ stock:{}, family_latest_version:{},
+                       disabled_materials:[], disabled_overrides:[] });
+  eq(def2('FLFL8001'), true, '沒有覆寫時系統預設停用照舊生效');
+}
+
+// 「恢復顯示」要用家族碼把停用清單裡的同家族項目清掉（存名稱／存代碼都算）
+eq(/inv\.disabled_materials = \(inv\.disabled_materials \|\| \[\]\)\.filter\(m => matCode\(m\) !== fam\)/
+     .test(html), true,
+   '★ restoreMaterial 要比對家族碼，不可用字串完全相同比對');
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

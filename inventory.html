@@ -2456,12 +2456,19 @@ function switchTab(tab) {
 function isDisabled(material) {
     if (!material) return false;
     const fam = matCode(material);
-    // 使用者明確恢復顯示的，永遠不算停用（按家族比對）
-    const overrides = new Set((inv.disabled_overrides || []).map(m=>matCode(m)));
-    if (overrides.has(fam)) return false;
+    // ★ 判定順序＝「最後一次動作為準」，使用者主動停用排在「恢復顯示」之前。
+    //   反過來排的症狀：先按過「恢復顯示」的材料之後再刪除，刪完看起來成功
+    //   （stock 的 key 真的刪了），重新整理又從 history／cartridges 被撈回清單，
+    //   而它同時還留在「已停用材料」裡 —— 同一個材料在兩邊各出現一次
+    //   （2026-09-21 使用者回報中部 Flexible 80A V1.1）。
+    //   兩個動作都會把對方那份清單裡同家族的項目清掉，所以正常情況不會同時存在；
+    //   這個順序是「萬一舊資料同時有」時的保險。
     // 使用者主動停用（按家族比對：停用任一版本＝整個家族都停用）
     const userDisabled = new Set((inv.disabled_materials || []).map(m=>matCode(m)));
     if (userDisabled.has(fam)) return true;
+    // 「恢復顯示」：用來覆寫系統預設停用（DEFAULT_DISABLED_NAMES）
+    const overrides = new Set((inv.disabled_overrides || []).map(m=>matCode(m)));
+    if (overrides.has(fam)) return false;
     // 預設停用清單：比對代碼或顯示名稱
     const name = matName(material);
     return DEFAULT_DISABLED_NAMES.includes(material) || DEFAULT_DISABLED_NAMES.includes(name);
@@ -4661,7 +4668,10 @@ function closeDisabledMaterialsModal() {
 async function restoreMaterial(material) {
     if (!confirm(`恢復顯示「${matName(material)}」？\n\n此材料將重新出現在備料庫存、庫存總覽中。`)) return;
     // 從使用者停用清單移除
-    inv.disabled_materials = (inv.disabled_materials || []).filter(m => m !== material);
+    // ★ 比對家族碼不是字串：清單裡存的可能是名稱（'Flexible 80A V1.1'）而按鈕傳的是
+    //   代碼（'FLFL8V'），完全相同比對會留下同家族的另一種寫法，恢復顯示等於沒生效。
+    const fam = matCode(material);
+    inv.disabled_materials = (inv.disabled_materials || []).filter(m => matCode(m) !== fam);
     // 如果是預設停用的，也加進「使用者覆寫白名單」inv.disabled_overrides
     if (!inv.disabled_overrides) inv.disabled_overrides = [];
     if (!inv.disabled_overrides.includes(material)) {
