@@ -2848,6 +2848,10 @@ function renderCartridges() {
     lucide.createIcons();
 }
 
+// ★ 樹脂罐的材料名稱顯示「機台上那罐的實際版本」（2026-10-06 使用者決定）：
+//   matName() 是庫存視角，整個家族一律顯示最新版，南部 Form3+ 裝的是 Elastic 50A V1
+//   （API 回 FLELCL01）卻顯示成 V2。改用與消耗記錄同一支 historyMaterialName()，
+//   實際版本與家族最新版不同時才顯示實際版本，同版時維持原名稱（含後台自訂名稱）。
 function cartridgeCardHTML(printer) {
     const slots=inv.cartridges[printer]||[];
     // 依列印機狀態決定卡片邊框色與狀態標籤
@@ -2893,7 +2897,7 @@ function cartridgeCardHTML(printer) {
             <div class="flex justify-between items-center mb-2">
                 <div>
                     <span class="text-xs font-medium text-[var(--ink-4)]">${s.slot==='FRONT'?'前匣':s.slot==='BACK'?'後匣':s.slot==='SINGLE'?'單匣':s.slot}</span>
-                    <p class="font-semibold text-[var(--ink)] text-sm" title="${escHtml(materialRawTitle(s.material_raw))}">${matName(s.material)||'—'}</p>
+                    <p class="font-semibold text-[var(--ink)] text-sm" title="${escHtml(materialRawTitle(s.material_raw))}">${historyMaterialName(s)||'—'}</p>
                 </div>
                 <div class="text-right">
                     ${noCapacity

@@ -263,6 +263,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - 已被拉成 `FLFL8011` 的家族最新版**不必手動清**：別名生效後它的版本號是 1，下一次同步看到 `FLFL8002`（2）就會自動拉回 V2，之後 `FLFL8011` 也拉不走
   - ⚠ **查這次繞了遠路，教訓**：先前把「機台回傳名稱」當成原因（因為代碼形式解釋不了使用者說「家族最新版是 FLFL8002」），寫了 `version_code_of()` 處理名稱形式，結果真相是代碼。**卡住的原因是 `material_raw` 只露在「未扣庫存」的 tooltip 裡，而被多扣的那幾列沒有 tooltip**。現在消耗記錄材料欄與樹脂罐卡片都有 tooltip 顯示「API 回報的原始材料」—— **遇到版本問題第一步就是請使用者讀這個值**，不要先推論
   - `version_code_of()`（名稱先經 `NAME_TO_CODE` 轉完整 8 碼再比新舊）保留當防護：名稱形式確實可能流進來（`canon_material` 的註解就列了 `'Flexible 80A V1.1'`）。⚠ 家族名稱反查得到的 6 碼家族碼（`"Flexible 80A" → FLFL80`）沒有版本資訊，必須回 None（照常扣）；`note_family_latest_version` 存進去的必須是代碼、不可是名稱字串
+  - **機台樹脂罐卡片也顯示實際版本**（2026-10-06 使用者決定）：`cartridgeCardHTML()` 用 `historyMaterialName(s)`，不用 `matName()`。南部 Form3+ 裝 Elastic 50A V1（`FLELCL01`）卻顯示 V2 就是用了後者
   - **紀錄顯示實際版本、庫存照規則只扣最新**（使用者決定）：`matName()` 是庫存視角，整個家族一律顯示最新版名稱。消耗記錄表格與列印記錄匯出改用 `historyMaterialName()`：**只有實際版本與家族最新版不同時**才顯示原始版本名稱，最新版維持原本名稱（含後台自訂名稱）。⚠ 前端有**三份** `CODE_TO_NAME`（`inventory.html`／`3DP-BK.html`／`portal/firebase-service.js`），新增代碼要三份一起加，否則同一個代碼在不同頁顯示不同名稱
   - ⚠ 修正前被誤扣的 V1.1 列印**不會自動回補**（會動庫存數字，交給使用者決定）
 - ⚠⚠ **舊版本材料也扣庫存**（2026-09-18 使用者決定，**取代** 2026-07-27 起的「消耗以最新版本計算、舊版只記錄不扣」）：`perform_sync` 的 `will_deduct` 不再排除 `is_outdated_version()`，舊版只印 log `[sync] 舊版本（照扣庫存）`、計入 `stats.outdated_deducted`。理由：舊版罐是實際用掉的樹脂，不扣的話帳上永遠比實際多。`is_outdated_version()`／`VERSION_ALIAS` 保留，只用於 log 與前端 tooltip。`tools/test_deduct_outcome.py` 有守（`will_deduct` 不可再串 `not outdated`）

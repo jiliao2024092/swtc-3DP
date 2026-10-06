@@ -221,5 +221,25 @@ eq(/inv\.disabled_materials = \(inv\.disabled_materials \|\| \[\]\)\.filter\(m =
      .test(html), true,
    '★ restoreMaterial 要比對家族碼，不可用字串完全相同比對');
 
+// ── ★ 機台樹脂罐顯示實際版本（2026-10-06 使用者決定）────────────────
+// 南部 Form3+ 裝的是 Elastic 50A V1（API 回 FLELCL01），卡片卻顯示 V2：
+// 卡片用的是 matName()（庫存視角，整個家族一律顯示最新版）。
+{
+  const hmSrc = src + '\n'
+    + grab(/const VERSION_SUFFIX_RE = [^\n]*;/, 'VERSION_SUFFIX_RE') + '\n'
+    + grab(/function matName\(input\) \{[\s\S]*?^\}/m, 'matName') + '\n'
+    + grab(/function historyMaterialName\(h\)\{[\s\S]*?^\}/m, 'historyMaterialName')
+    + '\nreturn historyMaterialName;';
+  const hmn = new Function('inv', hmSrc)({ stock:{}, family_latest_version:{ FLFLES:'FLFLES02' } });
+  eq(hmn({ material:'FLFLES', material_raw:'FLELCL01' }), 'Elastic 50A V1',
+     '★ 機台上是 V1（FLELCL01）就顯示 V1，不可顯示成家族最新版 V2');
+  eq(hmn({ material:'FLFLES', material_raw:'FLFLES02' }), 'Elastic 50A V2',
+     '機台上就是最新版時維持原名稱');
+  eq(hmn({ material:'FLFLES' }), 'Elastic 50A V2',
+     '沒有原始代碼的舊資料照舊顯示家族名稱');
+  eq(/function cartridgeCardHTML[\s\S]*?historyMaterialName\(s\)/.test(html), true,
+     '★ 樹脂罐卡片要用 historyMaterialName(s)，不可用 matName（會一律顯示最新版）');
+}
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
