@@ -1180,7 +1180,34 @@ def _mf_fill_job_fields(db, access_key: str, secret_key: str) -> int:
 
 
 def perform_sync_eiger(access_key: str, secret_key: str) -> dict:
+    """Markforged 同步的入口：先搶柵欄，搶到才真的同步（2026-10-06 加）。
+
+    ★ 與 Formlabs 同一個理由：排程與「立即同步」同時跑時，兩輪會拿同一份餘量基準
+      （inventory/markforged_watch）算出同一段差額，各寫一次消耗、各扣一次庫存。
+      柵欄機制見 perform_sync() 上方的說明，租約名稱與 Formlabs 分開（兩者互不干擾）。
+    """
+    db = get_db()
+    owner = f"{os.environ.get('K_SERVICE', 'local')}:{os.getpid()}:{datetime.datetime.utcnow().isoformat()}"
+    try:
+        got, holder = _acquire_sync_lock(db, "eiger", owner)
+    except Exception as e:
+        print(f"[eiger][柵欄] 取得同步鎖失敗，本輪跳過: {e}")
+        return {"skipped": "lock_error", "errors": [f"{type(e).__name__}: {e}"]}
+    if not got:
+        print(f"[eiger][柵欄] 已有一輪同步在進行（{holder}），本輪跳過")
+        return {"skipped": "another_sync_running", "holder": holder, "errors": []}
+    try:
+        return _perform_sync_eiger_unlocked(access_key, secret_key)
+    finally:
+        try:
+            _release_sync_lock(db, "eiger", owner)
+        except Exception as e:
+            print(f"[eiger][柵欄] 釋放同步鎖失敗（{SYNC_LOCK_LEASE_SEC} 秒後自動到期）: {e}")
+
+
+def _perform_sync_eiger_unlocked(access_key: str, secret_key: str) -> dict:
     """Markforged 機台狀態同步 + 材料消耗追蹤。
+    ★ 不可直接呼叫：一律經過 perform_sync_eiger()（同步柵欄）。
 
     寫 printer_status/current 的 mf_printers 欄位（用 merge 保留 Formlabs 的 printers），
     並由 _mf_observe 依餘量差額寫 inventory_history、扣 inventory/markforged_{region}。
@@ -1846,25 +1873,8 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
         # ★ 這裡只是把每筆 print 寫成歷史紀錄供統計分析用
         new_history_entries = []
         _in_flight_names = []      # 這輪因「還在列印」而跳過的，印進 log 供追蹤（見 IN_FLIGHT_STATUSES）
-        _dumped_print_keys = False   # 見下方 [sync][DEBUG欄位]：每輪只印一次
         for pr in all_prints:
             try:
-                # ★ 每輪印一次 `user` 欄位的「形狀」，確認 fl_operator() 抽得到人名。
-                #   2026-09-11 第一版印的是整份欄位名稱清單，已經確認有 user 與
-                #   user_custom_label（結果記在 CLAUDE.md），所以這裡收斂成只看 user。
-                # ★★ 只印型別與 key、不印 value：值可能是員工姓名或 email，而 log 是
-                #   所有 admin 都看得到的地方，印值等於把 PII 攤在那裡。
-                #   「抽得到嗎」只印布林值，同樣不外流內容。
-                # ★ 位置必須在「已處理過就 continue」之前 —— 穩定狀態下 1491 筆全部都是
-                #   已處理，放在後面永遠不會執行到（改過一次才發現）。
-                # ⚠ 確認抽得到之後就把這段拿掉，不要長期留著洗版。
-                if not _dumped_print_keys:
-                    _u = pr.get("user")
-                    print(f"[sync][DEBUG欄位] user 型別={type(_u).__name__} "
-                          f"keys={sorted(_u.keys()) if isinstance(_u, dict) else '—'} "
-                          f"抽得到人名={fl_operator(pr) is not None}")
-                    _dumped_print_keys = True
-
                 guid = pr.get("guid", "")
                 if not guid:
                     stats["skipped_invalid"] += 1

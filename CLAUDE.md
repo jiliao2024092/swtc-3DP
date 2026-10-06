@@ -246,6 +246,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
     - 相容：region 文件沒有 **`disabled_split_v1: true`** 旗標時沿用 `main` 的舊清單（＝既有設定複製到三區），該區第一次存檔就寫成自己的並補上旗標
     - ⚠⚠ **判斷依據一定要是旗標，不可看「有沒有那兩個欄位」**：region 文件裡可能留著更早以前寫進去的同名欄位（多半是空陣列），看欄位的話那一區會變成「什麼都沒停用」，別區隱藏的材料全部冒出來（2026-09-21 實際發生：改成分區後切到南部，中部隱藏的材料又出現，第一版看欄位沒修好）。有旗標之後，該區把材料全部恢復顯示（空陣列）也不會再掉回 main 的舊清單
     - ⚠ `saveAll` **不可再把這兩份寫回 `inventory/main`**：會把目前這一區的清單蓋成全公司退路值，污染其他還沒分家的區
+    - **工作看板的材料下拉（`portal/firebase-service.js` 的 `FBInventory.onSnapshot`）也照同一套規則**（2026-10-06）：訂閱 `inventory/main`＋`inventory/{登入者地區}` 兩份再組合，邏輯照抄 `applyRegionInv()`。原本只讀 main，庫存是分區前凍結的數字、停用清單是三區共用的舊版。`isDisabled()` 與 `FAMILY_REMAP`（含 FLRGWH、FLELCL）也已對齊 inventory.html，`tools/test_regions.js` 有守
     - 後端 `REGION_INV_FIELDS` **刻意不加**這兩個欄位：播種時北/南會拿到 `{}`（dict 不是 list），前端 `Array.isArray` 判不過又會掉回 main。前端的退路已經夠用
   - ⚠ **停用與「恢復顯示」以「最後一次動作」為準**：`isDisabled()` 先看 `disabled_materials`（停用）再看 `disabled_overrides`（恢復顯示，用途是覆寫 `DEFAULT_DISABLED_NAMES`）。反過來排的症狀：先按過「恢復顯示」的材料之後再刪除，刪完看起來成功、重新整理又回到清單，而且**同一個材料會同時出現在備料庫存與「已停用材料」兩邊**（2026-09-21 使用者回報，第一次只清覆寫沒改順序，沒修好）。兩個動作都要把對方清單裡**同家族**的項目清掉（`markMaterialDisabled()` / `restoreMaterial()`）—— 一邊存代碼（`FLFL8V`）一邊存名稱（`Flexible 80A V1.1`）是常態，字串完全相同比對會漏掉。`tools/test_material_input.js` 有守
   - ⚠ **（原記錄）`disabled_overrides` 優先於 `disabled_materials`，刪除材料時必須一起清**（2026-09-21 使用者回報中部 Flexible 80A V1.1）：只加黑名單的話，刪除當下看起來成功（`stock` 的 key 真的刪了），重新整理就又從 history／cartridges 被撈回清單，畫面上沒有任何線索。統一走 `markMaterialDisabled()`（比對**家族碼**，兩份清單存的形式可能一個是代碼一個是名稱），`tools/test_material_input.js` 有守
@@ -270,11 +271,11 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
 - **消耗抓取**：用 `prints/?printer={serial}` 按 serial 過濾、無 date、無 sort、per-printer 分頁去重（勿改回 date+sort 全抓，會漏最新）
-- ⚠⚠ **Formlabs 同步有柵欄：同時只允許一輪**（2026-10-06 實際事故）：排程那一輪還在跑（約 2.5 分鐘）時按了「立即同步」，兩輪都在對方寫完之前讀到同一批列印「還沒處理」，**各扣一次庫存**（中部 Rigid 4000 24.2 mL、Clear V5 19.0 mL 被重複扣）。消耗紀錄不會重複（doc_id＝guid），所以畫面看不出來，只有庫存數字少了
+- ⚠⚠ **同步有柵欄：Formlabs 與 Markforged 各自同時只允許一輪**（2026-10-06 實際事故）：排程那一輪還在跑（約 2.5 分鐘）時按了「立即同步」，兩輪都在對方寫完之前讀到同一批列印「還沒處理」，**各扣一次庫存**（中部 Rigid 4000 24.2 mL、Clear V5 19.0 mL 被重複扣）。消耗紀錄不會重複（doc_id＝guid），所以畫面看不出來，只有庫存數字少了
   - `perform_sync()` 是柵欄入口，真正的同步在 `_perform_sync_unlocked()`，**不可直接呼叫後者**（`tools/test_deduct_outcome.py` 有守）
   - 租約存在 `sync_locks/formlabs`（Firestore 交易搶），**一定要有到期時間**（`SYNC_LOCK_LEASE_SEC`＝600 秒，比函式 timeout 540 秒長）：函式被強制終止時 finally 不會跑，沒到期時間的鎖會讓同步永遠卡住
   - 搶不到就**直接跳過不排隊**，回傳 `skipped`，後台「立即同步」會顯示「已有一輪同步正在進行」；搶鎖本身出錯也跳過（寧可少跑一輪，不冒重複扣的風險）
-  - ⚠ Markforged（`perform_sync_eiger`）**還沒有**這道柵欄，排程與手動同時跑理論上也會重複記差額
+  - Markforged 同樣做法（2026-10-06 補上）：`perform_sync_eiger()` 是入口、本體在 `_perform_sync_eiger_unlocked()`，租約是 `sync_locks/eiger`。**兩個柵欄各自獨立**，Formlabs 在跑不會擋到 Markforged
   - Cloud Scheduler 的 `429 RESOURCE_EXHAUSTED`／`no available instance` 是「上一輪還在跑、又來一次呼叫」，不是故障
 - ⚠ **GCP 費用與預算上限**（2026-10-06 查明）：報表金額是**新台幣**（預算頁標「US$」是畫面標示問題，用 SKU 單價反推是牌價 ×31）。9 月使用費 NT$178.83、扣免費額度後實付 NT$34.03（Cloud Run CPU 超出免費額度的部分＋Secret Manager）。**預算的支出上限比對的是「使用費」不是「小計」**，設 175 會在實付才三十幾元時就把整個專案停掉（`billing is disabled for this project`，2026-09-30～10-06 全部同步停擺）
 - **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill

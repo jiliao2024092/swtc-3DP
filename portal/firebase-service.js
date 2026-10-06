@@ -303,8 +303,12 @@
     'FLFRGR':'Flame Retardant','FLDU20':'Durable','FLCEBL':'Ceramic','FLPUBK':'Polyurethane',
     'FLFL8V':'Flexible 80A V1.1',
   };
+  // ★ 三份（這裡／inventory.html／functions/main.py）必須一致。2026-10-06 補上漏掉的
+  //   FLRGWH、FLELCL：少了它們，工作看板的材料下拉會把同一種材料列成兩個選項。
   const FAMILY_REMAP = { 'FLEXIB':'FLFL80', 'FLAMER':'FLFRGR',
-    'FLFL8011':'FLFL8V' };   // 80A V1.1 拆成獨立材料（2026-09-18），與 inventory.html／main.py 一致
+    'FLRGWH':'FLRG40',      // 併入 Rigid 4000（使用者確認為同一材料）
+    'FLELCL':'FLFLES',      // Elastic 50A：API 實際代碼 → 本專案既有家族 key
+    'FLFL8011':'FLFL8V' };  // 80A V1.1 拆成獨立材料（2026-09-18）
   const NAME_TO_CODE_FE = {};
   Object.entries(CODE_TO_NAME).forEach(([code,name]) => { NAME_TO_CODE_FE[name] = code; });
   NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';
@@ -340,10 +344,12 @@
   function isDisabled(inv, material) {
     if (!material) return false;
     const fam = matCode(material);
-    const overrides = new Set((inv.disabled_overrides || []).map(m => matCode(m)));
-    if (overrides.has(fam)) return false;
+    // ★ 與 inventory.html 的 isDisabled() 同一順序：停用優先於「恢復顯示」
+    //   （以最後一次動作為準，見 CLAUDE.md「停用與恢復顯示」）
     const userDisabled = new Set((inv.disabled_materials || []).map(m => matCode(m)));
     if (userDisabled.has(fam)) return true;
+    const overrides = new Set((inv.disabled_overrides || []).map(m => matCode(m)));
+    if (overrides.has(fam)) return false;
     const name = matName(material);
     return DEFAULT_DISABLED_NAMES.includes(material) || DEFAULT_DISABLED_NAMES.includes(name);
   }
@@ -383,11 +389,33 @@
 
   window.matName = matName;
   window.FBInventory = {
+    // 樹脂材料：讀「登入者所屬地區」那一份（inventory/{region}），與材料庫存頁一致。
+    // ★ 原本讀 inventory/main：那裡的 stock 從分區後就凍結了，停用清單也是三區共用的
+    //   舊版本 —— 工作看板的材料下拉因此與材料庫存頁對不起來（2026-10-06 修正）。
+    // ★ 組合規則照抄 inventory.html 的 applyRegionInv()，兩邊不一致就會再走偏：
+    //   - 庫存／樹脂罐：region 文件為準；中區的 region 文件還不存在時才退回 main
+    //   - 停用／恢復顯示：region 文件有 disabled_split_v1 旗標才用它的，否則沿用 main 的舊清單
     onSnapshot(cb) {
-      return db.collection('inventory').doc('main').onSnapshot(
-        snap => cb(materialDisplayNames(snap.exists ? snap.data() : null)),
-        err => { console.error('[inventory] onSnapshot 失敗:', err); cb([]); }
-      );
+      const region = (window.regionOf ? window.regionOf(window._portalUser) : 'central');
+      let mainData = null, regionData = null, mainReady = false, regionReady = false;
+      const emit = () => {
+        if (!mainReady || !regionReady) return;
+        const m = mainData || {}, r = regionData;
+        const useMainStock = !r && region === 'central';
+        const split = !!(r && r.disabled_split_v1 === true);
+        cb(materialDisplayNames({
+          stock:      r ? (r.stock || {})      : (useMainStock ? (m.stock || {}) : {}),
+          cartridges: r ? (r.cartridges || {}) : (useMainStock ? (m.cartridges || {}) : {}),
+          disabled_materials: split ? (r.disabled_materials || []) : (m.disabled_materials || []),
+          disabled_overrides: split ? (r.disabled_overrides || []) : (m.disabled_overrides || []),
+        }));
+      };
+      const onErr = err => { console.error('[inventory] onSnapshot 失敗:', err); cb([]); };
+      const u1 = db.collection('inventory').doc('main').onSnapshot(
+        snap => { mainData = snap.exists ? snap.data() : null; mainReady = true; emit(); }, onErr);
+      const u2 = db.collection('inventory').doc(region).onSnapshot(
+        snap => { regionData = snap.exists ? snap.data() : null; regionReady = true; emit(); }, onErr);
+      return () => { u1(); u2(); };
     },
     // Markforged 線材：讀「登入者所屬地區」那一份。
     // ★ 中區若還沒建立分區文件，退回舊的單一文件 inventory/markforged

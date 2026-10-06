@@ -224,8 +224,9 @@ check("Formlabs 的紀錄有寫 operator",
       bool(re.search(r'"operator": fl_operator\(pr\)', src)), True)
 check("★ 抽不到就不寫這個 key（寫 None 會在畫面變成一格 null）",
       bool(re.search(r'if fl_operator\(pr\) else \{\}', src)), True)
-check("★ debug 只印型別與 key，不印 value",
-      bool(re.search(r"type\(_u\)\.__name__", src)) and not re.search(r"user=\{_u", src), True)
+# ★ 那段 debug 已於 2026-10-06 移除；這條改成守「不可把 user 的值印進 log」（含員工姓名／email）
+check("★ 不可把 Formlabs 的 user 值印進 log（log 是所有 admin 都看得到的地方）",
+      bool(re.search(r"print\(f[^)]*\{[^}]*pr\.get\(.user.\)", src)) or bool(re.search(r"user=\{_u", src)), False)
 
 print("── 材料以「名稱」回傳時也要判得出新舊版（2026-09-15 南部 80A V1.1）──")
 # 版本判斷原本只認得代碼（取末 2 碼）。若機台回傳名稱 "Flexible 80A V1.1"（2026-09-15 南部 Form4B 的推定），
@@ -502,11 +503,9 @@ check("★ 內容相同就跳過（Firestore 即使值沒變也計費一次寫�
       bool(re.search(r"if not payload:\s*\n\s*continue", src)), True)
 check("★ 回填失敗不可拖垮機台狀態同步（獨立 try/except）",
       bool(re.search(r"工作欄位回填失敗", src)), True)
-check("★ Formlabs 的欄位 debug 只印 key 不印 value（log 不可外流 PII）",
-      bool(re.search(r"sorted\(_u\.keys\(\)\)", src))
-      and not re.search(r"DEBUG欄位.*\{_u\}", src), True)
-check("★ 該 debug 放在「已處理就跳過」之前（否則穩定狀態永遠不會執行到）",
-      src.index("_dumped_print_keys = True") < src.index("if guid in processed:"), True)
+# 2026-10-06：user 欄位形狀已確認（見 CLAUDE.md），[sync][DEBUG欄位] 那段已移除
+check("[sync][DEBUG欄位] 除錯輸出已移除（每輪洗版、已無用途）",
+      "_dumped_print_keys" in src or bool(re.search(r'print\(f"\[sync\]\[DEBUG欄位\]', src)), False)
 check("MF 消耗紀錄有寫 job_id（沒有它就對不到工作）",
       bool(re.search(r'"job_id":\s*e\.get\("job_id"\)', src)), True)
 
@@ -705,6 +704,35 @@ check("★ 釋放時不可刪掉別人持有的柵欄", _db.store.get("sync_lock
 check("★ 沒有入口直接呼叫 _perform_sync_unlocked（會繞過柵欄）",
       len(re.findall(r"_perform_sync_unlocked\(", src)), 2)   # 定義 1 次 + perform_sync 內呼叫 1 次
 
+
+# ── Markforged 也要走柵欄（2026-10-06）──
+print("── 同步柵欄：Markforged ──")
+_eg_src = re.search(r"^def perform_sync_eiger\(.*?(?=^def _perform_sync_eiger_unlocked\()", src, re.M | re.S)
+check("main.py 找得到 Markforged 的柵欄入口", bool(_eg_src), True)
+def _eg_ns(db, impl):
+    ns = _lock_ns(db, _ok_sync)
+    ns["_perform_sync_eiger_unlocked"] = impl
+    exec(_eg_src.group(0), ns)
+    return ns
+_eg_calls = []
+def _eg_ok(a, b): _eg_calls.append(1); return {"observations": 0, "errors": []}
+_db = _FakeDb(); _ns = _eg_ns(_db, _eg_ok); _eg_calls.clear()
+_ns["perform_sync_eiger"]("a", "b")
+check("Markforged 沒有其他同步 → 照常執行並釋放", (len(_eg_calls), "sync_locks/eiger" in _db.store), (1, False))
+_db = _FakeDb(); _db.store["sync_locks/eiger"] = {
+    "owner": "other", "expires_at": _now + datetime.timedelta(seconds=300)}
+_ns = _eg_ns(_db, _eg_ok); _eg_calls.clear()
+_r = _ns["perform_sync_eiger"]("a", "b")
+check("★ Markforged 已有一輪在跑 → 跳過（否則同一段差額記兩次）", (_r.get("skipped"), len(_eg_calls)),
+      ("another_sync_running", 0))
+# 兩個柵欄要分開：Formlabs 在跑時不可擋到 Markforged
+_db = _FakeDb(); _db.store["sync_locks/formlabs"] = {
+    "owner": "fl", "expires_at": _now + datetime.timedelta(seconds=300)}
+_ns = _eg_ns(_db, _eg_ok); _eg_calls.clear()
+_ns["perform_sync_eiger"]("a", "b")
+check("★ Formlabs 正在同步時不可擋到 Markforged（兩個柵欄各自獨立）", len(_eg_calls), 1)
+check("★ 沒有入口直接呼叫 _perform_sync_eiger_unlocked（會繞過柵欄）",
+      len(re.findall(r"_perform_sync_eiger_unlocked\(", src)), 2)
 
 total = passed + failed
 print(f"\n{total} 項：{passed} PASS / {failed} FAIL")

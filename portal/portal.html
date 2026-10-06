@@ -512,7 +512,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20260827a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20260918a"></script>
+<script src="firebase-service.js?v=20261006a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -3024,7 +3024,11 @@ function AdminPanel({ user, isAdmin }) {
                     const rw = st.region_inventory_written || [];
                     if (rw.length) lines.push('已更新庫存的地區：' + rw.map(r => (window.REGION_LABEL||{})[r] || r).join('、'));
                   }
-                  if (st && c.kind==='eiger') {
+                  if (st && c.kind==='eiger' && st.skipped) {
+                    lines.push(st.skipped === 'another_sync_running'
+                      ? '已有一輪同步正在進行（通常是每 30 分鐘的排程），這次沒有重複執行，以免重複記錄消耗。稍後重新整理即可看到結果。'
+                      : '無法確認是否有其他同步在進行，這次沒有執行，請稍後再試。');
+                  } else if (st && c.kind==='eiger') {
                     lines.push('掃到 ' + (st.devices_seen||0) + ' 台機器，其中 ' + (st.devices_tracked||0) + ' 台納入管理、' + (st.printing||0) + ' 台列印中');
                     lines.push(st.observations ? ('寫入 ' + st.observations + ' 筆材料消耗紀錄') : '本次沒有新的材料消耗');
                   }
@@ -3125,6 +3129,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-06', type:'fix',
+    text:'兩項修正：一、Markforged 同步也加上「同一時間只跑一輪」的保護，排程正在同步時按「立即同步」不會再重複記錄消耗、重複扣庫存。二、工作看板的材料下拉改成跟材料庫存頁同一份資料：依登入者所在地區列出材料，並套用該地區的「已停用材料」（先前讀的是分區前的舊資料，停用設定也是三區共用的舊版本）。' },
   { hash:'220b856', date:'2026-10-06', type:'fix',
     text:'修正 Formlabs 同步重疊時重複扣庫存：排程正在同步時按「立即同步」，兩輪會同時把同一批列印當成新的、各扣一次庫存（10/6 中部 Rigid 4000 與 Clear V5 就被多扣了一次）。現在同一時間只會有一輪同步，後到的那一輪會直接跳過，並在後台顯示「已有一輪同步正在進行」。' },
   { hash:'3e32514', date:'2026-09-21', type:'tweak',
@@ -3142,9 +3148,7 @@ const CHANGELOG = [
   { hash:'792c2f9', date:'2026-09-18', type:'tweak',
     text:'Flexible 80A 的 V1.1 與 V2 拆成兩個獨立材料：各自有自己的庫存、消耗記錄與月度分析，V1.1 的列印改扣 V1.1 自己的庫存，停用其中一個也不會再連帶影響另一個（先前停用 V1.1 會把 V2 一起藏起來，已停用清單裡還會出現兩筆 V2）。先前南部 V1.1 的舊紀錄也會自動改歸到 V1.1。⚠ 請注意兩件事：一、南部要先在「備料入庫」建立 Flexible 80A V1.1 的庫存數量，否則之後 V1.1 的列印會跳「消耗紀錄可能有誤」；二、已停用清單中顯示為「Flexible 80A V2（FLFL80）」那一筆若不是刻意停用，請按「恢復顯示」，否則 V2 會一直被隱藏。先前誤扣在 V2 的少量 V1.1 用量不會自動搬回，需要時請手動調整。' },
   { hash:'e0308c9', date:'2026-09-16', type:'fix',
-    text:'確實修好南部 Flexible 80A V1.1 被當成 V2 的問題。前一版找錯了原因：南部 Form4B 回報的 V1.1 代碼是 FLFL8011，系統比新舊時看代碼最後兩碼，把「11」當成比 V2 的「02」還新，於是 V1.1 被當成最新版扣掉庫存、畫面上也顯示成 V2。現在 FLFL8011 已正確登記為 V1.1：庫存只扣最新版（V1.1 的列印不扣），消耗記錄與匯出則如實顯示「Flexible 80A V1.1」。中部的扣帳不受影響。另外，滑鼠停在消耗記錄的材料名稱或機台樹脂罐上，會顯示系統實際收到的材料代碼，方便核對。⚠ 修正前南部被誤扣的 V1.1 用量不會自動調整，需要時請手動修正南部的 Flexible 80A 庫存。' },
-  { hash:'172bcba', date:'2026-09-15', type:'fix',
-    text:'修正南部列印的 Flexible 80A V1.1 被當成 V2 的問題。系統沒有把南部 Form4B 列印的 V1.1 正確判斷成舊版，畫面上顯示成 V2，也可能因此被當成最新版扣了庫存。現在名稱也能正確判斷版本：依既有規則，庫存只扣最新版本（V1.1 的列印不扣），但消耗記錄與列印記錄匯出會如實顯示「Flexible 80A V1.1」。⚠ 修正前已經被誤扣的 V1.1 列印不會自動回補，需要時請手動調整南部的 Flexible 80A 庫存。' }
+    text:'確實修好南部 Flexible 80A V1.1 被當成 V2 的問題。前一版找錯了原因：南部 Form4B 回報的 V1.1 代碼是 FLFL8011，系統比新舊時看代碼最後兩碼，把「11」當成比 V2 的「02」還新，於是 V1.1 被當成最新版扣掉庫存、畫面上也顯示成 V2。現在 FLFL8011 已正確登記為 V1.1：庫存只扣最新版（V1.1 的列印不扣），消耗記錄與匯出則如實顯示「Flexible 80A V1.1」。中部的扣帳不受影響。另外，滑鼠停在消耗記錄的材料名稱或機台樹脂罐上，會顯示系統實際收到的材料代碼，方便核對。⚠ 修正前南部被誤扣的 V1.1 用量不會自動調整，需要時請手動修正南部的 Flexible 80A 庫存。' }
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

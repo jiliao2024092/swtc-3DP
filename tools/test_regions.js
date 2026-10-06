@@ -510,5 +510,37 @@ console.log('── 停用清單分區 ──');
      '★ 不可再寫回 inventory/main（會把該區的清單蓋成全公司退路值，污染其他區）');
 }
 
+// ══ 工作看板的材料下拉：與材料庫存頁同一套分區規則（2026-10-06）═══════════
+// 原本讀 inventory/main：stock 從分區後就凍結、停用清單也是三區共用的舊版本，
+// 工作看板的材料下拉因此與材料庫存頁對不起來。
+console.log('── 工作看板材料下拉：分區與停用規則 ──');
+{
+  const svc = fs.readFileSync(path.join(__dirname, '..', 'portal', 'firebase-service.js'), 'utf8');
+  const onSnap = svc.match(/onSnapshot\(cb\) \{\s*\n\s*const region = [\s\S]*?return \(\) => \{ u1\(\); u2\(\); \};\s*\n\s*\},/);
+  eq(!!onSnap, true, '★ FBInventory.onSnapshot 要讀登入者所屬地區（不可再只讀 inventory/main）');
+  if (onSnap) {
+    eq(/doc\(region\)/.test(onSnap[0]), true, '★ 要訂閱 inventory/{region}');
+    eq(/disabled_split_v1 === true/.test(onSnap[0]), true,
+       '★ 停用清單要看 disabled_split_v1 旗標決定用哪一份（與 inventory.html 一致）');
+    eq(/region === 'central'/.test(onSnap[0]), true,
+       '中區的 region 文件不存在時才退回 main 的庫存（北/南不可退回，否則顯示成中部的料）');
+  }
+
+  // 停用判斷順序要與 inventory.html 一致：停用優先於恢復顯示
+  const isDis = svc.match(/function isDisabled\(inv, material\) \{[\s\S]*?\n  \}/);
+  eq(!!isDis, true, 'firebase-service.js 找得到 isDisabled');
+  if (isDis) {
+    const iUser = isDis[0].indexOf('disabled_materials');
+    const iOvr  = isDis[0].indexOf('disabled_overrides');
+    eq(iUser > -1 && iOvr > -1 && iUser < iOvr, true,
+       '★ 先判停用再判恢復顯示（反過來的話舊資料殘留的恢復顯示會蓋掉停用）');
+  }
+
+  // 家族重導三份要一致（少了會把同一種材料列成兩個選項）
+  ['FLRGWH', 'FLELCL', 'FLFL8011'].forEach(k => {
+    eq(new RegExp(`'${k}':`).test(svc), true, `★ firebase-service.js 的 FAMILY_REMAP 要有 ${k}`);
+  });
+}
+
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
