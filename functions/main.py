@@ -2220,6 +2220,12 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
     timezone=scheduler_fn.Timezone("Asia/Taipei"),
     timeout_sec=540,
     memory=options.MemoryOption.MB_512,
+    # ★ CPU 0.5 顆（2026-10-06 使用者決定，cost down）：每輪約 150 秒幾乎都在等
+    #   Formlabs API 回應（分頁抓約 1,500 筆列印紀錄），CPU 閒著也照請求時間計費。
+    #   預設 1 顆時一個月約 21.7 萬 vCPU 秒、超出免費額度（18 萬）；減半後落回免費額度內。
+    #   cpu < 1 時 Cloud Run 規定 concurrency 只能是 1 —— 明寫出來，本來也只該一次跑一輪。
+    cpu=0.5,
+    concurrency=1,
     secrets=[FORMLABS_CLIENT_ID, FORMLABS_CLIENT_SECRET],
     region="asia-east1",
 )
@@ -2280,6 +2286,12 @@ def backfill_ef_no_only():
 @https_fn.on_call(
     timeout_sec=540,
     memory=options.MemoryOption.MB_512,
+    # ★ CPU 0.5 顆（2026-10-06 使用者決定，cost down）：每輪約 150 秒幾乎都在等
+    #   Formlabs API 回應（分頁抓約 1,500 筆列印紀錄），CPU 閒著也照請求時間計費。
+    #   預設 1 顆時一個月約 21.7 萬 vCPU 秒、超出免費額度（18 萬）；減半後落回免費額度內。
+    #   cpu < 1 時 Cloud Run 規定 concurrency 只能是 1 —— 明寫出來，本來也只該一次跑一輪。
+    cpu=0.5,
+    concurrency=1,
     secrets=[FORMLABS_CLIENT_ID, FORMLABS_CLIENT_SECRET],
     region="asia-east1",
 )

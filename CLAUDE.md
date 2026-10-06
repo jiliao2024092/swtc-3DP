@@ -279,6 +279,8 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - Markforged 同樣做法（2026-10-06 補上）：`perform_sync_eiger()` 是入口、本體在 `_perform_sync_eiger_unlocked()`，租約是 `sync_locks/eiger`。**兩個柵欄各自獨立**，Formlabs 在跑不會擋到 Markforged
   - Cloud Scheduler 的 `429 RESOURCE_EXHAUSTED`／`no available instance` 是「上一輪還在跑、又來一次呼叫」，不是故障
 - ⚠ **GCP 費用與預算上限**（2026-10-06 查明）：報表金額是**新台幣**（預算頁標「US$」是畫面標示問題，用 SKU 單價反推是牌價 ×31）。9 月使用費 NT$178.83、扣免費額度後實付 NT$34.03（Cloud Run CPU 超出免費額度的部分＋Secret Manager）。**預算的支出上限比對的是「使用費」不是「小計」**，設 175 會在實付才三十幾元時就把整個專案停掉（`billing is disabled for this project`，2026-09-30～10-06 全部同步停擺）
+  - **Formlabs 兩支函式設 `cpu=0.5`、`concurrency=1`**（2026-10-06 cost down）：每輪約 150 秒，其中約 115 秒是分頁等 Formlabs API 回應（抓約 1,500 筆列印紀錄），CPU 閒著也照請求時間計費。1 顆 vCPU 時每月約 21.7 萬 vCPU 秒（免費額度 18 萬），減半後落回免費額度。⚠ cpu < 1 時 Cloud Run 規定 concurrency 只能是 1，兩者要一起改
+  - ⚠ **不要用「只抓最近幾筆」來縮短同步時間**：見下方「消耗抓取」那條，改成依日期／排序抓會漏掉最新一筆
 - **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill
 - `.gitignore` 須含 `venv/ functions/venv/ **/venv/ __pycache__/`
 - 「網頁沒更新」多半是 (a) 部署未觸發 或 (b) portal js 沒升 cache 版本號；若換無痕/換瀏覽器還是舊的 = 伺服器/CDN 端，非瀏覽器 cache
