@@ -270,6 +270,13 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - **材料版本正規化在寫入 Firestore 前就發生**：`raw_material`（截斷前原始代碼）只在 `main.py` 處理當下短暫存在，`canon_material()`/`family_code()` 一執行完就只剩家族代碼，版本數字（如 FLTO2001 的 `01`）永久丟失。v2.2 新增的 `family_latest_version` 追蹤必須在截斷前（`raw_material` 還在時）掛勾，且只能影響「之後」同步的新資料，歷史紀錄無法回溯
 - **消耗紀錄時間**：Formlabs 對 FINISHED 的 print 偶爾回傳 epoch(1970) 的 `print_finished_at`，會把紀錄打到 1970 而被前端 30 天視窗濾掉（看似漏抓）。已用 `parse_valid_ts`（年份<2000 視為無效）退回 `created_at`
 - **消耗抓取**：用 `prints/?printer={serial}` 按 serial 過濾、無 date、無 sort、per-printer 分頁去重（勿改回 date+sort 全抓，會漏最新）
+- ⚠⚠ **Formlabs 同步有柵欄：同時只允許一輪**（2026-10-06 實際事故）：排程那一輪還在跑（約 2.5 分鐘）時按了「立即同步」，兩輪都在對方寫完之前讀到同一批列印「還沒處理」，**各扣一次庫存**（中部 Rigid 4000 24.2 mL、Clear V5 19.0 mL 被重複扣）。消耗紀錄不會重複（doc_id＝guid），所以畫面看不出來，只有庫存數字少了
+  - `perform_sync()` 是柵欄入口，真正的同步在 `_perform_sync_unlocked()`，**不可直接呼叫後者**（`tools/test_deduct_outcome.py` 有守）
+  - 租約存在 `sync_locks/formlabs`（Firestore 交易搶），**一定要有到期時間**（`SYNC_LOCK_LEASE_SEC`＝600 秒，比函式 timeout 540 秒長）：函式被強制終止時 finally 不會跑，沒到期時間的鎖會讓同步永遠卡住
+  - 搶不到就**直接跳過不排隊**，回傳 `skipped`，後台「立即同步」會顯示「已有一輪同步正在進行」；搶鎖本身出錯也跳過（寧可少跑一輪，不冒重複扣的風險）
+  - ⚠ Markforged（`perform_sync_eiger`）**還沒有**這道柵欄，排程與手動同時跑理論上也會重複記差額
+  - Cloud Scheduler 的 `429 RESOURCE_EXHAUSTED`／`no available instance` 是「上一輪還在跑、又來一次呼叫」，不是故障
+- ⚠ **GCP 費用與預算上限**（2026-10-06 查明）：報表金額是**新台幣**（預算頁標「US$」是畫面標示問題，用 SKU 單價反推是牌價 ×31）。9 月使用費 NT$178.83、扣免費額度後實付 NT$34.03（Cloud Run CPU 超出免費額度的部分＋Secret Manager）。**預算的支出上限比對的是「使用費」不是「小計」**，設 175 會在實付才三十幾元時就把整個專案停掉（`billing is disabled for this project`，2026-09-30～10-06 全部同步停擺）
 - **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill
 - `.gitignore` 須含 `venv/ functions/venv/ **/venv/ __pycache__/`
 - 「網頁沒更新」多半是 (a) 部署未觸發 或 (b) portal js 沒升 cache 版本號；若換無痕/換瀏覽器還是舊的 = 伺服器/CDN 端，非瀏覽器 cache

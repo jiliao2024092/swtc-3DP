@@ -1412,8 +1412,79 @@ def _migrate_material_splits(db, inv_ref, inv) -> int:
     return changed
 
 
+# ── 同步柵欄：同一時間只允許一輪 Formlabs 同步 ─────────────────────────
+# ★ 為什麼需要（2026-10-06 實際發生）：排程那一輪還在跑（一輪約 2.5 分鐘），
+#   使用者在網頁按了「立即同步」，兩輪都在對方寫完之前讀到「這 2 筆列印還沒處理」，
+#   於是各扣一次 —— 中部 Rigid 4000 與 Clear V5 被重複扣庫存。消耗紀錄本身不會重複
+#   （doc_id = guid），所以畫面上完全看不出來，只有庫存數字少了。
+# ★ 用 Firestore 交易搶一份「租約」：搶到的那一輪才跑，沒搶到的直接跳過（不排隊、不重試，
+#   反正下一輪排程 30 分鐘後就到）。
+# ★ 租約一定要有到期時間：函式被強制終止（逾時、部署、帳單停用）時 finally 不會執行，
+#   沒有到期時間的鎖會永遠卡住、從此再也不同步。到期時間取比函式 timeout（540 秒）長一點。
+SYNC_LOCK_LEASE_SEC = 600
+
+
+def _acquire_sync_lock(db, name: str, owner: str):
+    """搶租約。回傳 (是否搶到, 目前持有者)。"""
+    ref = db.collection("sync_locks").document(name)
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    @firestore.transactional
+    def _txn(txn):
+        snap = ref.get(transaction=txn)
+        cur = (snap.to_dict() or {}) if snap.exists else {}
+        exp = cur.get("expires_at")
+        if exp is not None and exp > now:
+            return False, cur.get("owner")
+        txn.set(ref, {
+            "owner":       owner,
+            "acquired_at": now,
+            "expires_at":  now + datetime.timedelta(seconds=SYNC_LOCK_LEASE_SEC),
+        })
+        return True, owner
+
+    return _txn(db.transaction())
+
+
+def _release_sync_lock(db, name: str, owner: str) -> None:
+    """只釋放自己持有的租約（租約若已到期被別輪搶走，不可把別人的刪掉）。"""
+    ref = db.collection("sync_locks").document(name)
+
+    @firestore.transactional
+    def _txn(txn):
+        snap = ref.get(transaction=txn)
+        if snap.exists and (snap.to_dict() or {}).get("owner") == owner:
+            txn.delete(ref)
+
+    _txn(db.transaction())
+
+
 def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> dict:
-    """執行一次完整同步：拉 printers + prints，更新 Firestore。回傳 stats。"""
+    """排程與手動同步共用的入口：先搶柵欄，搶到才真的同步（見上方說明）。"""
+    db = get_db()
+    owner = f"{os.environ.get('K_SERVICE', 'local')}:{os.getpid()}:{datetime.datetime.utcnow().isoformat()}"
+    try:
+        got, holder = _acquire_sync_lock(db, "formlabs", owner)
+    except Exception as e:
+        # ★ 搶鎖本身失敗（Firestore 暫時出錯）時不同步：寧可這輪不跑，也不要冒重複扣庫存的風險
+        print(f"[sync][柵欄] 取得同步鎖失敗，本輪跳過: {e}")
+        return {"skipped": "lock_error", "errors": [f"{type(e).__name__}: {e}"]}
+    if not got:
+        print(f"[sync][柵欄] 已有一輪同步在進行（{holder}），本輪跳過")
+        return {"skipped": "another_sync_running", "holder": holder, "errors": []}
+    try:
+        return _perform_sync_unlocked(client_id, client_secret, backfill)
+    finally:
+        try:
+            _release_sync_lock(db, "formlabs", owner)
+        except Exception as e:
+            # 釋放失敗不影響結果：租約 SYNC_LOCK_LEASE_SEC 秒後自己到期
+            print(f"[sync][柵欄] 釋放同步鎖失敗（{SYNC_LOCK_LEASE_SEC} 秒後自動到期）: {e}")
+
+
+def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = False) -> dict:
+    """執行一次完整同步：拉 printers + prints，更新 Firestore。回傳 stats。
+    ★ 不可直接呼叫：一律經過 perform_sync()（同步柵欄）。"""
     db = get_db()
     stats = {
         "started_at":       datetime.datetime.utcnow().isoformat() + "Z",

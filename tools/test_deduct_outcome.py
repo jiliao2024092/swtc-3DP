@@ -604,6 +604,108 @@ check("★ 機台樹脂罐依罐子 serial 去重",
 # 探針是暫時的，任務完成後必須移除，否則每輪都白算 1475 次
 check("暫時探針已移除",  "outcome_probe" in src, False)
 
+# ── 同步柵欄（2026-10-06）────────────────────────────────────────────
+# 實際事故：排程那一輪還在跑時按了「立即同步」，兩輪都把同 2 筆列印當成新的，
+# 中部 Rigid 4000／Clear V5 被重複扣庫存。這裡用假的 Firestore 實際執行柵欄。
+print("── 同步柵欄：同時只允許一輪 Formlabs 同步 ──")
+_lock_src = re.search(r"^SYNC_LOCK_LEASE_SEC = .*?(?=^def _perform_sync_unlocked\()", src, re.M | re.S)
+check("main.py 找得到同步柵欄", bool(_lock_src), True)
+
+
+class _FakeSnap:
+    def __init__(self, d): self._d = d
+    @property
+    def exists(self): return self._d is not None
+    def to_dict(self): return dict(self._d) if self._d is not None else None
+
+
+class _FakeRef:
+    def __init__(self, store, key): self.store, self.key = store, key
+    def get(self, transaction=None): return _FakeSnap(self.store.get(self.key))
+
+
+class _FakeTxn:
+    def set(self, ref, data): ref.store[ref.key] = dict(data)
+    def delete(self, ref): ref.store.pop(ref.key, None)
+
+
+class _FakeColl:
+    def __init__(self, store, name): self.store, self.name = store, name
+    def document(self, d): return _FakeRef(self.store, f"{self.name}/{d}")
+
+
+class _FakeDb:
+    def __init__(self): self.store = {}
+    def collection(self, name): return _FakeColl(self.store, name)
+    def transaction(self): return _FakeTxn()
+
+
+class _FakeFirestore:
+    @staticmethod
+    def transactional(fn): return fn
+
+
+def _lock_ns(db, sync_impl):
+    ns = {"datetime": datetime, "os": os, "firestore": _FakeFirestore,
+          "get_db": lambda: db, "_perform_sync_unlocked": sync_impl}
+    exec(_lock_src.group(0), ns)
+    return ns
+
+
+import datetime, os
+_calls = []
+def _ok_sync(cid, sec, backfill): _calls.append(1); return {"ok": True}
+
+# 1) 沒人持有 → 跑，跑完釋放
+_db = _FakeDb(); _ns = _lock_ns(_db, _ok_sync); _calls.clear()
+_r = _ns["perform_sync"]("id", "sec")
+check("沒有其他同步 → 照常執行", (_r.get("ok"), len(_calls)), (True, 1))
+check("跑完要釋放柵欄（否則接下來 10 分鐘都不能同步）", "sync_locks/formlabs" in _db.store, False)
+
+# 2) ★ 已有一輪在跑（租約未到期）→ 跳過，不可執行同步
+_now = datetime.datetime.now(datetime.timezone.utc)
+_db = _FakeDb(); _db.store["sync_locks/formlabs"] = {
+    "owner": "other", "expires_at": _now + datetime.timedelta(seconds=300)}
+_ns = _lock_ns(_db, _ok_sync); _calls.clear()
+_r = _ns["perform_sync"]("id", "sec")
+check("★ 已有一輪在跑 → 這輪跳過（否則重複扣庫存）", (_r.get("skipped"), len(_calls)),
+      ("another_sync_running", 0))
+check("★ 跳過的那輪不可把別人的柵欄拆掉", _db.store["sync_locks/formlabs"]["owner"], "other")
+
+# 3) 租約已到期（上一輪被強制終止、沒釋放）→ 可以接手
+_db = _FakeDb(); _db.store["sync_locks/formlabs"] = {
+    "owner": "dead", "expires_at": _now - datetime.timedelta(seconds=1)}
+_ns = _lock_ns(_db, _ok_sync); _calls.clear()
+_r = _ns["perform_sync"]("id", "sec")
+check("★ 過期的柵欄可接手（否則函式被強制終止一次就永遠不再同步）", len(_calls), 1)
+
+# 4) 同步本身拋錯 → 仍要釋放
+def _bad_sync(cid, sec, backfill): raise RuntimeError("boom")
+_db = _FakeDb(); _ns = _lock_ns(_db, _bad_sync)
+try:
+    _ns["perform_sync"]("id", "sec")
+except RuntimeError:
+    pass
+check("同步拋錯也要釋放柵欄", "sync_locks/formlabs" in _db.store, False)
+
+# 5) 搶鎖本身失敗 → 這輪不跑（寧可少跑一輪，也不冒重複扣庫存的風險）
+class _BrokenDb(_FakeDb):
+    def transaction(self): raise RuntimeError("firestore down")
+_db = _BrokenDb(); _ns = _lock_ns(_db, _ok_sync); _calls.clear()
+_r = _ns["perform_sync"]("id", "sec")
+check("搶鎖失敗 → 這輪跳過", (_r.get("skipped"), len(_calls)), ("lock_error", 0))
+
+# 6) 釋放時只刪自己的（租約到期後被別輪接手的情況）
+_db = _FakeDb(); _ns = _lock_ns(_db, _ok_sync)
+_db.store["sync_locks/formlabs"] = {"owner": "someone-else"}
+_ns["_release_sync_lock"](_db, "formlabs", "me")
+check("★ 釋放時不可刪掉別人持有的柵欄", _db.store.get("sync_locks/formlabs", {}).get("owner"), "someone-else")
+
+# 接線：排程與手動兩個入口都要經過 perform_sync（有柵欄的那個），不可直接呼叫內層
+check("★ 沒有入口直接呼叫 _perform_sync_unlocked（會繞過柵欄）",
+      len(re.findall(r"_perform_sync_unlocked\(", src)), 2)   # 定義 1 次 + perform_sync 內呼叫 1 次
+
+
 total = passed + failed
 print(f"\n{total} 項：{passed} PASS / {failed} FAIL")
 sys.exit(1 if failed else 0)
