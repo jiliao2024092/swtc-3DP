@@ -59,21 +59,23 @@ node --input-type=module --check < /tmp/x.js
 
 # Cloud Function
 python3 -m py_compile functions/main.py
+python tools/test_functions_wiring.py   # 部署接線（裝飾器、region、內部 helper）：29 項
+PYTHONIOENCODING=utf-8 python tools/check_material_sync.py   # 前後端材料表一致性
 
-# 入庫的「已知材料」判斷 + 家族名稱反查：128 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
+# 入庫的「已知材料」判斷 + 家族名稱反查 + 停用／恢復顯示 + 樹脂罐實際版本：173 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
 node tools/test_material_input.js
 
-# 北中南分區邏輯：前端 149 項 + 後端 77 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區、工單消耗帶入、設定不可寫 undefined）
+# 北中南分區邏輯：前端 204 項 + 後端 79 項（含前後端種子對照、追蹤機台名單三處一致性、Markforged 扣帳、工程師清單分區、工單消耗帶入、設定不可寫 undefined、停用清單分區、工作看板材料下拉）
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析：85 項
+# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析、材料拆分遷移、同步柵欄：201 項
 python tools/test_deduct_outcome.py
 
-# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間、中英文名）：110 項
+# 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間、中英文名、工單 join）：182 項
 node tools/test_print_log_export.js
 
 # JSX 實際編譯（比括號平衡強：portal 的 babel 區塊 + workboard.js/issues.js）
