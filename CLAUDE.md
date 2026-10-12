@@ -75,7 +75,7 @@ node tools/test_closed_queries.js
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析、材料拆分遷移、同步柵欄：201 項
+# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析、材料拆分遷移、同步柵欄、結案欄位補齊、樣品分區補齊：245 項
 python tools/test_deduct_outcome.py
 
 # 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間、中英文名、工單 join）：182 項
