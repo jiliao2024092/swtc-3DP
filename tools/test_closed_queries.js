@@ -141,12 +141,41 @@ const { FBOrders, FBAnomalies, FBSampleLoans } = window;
   // ══ 5. 樣品出借紀錄 ══════════════════════════════════════════
   console.log('── 樣品出借紀錄依範圍讀 ──');
   log.queries = [];
-  FBSampleLoans.onSnapshotRange(() => {}, '2026-09-01', '2026-09-31');
+  FBSampleLoans.onSnapshotRange(() => {}, '2026-09-01', '2026-09-31', admin);
   eq(log.queries[0].conds, [['where','loanDate','>=','2026-09-01'], ['where','loanDate','<=','2026-09-31'], ['orderBy','loanDate','desc']],
-     '★ 出借紀錄依日期範圍讀（單欄位範圍，不需複合索引）');
+     '★ 出借紀錄依日期範圍讀（跨區者不帶 region）');
   eq(/FBSampleLoans\.onSnapshot\(/.test(is), false, '★ 不可再整份訂閱出借紀錄（會無限增長）');
-  eq(/await FBSampleLoans\.getMonthlyImported\(ym\)/.test(is), true,
-     '★ 匯入月表要直接查該月的舊匯入（從畫面清單找會漏刪 → 重複計算）');
+  eq(/await FBSampleLoans\.getMonthlyImported\(ym, region\)/.test(is), true,
+     '★ 匯入月表要直接查該月、該區的舊匯入（從畫面清單找會漏刪 → 重複計算）');
+
+  // ══ 6. 樣品分區（2026-10-12 使用者決定三區各看各的）══════════════════
+  console.log('── 樣品分區 ──');
+  log.queries = [];
+  FBSampleLoans.onSnapshotRange(() => {}, '2026-09-01', '2026-09-31', single);
+  eq(log.queries[0].conds, [['where','region','==','south'], ['where','loanDate','>=','2026-09-01'],
+                            ['where','loanDate','<=','2026-09-31'], ['orderBy','loanDate','desc']],
+     '★ 單一區的人讀出借紀錄要帶 region（規則會擋），形狀要對得上 region+loanDate 索引');
+  log.queries = [];
+  window.FBSampleItems.onSnapshot(() => {}, single);
+  eq(log.queries[0].conds, [['where','region','==','south'], ['orderBy','seq','asc']],
+     '★ 單一區的人讀樣品清冊要帶 region（對得上 region+seq 索引）');
+  log.queries = [];
+  await FBSampleLoans.getMonthlyImported('2026-09', 'south');
+  eq(log.queries[0].conds, [['where','region','==','south'], ['where','ym','==','2026-09']],
+     '★ 匯入月表只汰換同一區的同月舊紀錄（不帶地區會把別區同月的紀錄一起刪掉）');
+  eq(/FBSampleItems\.onSnapshot\(r=>setSamples\(r\), user\)/.test(is), true,
+     '★ 樣品清冊訂閱要帶 user（否則單一區的人發出不帶條件的 list，被規則整個擋下）');
+  eq(/onSnapshotRange\([^\n]*loanRange\.from, loanRange\.to, user\)/.test(is), true,
+     '★ 出借紀錄訂閱要帶 user');
+  eq(/FBSampleLoans\.add\(\{ \.\.\.l, region \}\)/.test(is), true,
+     '★ 出借紀錄的地區跟著樣品走（admin 幫南部樣品登記，紀錄要算南部）');
+  eq(/recs\.push\(\{[^\n]*src:'monthly', ym, region \}\)/.test(is), true, '月表匯入的紀錄帶上選定的地區');
+  eq(/const showSamples = true;/.test(is), true, '三區都看得到樣品分頁');
+  const idx2 = JSON.parse(fs.readFileSync(path.join(ROOT, 'firestore.indexes.json'), 'utf8')).indexes;
+  const has2 = (coll, fields) => idx2.some(i => i.collectionGroup === coll &&
+    JSON.stringify(i.fields.map(f => [f.fieldPath, f.order])) === JSON.stringify(fields));
+  eq(has2('sample_items', [['region','ASCENDING'],['seq','ASCENDING']]), true, '★ sample_items 有 region+seq 索引');
+  eq(has2('sample_loans', [['region','ASCENDING'],['loanDate','DESCENDING']]), true, '★ sample_loans 有 region+loanDate(DESC) 索引');
 
   // 月份 → 日期範圍（從 issues.js 抽出實際執行）
   const mtr = is.match(/const monthsToRange = m => \{[\s\S]*?\n  \};/);

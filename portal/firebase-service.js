@@ -299,13 +299,23 @@
   // 樣品出借 → collections: sample_items（樣品清冊）/ sample_loans（出借紀錄）
   //   出借紀錄開放 viewer 登記（見 firestore.rules）
   // ════════════════════════════════════════════════
-  // 樣品刻意「不」加 regional：全公司共用資產，借用人可能跨廠區借還
-  window.FBSampleItems = makeCollectionService('sample_items', 'seq', 'asc');
-  window.FBSampleLoans = makeCollectionService('sample_loans', 'loanDate', 'desc');
+  // ★ 2026-10-12 起分區（使用者決定三區各看各的；既有資料已由 Cloud Function 全部標成中部）。
+  //   原本刻意不分區（全公司共用一份、只有中部看得到分頁），現在比照工單／異常：
+  //   單一區的人查詢加 where('region','==')，規則也比對 region。
+  window.FBSampleItems = makeCollectionService('sample_items', 'seq', 'asc', { regional: true });
+  window.FBSampleLoans = makeCollectionService('sample_loans', 'loanDate', 'desc', { regional: true });
+  // 單一區的人只能讀自己那區（規則會擋不帶條件的 list）；跨區者回 null＝不加條件
+  const sampleScope = (user) => {
+    const scope = window.regionQueryScopeOf ? window.regionQueryScopeOf(user) : null;
+    return (scope && scope.length === 1) ? scope[0] : null;
+  };
   // ★ 出借紀錄會無限增長（每月匯入的登記表，每個勾一筆），不可再整份讀（2026-10-12）。
   //   只讀畫面需要的日期範圍（from／to 為 YYYY-MM-DD，含兩端）。單欄位範圍查詢，不需複合索引。
-  window.FBSampleLoans.onSnapshotRange = function (cb, from, to) {
-    return db.collection('sample_loans')
+  window.FBSampleLoans.onSnapshotRange = function (cb, from, to, user) {
+    let q = db.collection('sample_loans');
+    const r = sampleScope(user);
+    if (r) q = q.where('region', '==', r);
+    return q
       .where('loanDate', '>=', from).where('loanDate', '<=', to)
       .orderBy('loanDate', 'desc')
       .onSnapshot(
@@ -318,8 +328,11 @@
   };
   // 匯入月表前，查出「該月先前匯入過的紀錄」以便汰換。
   // ★ 不可再從畫面已載入的清單找：畫面只載入目前選的月份範圍，範圍外的舊匯入會漏刪 → 重複計算。
-  window.FBSampleLoans.getMonthlyImported = async function (ym) {
-    const snap = await db.collection('sample_loans').where('ym', '==', ym).get();
+  // ★ 一定要帶地區：各區各自匯入自己的月表，只能汰換「同一區」同月的舊紀錄，
+  //   不帶的話匯入中部月表會把南部同月的紀錄一起刪掉。
+  window.FBSampleLoans.getMonthlyImported = async function (ym, region) {
+    const snap = await db.collection('sample_loans')
+      .where('region', '==', region).where('ym', '==', ym).get();
     return snap.docs.map(d => ({ _id: d.id, ...d.data() })).filter(l => l.src === 'monthly');
   };
 

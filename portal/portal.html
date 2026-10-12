@@ -512,7 +512,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20260827a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261012a"></script>
+<script src="firebase-service.js?v=20261012b"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1691,7 +1691,7 @@ window.DashboardView = DashboardView;
 
 <!-- ⑥ workboard.js + issues.js -->
 <script type="text/babel" data-presets="react" src="workboard.js?v=20261012a"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20261012a"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20261012b"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -3129,6 +3129,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-12', type:'tweak',
+    text:'樣品出借改成分地區：北部、中部、南部各有自己的樣品清冊與出借紀錄，三區都看得到「樣品出借」分頁（原本只有中部看得到、全公司共用一份）。既有的樣品與出借紀錄全部歸中部。樣品清冊仍只有 admin 能新增／編輯／刪除，admin 新增樣品與匯入月表時可以選要建在哪一區；登記出借會自動算在該樣品所屬的地區。' },
   { hash:'d15a15f', date:'2026-10-12', type:'feat',
     text:'新增日期查詢，並改變讀取方式：一、樣品出借可以選「出借月份」起訖，清冊的出借次數、出借總表、借出統計圖表與匯出都只算那段月份（預設本月；甘特圖依顯示的那一週）。二、工作看板（依期望交期）與客戶異常（依異常日期）新增日期區間篩選，看板、時間軸、Dashboard、分析頁也套用同一個期間。三、未完成的工作與異常一律全部顯示，不會再因為太舊被擠出畫面；已完成的改成要看時才讀取，沒設期間時預設只讀近 12 個月，畫面上會標示目前讀到的範圍。原本的「載入更早的」按鈕已不需要，拿掉了。' },
   { hash:'24fe1af', date:'2026-10-06', type:'tweak',
@@ -3146,9 +3148,7 @@ const CHANGELOG = [
   { hash:'ed7fffc', date:'2026-09-18', type:'fix',
     text:'修正南部 Form3+ 的機台樹脂罐出現兩個 Elastic 50A 的問題：機台上其實只有一罐，被重複列了一次，連帶「材料庫存總覽」的機台樹脂罐存量也被算成兩倍。同樣的狀況也可能出現在南部 Form3L，一併修正。' },
   { hash:'a88fa07', date:'2026-09-18', type:'tweak',
-    text:'扣庫存規則調整：列印舊版本材料時也會扣庫存（先前舊版本的列印只記錄、不扣）。舊版罐一樣是實際用掉的樹脂，不扣的話帳上庫存會比實際多。只影響之後的新列印；先前標為「未扣庫存」的舊紀錄如需扣除，請用該筆的「補扣」按鈕。' },
-  { hash:'cfd5f55', date:'2026-09-18', type:'tweak',
-    text:'Formlabs 與 Markforged 的「匯出列印記錄」調整兩件事：一、「責任工程師」只要消耗記錄上有記到實際執行列印的人，就直接用那個人，不再被工單上的責任工程師蓋掉（沒記到人的才用工單上的）；二、備註沒有照「客戶-工作類別-單號」格式寫的列印，「業務」與「客戶名稱」一律帶入「實威國際股份有限公司」（先前是留空）。' }
+    text:'扣庫存規則調整：列印舊版本材料時也會扣庫存（先前舊版本的列印只記錄、不扣）。舊版罐一樣是實際用掉的樹脂，不扣的話帳上庫存會比實際多。只影響之後的新列印；先前標為「未扣庫存」的舊紀錄如需扣除，請用該筆的「補扣」按鈕。' }
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

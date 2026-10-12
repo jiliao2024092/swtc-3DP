@@ -92,6 +92,11 @@ async function main() {
     await db.doc('issues_anomalies/i_north').set({ title: '北部異常', region: 'north', seq: 1 });
     await db.doc('issues_anomalies/i_south').set({ title: '南部異常', region: 'south', seq: 2 });
     await db.doc('bookings/b_south').set({ printer: 'Form3L', region: 'south' });
+    // 樣品分區（2026-10-12）：中部與南部各一筆樣品、各一筆出借紀錄
+    await db.doc('sample_items/si_central').set({ name: '角度調整器', region: 'central', seq: 1 });
+    await db.doc('sample_items/si_south').set({ name: '南部樣品', region: 'south', seq: 1 });
+    await db.doc('sample_loans/sl_central').set({ itemId: 'si_central', loanDate: '2026-10-01', ym: '2026-10', src: 'monthly', region: 'central' });
+    await db.doc('sample_loans/sl_south').set({ itemId: 'si_south', loanDate: '2026-10-02', ym: '2026-10', src: 'monthly', region: 'south' });
     await db.doc('print_history/h_eng').set({ act: '旋轉', uid: USERS.engineer.uid });
     await db.doc('print_history/h_other').set({ act: '旋轉', uid: USERS.viewer.uid });
     await db.doc('print_history/h_legacy').set({ act: '舊紀錄沒有 uid 欄位' });
@@ -400,6 +405,35 @@ async function main() {
   await ok('★★ 南部使用者可 list 自己那區的預約（3DP-BK 的查詢形狀）',
     as(USERS.engS).collection('bookings')
       .where('region', '==', 'south').orderBy('date').get());
+
+  // ══ 樣品清冊／出借紀錄分區（2026-10-12）══════════════════════════
+  // 查詢形狀要與 portal/firebase-service.js 實際發出的一致（tools/test_closed_queries.js 也守查詢形狀）
+  await ok('★★ 南部使用者可 list 自己那區的樣品清冊（FBSampleItems.onSnapshot 的形狀）',
+    as(USERS.engS).collection('sample_items').where('region', '==', 'south').orderBy('seq').get());
+  await nok('★ 南部使用者不可 list 中部的樣品清冊',
+    as(USERS.engS).collection('sample_items').where('region', '==', 'central').orderBy('seq').get());
+  await nok('★ 單一地區者不可發不帶條件的樣品清冊 list',
+    as(USERS.engS).collection('sample_items').orderBy('seq').get());
+  await ok('★★ 南部使用者可 list 自己那區的出借紀錄（依日期範圍）',
+    as(USERS.engS).collection('sample_loans').where('region', '==', 'south')
+      .where('loanDate', '>=', '2026-10-01').where('loanDate', '<=', '2026-10-31')
+      .orderBy('loanDate', 'desc').get());
+  await nok('★ 南部使用者不可 list 中部的出借紀錄',
+    as(USERS.engS).collection('sample_loans').where('region', '==', 'central')
+      .where('loanDate', '>=', '2026-10-01').where('loanDate', '<=', '2026-10-31')
+      .orderBy('loanDate', 'desc').get());
+  await ok('匯入月表前查該月舊紀錄（region＋ym）',
+    as(USERS.engS).collection('sample_loans').where('region', '==', 'south').where('ym', '==', '2026-10').get());
+  await ok('南部使用者可登記自己那區的出借',
+    as(USERS.engS).collection('sample_loans').add({ itemId: 'si_south', loanDate: '2026-10-05', region: 'south' }));
+  await nok('★ 南部使用者不可登記到中部',
+    as(USERS.engS).collection('sample_loans').add({ itemId: 'si_central', loanDate: '2026-10-05', region: 'central' }));
+  await nok('★ 南部使用者不可刪除中部的出借紀錄',
+    as(USERS.engS).doc('sample_loans/sl_central').delete());
+  await ok('admin 可跨區 list 樣品清冊（不帶條件）',
+    as(USERS.admin).collection('sample_items').orderBy('seq').get());
+  await nok('樣品清冊本身仍只有 admin 能新增',
+    as(USERS.engS).collection('sample_items').add({ name: '自己加的', region: 'south', seq: 9 }));
 
   await testEnv.cleanup();
 

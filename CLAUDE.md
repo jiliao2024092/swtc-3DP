@@ -69,7 +69,7 @@ node tools/test_material_input.js
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
-# 工作看板／客戶異常／樣品出借的讀取規則（沙盒實際執行 firebase-service.js，假 Firestore 記錄查詢與寫入）：43 項
+# 工作看板／客戶異常／樣品出借的讀取規則與樣品分區（沙盒實際執行 firebase-service.js，假 Firestore 記錄查詢與寫入）：53 項
 node tools/test_closed_queries.js
 
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
@@ -84,7 +84,7 @@ node tools/test_print_log_export.js
 # JSX 實際編譯（比括號平衡強：portal 的 babel 區塊 + workboard.js/issues.js）
 # 需先 npm i @babel/core @babel/preset-react（可裝在 scratch 目錄，不必進版控）
 
-# firestore.rules 安全規則：98 項（跑本機 Firestore 模擬器，不連任何真實專案；含 list 查詢）
+# firestore.rules 安全規則：117 項（跑本機 Firestore 模擬器，不連任何真實專案；含 list 查詢）
 cd tools/rules-test && npm test
 ```
 ⚠ 規則測試需要 **JDK 21+**（firebase-tools 已不支援更舊版本）。本機的 JDK 在
@@ -296,7 +296,12 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
     - 索引：`closed+qdate`、`region+closed+qdate`、`region+closed`（兩個 collection 各一組，見 `firestore.indexes.json`）
   - **序號改查資料庫最大值**（`maxSeq(user)`）：只載入未結案時，最大序號常在已結案那邊，用已載入資料算會發出重複序號
   - **樣品出借紀錄依範圍讀**（`FBSampleLoans.onSnapshotRange`）：清冊／出借總表／統計／匯出＝上方選的「出借月份」起訖（預設本月）；甘特圖＝顯示的那一週。只在樣品分頁才讀
-    - ⚠ **匯入月表汰換舊紀錄要直接查該月**（`getMonthlyImported(ym)`），不可從畫面清單找：畫面只載入目前範圍，範圍外的舊匯入會漏刪 → 出借次數重複計算
+    - ⚠ **匯入月表汰換舊紀錄要直接查該月**（`getMonthlyImported(ym, region)`），不可從畫面清單找：畫面只載入目前範圍，範圍外的舊匯入會漏刪 → 出借次數重複計算
+  - **樣品清冊／出借紀錄分區**（2026-10-12 使用者決定，取代原本「全公司共用一份、只有中部看得到分頁」）：三區都有樣品分頁、各看各的；`FBSampleItems`／`FBSampleLoans` 都是 `regional`，單一區的人查詢帶 `where('region','==')`，`firestore.rules` 的 `sample_items`／`sample_loans` 也比對 region（`tools/rules-test` 有守）
+    - 既有資料由 `_migrate_sample_regions()` **全部改成中部**（使用者決定，含已帶別區 region 的），簽章 `inventory/main.sample_region_sig`
+    - 清冊管理仍限 admin；admin 新增樣品、匯入月表時可選地區（預設＝目前檢視的地區）
+    - ⚠ **出借紀錄的地區跟著「樣品」走，不是跟著登記的人**：admin 幫南部樣品登記，紀錄要算南部
+    - ⚠ **匯入月表只汰換「同一區」同月的舊紀錄**（`getMonthlyImported(ym, region)`）：不帶地區的話，匯入中部月表會把南部同月的紀錄一起刪掉；比對既有樣品也只比同一區（別區同名的樣品不是同一件）
 - **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill
 - `.gitignore` 須含 `venv/ functions/venv/ **/venv/ __pycache__/`
 - 「網頁沒更新」多半是 (a) 部署未觸發 或 (b) portal js 沒升 cache 版本號；若換無痕/換瀏覽器還是舊的 = 伺服器/CDN 端，非瀏覽器 cache

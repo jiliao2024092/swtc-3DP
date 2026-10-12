@@ -37,6 +37,14 @@
       </span>
     );
   }
+  // 樣品分區（2026-10-12）：admin 幫各區建檔／匯入時選地區
+  function RegionPick({ value, onChange }) {
+    return (
+      <select style={S_INP} value={value} onChange={e=>onChange(e.target.value)}>
+        {(window.REGIONS||[]).map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+      </select>
+    );
+  }
   // 告訴使用者「已完成的資料讀到哪裡」——不講的話，範圍外的已完成案件像是不見了
   function ClosedNote({ range, closedRange, loaded }) {
     if (!loaded) return null;
@@ -234,8 +242,8 @@
   // （2026-07-22 應使用者要求移除，登記功能本身保留）
 
   // ── 樣品清冊 Modal（維護樣品主檔，限編輯者）──
-  function SampleModal({ item, onClose, onSave }) {
-    const empty = { name:'', material:'', location:'', remark:'' };
+  function SampleModal({ item, onClose, onSave, defaultRegion, canPickRegion }) {
+    const empty = { name:'', material:'', location:'', remark:'', region: defaultRegion || 'central' };
     const [form, setForm] = useState(item?{...item}:empty);
     const [busy, setBusy] = useState(false);
     const set = (k,v) => setForm(f=>({...f,[k]:v}));
@@ -256,6 +264,8 @@
               <div className="m-field"><label style={LBL}>材質（材料種類）</label><input style={S_INP} value={form.material||''} onChange={e=>set('material',e.target.value)} placeholder="例：Grey V5"/></div>
             </div>
             <div className="m-field"><label style={LBL}>位置</label><input style={S_INP} value={form.location||''} onChange={e=>set('location',e.target.value)} placeholder="例：樣品箱1 / 桌面"/></div>
+            {canPickRegion && <div className="m-field"><label style={LBL}>地區</label>
+              <RegionPick value={(window.normRegion ? window.normRegion(form.region) : form.region) || 'central'} onChange={v=>set('region',v)}/></div>}
             <div className="m-field"><label style={LBL}>備註</label><textarea style={{...S_INP,resize:'vertical'}} value={form.remark||''} onChange={e=>set('remark',e.target.value)} rows={2}/></div>
           </div>
           <div className="m-foot"><button className="btn-cancel" onClick={onClose}>取消</button><button className="btn-save" onClick={save} disabled={busy}>{busy?'儲存中...':'💾 儲存'}</button></div>
@@ -648,8 +658,11 @@
     return { ym: ymFound, items };
   }
 
-  function ImportMonthlyModal({ samples, onClose, onImport }) {
+  function ImportMonthlyModal({ samples, onClose, onImport, defaultRegion }) {
     const { useState, useRef } = React;
+    // 匯入到哪一區：月表、比對既有樣品、汰換同月舊紀錄都只看這一區（2026-10-12 分區）
+    const [region, setRegion] = useState(defaultRegion || 'central');
+    const samplesIn = samples.filter(s => (window.normRegion ? window.normRegion(s.region) : (s.region||'central')) === region);
     const [parsed, setParsed] = useState(null);   // { ym, items, sheet, fileName }
     const [ym, setYm] = useState('');
     const [autoCreate, setAutoCreate] = useState(true);
@@ -678,23 +691,23 @@
     };
 
     const totalMarks = parsed ? parsed.items.reduce((s,it)=>s+it.days.length,0) : 0;
-    const knownNames = new Set(samples.map(s=>(s.name||'').trim()));
+    const knownNames = new Set(samplesIn.map(s=>(s.name||'').trim()));
     const newNames   = parsed ? [...new Set(parsed.items.map(i=>i.name).filter(n=>!knownNames.has(n)))] : [];
     // 該月先前匯入過幾筆：直接查該月（畫面只載入目前選的月份範圍，從畫面上找會算錯）
     const [alreadyN, setAlreadyN] = useState(0);
     React.useEffect(() => {
       if (!parsed || !/^\d{4}-\d{2}$/.test(ym)) { setAlreadyN(0); return; }
       let alive = true;
-      FBSampleLoans.getMonthlyImported(ym).then(r => { if (alive) setAlreadyN(r.length); })
-                                          .catch(() => { if (alive) setAlreadyN(0); });
+      FBSampleLoans.getMonthlyImported(ym, region).then(r => { if (alive) setAlreadyN(r.length); })
+                                                  .catch(() => { if (alive) setAlreadyN(0); });
       return () => { alive = false; };
-    }, [parsed, ym]);
+    }, [parsed, ym, region]);
 
     const confirm = async () => {
       if (!parsed) return;
       if (!/^\d{4}-\d{2}$/.test(ym)) { showToast('月份格式需為 YYYY-MM','err'); return; }
       setBusy(true);
-      try { await onImport({ items:parsed.items, ym, autoCreate }); onClose(); }
+      try { await onImport({ items:parsed.items, ym, autoCreate, region }); onClose(); }
       catch(e){ showToast('匯入失敗：'+(e.message||e),'err'); }
       finally { setBusy(false); }
     };
@@ -1108,7 +1121,8 @@
       const u3 = FBEquipment.onSnapshot((r,m)=>{ setEquipment(r); setMoreE(!!(m&&m.hasMore)); setLoadErr(e=>e||errOf(m)); chk(); }, user, limE);
       // 樣品清冊是全公司共用的資產，不分區（借用人可能跨廠區借還），所以刻意不過濾；
       // 筆數有限，不設上限。出借紀錄會無限增長，改到下方依範圍讀。
-      const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
+      // 樣品清冊 2026-10-12 起分區：帶 user → 單一區的人只讀自己那區（規則也比對 region）
+      const u4 = FBSampleItems.onSnapshot(r=>setSamples(r), user);
       return () => { u1(); u2(); u3(); u4(); };
     }, [user, limI, limE]);
 
@@ -1131,9 +1145,9 @@
       : (loanMonths.from === loanMonths.to ? loanMonths.from : `${loanMonths.from} ～ ${loanMonths.to}`);
     useEffect(() => {
       if (sub !== 'samples' || !loanMonths.from || !loanMonths.to) { setLoans([]); setLoanErr(''); return; }
-      const u = FBSampleLoans.onSnapshotRange((r,m)=>{ setLoans(r); setLoanErr(errMsg(m)); }, loanRange.from, loanRange.to);
+      const u = FBSampleLoans.onSnapshotRange((r,m)=>{ setLoans(r); setLoanErr(errMsg(m)); }, loanRange.from, loanRange.to, user);
       return () => u();
-    }, [sub, loanRange.from, loanRange.to]);
+    }, [sub, loanRange.from, loanRange.to, user]);
 
     // 「載入更早的」按鈕：拿滿上限才顯示，按一次多載 100 筆
     const loadMoreBtn = (more, setLim) => more
@@ -1239,21 +1253,30 @@
     const saveS = async f => { if(editItem){await FBSampleItems.update(editItem._id,f);showToast('已更新 ✓');}else{await FBSampleItems.add({...f,seq:nextSeq(samples)});showToast('已新增 ✓');}setModal(null); };
     const delS  = async it => { if(!confirm(`刪除樣品「${it.name}」？其出借紀錄不會一併刪除。`))return; await FBSampleItems.del(it._id); showToast('已刪除','inf'); };
     // 出借紀錄（開放 viewer 登記）
-    const addLoan    = async l  => { await FBSampleLoans.add(l); showToast('已登記出借 ✓'); };
+    // 出借紀錄的地區跟著「樣品」走，不是跟著登記的人：admin 幫南部樣品登記，紀錄要算南部的
+    const addLoan    = async l  => {
+      const smp = samples.find(s=>s._id===l.itemId);
+      const region = (smp && window.normRegion) ? window.normRegion(smp.region) : ((smp && smp.region) || sampleWriteRegion);
+      await FBSampleLoans.add({ ...l, region });
+      showToast('已登記出借 ✓');
+    };
     const delLoan    = async l  => { if(!confirm('刪除此出借紀錄？'))return; await FBSampleLoans.del(l._id); showToast('已刪除','inf'); };
-    const loansOf = id => loans.filter(l=>l.itemId===id);
+    const loansOf = id => loansR.filter(l=>l.itemId===id);
 
     // 每月登記表匯入：把月表各勾選格批次寫成 sample_loans（同月重匯先汰換舊的月表匯入紀錄，避免重複計算）
-    const importMonthly = async ({ items, ym, autoCreate }) => {
+    const importMonthly = async ({ items, ym, autoCreate, region }) => {
       // 步驟一：汰換同月舊的月表匯入紀錄
       // ★ 直接查該月：畫面只載入目前選的月份範圍，從畫面清單找會漏刪 → 重複計算
-      const old = await FBSampleLoans.getMonthlyImported(ym);
+      // ★ 只汰換「同一區」同月的舊紀錄：各區各自匯入自己的月表
+      const old = await FBSampleLoans.getMonthlyImported(ym, region);
       for (let i=0;i<old.length;i+=10) await Promise.all(old.slice(i,i+10).map(o=>FBSampleLoans.del(o._id)));
       // 步驟二：自動新增缺少樣品到清冊（itemId 交由下次快照連結；紀錄本身以 itemName/material 即可統計）
-      const byName = {}; samples.forEach(s=>byName[(s.name||'').trim()]=s);
+      // 只比對這一區的樣品：別區同名的樣品不可被當成同一件
+      const byName = {}; samples.filter(s => (window.normRegion ? window.normRegion(s.region) : (s.region||'central')) === region)
+                                 .forEach(s=>byName[(s.name||'').trim()]=s);
       if (autoCreate) {
         let seq = nextSeq(samples);
-        for (const it of items) if (!byName[it.name]) { await FBSampleItems.add({ name:it.name, material:it.material||'', location:it.location||'', seq:seq++ }); byName[it.name]={_id:''}; }
+        for (const it of items) if (!byName[it.name]) { await FBSampleItems.add({ name:it.name, material:it.material||'', location:it.location||'', seq:seq++, region }); byName[it.name]={_id:''}; }
       }
       // 步驟三：每個勾選格產生一筆出借紀錄（當天借出、當天歸還，避免永遠顯示借出中）
       const recs = [];
@@ -1261,7 +1284,7 @@
         const s = byName[it.name];
         for (const d of it.days) {
           const loanDate = `${ym}-${String(d).padStart(2,'0')}`;
-          recs.push({ itemId:(s&&s._id)||'', itemName:it.name, material:it.material||'', loanDate, remark:'每月登記表匯入', src:'monthly', ym });
+          recs.push({ itemId:(s&&s._id)||'', itemName:it.name, material:it.material||'', loanDate, remark:'每月登記表匯入', src:'monthly', ym, region });
         }
       }
       for (let i=0;i<recs.length;i+=10) await Promise.all(recs.slice(i,i+10).map(r=>FBSampleLoans.add(r)));
@@ -1273,7 +1296,7 @@
       const d = new Date(); const ymTitle = `${d.getFullYear()}_${String(d.getMonth()+1).padStart(2,'0')}`;
       const header = ['編號','位置','樣品名稱','材質', ...Array.from({length:31},(_,i)=>i+1)];
       const aoa = [[`${ymTitle}月樣品登記`], [], header];
-      [...samples].sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach((s,i)=> aoa.push([i+1, s.location||'桌面', s.name||'', s.material||'']));
+      [...samplesR].sort((a,b)=>(a.seq||0)-(b.seq||0)).forEach((s,i)=> aoa.push([i+1, s.location||'桌面', s.name||'', s.material||'']));
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '月表');
       XLSX.writeFile(wb, `每月樣品登記表_空白_${ymTitle}.xlsx`);
@@ -1283,7 +1306,7 @@
     // 借出統計：每個樣品 / 每種材料的借出次數（依次數由大到小）
     const loanStats = () => {
       const bySample={}, byMaterial={};
-      loans.forEach(l=>{
+      loansR.forEach(l=>{
         const smp = samples.find(s=>s._id===l.itemId);
         const sName = l.itemName || (smp&&smp.name) || '（未知樣品）';
         bySample[sName] = (bySample[sName]||0)+1;
@@ -1291,19 +1314,19 @@
         byMaterial[mat] = (byMaterial[mat]||0)+1;
       });
       const sortDesc = o => Object.entries(o).map(([label,count])=>({label,count})).sort((a,b)=>b.count-a.count);
-      return { bySample:sortDesc(bySample), byMaterial:sortDesc(byMaterial), total:loans.length };
+      return { bySample:sortDesc(bySample), byMaterial:sortDesc(byMaterial), total:loansR.length };
     };
 
     // 匯出 Excel：樣品清冊 + 出借紀錄 + 借出統計 三個工作表
     const exportSamples = () => {
       if (!window.XLSX) { showToast('匯出元件尚未載入，請稍候重試','err'); return; }
       const wb = XLSX.utils.book_new();
-      const itemRows = [...samples].sort((a,b)=>(a.seq||0)-(b.seq||0)).map((it,i)=>({
+      const itemRows = [...samplesR].sort((a,b)=>(a.seq||0)-(b.seq||0)).map((it,i)=>({
         '編號': i+1, '樣品名稱': it.name||'', '材質': it.material||'', '位置': it.location||'',
         '出借次數': loansOf(it._id).length, '備註': it.remark||'',
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(itemRows.length?itemRows:[{'編號':'','樣品名稱':''}]), '樣品清冊');
-      const loanRows = [...loans].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||'')).map(l=>({
+      const loanRows = [...loansR].sort((a,b)=>(b.loanDate||'').localeCompare(a.loanDate||'')).map(l=>({
         '樣品名稱': l.itemName||'', '材質': l.material||'', '借出日期': l.loanDate||'', '備註': l.remark||'',
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(loanRows.length?loanRows:[{'樣品名稱':'','借出日期':''}]), '出借紀錄');
@@ -1324,6 +1347,12 @@
     // 地區比對：舊資料沒有 region 欄位 → normRegion 視為中部，與其他地方一致
     const matchRegion = it => !regionF
       || (window.normRegion ? window.normRegion(it.region) : it.region) === regionF;
+    // 樣品分區：畫面上的樣品與出借紀錄一律先套地區濾器（單一區的人本來就只讀到自己那區）
+    const samplesR = samples.filter(matchRegion);
+    const loansR   = loans.filter(matchRegion);
+    // admin 新增樣品／匯入月表的預設地區：目前檢視的地區，選「所有地區」時退回自己那區
+    const sampleWriteRegion = regionF || (window.regionOf ? window.regionOf(user) : 'central');
+    const canPickSampleRegion = !!(window.canViewAllRegions && window.canViewAllRegions(user));
     const regionSelect = () => (window.canViewAllRegions && window.canViewAllRegions(user))
       ? <select className="t-sel" value={regionF} onChange={e=>setRegionF(e.target.value)}>
           <option value="">所有地區</option>
@@ -1402,21 +1431,19 @@
     ), editMode?'完成編輯':'編輯模式');
 
     // ── sidebar subtab 樣式 ──
-    // 樣品出借只有台中（中部）看得到：實體樣品箱就在台中，其他廠區借不到也管不到，
-    // 對他們是純噪音。★ 可跨區檢視者（admin／主管）不受限 —— 樣品清冊需要有人維護，
-    // 而維護的人不一定設在中部。
-    const showSamples = (window.regionOf ? window.regionOf(user) : 'central') === 'central'
-      || !!(window.canViewAllRegions && window.canViewAllRegions(user));
+    // 樣品出借 2026-10-12 起分區，三區都看得到分頁、各看各的（使用者決定）。
+    //（原本只有中部看得到：當時全公司共用一份清冊，實體樣品箱在台中）
+    const showSamples = true;
     const SUBTABS = [
       { key:'anomaly', label:'客戶異常', count:anomalies.length },
       { key:'ipa',     label:'IPA 採購', count:ipa.length },
       { key:'tools',   label:'設備清單', count:equipment.length },
-      ...(showSamples ? [{ key:'samples', label:'樣品出借', count:samples.length }] : []),
+      ...(showSamples ? [{ key:'samples', label:'樣品出借', count:samplesR.length }] : []),
       { key:'stats',   label:'分析',     count:null },
     ];
 
-    // 樣品清冊篩選
-    const filtS = samples.filter(it=>{
+    // 樣品清冊篩選（含地區濾器：跨區者切換「檢視地區」時要切得動）
+    const filtS = samplesR.filter(it=>{
       const s=search4.toLowerCase();
       if(s && !(it.name||'').toLowerCase().includes(s) && !(it.material||'').toLowerCase().includes(s) && !(it.location||'').toLowerCase().includes(s)) return false;
       return true;
@@ -1647,6 +1674,7 @@
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <input value={search4} onChange={e=>setSearch4(e.target.value)} placeholder="搜尋名稱 / 材質 / 位置"/>
               </div>
+              {regionSelect()}
               <span className="toolbar-sub">共 <b style={{color:'var(--ink)'}}>{filtS.length}</b> 件</span>
               {sampleView!=='gantt'
                 ? <RangeInputs label="出借月份" type="month" range={loanMonths}
@@ -1695,13 +1723,13 @@
             </div>}
 
             {/* 甘特圖行事曆（列=樣品、欄=日期，雙擊格子快速登記出借） */}
-            {sampleView==='gantt' && <SampleGanttView samples={sortArr(filtS,sampleSort)} loans={loans} onOpenSample={openSampleLoans} onQuickAdd={openQuickAdd} onRangeChange={setGanttRange}/>}
+            {sampleView==='gantt' && <SampleGanttView samples={sortArr(filtS,sampleSort)} loans={loansR} onOpenSample={openSampleLoans} onQuickAdd={openQuickAdd} onRangeChange={setGanttRange}/>}
 
             {/* 出借總表（原始表單樣式：每列一樣品，展開其所有借出紀錄） */}
             {sampleView==='ledger' && <LoanLedger samples={sortArr(filtS,sampleSort)} loansOf={loansOf} canManage={canD} onDelLoan={delLoan}/>}
 
             {/* 借出統計視窗（以出借紀錄為來源、可選維度與圖表） */}
-            {sampleView==='stats' && <LoanStatsPanel loans={loans} samples={samples} rangeLabel={loanRangeLabel}/>}
+            {sampleView==='stats' && <LoanStatsPanel loans={loansR} samples={samplesR} rangeLabel={loanRangeLabel}/>}
           </>}
 
           {/* 分析 */}
@@ -1717,10 +1745,10 @@
           {modal==='a'&&<AnomalyModal item={editItem} onClose={()=>setModal(null)} onSave={saveA}/>}
           {modal==='i'&&<IPAModal     item={editItem} onClose={()=>setModal(null)} onSave={saveI}/>}
           {modal==='e'&&<EquipModal   item={editItem} onClose={()=>setModal(null)} onSave={saveE}/>}
-          {modal==='s'&&<SampleModal  item={editItem} onClose={()=>setModal(null)} onSave={saveS}/>}
+          {modal==='s'&&<SampleModal  item={editItem} onClose={()=>setModal(null)} onSave={saveS} defaultRegion={sampleWriteRegion} canPickRegion={canPickSampleRegion}/>}
           {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} canManage={canD} prefill={ganttPrefill} rangeLabel={loanRangeLabel}
                                   onClose={closeLoanModal} onAddLoan={addLoan} onDelLoan={delLoan}/>}
-          {importOpen&&<ImportMonthlyModal samples={samples} onClose={()=>setImportOpen(false)} onImport={importMonthly}/>}
+          {importOpen&&<ImportMonthlyModal samples={samples} onClose={()=>setImportOpen(false)} onImport={importMonthly} defaultRegion={sampleWriteRegion}/>}
         </div>
       </div>
     );
