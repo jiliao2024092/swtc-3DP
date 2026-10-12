@@ -448,14 +448,6 @@ def canon_material(name_or_code: Optional[str]) -> Optional[str]:
     return family_code(code if code else name_or_code)
 
 
-def material_display_name(code: Optional[str]) -> Optional[str]:
-    """家族代碼 → 顯示名稱。"""
-    if not code:
-        return code
-    fam = family_code(code)
-    return FAMILY_TO_NAME.get(fam, code)
-
-
 # 版本號特例：不同代碼其實是「同一個實際產品版本」，末 2 碼不能直接拿來比新舊。
 # FLRG1002 與 FLRG1011 在 Formlabs 對照中都是 "Rigid 10K V1.1"，但末 2 碼是 02 vs 11，
 # 直接比會把 FLRG1002 判成舊版而不扣庫存 → 這裡把它拉平成跟 FLRG1002 同一個版本號。

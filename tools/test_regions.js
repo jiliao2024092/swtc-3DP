@@ -522,8 +522,9 @@ console.log('── 工作看板材料下拉：分區與停用規則 ──');
     eq(/doc\(region\)/.test(onSnap[0]), true, '★ 要訂閱 inventory/{region}');
     eq(/disabled_split_v1 === true/.test(onSnap[0]), true,
        '★ 停用清單要看 disabled_split_v1 旗標決定用哪一份（與 inventory.html 一致）');
-    eq(/region === 'central'/.test(onSnap[0]), true,
-       '中區的 region 文件不存在時才退回 main 的庫存（北/南不可退回，否則顯示成中部的料）');
+    // 2026-10-12 移除「中區退回 main 庫存」的分區前退路（main 的庫存從分區後就凍結了）
+    eq(/m\.stock|m\.cartridges/.test(onSnap[0]), false,
+       '★ 不可再拿 inventory/main 的凍結庫存當材料來源');
   }
 
   // 停用判斷順序要與 inventory.html 一致：停用優先於恢復顯示

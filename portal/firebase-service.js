@@ -502,7 +502,7 @@
     // ★ 原本讀 inventory/main：那裡的 stock 從分區後就凍結了，停用清單也是三區共用的
     //   舊版本 —— 工作看板的材料下拉因此與材料庫存頁對不起來（2026-10-06 修正）。
     // ★ 組合規則照抄 inventory.html 的 applyRegionInv()，兩邊不一致就會再走偏：
-    //   - 庫存／樹脂罐：region 文件為準；中區的 region 文件還不存在時才退回 main
+    //   - 庫存／樹脂罐：region 文件為準（2026-10-12 起不再退回 main 的凍結庫存）
     //   - 停用／恢復顯示：region 文件有 disabled_split_v1 旗標才用它的，否則沿用 main 的舊清單
     onSnapshot(cb) {
       const region = (window.regionOf ? window.regionOf(window._portalUser) : 'central');
@@ -510,11 +510,10 @@
       const emit = () => {
         if (!mainReady || !regionReady) return;
         const m = mainData || {}, r = regionData;
-        const useMainStock = !r && region === 'central';
         const split = !!(r && r.disabled_split_v1 === true);
         cb(materialDisplayNames({
-          stock:      r ? (r.stock || {})      : (useMainStock ? (m.stock || {}) : {}),
-          cartridges: r ? (r.cartridges || {}) : (useMainStock ? (m.cartridges || {}) : {}),
+          stock:      r ? (r.stock || {})      : {},
+          cartridges: r ? (r.cartridges || {}) : {},
           disabled_materials: split ? (r.disabled_materials || []) : (m.disabled_materials || []),
           disabled_overrides: split ? (r.disabled_overrides || []) : (m.disabled_overrides || []),
         }));
