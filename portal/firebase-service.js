@@ -525,24 +525,14 @@
         snap => { regionData = snap.exists ? snap.data() : null; regionReady = true; emit(); }, onErr);
       return () => { u1(); u2(); };
     },
-    // Markforged 線材：讀「登入者所屬地區」那一份。
-    // ★ 中區若還沒建立分區文件，退回舊的單一文件 inventory/markforged
-    //   （與 inventory.html 的相容邏輯一致）；北/南沒有就是空的，
-    //   那是正確的——不可退回舊文件，否則會把中部的材料顯示成北部的。
+    // Markforged 線材：讀「登入者所屬地區」那一份（inventory/markforged_{region}）。
+    // ★ 2026-10-12 移除「中區退回舊的單一文件 inventory/markforged」的相容退路：
+    //   markforged_central 早已建立。文件不存在時一律當空的。
     onMarkforgedSnapshot(cb) {
       const region = (window.regionOf ? window.regionOf(window._portalUser) : 'central');
       const docId = 'markforged_' + region;
       return db.collection('inventory').doc(docId).onSnapshot(
-        async snap => {
-          let data = snap.exists ? snap.data() : null;
-          if (!data && region === 'central') {
-            try {
-              const legacy = await db.collection('inventory').doc('markforged').get();
-              if (legacy.exists) data = legacy.data();
-            } catch (e) { /* 讀不到就當空的 */ }
-          }
-          cb(mfMaterialNames(data));
-        },
+        snap => cb(mfMaterialNames(snap.exists ? snap.data() : null)),
         err => {
           console.error('[inventory/markforged] onSnapshot 失敗:', err);
           cb({ plastics: [], fibers: [] });

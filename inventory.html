@@ -1189,32 +1189,17 @@ function applyRegionInv(){
 // ── Markforged 線材／耗材的分區庫存（inventory/markforged_{region}）──────────
 // 與 Formlabs 一樣：三個廠區的線材與耗材是三份獨立的實體庫存，台北的碳纖維捲
 // 不可能給台南用，混成一份會讓每一區都以為自己有那些料。
-// ★ 相容既有資料：舊的單一文件 inventory/markforged 就是「中部」的庫存
-//   （既有資料全歸中區，與 Formlabs 播種同一個原則）。中區的分區文件還不存在時
-//   沿用它，第一次存檔就會寫成 markforged_central。北/南從空的開始 ——
-//   絕不可退回舊文件，否則會把中部的量顯示成北部的（看起來正常但完全錯誤）。
-const MF_LEGACY_DOC = 'markforged';
+// ★ 2026-10-12 移除「中區分區文件不存在時退回舊的單一文件 inventory/markforged」的相容退路：
+//   markforged_central 早已建立（使用者在 Firestore Console 確認過）。文件不存在時一律當空的。
 function mfRegionDocId(region){ return 'markforged_' + region; }
 
 function subscribeMfRegionInventory(){
     if (unsubscribeMf) { unsubscribeMf(); unsubscribeMf = null; }
     const region = activeRegion;
     const docId = mfRegionDocId(region);
-    unsubscribeMf = onSnapshot(doc(db, 'inventory', docId), async (snap) => {
-        let d = snap.exists() ? snap.data() : null;
-        if (!d && region === 'central') {
-            // 中區尚未建立分區文件 → 一次性讀舊文件承接（不常駐訂閱，省讀取額度）
-            try {
-                const legacy = await getDoc(doc(db, 'inventory', MF_LEGACY_DOC));
-                if (legacy.exists()) {
-                    d = legacy.data();
-                    console.warn('[mf-region-inv] inventory/' + docId +
-                        ' 尚未建立，暫時沿用 inventory/' + MF_LEGACY_DOC);
-                }
-            } catch (err) { console.warn('[mf-region-inv] 讀取舊文件失敗:', err.message); }
-        }
+    unsubscribeMf = onSnapshot(doc(db, 'inventory', docId), (snap) => {
         if (activeRegion !== region) return;   // 期間又被切走了，這份結果已過期
-        d = d || {};
+        const d = snap.exists() ? (snap.data() || {}) : {};
         mfInv.stock  = d.stock  || {};
         mfInv.safety = d.safety || {};
         mfInv.loaded = d.loaded || {};
