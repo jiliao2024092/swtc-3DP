@@ -1559,6 +1559,45 @@ def _heal_closed_flags(db) -> int:
     return fixed
 
 
+# ── 樣品清冊／出借紀錄分區：既有資料一律歸中部（2026-10-12 使用者決定）──────────
+# ★ 為什麼需要：樣品原本刻意不分區（全公司共用一份），改成各區各看各的之後，
+#   前端對單一區的人會用 where('region','==',自己那區) 查詢 —— Firestore 查不到
+#   「沒有 region 欄位」的文件，舊資料會整筆從畫面消失。所以先把 region 補齊。
+# ★ 使用者決定「既有資料全部歸中部」（實體樣品箱在台中），所以已經帶了別區 region 的
+#   也一律改成中部，不是只補缺漏的。
+# ★ 只跑一次：簽章存 inventory/main.sample_region_sig，之後每輪 0 次讀取。
+#   之後新增的樣品／出借紀錄由前端帶上正確的地區，這裡不再碰。
+SAMPLE_REGION_SIG = "v1"
+SAMPLE_REGION_COLLECTIONS = ("sample_items", "sample_loans")
+
+
+def _migrate_sample_regions(db, inv_ref, inv) -> int:
+    if (inv or {}).get("sample_region_sig") == SAMPLE_REGION_SIG:
+        return 0
+    changed = 0
+    batch, pending = db.batch(), 0
+    for coll in SAMPLE_REGION_COLLECTIONS:
+        n_all = n_fix = 0
+        for snap in db.collection(coll).stream():
+            n_all += 1
+            if (snap.to_dict() or {}).get("region") == "central":
+                continue                          # 已經是中部，不寫（內容相同也計費）
+            batch.update(snap.reference, {"region": "central"})
+            pending += 1
+            n_fix += 1
+            if pending >= 400:
+                batch.commit()
+                batch, pending = db.batch(), 0
+        changed += n_fix
+        print(f"[sync] 樣品分區 {coll}：共 {n_all} 筆，改成中部 {n_fix} 筆")
+    if pending:
+        batch.commit()
+    # ★ 全部寫完才記簽章：中途失敗下一輪整批重來（已是中部的會跳過，重跑安全）
+    inv_ref.set({"sample_region_sig": SAMPLE_REGION_SIG}, merge=True)
+    print(f"[sync] 樣品分區補齊完成（{SAMPLE_REGION_SIG}）：共更新 {changed} 筆")
+    return changed
+
+
 # ── 同步柵欄：同一時間只允許一輪 Formlabs 同步 ─────────────────────────
 # ★ 為什麼需要（2026-10-06 實際發生）：排程那一輪還在跑（一輪約 2.5 分鐘），
 #   使用者在網頁按了「立即同步」，兩輪都在對方寫完之前讀到「這 2 筆列印還沒處理」，
@@ -1840,6 +1879,11 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             stats["closed_flags_healed"] = _heal_closed_flags(db)
         except Exception as _ce:
             print(f"[sync][警示] 結案欄位補齊失敗（不影響本輪同步）: {_ce}")
+        # 樣品清冊／出借紀錄分區（見 _migrate_sample_regions）。★ 獨立 try/except
+        try:
+            stats["sample_regions_migrated"] = _migrate_sample_regions(db, inv_ref, inv)
+        except Exception as _sre:
+            print(f"[sync][警示] 樣品分區補齊失敗（不影響本輪同步）: {_sre}")
         family_latest = inv["family_latest_version"]
 
         # 4b. 北中南分區的庫存文件 inventory/{region}

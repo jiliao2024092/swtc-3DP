@@ -135,6 +135,32 @@
         {"fieldPath": "region", "order": "ASCENDING"},
         {"fieldPath": "closed", "order": "ASCENDING"}
       ]
+    },
+
+    {
+      "_comment": "2026-10-12：樣品清冊／出借紀錄改成分區。單一區的人會加 where('region','==')，與 orderBy／範圍條件組合需要複合索引。",
+      "collectionGroup": "sample_items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "seq", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "sample_loans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "loanDate", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "sample_loans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "ym", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

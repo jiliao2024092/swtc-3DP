@@ -852,6 +852,26 @@ check("perform_sync 有呼叫一次性補齊", "_migrate_closed_flags(db, inv_re
 check("perform_sync 有呼叫每輪補正", "_heal_closed_flags(db)" in src, True)
 check("★ 獨立 try/except（補齊失敗不可讓扣庫存停擺）", "結案欄位補齊失敗（不影響本輪同步）" in src, True)
 
+print("── 樣品分區：既有資料一律歸中部（假 Firestore 實際執行）──")
+check("main.py 找得到樣品分區補齊", "_migrate_sample_regions" in _cl, True)
+_si = _CColl({"s1": {"name": "角度調整器"},                       # 沒有 region → 補中部
+              "s2": {"name": "齒輪", "region": "central"},        # 已是中部 → 不寫
+              "s3": {"name": "外殼", "region": "south"}})         # ★ 使用者決定全部歸中部 → 也要改
+_sl = _CColl({"l1": {"loanDate": "2026-09-01"},
+              "l2": {"loanDate": "2026-09-02", "region": "north"}})
+_db3 = _CDb({"sample_items": _si, "sample_loans": _sl})
+_inv3 = _CInvRef()
+check("只寫不是中部的（5 筆裡 4 筆）", _cl["_migrate_sample_regions"](_db3, _inv3, {}), 4)
+check("★ 沒有 region 的舊樣品補成中部（否則單一區的查詢查不到它）", _si.docs["s1"]["region"], "central")
+check("★ 已帶別區 region 的也改成中部（使用者決定既有資料全部歸中部）", _si.docs["s3"]["region"], "central")
+check("出借紀錄也一起補", (_sl.docs["l1"]["region"], _sl.docs["l2"]["region"]), ("central", "central"))
+check("完成後記簽章", _inv3.data.get("sample_region_sig"), _cl["SAMPLE_REGION_SIG"])
+_si.reads = 0
+check("簽章相同 → 一次都不讀（之後新增的資料不可被改回中部）",
+      (_cl["_migrate_sample_regions"](_db3, _inv3, {"sample_region_sig": _cl["SAMPLE_REGION_SIG"]}), _si.reads), (0, 0))
+check("perform_sync 有呼叫樣品分區補齊（獨立 try/except）",
+      "_migrate_sample_regions(db, inv_ref, inv)" in src and "樣品分區補齊失敗（不影響本輪同步）" in src, True)
+
 total = passed + failed
 print(f"\n{total} 項：{passed} PASS / {failed} FAIL")
 sys.exit(1 if failed else 0)
