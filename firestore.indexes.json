@@ -83,6 +83,58 @@
         {"fieldPath": "region", "order": "ASCENDING"},
         {"fieldPath": "seq", "order": "DESCENDING"}
       ]
+    },
+
+    {
+      "_comment": "2026-10-12：工作看板與客戶異常改成「未結案全讀（closed==false）、已結案依日期範圍查（closed==true + qdate 範圍）」。跨區者不帶 region、單一區的人會加 where('region','==')，兩種形狀都要有索引。索引建好前查詢會 failed-precondition，所以要先部署索引與後端補欄位、確認完成後才部署前端。",
+      "collectionGroup": "workboard_orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "closed", "order": "ASCENDING"},
+        {"fieldPath": "qdate", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "workboard_orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "closed", "order": "ASCENDING"},
+        {"fieldPath": "qdate", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "workboard_orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "closed", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_anomalies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "closed", "order": "ASCENDING"},
+        {"fieldPath": "qdate", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_anomalies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "closed", "order": "ASCENDING"},
+        {"fieldPath": "qdate", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "issues_anomalies",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "region", "order": "ASCENDING"},
+        {"fieldPath": "closed", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

@@ -1,0 +1,22 @@
+{
+  "_說明": "工作看板／客戶異常「已結案」判定的共用案例。後端 functions/main.py（wb_is_closed／anomaly_is_closed）與前端 portal/firebase-service.js（closedOf）必須對每一筆給出相同結果 —— 判定不一致的那筆會在「未結案」與「已結案」兩個查詢之間反覆搬家。tools/test_deduct_outcome.py 與 tools/test_regions.js 都讀這份檔案。",
+  "workboard": [
+    { "doc": {}, "closed": false, "why": "空工單＝未結案" },
+    { "doc": { "progress": 50 }, "closed": false, "why": "進行中" },
+    { "doc": { "progress": 100 }, "closed": true, "why": "進度 100 ＝完成" },
+    { "doc": { "progress": "100" }, "closed": false, "why": "★ 字串 100 不算（照抄 JS 的嚴格相等）" },
+    { "doc": { "progress": true }, "closed": false, "why": "布林值不可被當成數字 1" },
+    { "doc": { "complete": "是" }, "closed": true, "why": "完成＝是" },
+    { "doc": { "complete": "否", "progress": 80 }, "closed": false, "why": "完成＝否" },
+    { "doc": { "remark": "客戶取消" }, "closed": true, "why": "備註含「取消」＝已取消" },
+    { "doc": { "remark": "已取消，改下週" }, "closed": true, "why": "「取消」在中間也算" },
+    { "doc": { "remark": "正常出貨" }, "closed": false, "why": "一般備註" },
+    { "doc": { "material": "需調撥", "progress": 30 }, "closed": false, "why": "卡料（blocked）不算結案" }
+  ],
+  "anomaly": [
+    { "doc": { "status": "已完成" }, "closed": true, "why": "已完成" },
+    { "doc": { "status": "處理中" }, "closed": false, "why": "處理中" },
+    { "doc": { "status": "暫停" }, "closed": false, "why": "★ 暫停不算結案（仍要出現在預設畫面）" },
+    { "doc": {}, "closed": false, "why": "★ 沒有狀態的舊資料一律當未結案，才不會從畫面消失" }
+  ]
+}

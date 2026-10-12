@@ -734,6 +734,124 @@ check("★ Formlabs 正在同步時不可擋到 Markforged（兩個柵欄各自�
 check("★ 沒有入口直接呼叫 _perform_sync_eiger_unlocked（會繞過柵欄）",
       len(re.findall(r"_perform_sync_eiger_unlocked\(", src)), 2)
 
+# ── 工作看板／客戶異常的 closed／qdate（2026-10-12）────────────────────
+print("── 結案欄位：判定規則（與前端共用 tools/closed_cases.json）──")
+_cl_src = re.search(r"^CLOSED_FLAG_SIG = .*?(?=^# ── 同步柵欄)", src, re.M | re.S)
+check("main.py 找得到結案欄位段落", bool(_cl_src), True)
+_cl = {"datetime": datetime, "re": re}
+exec(_cl_src.group(0), _cl)
+import json as _json, os as _os
+_cases = _json.load(open(_os.path.join(_os.path.dirname(__file__), "closed_cases.json"), encoding="utf-8"))
+for c in _cases["workboard"]:
+    check(f"工作看板：{c['why']}", _cl["wb_is_closed"](c["doc"]), c["closed"])
+for c in _cases["anomaly"]:
+    check(f"客戶異常：{c['why']}", _cl["anomaly_is_closed"](c["doc"]), c["closed"])
+
+_ts = datetime.datetime(2026, 9, 30, 20, 0, tzinfo=datetime.timezone.utc)   # 台灣 10/1 04:00
+check("qdate：有業務日期就用它", _cl["closed_qdate"]({"dueDate": "2026-08-01", "createdAt": _ts}, "dueDate"), "2026-08-01")
+check("★ qdate：沒填業務日期 → 退回建立日期（台灣日期，不是 UTC）",
+      _cl["closed_qdate"]({"dueDate": "", "createdAt": _ts}, "dueDate"), "2026-10-01")
+check("qdate：格式不對的日期不採用", _cl["closed_qdate"]({"date": "9/1", "createdAt": _ts}, "date"), "2026-10-01")
+check("qdate：什麼都沒有 → 空字串（不可拋錯）", _cl["closed_qdate"]({}, "date"), "")
+check("內容一樣就不寫（Firestore 值沒變也計費）",
+      _cl["_closed_patch"]({"progress": 100, "closed": True, "qdate": "2026-08-01", "dueDate": "2026-08-01"},
+                           _cl["wb_is_closed"], "dueDate"), {})
+check("只回傳不同的欄位",
+      _cl["_closed_patch"]({"progress": 100, "closed": False, "qdate": "2026-08-01", "dueDate": "2026-08-01"},
+                           _cl["wb_is_closed"], "dueDate"), {"closed": True})
+
+print("── 結案欄位：一次性補齊（假 Firestore 實際執行）──")
+
+
+class _CSnap:
+    def __init__(self, coll, did, d): self.coll, self.id, self._d = coll, did, d
+    def to_dict(self): return dict(self._d)
+    @property
+    def reference(self): return _CRef(self.coll, self.id)
+
+
+class _CRef:
+    def __init__(self, coll, did): self.coll, self.id = coll, did
+    def update(self, patch): self.coll.docs[self.id].update(patch); self.coll.writes += 1
+
+
+class _CColl:
+    def __init__(self, docs): self.docs, self.writes, self.reads = docs, 0, 0
+    def stream(self):
+        for k, v in list(self.docs.items()):
+            self.reads += 1
+            yield _CSnap(self, k, v)
+    def where(self, filter=None):
+        coll = self
+        class _Q:
+            def stream(self_inner):
+                for k, v in list(coll.docs.items()):
+                    # 假 FieldFilter 回傳 ("filter", (欄位, 運算子, 值))
+                    if v.get("updatedAt") and v["updatedAt"] >= filter[1][2]:
+                        coll.reads += 1
+                        yield _CSnap(coll, k, v)
+        return _Q()
+
+
+class _CBatch:
+    def __init__(self): self.ops = []
+    def update(self, ref, patch): self.ops.append((ref, patch))
+    def commit(self):
+        for ref, patch in self.ops: ref.update(patch)
+
+
+class _CDb:
+    def __init__(self, colls): self.colls = colls
+    def collection(self, name): return self.colls[name]
+    def batch(self): return _CBatch()
+
+
+class _CInvRef:
+    def __init__(self): self.data = {}
+    def set(self, d, merge=False): self.data.update(d)
+
+
+_now = datetime.datetime.now(datetime.timezone.utc)
+_wb = _CColl({
+    "a": {"progress": 100, "dueDate": "2026-08-01"},                       # 完成、沒有欄位 → 補
+    "b": {"progress": 20, "dueDate": "2026-10-20"},                        # 未完成 → 補 closed=False
+    "c": {"remark": "取消", "dueDate": "", "createdAt": _ts},              # 取消、沒交期 → qdate 退回建立日
+    "d": {"progress": 10, "dueDate": "2026-10-01", "closed": False, "qdate": "2026-10-01"},   # 已正確 → 不寫
+})
+_an = _CColl({
+    "x": {"status": "已完成", "date": "2026-07-15"},
+    "y": {"date": "2026-10-01"},                                            # 沒狀態 → 未結案
+})
+_db = _CDb({"workboard_orders": _wb, "issues_anomalies": _an})
+_inv_ref = _CInvRef()
+_n = _cl["_migrate_closed_flags"](_db, _inv_ref, {})
+check("補齊：只寫有差異的（4+2 筆裡 5 筆要寫）", _n, 5)
+check("完成的工單 → closed=True", (_wb.docs["a"]["closed"], _wb.docs["a"]["qdate"]), (True, "2026-08-01"))
+check("★ 未完成的工單也要寫 closed=False（沒有這個欄位，預設查詢就查不到它）", _wb.docs["b"]["closed"], False)
+check("取消且沒交期 → qdate 退回建立日期", (_wb.docs["c"]["closed"], _wb.docs["c"]["qdate"]), (True, "2026-10-01"))
+check("★ 沒狀態的舊異常 → 未結案（不可從畫面消失）", _an.docs["y"]["closed"], False)
+check("完成後記簽章", _inv_ref.data.get("closed_flag_sig"), _cl["CLOSED_FLAG_SIG"])
+_wb.reads = 0
+check("簽章相同 → 一次都不讀", (_cl["_migrate_closed_flags"](_db, _inv_ref, {"closed_flag_sig": _cl["CLOSED_FLAG_SIG"]}), _wb.reads), (0, 0))
+
+print("── 結案欄位：每輪補正最近更新的（擋開著舊版頁面的人）──")
+_wb2 = _CColl({
+    "new": {"progress": 0, "dueDate": "2026-10-30", "updatedAt": _now},                        # 舊版頁面新增：沒有欄位
+    "reopen": {"progress": 40, "dueDate": "2026-09-01", "closed": True, "qdate": "2026-09-01",
+               "updatedAt": _now},                                                             # 舊版頁面改回未完成
+    "old": {"progress": 0, "dueDate": "2026-01-01", "updatedAt": _now - datetime.timedelta(days=3)},
+})
+_db2 = _CDb({"workboard_orders": _wb2, "issues_anomalies": _CColl({})})
+check("最近更新的有 2 筆要補正", _cl["_heal_closed_flags"](_db2), 2)
+check("★ 舊版頁面新增的工單補上 closed=False（否則哪個查詢都查不到）", _wb2.docs["new"].get("closed"), False)
+check("★ 被改回未完成的工單 closed 要翻回 False（否則從預設畫面消失）", _wb2.docs["reopen"]["closed"], False)
+check("超過 2 小時沒動的不檢查（每輪不可整份重讀）", "closed" in _wb2.docs["old"], False)
+
+print("── 結案欄位：接線 ──")
+check("perform_sync 有呼叫一次性補齊", "_migrate_closed_flags(db, inv_ref, inv)" in src, True)
+check("perform_sync 有呼叫每輪補正", "_heal_closed_flags(db)" in src, True)
+check("★ 獨立 try/except（補齊失敗不可讓扣庫存停擺）", "結案欄位補齊失敗（不影響本輪同步）" in src, True)
+
 total = passed + failed
 print(f"\n{total} 項：{passed} PASS / {failed} FAIL")
 sys.exit(1 if failed else 0)

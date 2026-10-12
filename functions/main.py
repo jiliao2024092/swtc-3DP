@@ -1439,6 +1439,126 @@ def _migrate_material_splits(db, inv_ref, inv) -> int:
     return changed
 
 
+# ── 工作看板／客戶異常的「已結案」與「查詢日期」欄位（2026-10-12）──────────────
+# ★ 為什麼需要：前端改成「未完成的全部讀、已完成的依日期範圍才讀」（使用者決定），
+#   查詢條件要能在 Firestore 端表達：
+#     closed（bool）＝這筆是否已結案 → 預設只查 closed == false
+#     qdate（YYYY-MM-DD）＝依日期範圍查已結案時用的日期
+#   原本的「已完成」是前端用好幾個欄位**算出來的**（工作看板見 portal.html 的 K.statusOf），
+#   Firestore 沒辦法直接查，所以存成欄位。
+# ★ 前端存檔時就會寫這兩個欄位（firebase-service.js 的 closedOf／qdateOf）。這裡負責：
+#     1. 一次性補齊既有資料（_migrate_closed_flags，簽章存 inventory/main.closed_flag_sig）
+#     2. 每輪檢查最近 2 小時有更新的文件（_heal_closed_flags）—— 開著舊版頁面沒重新整理的人
+#        存檔時不會寫這兩個欄位，新增的工單就會「哪個查詢都查不到」，等於從畫面上消失
+# ⚠⚠ 判定規則必須與前端一字不差（tools/test_deduct_outcome.py 與 tools/test_regions.js 用同一組案例守）
+CLOSED_FLAG_SIG = "v1"
+CLOSED_HEAL_WINDOW_SEC = 2 * 3600   # 排程 30 分鐘一輪；2 小時可容忍連續漏跑 3 輪
+
+
+def wb_is_closed(d: dict) -> bool:
+    """工作看板：已完成或已取消＝結案。對應 portal.html 的 K.statusOf()：
+         /取消/.test(remark) → cancelled；complete === '是' || progress === 100 → done
+       ⚠ progress 比對是 JS 的嚴格相等（數字 100），字串 "100" 不算 —— 照抄，不可「順手修好」，
+         否則前後端對同一筆的判定不同，那筆會在兩個查詢之間反覆搬家。"""
+    d = d or {}
+    remark = d.get("remark")
+    if isinstance(remark, str) and "取消" in remark:
+        return True
+    if d.get("complete") == "是":
+        return True
+    p = d.get("progress")
+    return isinstance(p, (int, float)) and not isinstance(p, bool) and p == 100
+
+
+def anomaly_is_closed(d: dict) -> bool:
+    """客戶異常：狀態「已完成」＝結案（處理中／暫停／空白都算未結案，才不會從畫面消失）。"""
+    return (d or {}).get("status") == "已完成"
+
+
+def _ymd_taipei(ts) -> str:
+    """Firestore 時間戳 → 台灣日期字串；轉不出來回空字串。"""
+    try:
+        return (ts + datetime.timedelta(hours=8)).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def closed_qdate(d: dict, date_field: str) -> str:
+    """查詢日期：優先用業務日期（工作看板＝期望交期 dueDate、客戶異常＝異常日期 date），
+    沒填才退回建立日期。★ 一定要有值：沒有 qdate 的已結案資料，日期範圍查詢永遠查不到。"""
+    d = d or {}
+    v = d.get(date_field)
+    if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v.strip()):
+        return v.strip()
+    return _ymd_taipei(d.get("createdAt"))
+
+
+CLOSED_COLLECTIONS = (
+    ("workboard_orders", wb_is_closed, "dueDate"),
+    ("issues_anomalies", anomaly_is_closed, "date"),
+)
+
+
+def _closed_patch(d: dict, closed_fn, date_field: str) -> dict:
+    """算出應有的 closed／qdate，回傳「與現值不同的欄位」；都一樣回空 dict（不寫，寫入照樣計費）。"""
+    want = {"closed": closed_fn(d), "qdate": closed_qdate(d, date_field)}
+    return {k: v for k, v in want.items() if (d or {}).get(k) != v}
+
+
+def _migrate_closed_flags(db, inv_ref, inv) -> int:
+    """一次性補齊既有工單與異常的 closed／qdate。完成後記簽章，之後每輪 0 次讀取。"""
+    if (inv or {}).get("closed_flag_sig") == CLOSED_FLAG_SIG:
+        return 0
+    changed = 0
+    batch, pending = db.batch(), 0
+    for coll, closed_fn, date_field in CLOSED_COLLECTIONS:
+        n_closed = n_open = n_nodate = 0
+        for snap in db.collection(coll).stream():
+            d = snap.to_dict() or {}
+            patch = _closed_patch(d, closed_fn, date_field)
+            final = {**d, **patch}
+            if final.get("closed"):
+                n_closed += 1
+            else:
+                n_open += 1
+            if not final.get("qdate"):
+                n_nodate += 1
+            if not patch:
+                continue
+            batch.update(snap.reference, patch)
+            pending += 1
+            changed += 1
+            if pending >= 400:
+                batch.commit()
+                batch, pending = db.batch(), 0
+        # ★ 沒有 qdate 的已結案資料，日期範圍查詢會永遠查不到 —— 數量印出來，非 0 就要處理
+        print(f"[sync] 結案欄位補齊 {coll}：未結案 {n_open}、已結案 {n_closed}、"
+              f"無查詢日期 {n_nodate}")
+    if pending:
+        batch.commit()
+    # ★ 全部寫完才記簽章：中途失敗下一輪整批重來（只寫有差異的，重跑安全）
+    inv_ref.set({"closed_flag_sig": CLOSED_FLAG_SIG}, merge=True)
+    print(f"[sync] 結案欄位補齊完成（{CLOSED_FLAG_SIG}）：共更新 {changed} 筆")
+    return changed
+
+
+def _heal_closed_flags(db) -> int:
+    """每輪檢查最近更新過的工單與異常，closed／qdate 不對就補正（見本段開頭的說明）。"""
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=CLOSED_HEAL_WINDOW_SEC)
+    fixed = 0
+    for coll, closed_fn, date_field in CLOSED_COLLECTIONS:
+        q = db.collection(coll).where(filter=FieldFilter("updatedAt", ">=", since))
+        for snap in q.stream():
+            patch = _closed_patch(snap.to_dict() or {}, closed_fn, date_field)
+            if patch:
+                snap.reference.update(patch)
+                fixed += 1
+    if fixed:
+        print(f"[sync] 結案欄位補正：{fixed} 筆（多半是開著舊版頁面的人存檔）")
+    return fixed
+
+
 # ── 同步柵欄：同一時間只允許一輪 Formlabs 同步 ─────────────────────────
 # ★ 為什麼需要（2026-10-06 實際發生）：排程那一輪還在跑（一輪約 2.5 分鐘），
 #   使用者在網頁按了「立即同步」，兩輪都在對方寫完之前讀到「這 2 筆列印還沒處理」，
@@ -1713,6 +1833,13 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             stats["material_splits_fixed"] = _migrate_material_splits(db, inv_ref, inv)
         except Exception as _se:
             print(f"[sync][警示] 材料拆分更正失敗（不影響本輪同步）: {_se}")
+        # 工作看板／客戶異常的 closed／qdate（前端「依日期查已結案」要用，見 _migrate_closed_flags）
+        # ★ 獨立 try/except：資料修正失敗不可讓整輪同步（扣庫存）停擺
+        try:
+            stats["closed_flags_migrated"] = _migrate_closed_flags(db, inv_ref, inv)
+            stats["closed_flags_healed"] = _heal_closed_flags(db)
+        except Exception as _ce:
+            print(f"[sync][警示] 結案欄位補齊失敗（不影響本輪同步）: {_ce}")
         family_latest = inv["family_latest_version"]
 
         # 4b. 北中南分區的庫存文件 inventory/{region}
