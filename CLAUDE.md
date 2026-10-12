@@ -69,6 +69,9 @@ node tools/test_material_input.js
 node tools/test_regions.js
 python3 tools/test_regions_py.py
 
+# 工作看板／客戶異常／樣品出借的讀取規則（沙盒實際執行 firebase-service.js，假 Firestore 記錄查詢與寫入）：43 項
+node tools/test_closed_queries.js
+
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
@@ -283,6 +286,17 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - ⚠ **GCP 費用與預算上限**（2026-10-06 查明）：報表金額是**新台幣**（預算頁標「US$」是畫面標示問題，用 SKU 單價反推是牌價 ×31）。9 月使用費 NT$178.83、扣免費額度後實付 NT$34.03（Cloud Run CPU 超出免費額度的部分＋Secret Manager）。**預算的支出上限比對的是「使用費」不是「小計」**，設 175 會在實付才三十幾元時就把整個專案停掉（`billing is disabled for this project`，2026-09-30～10-06 全部同步停擺）
   - **Formlabs 兩支函式設 `cpu=0.5`、`concurrency=1`**（2026-10-06 cost down）：每輪約 150 秒，其中約 115 秒是分頁等 Formlabs API 回應（抓約 1,500 筆列印紀錄），CPU 閒著也照請求時間計費。1 顆 vCPU 時每月約 21.7 萬 vCPU 秒（免費額度 18 萬），減半後落回免費額度。⚠ cpu < 1 時 Cloud Run 規定 concurrency 只能是 1，兩者要一起改
   - ⚠ **不要用「只抓最近幾筆」來縮短同步時間**：見下方「消耗抓取」那條，改成依日期／排序抓會漏掉最新一筆
+- ⚠⚠ **工作看板／客戶異常／樣品出借的讀取方式**（2026-10-12 使用者決定，取代「最新 100 筆＋載入更早的」）：
+  - **未結案全讀、已結案依日期範圍才讀**：`FBOrders`／`FBAnomalies` 的 `onSnapshotOpen()`（`closed == false`，**不設筆數上限**）與 `onSnapshotClosed(from, to)`（`closed == true` ＋ `qdate` 範圍）。已結案只在需要時讀：工作看板＝按「顯示已完成／已取消」、狀態篩選選已完成／已取消、或在看板／時間軸／Dashboard；客戶異常＝按「顯示已完成」、狀態篩選選已完成、或在分析頁。沒設期間時預設近 12 個月，畫面上標示讀到的範圍
+    - ⚠ 原本的「最新 100 筆」窗口會把**舊的未完成案件擠出畫面而且沒有提示**，這是改的主因之一；未結案查詢**不可再加 limit**（`tools/test_closed_queries.js` 有守）
+  - **`closed`／`qdate` 是存進去的欄位**：工作看板的「已完成」原本是 `K.statusOf()` 算出來的，Firestore 無法直接查。存檔時由 `firebase-service.js` 的 `withClosed()` 寫（工作看板直接呼叫 `K.statusOf`，單一來源）；`qdate`＝期望交期／異常日期，沒填退回建立日期
+    - 後端 `_migrate_closed_flags()` 一次性補齊既有資料（簽章 `inventory/main.closed_flag_sig`），`_heal_closed_flags()` 每輪補正最近 2 小時更新過的 —— **開著舊版頁面的人存檔不會寫這兩個欄位，新工單會哪個查詢都查不到**
+    - ⚠ 前後端判定規則必須一致，共用案例在 `tools/closed_cases.json`（Python 與 JS 測試都讀它）。progress 照抄 JS 嚴格相等，字串 `"100"` 不算
+    - ⚠ **部署順序**：索引與後端補欄位要先上線、log 出現「結案欄位補齊完成」之後，前端才能上。反過來的話還沒補欄位的工單會從畫面消失
+    - 索引：`closed+qdate`、`region+closed+qdate`、`region+closed`（兩個 collection 各一組，見 `firestore.indexes.json`）
+  - **序號改查資料庫最大值**（`maxSeq(user)`）：只載入未結案時，最大序號常在已結案那邊，用已載入資料算會發出重複序號
+  - **樣品出借紀錄依範圍讀**（`FBSampleLoans.onSnapshotRange`）：清冊／出借總表／統計／匯出＝上方選的「出借月份」起訖（預設本月）；甘特圖＝顯示的那一週。只在樣品分頁才讀
+    - ⚠ **匯入月表汰換舊紀錄要直接查該月**（`getMonthlyImported(ym)`），不可從畫面清單找：畫面只載入目前範圍，範圍外的舊匯入會漏刪 → 出借次數重複計算
 - **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill
 - `.gitignore` 須含 `venv/ functions/venv/ **/venv/ __pycache__/`
 - 「網頁沒更新」多半是 (a) 部署未觸發 或 (b) portal js 沒升 cache 版本號；若換無痕/換瀏覽器還是舊的 = 伺服器/CDN 端，非瀏覽器 cache

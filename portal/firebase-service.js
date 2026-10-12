@@ -127,10 +127,78 @@
   // 規則若比對 region，查詢沒帶對應條件會被整個拒絕，不是回空陣列而是讀不到）。
   // ★ 跨區者（admin/主管）不加條件 —— 他們本來就該讀得到三區。
   // ★ 加了 where 之後與既有的 orderBy 組合需要複合索引，已預先建在 firestore.indexes.json。
+  // 台灣日期 YYYY-MM-DD（不可用 toISOString：那是 UTC，早上 8 點前會退成前一天）
+  function ymdLocal(d) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
   function makeCollectionService(collName, orderField, orderDir, opts) {
     const regional = !!(opts && opts.regional);
     const ref = () => db.collection(collName);
+    // ★ 結案欄位（2026-10-12）：closedOf 有給的 collection，存檔時一律寫 closed 與 qdate，
+    //   讓「未結案全讀、已結案依日期範圍查」能在 Firestore 端表達（見 functions/main.py
+    //   的 _migrate_closed_flags，判定規則必須一致，tools/closed_cases.json 有守）。
+    //   ★ 寫在服務層而不是各個 save handler：新增與編輯都走這裡，漏寫的資料會從畫面消失。
+    //   ★ 呼叫端傳的是完整表單（不是部分欄位），所以可以直接重算。
+    const closedOf   = opts && opts.closedOf;
+    const qdateField = opts && opts.qdateField;
+    const withClosed = (data) => {
+      if (!closedOf) return data;
+      const biz = data && data[qdateField];
+      let qdate = (typeof biz === 'string' && YMD_RE.test(biz.trim())) ? biz.trim() : '';
+      if (!qdate) {
+        // 沒填業務日期 → 退回建立日期（與後端 closed_qdate() 一致）；新資料就是今天
+        const ca = data && data.createdAt;
+        qdate = ymdLocal(ca && typeof ca.toDate === 'function' ? ca.toDate() : new Date());
+      }
+      return { ...data, closed: !!closedOf(data), qdate };
+    };
+    // 單一區的使用者在查詢就加 where('region','==')（理由見下方 onSnapshot 的說明）
+    const scoped = (user) => {
+      let q = ref();
+      if (regional && window.regionQueryScopeOf) {
+        const scope = window.regionQueryScopeOf(user);
+        if (scope && scope.length === 1) q = q.where('region', '==', scope[0]);
+      }
+      return q;
+    };
+    // 訂閱與錯誤處理共用一份（錯誤處理的理由見 onSnapshot 裡的說明）
+    const listen = (q, cb, limitN) => q.onSnapshot(
+      snap => {
+        const rows = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+        cb(rows, { hasMore: !!limitN && rows.length >= limitN });
+      },
+      err => {
+        console.error(`[${collName}] onSnapshot 失敗:`, err);
+        const code = (err && err.code) || '';
+        let hint = '';
+        if (code === 'failed-precondition') hint = '缺少 Firestore 複合索引。請把主控台(F12)的完整錯誤訊息給管理員。';
+        else if (code === 'permission-denied') hint = '沒有讀取權限，或查詢條件與安全規則不符。';
+        cb([], { hasMore: false, error: err, code, hint, message: (err && err.message) || String(err) });
+      }
+    );
     return {
+      // ── 結案欄位版的查詢（2026-10-12）──────────────────────────────
+      // 未結案：全部讀、不設上限。★ 不可套用「最新 N 筆」：舊的未完成案件會被擠出窗口，
+      //   從畫面上消失而且沒有任何提示（改這版之前的真實風險）。未結案的量本來就有限。
+      onSnapshotOpen(cb, user) {
+        return listen(scoped(user).where('closed', '==', false), cb, 0);
+      },
+      // 已結案：只在使用者要看時才讀，依 qdate 範圍（from／to 為 YYYY-MM-DD，可省略）
+      onSnapshotClosed(cb, user, from, to) {
+        let q = scoped(user).where('closed', '==', true);
+        if (from) q = q.where('qdate', '>=', from);
+        if (to)   q = q.where('qdate', '<=', to);
+        return listen(q.orderBy('qdate', 'asc'), cb, 0);
+      },
+      // 新增時的序號＝目前最大值 +1。★ 不可再用「已載入資料的最大值」：只載入未結案時，
+      //   最大序號常常在已結案那邊，會發出重複的序號。範圍與原本相同（單一區的人看自己那區）。
+      async maxSeq(user) {
+        const snap = await scoped(user).orderBy('seq', 'asc').limitToLast(1).get();
+        return snap.empty ? 0 : (Number(snap.docs[0].data().seq) || 0);
+      },
       // user 由呼叫端傳入（服務層拿不到 React state）。沒傳＝不做伺服器端過濾，
       // 維持舊行為，樣品清冊等不分區的 collection 就是這樣用。
       // limit：只訂閱最新的 N 筆，用來省 Firestore 讀取額度（每一筆文件都計費，
@@ -183,6 +251,7 @@
         );
       },
       async add(data) {
+        data = withClosed(data);
         const doc = await ref().add({
           // region 戳記蓋在服務層而不是各個 save handler：工作看板、異常、IPA、設備、
           // 樣品全走這支 add()，集中一處才不會有人新增功能時忘記帶（漏帶的資料會被
@@ -196,7 +265,7 @@
       },
       async update(id, data) {
         await ref().doc(id).update({
-          ...data,
+          ...withClosed(data),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
       },
@@ -210,12 +279,19 @@
   // 工作看板工單 → collection: workboard_orders
   //   （刻意不用 bookings，避免與 3DP-BK 預約系統的 bookings 撞名）
   // ════════════════════════════════════════════════
-  window.FBOrders = makeCollectionService('workboard_orders', 'seq', 'asc', { regional: true });
+  // closedOf 直接用 portal.html 的 K.statusOf（單一來源）：已完成或已取消＝結案
+  window.FBOrders = makeCollectionService('workboard_orders', 'seq', 'asc', {
+    regional: true, qdateField: 'dueDate',
+    closedOf: d => { const st = window.K.statusOf(d); return st === 'done' || st === 'cancelled'; },
+  });
 
   // ════════════════════════════════════════════════
   // 異常與資源 → collections: issues_anomalies / issues_ipa / issues_equipment
   // ════════════════════════════════════════════════
-  window.FBAnomalies = makeCollectionService('issues_anomalies', 'seq', 'asc', { regional: true });
+  window.FBAnomalies = makeCollectionService('issues_anomalies', 'seq', 'asc', {
+    regional: true, qdateField: 'date',
+    closedOf: d => (d && d.status) === '已完成',   // 處理中／暫停／空白都算未結案
+  });
   window.FBIPA       = makeCollectionService('issues_ipa',       'seq', 'asc', { regional: true });
   window.FBEquipment = makeCollectionService('issues_equipment', 'seq', 'asc', { regional: true });
 
@@ -226,6 +302,26 @@
   // 樣品刻意「不」加 regional：全公司共用資產，借用人可能跨廠區借還
   window.FBSampleItems = makeCollectionService('sample_items', 'seq', 'asc');
   window.FBSampleLoans = makeCollectionService('sample_loans', 'loanDate', 'desc');
+  // ★ 出借紀錄會無限增長（每月匯入的登記表，每個勾一筆），不可再整份讀（2026-10-12）。
+  //   只讀畫面需要的日期範圍（from／to 為 YYYY-MM-DD，含兩端）。單欄位範圍查詢，不需複合索引。
+  window.FBSampleLoans.onSnapshotRange = function (cb, from, to) {
+    return db.collection('sample_loans')
+      .where('loanDate', '>=', from).where('loanDate', '<=', to)
+      .orderBy('loanDate', 'desc')
+      .onSnapshot(
+        snap => cb(snap.docs.map(d => ({ _id: d.id, ...d.data() })), {}),
+        err => {
+          console.error('[sample_loans] onSnapshot 失敗:', err);
+          cb([], { error: err, message: (err && err.message) || String(err) });
+        }
+      );
+  };
+  // 匯入月表前，查出「該月先前匯入過的紀錄」以便汰換。
+  // ★ 不可再從畫面已載入的清單找：畫面只載入目前選的月份範圍，範圍外的舊匯入會漏刪 → 重複計算。
+  window.FBSampleLoans.getMonthlyImported = async function (ym) {
+    const snap = await db.collection('sample_loans').where('ym', '==', ym).get();
+    return snap.docs.map(d => ({ _id: d.id, ...d.data() })).filter(l => l.src === 'monthly');
+  };
 
   // ════════════════════════════════════════════════
   // 公告欄 → collection: announcements

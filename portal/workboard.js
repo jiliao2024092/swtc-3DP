@@ -6,9 +6,15 @@
 (function () {
   const { useState, useEffect } = React;
 
-  // 一次訂閱幾筆。Firestore 是「每讀一份文件計費一次」，不設上限等於每次開頁
-  // 就把整個 workboard_orders 讀一遍；載入的是 seq 最大（最新）的那幾筆。
-  const ROW_PAGE = 100;
+  // ★ 讀取方式（2026-10-12 使用者決定）：未結案的全部讀；已完成／已取消的只在需要時
+  //   依「期望交期」範圍讀（見 firebase-service.js 的 onSnapshotOpen／onSnapshotClosed）。
+  //   取代原本的「最新 100 筆＋載入更早的」：那種窗口會把舊的未完成工單擠出畫面，
+  //   而資料越多，每次開頁讀進來的已完成工單也越多。
+  // 沒設日期範圍時，已結案預設只讀近 12 個月（避免一按「顯示已完成」就讀整份歷史）。
+  const CLOSED_DEFAULT_DAYS = 365;
+  // 日期範圍：YYYY-MM-DD 字串比較即可（同格式、補零）
+  const inRange = (d, r) => (!r.from || (d && d >= r.from)) && (!r.to || (d && d <= r.to));
+  const ymdLocal = d => { const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
   // 從 INVENTORY 消耗紀錄自動帶入實際消耗量：inventory_history 的備註慣例格式為
   // 「客戶簡稱-工作類別-EF單號」（見 inventory.html 的 editHistoryNote），
@@ -412,7 +418,6 @@
   // ── WorkBoard 主元件 ──
   function WorkBoardApp({ user }) {
     const K = window.K;
-    const [allData,   setAllData]   = useState([]);   // 訂閱到的原始資料（未過濾）
     const [loading,   setLoading]   = useState(true);
     const [tab,       setTab]       = useState('table');
     const [modal,     setModal]     = useState(false);   // 新增/編輯 modal
@@ -444,24 +449,50 @@
     const canEditRow = o => canEdit && inMyRegion(o);
     const canDelRow  = o => canDel  && inMyRegion(o);
 
-    // 只訂閱最新的 N 筆（省 Firestore 讀取額度）。按「載入更多」才把窗口拉大並重新訂閱。
-    const [rowLimit, setRowLimit] = useState(ROW_PAGE);
-    const [hasMore,  setHasMore]  = useState(false);
-    const [loadErr,  setLoadErr]  = useState('');   // 讀取失敗訊息（見下方 onSnapshot）
+    const [openRows,   setOpenRows]   = useState([]);   // 未結案（一律全讀）
+    const [closedRows, setClosedRows] = useState([]);   // 已完成／已取消（需要時才讀）
+    const [loadErr,    setLoadErr]    = useState('');   // 未結案查詢的錯誤
+    const [closedErr,  setClosedErr]  = useState('');   // 已結案查詢的錯誤
+    const [range,      setRange]      = useState({ from:'', to:'' });   // 期間（依期望交期）
+    const [tableNeedsClosed, setTableNeedsClosed] = useState(false);    // 總表要不要已結案（由 WorkTable 回報）
+
+    // 什麼時候才讀已結案：總表按了「顯示已完成」或篩選狀態選了已完成／已取消；
+    // 看板／時間軸／Dashboard 本來就要呈現完成的工作，一律讀（受期間限制）
+    const needClosed = tab !== 'table' || tableNeedsClosed;
+    // 已結案實際查詢的範圍：使用者有設就用，沒設就近 12 個月
+    const closedRange = (range.from || range.to) ? range
+      : { from: ymdLocal(new Date(Date.now() - CLOSED_DEFAULT_DAYS * 864e5)), to: '' };
 
     useEffect(() => {
       // 帶 user 進去 → 單一區的使用者會在查詢就加 where('region','==')，過濾推到伺服器端。
       // ★ 相依「不含」regionMode：查詢範圍刻意不看開關（見 regions.js 的
       //   regionQueryScopeOf），列進去只會讓 admin 每次切開關就把所有人的訂閱重建一次。
       //   user 變動（含地區被改）仍會重新訂閱。
-      const unsub = FBOrders.onSnapshot((rows, meta) => {
-        setAllData(rows); setHasMore(!!(meta && meta.hasMore)); setLoading(false);
+      const unsub = FBOrders.onSnapshotOpen((rows, meta) => {
+        setOpenRows(rows); setLoading(false);
         // ★ 查詢失敗要講出來。空陣列與「這一區真的沒資料」在畫面上長得一樣，
         //   使用者只會覺得「看不到資料」而不知道是壞掉（2026-08-25 實際事故）。
         setLoadErr(meta && meta.error ? (meta.hint || meta.message) : '');
-      }, user, rowLimit);
+      }, user);
       return () => unsub();
-    }, [user, rowLimit]);
+    }, [user]);
+
+    useEffect(() => {
+      if (!needClosed) { setClosedRows([]); setClosedErr(''); return; }
+      const unsub = FBOrders.onSnapshotClosed((rows, meta) => {
+        setClosedRows(rows);
+        setClosedErr(meta && meta.error ? (meta.hint || meta.message) : '');
+      }, user, closedRange.from, closedRange.to);
+      return () => unsub();
+    }, [user, needClosed, closedRange.from, closedRange.to]);
+
+    // 未結案＋已結案合併（同一筆在兩邊切換的瞬間可能重複，以 id 去重）。
+    // 期間篩選套在兩者上（依期望交期，沒填退回 qdate），讓總表與各分析頁看到同一個期間。
+    const allData = React.useMemo(() => {
+      const m = new Map();
+      [...openRows, ...closedRows].forEach(o => m.set(o._id, o));
+      return [...m.values()].filter(o => inRange(o.dueDate || o.qdate, range));
+    }, [openRows, closedRows, range]);
 
     // ★ 分區過濾一定要在「渲染時」算，不能在訂閱回呼算。
     //   回呼只跑一次，而它依賴的 window._regionMode 來自 settings/workspace，是後到的：
@@ -476,8 +507,9 @@
       [allData, user, labelVer, regionMode]
     );
 
-    // 序號取自「全部」資料而非過濾後的：否則各區會各自從 1 開始，序號互撞
-    const nextSeq = () => allData.length ? Math.max(...allData.map(d => d.seq || 0)) + 1 : 1;
+    // 序號＝資料庫裡目前的最大值 +1。★ 不可再用「已載入資料的最大值」：只載入未結案時，
+    // 最大序號常在已結案那邊，會發出重複序號。範圍與原本相同（單一區的人看自己那區）。
+    const nextSeq = async () => (await FBOrders.maxSeq(user)) + 1;
 
     const handleSave = async form => {
       // 防呆：跨區的資料不可寫入（按鈕已隱藏，這裡擋住其他觸發路徑，例如雙擊或鍵盤）
@@ -486,7 +518,7 @@
         await FBOrders.update(editO._id, form);
         showToast('列印工作已更新 ✓');
       } else {
-        await FBOrders.add({ ...form, seq: nextSeq() });
+        await FBOrders.add({ ...form, seq: await nextSeq() });
         showToast('列印工作已新增 ✓');
       }
     };
@@ -561,12 +593,19 @@
         <div className="shell-body" style={{flex:1, minHeight:0}}>
           {/* 讀取失敗要明講。空白畫面與「這一區沒資料」分辨不出來，
               使用者只會回報「看不到資料」，查起來要繞一大圈。 */}
-          {loadErr && (
+          {(loadErr || closedErr) && (
             <div style={{margin:'8px 12px', padding:'10px 12px', borderRadius:8,
                          border:'1px solid var(--danger)', background:'var(--danger-soft)',
                          color:'var(--danger)', fontSize:13, lineHeight:1.6}}>
-              <b>資料載入失敗</b>（不是「沒有資料」）<br/>
-              <span style={{color:'var(--ink-2)'}}>{loadErr}</span>
+              <b>{loadErr ? '資料載入失敗' : '已完成／已取消的工作載入失敗'}</b>（不是「沒有資料」）<br/>
+              <span style={{color:'var(--ink-2)'}}>{loadErr || closedErr}</span>
+            </div>
+          )}
+          {/* 看板／時間軸／Dashboard 的期間（總表的期間在它自己的工具列上） */}
+          {tab !== 'table' && (
+            <div className="toolbar">
+              <DateRangeInputs range={range} setRange={setRange}/>
+              <ClosedNote range={range} closedRange={closedRange} loaded={needClosed}/>
             </div>
           )}
           {tab==='table' && (
@@ -581,8 +620,10 @@
               onEdit={handleEdit}
               onDelete={handleDelete}
               labelVer={labelVer}
-              hasMore={hasMore}
-              onLoadMore={()=>setRowLimit(n => n + ROW_PAGE)}
+              range={range}
+              setRange={setRange}
+              closedRange={closedRange}
+              onNeedClosed={setTableNeedsClosed}
             />
           )}
           {tab==='kanban'    && <window.KanbanView    data={data} setData={()=>{}}/>}
@@ -612,7 +653,34 @@
   }
 
   // ── 總表元件（自製，不依賴原版 TableView，支援 editMode） ──
-  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer, user, hasMore, onLoadMore }) {
+  // 期間輸入（依期望交期）。兩端都可留空。
+  function DateRangeInputs({ range, setRange }) {
+    const INP = { height:30, padding:'0 8px', border:'1px solid var(--line)', borderRadius:6,
+                  background:'var(--bg)', color:'var(--ink-2)', fontSize:12, fontFamily:'inherit' };
+    return (
+      <span style={{display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}} title="依「期望交期」篩選；兩端都可留空">
+        <span style={{fontSize:12,color:'var(--ink-4)'}}>期望交期</span>
+        <input type="date" style={INP} value={range.from} onChange={e=>{ const v=e.target.value; setRange(r=>({...r, from:v})); }}/>
+        <span style={{color:'var(--ink-4)'}}>～</span>
+        <input type="date" style={INP} value={range.to} onChange={e=>{ const v=e.target.value; setRange(r=>({...r, to:v})); }}/>
+        {(range.from || range.to) &&
+          <button className="btn-cancel" style={{padding:'0 10px',fontSize:12}} onClick={()=>setRange({from:'',to:''})}>清除</button>}
+      </span>
+    );
+  }
+  // 告訴使用者「已完成的資料讀到哪裡」——不講的話，近 12 個月以外的完成工作像是不見了
+  function ClosedNote({ range, closedRange, loaded }) {
+    if (!loaded) return null;
+    const auto = !(range.from || range.to);
+    return (
+      <span style={{fontSize:11.5,color:'var(--ink-4)'}}>
+        已完成／已取消：{auto ? `近 12 個月（${closedRange.from} 起）；要看更早請設定期間`
+                              : `${closedRange.from || '最早'} ～ ${closedRange.to || '最新'}`}
+      </span>
+    );
+  }
+
+  function WorkTable({ data, editMode, canEdit, canDel, canEditRow, canDelRow, onEdit, onDelete, labelVer, user, range, setRange, closedRange, onNeedClosed }) {
     // 沒傳 predicate 時退回頁面層的布林值（其他呼叫端不受影響）
     const rowEdit = canEditRow || (() => canEdit);
     const rowDel  = canDelRow  || (() => canDel);
@@ -638,6 +706,9 @@
     const [page,     setPage]     = useState(1);
     const [hideDone, setHideDone] = useState(true);
     const PAGE_SIZE = 20;
+    // 已完成／已取消只在要顯示時才讀：回報給上層決定要不要訂閱
+    const needClosed = !hideDone || fStatus === 'done' || fStatus === 'cancelled';
+    useEffect(() => { if (onNeedClosed) onNeedClosed(needClosed); }, [needClosed]);
 
     // 每次都即時從 window 讀取最新設定（labelVer 變動時觸發重新渲染）
     const engineers = window._settings_engineers || K.ENG_ORDER;
@@ -800,14 +871,11 @@
             style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'var(--accent-soft)',color:hideDone?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
             {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
           </button>
-          <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出全部工作看板資料為 Excel">⬇ 匯出Excel</button>
-          {/* 預設只讀最新 100 筆（省 Firestore 讀取額度）。更舊的要按了才載入。 */}
-          {hasMore && onLoadMore && (
-            <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={onLoadMore}
-                    title="目前只載入最新的工作，按此再載入 100 筆較舊的資料">↓ 載入更早的</button>
-          )}
+          <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出目前已載入的工作（含已完成／已取消要先按「顯示已完成／已取消」，範圍依期間）">⬇ 匯出Excel</button>
+          {range && setRange && <DateRangeInputs range={range} setRange={f=>{setRange(f);setPage(1);}}/>}
+          {range && <ClosedNote range={range} closedRange={closedRange} loaded={needClosed}/>}
           <span style={{fontSize:12,color:'var(--ink-4)',marginLeft:'auto'}}>
-            共 {filtered.length} 筆{hasMore ? '（僅最新，可載入更早）' : ''}
+            共 {filtered.length} 筆
           </span>
         </div>
 

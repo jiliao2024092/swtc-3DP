@@ -9,6 +9,46 @@
   // 就把整個 collection 讀一遍；載入的是 seq 最大（最新）的那幾筆。
   const PAGE = 100;
 
+  // ── 讀取範圍（2026-10-12 使用者決定）──────────────────────────────
+  // 客戶異常：未結案全讀；已完成的只在要看時依「異常日期」範圍讀（見 firebase-service.js）。
+  // 樣品出借紀錄：只讀畫面需要的月份範圍（它會無限增長，不可再整份讀）。
+  const CLOSED_DEFAULT_DAYS = 365;   // 已完成沒設期間時，預設只讀近 12 個月
+  const ymdLocal = d => { const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+  const ymLocal  = d => ymdLocal(d).slice(0, 7);
+  const inRangeYmd = (d, r) => (!r.from || (d && d >= r.from)) && (!r.to || (d && d <= r.to));
+  // 'YYYY-MM' 起訖 → 'YYYY-MM-DD' 起訖（-31 對 30 天的月份也正確：字串比較，不存在的日期不會出現在資料裡）
+  const monthsToRange = m => {
+    const [a, b] = (m.from && m.to && m.from > m.to) ? [m.to, m.from] : [m.from, m.to];
+    return { from: `${a}-01`, to: `${b}-31` };
+  };
+  const errMsg = m => (m && m.error) ? (m.hint || m.message) : '';
+  const RANGE_INP = { height:30, padding:'0 8px', border:'1px solid var(--line)', borderRadius:6,
+                      background:'var(--bg)', color:'var(--ink-2)', fontSize:12, fontFamily:'inherit' };
+  // 日期區間輸入（type='date' 或 'month'）
+  function RangeInputs({ label, type, range, setRange, clearable, title }) {
+    return (
+      <span style={{display:'inline-flex',alignItems:'center',gap:6,whiteSpace:'nowrap'}} title={title||''}>
+        <span style={{fontSize:12,color:'var(--ink-4)'}}>{label}</span>
+        <input type={type} style={RANGE_INP} value={range.from} onChange={e=>{ const v=e.target.value; setRange(r=>({...r, from:v})); }}/>
+        <span style={{color:'var(--ink-4)'}}>～</span>
+        <input type={type} style={RANGE_INP} value={range.to} onChange={e=>{ const v=e.target.value; setRange(r=>({...r, to:v})); }}/>
+        {clearable && (range.from || range.to) &&
+          <button className="btn-cancel" style={{padding:'0 10px',fontSize:12}} onClick={()=>setRange({from:'',to:''})}>清除</button>}
+      </span>
+    );
+  }
+  // 告訴使用者「已完成的資料讀到哪裡」——不講的話，範圍外的已完成案件像是不見了
+  function ClosedNote({ range, closedRange, loaded }) {
+    if (!loaded) return null;
+    const auto = !(range.from || range.to);
+    return (
+      <span style={{fontSize:11.5,color:'var(--ink-4)'}}>
+        已完成：{auto ? `近 12 個月（${closedRange.from} 起）；要看更早請設定期間`
+                       : `${closedRange.from || '最早'} ～ ${closedRange.to || '最新'}`}
+      </span>
+    );
+  }
+
   const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const LBL   = { display:'block', fontSize:11.5, fontWeight:600, color:'var(--ink-3)', marginBottom:5 };
 
@@ -226,7 +266,7 @@
 
   // ── 出借登記 Modal（開放 viewer 登記出借）──
   // prefill：從甘特圖雙擊帶入的預設值 { loanDate }（選填）
-  function LoanModal({ sample, loans, canManage, prefill, onClose, onAddLoan, onDelLoan }) {
+  function LoanModal({ sample, loans, canManage, prefill, onClose, onAddLoan, onDelLoan, rangeLabel }) {
     const today = new Date().toISOString().split('T')[0];
     const [form, setForm] = useState({ loanDate: (prefill&&prefill.loanDate)||today, remark:'' });
     const [busy, setBusy] = useState(false);
@@ -247,6 +287,7 @@
         <div className="m-box" style={{width:560}}>
           <div className="m-hd"><h3>📋 出借登記 — {sample.name}</h3><button className="m-close" onClick={onClose}>×</button></div>
           <div className="m-body">
+            {rangeLabel && <div style={{fontSize:11.5,color:'var(--ink-4)',marginBottom:8}}>下方只列出 {rangeLabel} 的借出紀錄（範圍在樣品頁上方調整）</div>}
             <div style={{fontSize:12,color:'var(--ink-3)',marginBottom:12,background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:6,padding:'8px 11px'}}>
               材質：{sample.material||'—'} · 位置：{sample.location||'—'}
             </div>
@@ -285,13 +326,17 @@
   }
 
   // ── 樣品甘特圖（比照 3D 列印機預約：列=樣品、欄=日期，雙擊格子快速登記出借；每天一格，不分時段）──
-  function SampleGanttView({ samples, loans, onOpenSample, onQuickAdd }) {
+  function SampleGanttView({ samples, loans, onOpenSample, onQuickAdd, onRangeChange }) {
     const { useState: useStateG } = React;
     const K = window.K;
     const DAY = K.DAY;
     const mondayOf = (d) => { const x=new Date(d); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); x.setHours(0,0,0,0); return x; };
     const [weekStart, setWeekStart] = useStateG(()=>mondayOf(new Date()));
     const days = Array.from({length:7},(_,i)=> new Date(weekStart.getTime()+i*DAY));
+    // 甘特圖一次只看一週，出借紀錄就只讀這一週（上層依此訂閱）
+    React.useEffect(() => {
+      if (onRangeChange) onRangeChange({ from: K.fmtYmd(days[0]), to: K.fmtYmd(days[6]) });
+    }, [weekStart.getTime()]);
     const todayKey = K.fmtYmd(new Date());
     const weekdayNames=['一','二','三','四','五','六','日'];
 
@@ -398,7 +443,7 @@
   }
 
   // ── 樣品借出統計（以出借紀錄 sample_loans 為資訊來源；自由選維度與圖表）──
-  function LoanStatsPanel({ loans, samples }) {
+  function LoanStatsPanel({ loans, samples, rangeLabel }) {
     const { useState } = React;
     const COLORS = ['var(--accent)','var(--purple)','var(--ok)','var(--warn)','var(--danger)','var(--accent)','var(--warn)','var(--warn)'];
 
@@ -553,10 +598,10 @@
       <div style={{flex:1,overflow:'auto',padding:'18px 24px'}}>
         <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:16}}>
           <span style={{fontSize:15,fontWeight:700,color:'var(--ink)'}}>樣品借出統計</span>
-          <span style={{fontSize:11.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>資料來源：出借紀錄 · 總借出 {loans.length} 筆</span>
+          <span style={{fontSize:11.5,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>資料來源：出借紀錄 · {rangeLabel ? `${rangeLabel} · ` : ''}總借出 {loans.length} 筆</span>
         </div>
         {loans.length===0
-          ? <div className="kt-empty" style={{padding:40}}>尚無出借紀錄</div>
+          ? <div className="kt-empty" style={{padding:40}}>{rangeLabel ? `${rangeLabel} 沒有出借紀錄` : '尚無出借紀錄'}</div>
           : <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(300px,1fr))',gap:16}}>
               <CustomChart idx={0}/><CustomChart idx={1}/><CustomChart idx={2}/>
             </div>}
@@ -603,7 +648,7 @@
     return { ym: ymFound, items };
   }
 
-  function ImportMonthlyModal({ samples, loans, onClose, onImport }) {
+  function ImportMonthlyModal({ samples, onClose, onImport }) {
     const { useState, useRef } = React;
     const [parsed, setParsed] = useState(null);   // { ym, items, sheet, fileName }
     const [ym, setYm] = useState('');
@@ -635,7 +680,15 @@
     const totalMarks = parsed ? parsed.items.reduce((s,it)=>s+it.days.length,0) : 0;
     const knownNames = new Set(samples.map(s=>(s.name||'').trim()));
     const newNames   = parsed ? [...new Set(parsed.items.map(i=>i.name).filter(n=>!knownNames.has(n)))] : [];
-    const alreadyN   = parsed ? loans.filter(l=>l.src==='monthly' && l.ym===ym).length : 0;
+    // 該月先前匯入過幾筆：直接查該月（畫面只載入目前選的月份範圍，從畫面上找會算錯）
+    const [alreadyN, setAlreadyN] = useState(0);
+    React.useEffect(() => {
+      if (!parsed || !/^\d{4}-\d{2}$/.test(ym)) { setAlreadyN(0); return; }
+      let alive = true;
+      FBSampleLoans.getMonthlyImported(ym).then(r => { if (alive) setAlreadyN(r.length); })
+                                          .catch(() => { if (alive) setAlreadyN(0); });
+      return () => { alive = false; };
+    }, [parsed, ym]);
 
     const confirm = async () => {
       if (!parsed) return;
@@ -949,7 +1002,13 @@
   // ── IssuesApp 主元件 ──
   function IssuesApp({ user }) {
     // 訂閱到的原始資料（未過濾）；分區過濾在下方渲染時才算，理由見該處註解
-    const [allAnomalies, setAnomalies] = useState([]);
+    const [openA,      setOpenA]      = useState([]);   // 客戶異常：未結案（全讀）
+    const [closedA,    setClosedA]    = useState([]);   // 客戶異常：已完成（需要時才讀）
+    const [closedErrA, setClosedErrA] = useState('');
+    const [rangeA,     setRangeA]     = useState({ from:'', to:'' });   // 期間（依異常日期）
+    const [loanMonths, setLoanMonths] = useState(() => { const m = ymLocal(new Date()); return { from:m, to:m }; });  // 樣品：預設本月
+    const [ganttRange, setGanttRange] = useState(null);   // 樣品甘特圖目前顯示的那一週
+    const [loanErr,    setLoanErr]    = useState('');
     const [allIpa,       setIpa]       = useState([]);
     const [allEquipment, setEquipment] = useState([]);
     const [samples,   setSamples]   = useState([]);   // 樣品清冊
@@ -1029,10 +1088,8 @@
 
     // 只訂閱最新的 N 筆（省 Firestore 讀取額度）。三個分頁各自獨立拉大窗口，
     // 因為使用者通常只在其中一個分頁需要翻到更舊的資料。
-    const [limA, setLimA] = useState(PAGE);
     const [limI, setLimI] = useState(PAGE);
     const [limE, setLimE] = useState(PAGE);
-    const [moreA, setMoreA] = useState(false);
     const [moreI, setMoreI] = useState(false);
     const [moreE, setMoreE] = useState(false);
     const [loadErr, setLoadErr] = useState('');   // 讀取失敗訊息（見下方 onSnapshot）
@@ -1045,15 +1102,38 @@
       // ★ 查詢失敗要講出來。空陣列與「這一區真的沒資料」在畫面上長得一樣
       //   （2026-08-25 實際事故：缺索引害單一地區使用者整頁空白且無提示）。
       const errOf = m => (m && m.error) ? (m.hint || m.message) : '';
-      const u1 = FBAnomalies.onSnapshot((r,m)=>{ setAnomalies(r); setMoreA(!!(m&&m.hasMore)); setLoadErr(errOf(m)); chk(); }, user, limA);
+      // 客戶異常：未結案全讀（舊的未完成案件不會再被「最新 100 筆」擠出畫面）
+      const u1 = FBAnomalies.onSnapshotOpen((r,m)=>{ setOpenA(r); setLoadErr(errOf(m)); chk(); }, user);
       const u2 = FBIPA.onSnapshot(      (r,m)=>{ setIpa(r);       setMoreI(!!(m&&m.hasMore)); setLoadErr(e=>e||errOf(m)); chk(); }, user, limI);
       const u3 = FBEquipment.onSnapshot((r,m)=>{ setEquipment(r); setMoreE(!!(m&&m.hasMore)); setLoadErr(e=>e||errOf(m)); chk(); }, user, limE);
-      // 樣品清冊與出借紀錄是全公司共用的資產，不分區（借用人可能跨廠區借還），
-      // 所以刻意不過濾。筆數也遠少於其他三個 collection，不設上限。
+      // 樣品清冊是全公司共用的資產，不分區（借用人可能跨廠區借還），所以刻意不過濾；
+      // 筆數有限，不設上限。出借紀錄會無限增長，改到下方依範圍讀。
       const u4 = FBSampleItems.onSnapshot(r=>setSamples(r));
-      const u5 = FBSampleLoans.onSnapshot(r=>setLoans(r));
-      return () => { u1(); u2(); u3(); u4(); u5(); };
-    }, [user, limA, limI, limE]);
+      return () => { u1(); u2(); u3(); u4(); };
+    }, [user, limI, limE]);
+
+    // 客戶異常的已完成：只在要看時讀（顯示已完成、狀態篩選選已完成、或在分析頁）
+    const needClosedA = sub === 'stats' || (sub === 'anomaly' && (!hideDoneA || statusF === '已完成'));
+    const closedRangeA = (rangeA.from || rangeA.to) ? rangeA
+      : { from: ymdLocal(new Date(Date.now() - CLOSED_DEFAULT_DAYS * 864e5)), to: '' };
+    useEffect(() => {
+      if (!needClosedA) { setClosedA([]); setClosedErrA(''); return; }
+      const u = FBAnomalies.onSnapshotClosed((r,m)=>{ setClosedA(r); setClosedErrA(errMsg(m)); },
+                                             user, closedRangeA.from, closedRangeA.to);
+      return () => u();
+    }, [user, needClosedA, closedRangeA.from, closedRangeA.to]);
+
+    // 樣品出借紀錄：只在樣品分頁讀，而且只讀畫面需要的範圍
+    //（甘特圖＝目前那一週；清冊／出借總表／統計＝上方選的月份範圍）
+    const loanRange = (sampleView === 'gantt' && ganttRange) ? ganttRange : monthsToRange(loanMonths);
+    const loanRangeLabel = (sampleView === 'gantt' && ganttRange)
+      ? `${ganttRange.from} ～ ${ganttRange.to}`
+      : (loanMonths.from === loanMonths.to ? loanMonths.from : `${loanMonths.from} ～ ${loanMonths.to}`);
+    useEffect(() => {
+      if (sub !== 'samples' || !loanMonths.from || !loanMonths.to) { setLoans([]); setLoanErr(''); return; }
+      const u = FBSampleLoans.onSnapshotRange((r,m)=>{ setLoans(r); setLoanErr(errMsg(m)); }, loanRange.from, loanRange.to);
+      return () => u();
+    }, [sub, loanRange.from, loanRange.to]);
 
     // 「載入更早的」按鈕：拿滿上限才顯示，按一次多載 100 筆
     const loadMoreBtn = (more, setLim) => more
@@ -1071,13 +1151,19 @@
     // 伺服器端已過濾過一輪；這裡保留客戶端過濾是為了跨區者的「檢視地區」切換
     const byRegion = rows => window.filterRowsByRegion
       ? window.filterRowsByRegion(rows, user, regionMode) : rows;
+    // 未結案＋已完成合併（同一筆在兩邊切換的瞬間可能重複，以 id 去重），再套期間（依異常日期，沒填退回 qdate）
+    const allAnomalies = React.useMemo(() => {
+      const m = new Map();
+      [...openA, ...closedA].forEach(o => m.set(o._id, o));
+      return [...m.values()].filter(o => inRangeYmd(o.date || o.qdate, rangeA));
+    }, [openA, closedA, rangeA]);
     const anomalies = React.useMemo(() => byRegion(allAnomalies), [allAnomalies, user, labelVer, regionMode]);
     const ipa       = React.useMemo(() => byRegion(allIpa),       [allIpa,       user, labelVer, regionMode]);
     const equipment = React.useMemo(() => byRegion(allEquipment), [allEquipment, user, labelVer, regionMode]);
 
     const nextSeq = arr => arr.length ? Math.max(...arr.map(d=>d.seq||0))+1 : 1;
 
-    const saveA = async f => { if(editItem){await FBAnomalies.update(editItem._id,f);showToast('已更新 ✓');}else{await FBAnomalies.add({...f,seq:nextSeq(allAnomalies)});showToast('已新增 ✓');}setModal(null); };
+    const saveA = async f => { if(editItem){await FBAnomalies.update(editItem._id,f);showToast('已更新 ✓');}else{await FBAnomalies.add({...f,seq:(await FBAnomalies.maxSeq(user))+1});showToast('已新增 ✓');}setModal(null); };
     const delA  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBAnomalies.del(it._id); showToast('已刪除','inf'); };
     const saveI = async f => { if(editItem){await FBIPA.update(editItem._id,f);showToast('已更新 ✓');}else{await FBIPA.add({...f,seq:nextSeq(allIpa)});showToast('已新增 ✓');}setModal(null); };
     const delI  = async it => { if(!inMyRegion(it)){ showToast('無法刪除其他地區的資料','err'); return; } if(!confirm('刪除？'))return; await FBIPA.del(it._id); showToast('已刪除','inf'); };
@@ -1160,7 +1246,8 @@
     // 每月登記表匯入：把月表各勾選格批次寫成 sample_loans（同月重匯先汰換舊的月表匯入紀錄，避免重複計算）
     const importMonthly = async ({ items, ym, autoCreate }) => {
       // 步驟一：汰換同月舊的月表匯入紀錄
-      const old = loans.filter(l=>l.src==='monthly' && l.ym===ym);
+      // ★ 直接查該月：畫面只載入目前選的月份範圍，從畫面清單找會漏刪 → 重複計算
+      const old = await FBSampleLoans.getMonthlyImported(ym);
       for (let i=0;i<old.length;i+=10) await Promise.all(old.slice(i,i+10).map(o=>FBSampleLoans.del(o._id)));
       // 步驟二：自動新增缺少樣品到清冊（itemId 交由下次快照連結；紀錄本身以 itemName/material 即可統計）
       const byName = {}; samples.forEach(s=>byName[(s.name||'').trim()]=s);
@@ -1230,7 +1317,7 @@
       statRows.push({'類別':'總借出筆數','項目':'','借出次數':st.total});
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(statRows.length?statRows:[{'類別':'','項目':'','借出次數':''}]), '借出統計');
       const today = new Date().toISOString().split('T')[0].replace(/-/g,'');
-      XLSX.writeFile(wb, `樣品出借清冊_${today}.xlsx`);
+      XLSX.writeFile(wb, `樣品出借清冊_${loanRangeLabel.replace(/\s/g,'')}_${today}.xlsx`);
       showToast('已匯出 Excel ✓');
     };
 
@@ -1354,12 +1441,12 @@
       <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
 
         {/* 讀取失敗要明講，不可以讓它跟「這一區沒資料」長得一樣 */}
-        {loadErr && (
+        {(loadErr || closedErrA || loanErr) && (
           <div style={{margin:'8px 12px', padding:'10px 12px', borderRadius:8,
                        border:'1px solid var(--danger)', background:'var(--danger-soft)',
                        color:'var(--danger)', fontSize:13, lineHeight:1.6}}>
             <b>資料載入失敗</b>（不是「沒有資料」）<br/>
-            <span style={{color:'var(--ink-2)'}}>{loadErr}</span>
+            <span style={{color:'var(--ink-2)'}}>{loadErr || closedErrA || loanErr}</span>
           </div>
         )}
 
@@ -1400,8 +1487,9 @@
                 style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'var(--accent-soft)',color:hideDoneA?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
                 {hideDoneA ? '顯示已完成' : '👁 顯示已完成'}
               </button>
-              {loadMoreBtn(moreA, setLimA)}
-              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出客戶異常為 Excel">⬇ 匯出Excel</button>
+              <RangeInputs label="異常日期" type="date" range={rangeA} setRange={setRangeA} clearable title="依「異常日期」篩選；兩端都可留空"/>
+              <ClosedNote range={rangeA} closedRange={closedRangeA} loaded={needClosedA}/>
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出目前已載入的客戶異常（含已完成要先按「顯示已完成」，範圍依期間）">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">
@@ -1560,6 +1648,11 @@
                 <input value={search4} onChange={e=>setSearch4(e.target.value)} placeholder="搜尋名稱 / 材質 / 位置"/>
               </div>
               <span className="toolbar-sub">共 <b style={{color:'var(--ink)'}}>{filtS.length}</b> 件</span>
+              {sampleView!=='gantt'
+                ? <RangeInputs label="出借月份" type="month" range={loanMonths}
+                               setRange={f=>setLoanMonths(r=>{ const n=(typeof f==='function'?f(r):f); return { from:n.from||r.from, to:n.to||r.to }; })}
+                               title="清冊的出借次數、出借總表、借出統計與匯出都只算這段月份"/>
+                : <span style={{fontSize:11.5,color:'var(--ink-4)'}}>甘特圖依顯示的那一週讀取</span>}
               <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
               {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportMonthlyTemplate} title="依現有清冊下載空白每月登記表（公版，供列印手填）">⬇ 空白月表</button>}
               {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={()=>setImportOpen(true)} title="上傳填好的每月登記表 Excel，批次匯入出借紀錄">📥 匯入月表</button>}
@@ -1602,28 +1695,32 @@
             </div>}
 
             {/* 甘特圖行事曆（列=樣品、欄=日期，雙擊格子快速登記出借） */}
-            {sampleView==='gantt' && <SampleGanttView samples={sortArr(filtS,sampleSort)} loans={loans} onOpenSample={openSampleLoans} onQuickAdd={openQuickAdd}/>}
+            {sampleView==='gantt' && <SampleGanttView samples={sortArr(filtS,sampleSort)} loans={loans} onOpenSample={openSampleLoans} onQuickAdd={openQuickAdd} onRangeChange={setGanttRange}/>}
 
             {/* 出借總表（原始表單樣式：每列一樣品，展開其所有借出紀錄） */}
             {sampleView==='ledger' && <LoanLedger samples={sortArr(filtS,sampleSort)} loansOf={loansOf} canManage={canD} onDelLoan={delLoan}/>}
 
             {/* 借出統計視窗（以出借紀錄為來源、可選維度與圖表） */}
-            {sampleView==='stats' && <LoanStatsPanel loans={loans} samples={samples}/>}
+            {sampleView==='stats' && <LoanStatsPanel loans={loans} samples={samples} rangeLabel={loanRangeLabel}/>}
           </>}
 
           {/* 分析 */}
-          {sub==='stats'&&(
+          {sub==='stats'&&<>
+            <div className="toolbar">
+              <RangeInputs label="客戶異常期間" type="date" range={rangeA} setRange={setRangeA} clearable title="依「異常日期」；兩端都可留空"/>
+              <ClosedNote range={rangeA} closedRange={closedRangeA} loaded={needClosedA}/>
+            </div>
             <IssuesStats anomalies={anomalies} ipa={ipa} tools={equipment}/>
-          )}
+          </>}
 
           {/* Modals */}
           {modal==='a'&&<AnomalyModal item={editItem} onClose={()=>setModal(null)} onSave={saveA}/>}
           {modal==='i'&&<IPAModal     item={editItem} onClose={()=>setModal(null)} onSave={saveI}/>}
           {modal==='e'&&<EquipModal   item={editItem} onClose={()=>setModal(null)} onSave={saveE}/>}
           {modal==='s'&&<SampleModal  item={editItem} onClose={()=>setModal(null)} onSave={saveS}/>}
-          {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} canManage={canD} prefill={ganttPrefill}
+          {loanSample&&<LoanModal sample={loanSample} loans={loansOf(loanSample._id)} canManage={canD} prefill={ganttPrefill} rangeLabel={loanRangeLabel}
                                   onClose={closeLoanModal} onAddLoan={addLoan} onDelLoan={delLoan}/>}
-          {importOpen&&<ImportMonthlyModal samples={samples} loans={loans} onClose={()=>setImportOpen(false)} onImport={importMonthly}/>}
+          {importOpen&&<ImportMonthlyModal samples={samples} onClose={()=>setImportOpen(false)} onImport={importMonthly}/>}
         </div>
       </div>
     );
