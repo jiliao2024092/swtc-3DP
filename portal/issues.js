@@ -1681,17 +1681,17 @@
                                setRange={f=>setLoanMonths(r=>{ const n=(typeof f==='function'?f(r):f); return { from:n.from||r.from, to:n.to||r.to }; })}
                                title="清冊的出借次數、出借總表、借出統計與匯出都只算這段月份"/>
                 : <span style={{fontSize:11.5,color:'var(--ink-4)'}}>甘特圖依顯示的那一週讀取</span>}
-              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">⬇ 匯出Excel</button>
-              {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportMonthlyTemplate} title="依現有清冊下載空白每月登記表（公版，供列印手填）">⬇ 空白月表</button>}
-              {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={()=>setImportOpen(true)} title="上傳填好的每月登記表 Excel，批次匯入出借紀錄">📥 匯入月表</button>}
-              <button className={'btn-edit-mode'+(sampleView==='gantt'?' active':'')} onClick={()=>setSampleView(v=>v==='gantt'?'list':'gantt')} title="切換甘特圖行事曆（雙擊格子快速登記出借）">
-                🗓 {sampleView==='gantt'?'回清冊':'甘特圖'}
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12,whiteSpace:'nowrap'}} onClick={exportSamples} title="匯出樣品清冊、出借紀錄與統計為 Excel">匯出 Excel</button>
+              {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12,whiteSpace:'nowrap'}} onClick={exportMonthlyTemplate} title="依現有清冊下載空白每月登記表（公版，供列印手填）">空白月表</button>}
+              {isAdmin&&<button className="btn-cancel" style={{padding:'0 12px',fontSize:12,whiteSpace:'nowrap'}} onClick={()=>setImportOpen(true)} title="上傳填好的每月登記表 Excel，批次匯入出借紀錄">匯入月表</button>}
+              <button className={'btn-edit-mode'+(sampleView==='gantt'?' active':'')} style={{whiteSpace:'nowrap'}} onClick={()=>setSampleView(v=>v==='gantt'?'list':'gantt')} title="切換甘特圖行事曆（雙擊格子快速登記出借）">
+                {sampleView==='gantt'?'回清冊':'甘特圖'}
               </button>
-              <button className={'btn-edit-mode'+(sampleView==='ledger'?' active':'')} onClick={()=>setSampleView(v=>v==='ledger'?'list':'ledger')} title="切換出借總表（原始表單樣式，一覽借出/歸還）">
-                📋 {sampleView==='ledger'?'回清冊':'出借總表'}
+              <button className={'btn-edit-mode'+(sampleView==='ledger'?' active':'')} style={{whiteSpace:'nowrap'}} onClick={()=>setSampleView(v=>v==='ledger'?'list':'ledger')} title="切換出借總表（原始表單樣式，一覽借出/歸還）">
+                {sampleView==='ledger'?'回清冊':'出借總表'}
               </button>
-              <button className={'btn-edit-mode'+(sampleView==='stats'?' active':'')} onClick={()=>setSampleView(v=>v==='stats'?'list':'stats')} title="切換樣品借出統計">
-                📊 {sampleView==='stats'?'回清冊':'借出統計'}
+              <button className={'btn-edit-mode'+(sampleView==='stats'?' active':'')} style={{whiteSpace:'nowrap'}} onClick={()=>setSampleView(v=>v==='stats'?'list':'stats')} title="切換樣品借出統計">
+                {sampleView==='stats'?'回清冊':'借出統計'}
               </button>
               {isAdmin&&<SettingsBtn/>}
             </div>

@@ -1691,7 +1691,7 @@ window.DashboardView = DashboardView;
 
 <!-- ⑥ workboard.js + issues.js -->
 <script type="text/babel" data-presets="react" src="workboard.js?v=20261012a"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20261012b"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20261012c"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -3129,6 +3129,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-12', type:'tweak',
+    text:'樣品出借工具列的按鈕拿掉圖示、文字不再折成兩行（匯出 Excel、空白月表、匯入月表、甘特圖、出借總表、借出統計）。' },
   { hash:'d8f728c', date:'2026-10-12', type:'tweak',
     text:'樣品出借改成分地區：北部、中部、南部各有自己的樣品清冊與出借紀錄，三區都看得到「樣品出借」分頁（原本只有中部看得到、全公司共用一份）。既有的樣品與出借紀錄全部歸中部。樣品清冊仍只有 admin 能新增／編輯／刪除，admin 新增樣品與匯入月表時可以選要建在哪一區；登記出借會自動算在該樣品所屬的地區。' },
   { hash:'d15a15f', date:'2026-10-12', type:'feat',
@@ -3146,9 +3148,7 @@ const CHANGELOG = [
   { hash:'09d648a', date:'2026-09-21', type:'fix',
     text:'修正「刪除材料後重新整理又跑回來」的問題（中部 Flexible 80A V1.1）：材料會同時出現在備料庫存與「已停用材料」清單裡。原因是先前按過「恢復顯示」的材料，之後再刪除時，那個「恢復顯示」的優先序仍然高於停用。現在以最後一次動作為準——刪除就是停用，並且刪除與恢復都會把對方清單裡同一種材料清乾淨。' },
   { hash:'ed7fffc', date:'2026-09-18', type:'fix',
-    text:'修正南部 Form3+ 的機台樹脂罐出現兩個 Elastic 50A 的問題：機台上其實只有一罐，被重複列了一次，連帶「材料庫存總覽」的機台樹脂罐存量也被算成兩倍。同樣的狀況也可能出現在南部 Form3L，一併修正。' },
-  { hash:'a88fa07', date:'2026-09-18', type:'tweak',
-    text:'扣庫存規則調整：列印舊版本材料時也會扣庫存（先前舊版本的列印只記錄、不扣）。舊版罐一樣是實際用掉的樹脂，不扣的話帳上庫存會比實際多。只影響之後的新列印；先前標為「未扣庫存」的舊紀錄如需扣除，請用該筆的「補扣」按鈕。' }
+    text:'修正南部 Form3+ 的機台樹脂罐出現兩個 Elastic 50A 的問題：機台上其實只有一罐，被重複列了一次，連帶「材料庫存總覽」的機台樹脂罐存量也被算成兩倍。同樣的狀況也可能出現在南部 Form3L，一併修正。' }
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
