@@ -2208,10 +2208,6 @@ function AdminPanel({ user, isAdmin }) {
   //     回報的實體機台代號（AluminumBowfin…，即時狀態卡與消耗紀錄用）
   const [regionMode, setRegionMode] = useSt('off');
   const [machineRegions, setMachineRegions] = useSt([]);   // [{alias, region}]
-  // 一次性遷移：替既有資料補 region 欄位（階段 5 的前置，見 docs/region-split-plan.md）
-  const [bfScan, setBfScan] = useSt(null);      // 掃描結果 { total, missing, perColl:[{name,total,missing}] }
-  const [bfBusy, setBfBusy] = useSt('');        // '' | 'scan' | 'write'
-  const [bfDone, setBfDone] = useSt(null);      // 寫入結果 { written }
 
   // ── 資料同步（admin 專屬）────────────────────────────────────────
   // 手動觸發 Cloud Function 的同步，免等 30 分鐘排程。後端是 sync_formlabs_manual /
@@ -2279,64 +2275,6 @@ function AdminPanel({ user, isAdmin }) {
     const mins = Math.round((Date.now() - d.getTime()) / 60000);
     const ago = mins < 1 ? '剛剛' : mins < 60 ? (mins + ' 分鐘前') : (Math.floor(mins / 60) + ' 小時前');
     return d.toLocaleString('zh-TW', { hour12: false }) + '（' + ago + '）';
-  };
-
-  // 需要補 region 的 collection。刻意不含 sample_items / sample_loans——
-  // 樣品是全公司共用資產（借用人可能跨廠區借還），先前已決定不分區。
-  // inventory_history 由 Cloud Function 寫入時就帶 region，不在這裡處理。
-  const BACKFILL_COLLS = ['bookings', 'workboard_orders', 'issues_anomalies', 'issues_ipa', 'issues_equipment'];
-
-  // 先掃描、後寫入，刻意分成兩個動作：直接寫的話使用者無從得知會動到幾筆。
-  const backfillScan = async () => {
-    setBfBusy('scan'); setBfDone(null);
-    try {
-      const perColl = [];
-      for (const name of BACKFILL_COLLS) {
-        const snap = await window.fbDb.collection(name).get();
-        // 沒有 region、或值不是合法區碼的都要補（前端一律當中區，補成中區＝維持現狀）
-        const missing = snap.docs.filter(d => !window.isRegion(d.data().region)).length;
-        perColl.push({ name, total: snap.size, missing });
-      }
-      setBfScan({
-        perColl,
-        total:   perColl.reduce((a, c) => a + c.total, 0),
-        missing: perColl.reduce((a, c) => a + c.missing, 0),
-      });
-    } catch (e) {
-      console.error('[backfill scan]', e);
-      showToast('掃描失敗：' + (e.message || e), 'err');
-    } finally { setBfBusy(''); }
-  };
-
-  const backfillApply = async () => {
-    if (!bfScan || !bfScan.missing) return;
-    if (!confirm(
-      `即將替 ${bfScan.missing} 筆缺少地區的既有資料補上「中部」。\n\n` +
-      `這與目前的顯示結果一致（沒有 region 的資料本來就被當成中部），\n` +
-      `所以補完畫面不會有任何變化。\n\n` +
-      `此動作只「新增」region 欄位，不會修改任何既有欄位值。`
-    )) return;
-    setBfBusy('write');
-    try {
-      let written = 0;
-      for (const name of BACKFILL_COLLS) {
-        const snap = await window.fbDb.collection(name).get();
-        const todo = snap.docs.filter(d => !window.isRegion(d.data().region));
-        // Firestore 單一 batch 上限 500，取 400 留餘裕
-        for (let i = 0; i < todo.length; i += 400) {
-          const batch = window.fbDb.batch();
-          todo.slice(i, i + 400).forEach(d => batch.update(d.ref, { region: 'central' }));
-          await batch.commit();
-          written += Math.min(400, todo.length - i);
-        }
-      }
-      setBfDone({ written });
-      await backfillScan();
-      showToast(`✓ 已補上 ${written} 筆的地區欄位`);
-    } catch (e) {
-      console.error('[backfill apply]', e);
-      showToast('寫入失敗：' + (e.message || e), 'err');
-    } finally { setBfBusy(''); }
   };
 
   const INP = {width:'100%',padding:'8px 11px',border:'1.5px solid var(--line)',borderRadius:6,fontSize:13,fontFamily:'inherit',outline:'none',background:'var(--bg)',color:'var(--ink)'};
@@ -2924,60 +2862,6 @@ function AdminPanel({ user, isAdmin }) {
                   沒列在這裡的機台一律歸中部。<br/>
                   顯示名稱留空就沿用系統預設的機型名稱（灰字提示的那個）；填了之後，機台即時狀態卡與材料庫存的機台名稱都會改用它，例如「Form4B 高雄」。
                 </div>
-
-                <div style={{marginTop:30,paddingTop:22,borderTop:'1px solid var(--line)'}}>
-                  <div style={{fontSize:13,fontWeight:700,color:'var(--ink)',marginBottom:6}}>一次性：補齊既有資料的地區欄位</div>
-                  <div style={{fontSize:12,color:'var(--ink-4)',lineHeight:1.75,marginBottom:12}}>
-                    在分區功能上線前建立的資料沒有「地區」欄位。目前畫面把它們一律當成
-                    <b style={{color:'var(--ink-2)'}}>中部</b>，所以顯示是正確的；
-                    但之後若要把權限收緊到資料庫層（讓別區的人「連讀都讀不到」），
-                    查詢會用地區條件比對，<b style={{color:'var(--ink-2)'}}>沒有這個欄位的資料會整批查不到</b>。
-                    這個動作就是先把欄位補上。
-                  </div>
-                  <div style={{padding:'10px 12px',background:'var(--bg-soft)',border:'1px solid var(--line)',borderRadius:7,fontSize:11.5,color:'var(--ink-4)',lineHeight:1.7,marginBottom:12}}>
-                    只<b style={{color:'var(--ink-2)'}}>新增</b> region 欄位，不修改任何既有欄位值；
-                    補完畫面不會有變化（本來就當成中部）。可以重複執行，已經有地區的資料會自動略過。
-                  </div>
-                  <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                    <button className="btn-cancel" style={{padding:'0 14px',fontSize:12}}
-                      onClick={backfillScan} disabled={!!bfBusy}>
-                      {bfBusy==='scan' ? '掃描中…' : '① 掃描（不寫入）'}
-                    </button>
-                    {bfScan && bfScan.missing > 0 && (
-                      <button className="btn-save" style={{padding:'0 14px',height:34,fontSize:12,opacity:bfBusy?.5:1}}
-                        onClick={backfillApply} disabled={!!bfBusy}>
-                        {bfBusy==='write' ? '寫入中…' : `② 補上 ${bfScan.missing} 筆`}
-                      </button>
-                    )}
-                  </div>
-                  {bfScan && (
-                    <div style={{marginTop:12,fontSize:12}}>
-                      <table style={{borderCollapse:'collapse',fontSize:12}}>
-                        <thead><tr style={{color:'var(--ink-4)'}}>
-                          <th style={{textAlign:'left',padding:'3px 14px 3px 0'}}>資料集</th>
-                          <th style={{textAlign:'right',padding:'3px 14px 3px 0'}}>總筆數</th>
-                          <th style={{textAlign:'right',padding:'3px 0'}}>缺地區</th>
-                        </tr></thead>
-                        <tbody>
-                          {bfScan.perColl.map(c => (
-                            <tr key={c.name}>
-                              <td style={{padding:'3px 14px 3px 0',fontFamily:'var(--mono, monospace)'}}>{c.name}</td>
-                              <td style={{textAlign:'right',padding:'3px 14px 3px 0',color:'var(--ink-3)'}}>{c.total}</td>
-                              <td style={{textAlign:'right',padding:'3px 0',fontWeight:600,
-                                          color:c.missing ? 'var(--warn)' : 'var(--ok)'}}>{c.missing}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div style={{marginTop:8,color: bfScan.missing ? 'var(--warn)' : 'var(--ok)'}}>
-                        {bfScan.missing
-                          ? `共 ${bfScan.missing} 筆缺少地區欄位（總計 ${bfScan.total} 筆）`
-                          : `✓ 全部 ${bfScan.total} 筆都有地區欄位，不需要補`}
-                      </div>
-                      {bfDone && <div style={{marginTop:4,color:'var(--ok)'}}>本次已補上 {bfDone.written} 筆</div>}
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
@@ -3129,6 +3013,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-12', type:'tweak',
+    text:'清理不再使用的功能：後台「地區」分頁底部的「一次性：補齊既有資料的地區欄位」工具已移除（8 月分區時已補完，之後用不到）。其餘清理都在系統內部，畫面與操作不受影響。' },
   { hash:'cfcf2c5', date:'2026-10-12', type:'tweak',
     text:'樣品出借工具列的按鈕拿掉圖示、文字不再折成兩行（匯出 Excel、空白月表、匯入月表、甘特圖、出借總表、借出統計）。' },
   { hash:'d8f728c', date:'2026-10-12', type:'tweak',
@@ -3146,9 +3032,7 @@ const CHANGELOG = [
   { hash:'370726c', date:'2026-09-21', type:'tweak',
     text:'材料的「停用／恢復顯示」改成各地區獨立：在南部停用一個材料，北部與中部不會再跟著消失。原本三區共用同一份清單。目前已經停用的材料會原封不動套用到三個地區，之後各區可以各自調整——切到某一區，該區的「已停用材料」就只管那一區。' },
   { hash:'09d648a', date:'2026-09-21', type:'fix',
-    text:'修正「刪除材料後重新整理又跑回來」的問題（中部 Flexible 80A V1.1）：材料會同時出現在備料庫存與「已停用材料」清單裡。原因是先前按過「恢復顯示」的材料，之後再刪除時，那個「恢復顯示」的優先序仍然高於停用。現在以最後一次動作為準——刪除就是停用，並且刪除與恢復都會把對方清單裡同一種材料清乾淨。' },
-  { hash:'ed7fffc', date:'2026-09-18', type:'fix',
-    text:'修正南部 Form3+ 的機台樹脂罐出現兩個 Elastic 50A 的問題：機台上其實只有一罐，被重複列了一次，連帶「材料庫存總覽」的機台樹脂罐存量也被算成兩倍。同樣的狀況也可能出現在南部 Form3L，一併修正。' }
+    text:'修正「刪除材料後重新整理又跑回來」的問題（中部 Flexible 80A V1.1）：材料會同時出現在備料庫存與「已停用材料」清單裡。原因是先前按過「恢復顯示」的材料，之後再刪除時，那個「恢復顯示」的優先序仍然高於停用。現在以最後一次動作為準——刪除就是停用，並且刪除與恢復都會把對方清單裡同一種材料清乾淨。' }
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

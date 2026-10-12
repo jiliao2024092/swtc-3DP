@@ -59,7 +59,7 @@ node --input-type=module --check < /tmp/x.js
 
 # Cloud Function
 python3 -m py_compile functions/main.py
-python tools/test_functions_wiring.py   # 部署接線（裝飾器、region、內部 helper）：29 項
+python tools/test_functions_wiring.py   # 部署接線（裝飾器、region、內部 helper）：25 項
 PYTHONIOENCODING=utf-8 python tools/check_material_sync.py   # 前後端材料表一致性
 
 # 入庫的「已知材料」判斷 + 家族名稱反查 + 停用／恢復顯示 + 樹脂罐實際版本：173 項（資料驅動，遍歷 CODE_TO_NAME / FAMILY_TO_NAME）
@@ -75,7 +75,7 @@ node tools/test_closed_queries.js
 # 甘特圖「機台列 × 地區」：30 項（同機型每區各一份時不可互相顯示／不可讓舊資料消失）
 node tools/test_gantt_rows.js
 
-# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析、材料拆分遷移、同步柵欄、結案欄位補齊、樣品分區補齊：245 項
+# 扣庫存規則、Outcome 五分類、飛行中跳過、列印時間、EF單號解析、材料拆分遷移、同步柵欄、結案欄位補正：231 項
 python tools/test_deduct_outcome.py
 
 # 列印記錄匯出（備註解析、收費規則、MF 併列、排序、列印結果、列印時間、中英文名、工單 join）：182 項
@@ -103,7 +103,8 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - 改完務必**五頁都開起來確認能登入**（改一個檔會同時影響全部）
 
 ## Firebase / 除錯
-- 看 log：`firebase functions:log --project swtc-3dp-poc`。常搜 `[sync]`、`DEBUG目標print`、`DEBUG列印中無檔名`
+- 看 log：`firebase functions:log --project swtc-3dp-poc`。常搜 `[sync]`、`[eiger]`、`[region-inv]`、`[sync][柵欄]`
+  - ⚠ 2026-10-12 清掉了一批已完成任務的除錯輸出：`[sync][DEBUG目標print]`、`[sync][DEBUG列印中無檔名]`、`[sync DEBUG]`、`[region-scan]`、`[region-scan-mf]` 都**不會再出現**。要重新追查時再臨時加，查完就拿掉
 - ⚠ **`firebase functions:log` 預設會被「部署稽核事件」洗版**（整頁 `google.cloud.audit.AuditLog`／`UpdateFunction`，看不到任何 `print()` 輸出）。要先濾掉：
   ```powershell
   firebase functions:log -n 300 --project swtc-3dp-poc |
@@ -118,7 +119,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
 - 主要 Firestore collection：`users`（`permissions` 陣列為主，`role` 是自動推導的舊系統相容值）、`bookings`（含跨天 `endDate`、用途 `category`）、`inventory/main`（全域帳務：去重用的 print guid、`family_latest_version`、產品層級設定）、`inventory/{north|central|south}`（各廠區樹脂實體庫存：stock／safety／cartridges／stock_shortfalls）、`inventory/markforged_{north|central|south}`（各廠區 Markforged 線材與耗材；舊的單一文件 `inventory/markforged` 保留為中區尚未建立時的唯讀來源）、`inventory_history/{guid}`（doc_id=guid 防重複；刪除消耗類紀錄會自動回補庫存）、`printer_status/current`、`workboard_orders`（`actUsage` 可從 inventory_history 自動帶入）、`issues_anomalies`、`issues_ipa`、`issues_equipment`、`settings/workspace`、`settings/quote_materials`、`settings/quote_studio_pricing`、`print_orders`、`print_history`
 - GCP Secrets：`FORMLABS_CLIENT_ID`、`FORMLABS_CLIENT_SECRET`
 - ⚠ **手動同步跳「同步失敗：internal」＝Cloud Run 沒開公開叫用**（2026-09-18，帳號到期恢復後發生）：log 只有 `The request was not authenticated ... Empty Authorization header`，函式本體根本沒執行。解法是 Cloud Run → `sync-formlabs-manual` → 安全性 →「允許未經驗證的叫用」（程式內仍會檢查登入與 admin）。`sync-eiger-manual` 當時不受影響。這是 GCP 權限設定，由使用者在 Console 操作
-- 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃）：
+- 機台（2026-08-18 由 `[region-scan]` / `[region-scan-mf]` log 實掃；這兩個 log 已於 2026-10-12 移除）：
   - Formlabs 7 台：`AluminumBowfin`(Form4·中)、`AdroitSauropod`(Form4L·南，長期關機、API 未回報；預設顯示名稱 Form4L，實際歸屬與名稱以後台設定為準)、`AbsorbedPuppy`(Form4B·南，2026-09-08 新增)、`JasperGosling`(Form4L·北)、`TealMoa`(Fuse1+·北)、`CreativeDragon`(Form3+·南)、`BoldSturgeon`(Form3L·南)
   - ⚠ **後三台的 `alias` 是 `None`，serial 就是機台名、沒有 `Form3L-` 這種前綴**——舊筆記寫的「機型靠 serial 前綴判斷」對它們無效，要改看 `machine_type_id`（`FORM-4-0`=Form4／`FRML-4-0`=Form4L／`FORM-3-2`=Form3+／`FRML-3-0`=Form3L／`FS30-1-0`=Fuse1+）
   - **納入消耗扣庫存的 6 台**（2026-08-25 起）：上述 7 台扣掉 `TealMoa`（Fuse 1+ 是 SLS 粉末，只顯示狀態不記消耗）。名單存在**三個地方，必須一起改**：`functions/main.py` 的 `TRACKED_ALIASES`、`inventory.html` 的 `TRACKED_PRINTERS`、`3DP-BK.html` 的 `MATERIAL_PRINTERS`
@@ -211,8 +212,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - 其餘類別靠單號 join 工單，因為備註第一段只有客戶**簡稱**不是 EIP 全名；join 時**不覆蓋**已填好的客戶名稱
 - **工作看板「實際消耗量」自動帶入刻意不比對地區**：工單的 region 是「誰開的單」、消耗紀錄的 region 是「哪台機器印的」，跨區支援時兩者本來就不同（北部單子送中部機台印）。用工單地區去濾會讓那種消耗**整筆消失**，比多帶還糟——**EF 單號才是正確的關聯鍵**
   - ✅ **已改用 `ef_no` 精準查詢**（2026-08-27）：Cloud Function 把備註裡的單號解析成獨立欄位，`where('ef_no','==',x)` 不再受筆數窗口限制。原本 `loadRecentHistory()` 的 `limit(1000)` 是全域共用的，三區一起吃，每區可回溯範圍只剩約 1/3
-  - ⚠ **退路不能拿掉**：2026-08-27 之前的紀錄沒有 `ef_no`，只靠精準查詢會讓那些工單的消耗量整個消失。admin 跑過一次 `sync_formlabs_manual({backfill_ef_no:true})` 之後退路就不會再被用到
-  - ⚠ `backfill_ef_no` 與 `backfill` **完全不同**：後者清空重建整份 history（會重寫所有 `stock_deducted`），前者只用 `update()` 加 `ef_no` 一個欄位、冪等、不動任何既有值
+  - ⚠ **退路不能拿掉**：2026-08-27 之前的紀錄沒有 `ef_no`，只靠精準查詢會讓那些工單的消耗量整個消失。使用者 2026-09-07 決定不補 `ef_no`，2026-10-12 連 `backfill_ef_no` 回填模式一起移除了，所以**這條退路是永久的**
 - **業務欄**：`workboard_orders.sales`，清單與 3DP-BK 共用 `settings/workspace.bk_sales`（`window._settings_sales`）。列印記錄匯出以 **EF 單號** join 補「業務／客戶全名／責任工程師」三欄；**沒單號或對不到就留空給人工填**，不做客戶簡稱的模糊比對（撞名風險太高）
 - **匯出合併規則**：塑料/纖維分兩列是 **Markforged 獨有**（doc_id 帶 slot），Formlabs 每筆 print 一律 **1:1 不合併**。踩過：對所有來源合併 → 29 筆被併成 13 列，還把不同材料的獨立列印加總（同檔名重印是常態，「實威-工程測試」就有 8 筆）
 - ⚠ 匯出排序要用**時間數值**，不是 `toLocaleString` 的字串——字典序會把 `2026/8/7` 排在 `2026/8/27` 之前
@@ -290,7 +290,7 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - **未結案全讀、已結案依日期範圍才讀**：`FBOrders`／`FBAnomalies` 的 `onSnapshotOpen()`（`closed == false`，**不設筆數上限**）與 `onSnapshotClosed(from, to)`（`closed == true` ＋ `qdate` 範圍）。已結案只在需要時讀：工作看板＝按「顯示已完成／已取消」、狀態篩選選已完成／已取消、或在看板／時間軸／Dashboard；客戶異常＝按「顯示已完成」、狀態篩選選已完成、或在分析頁。沒設期間時預設近 12 個月，畫面上標示讀到的範圍
     - ⚠ 原本的「最新 100 筆」窗口會把**舊的未完成案件擠出畫面而且沒有提示**，這是改的主因之一；未結案查詢**不可再加 limit**（`tools/test_closed_queries.js` 有守）
   - **`closed`／`qdate` 是存進去的欄位**：工作看板的「已完成」原本是 `K.statusOf()` 算出來的，Firestore 無法直接查。存檔時由 `firebase-service.js` 的 `withClosed()` 寫（工作看板直接呼叫 `K.statusOf`，單一來源）；`qdate`＝期望交期／異常日期，沒填退回建立日期
-    - 後端 `_migrate_closed_flags()` 一次性補齊既有資料（簽章 `inventory/main.closed_flag_sig`），`_heal_closed_flags()` 每輪補正最近 2 小時更新過的 —— **開著舊版頁面的人存檔不會寫這兩個欄位，新工單會哪個查詢都查不到**
+    - 既有資料已於 2026-10-12 一次性補齊（工作看板 25 筆、客戶異常 19 筆；那段一次性程式補完後已移除）。`_heal_closed_flags()` 每輪補正最近 2 小時更新過的 —— **開著舊版頁面的人存檔不會寫這兩個欄位，新工單會哪個查詢都查不到**
     - ⚠ 前後端判定規則必須一致，共用案例在 `tools/closed_cases.json`（Python 與 JS 測試都讀它）。progress 照抄 JS 嚴格相等，字串 `"100"` 不算
     - ⚠ **部署順序**：索引與後端補欄位要先上線、log 出現「結案欄位補齊完成」之後，前端才能上。反過來的話還沒補欄位的工單會從畫面消失
     - 索引：`closed+qdate`、`region+closed+qdate`、`region+closed`（兩個 collection 各一組，見 `firestore.indexes.json`）
@@ -298,11 +298,11 @@ JSX 若要更強保證：`npm i @babel/core @babel/preset-react`，再用 preset
   - **樣品出借紀錄依範圍讀**（`FBSampleLoans.onSnapshotRange`）：清冊／出借總表／統計／匯出＝上方選的「出借月份」起訖（預設本月）；甘特圖＝顯示的那一週。只在樣品分頁才讀
     - ⚠ **匯入月表汰換舊紀錄要直接查該月**（`getMonthlyImported(ym, region)`），不可從畫面清單找：畫面只載入目前範圍，範圍外的舊匯入會漏刪 → 出借次數重複計算
   - **樣品清冊／出借紀錄分區**（2026-10-12 使用者決定，取代原本「全公司共用一份、只有中部看得到分頁」）：三區都有樣品分頁、各看各的；`FBSampleItems`／`FBSampleLoans` 都是 `regional`，單一區的人查詢帶 `where('region','==')`，`firestore.rules` 的 `sample_items`／`sample_loans` 也比對 region（`tools/rules-test` 有守）
-    - 既有資料由 `_migrate_sample_regions()` **全部改成中部**（使用者決定，含已帶別區 region 的），簽章 `inventory/main.sample_region_sig`
+    - 既有資料已於 2026-10-12 **全部改成中部**（使用者決定，含已帶別區 region 的；清冊 20 筆、出借紀錄 178 筆，那段一次性程式補完後已移除）
     - 清冊管理仍限 admin；admin 新增樣品、匯入月表時可選地區（預設＝目前檢視的地區）
     - ⚠ **出借紀錄的地區跟著「樣品」走，不是跟著登記的人**：admin 幫南部樣品登記，紀錄要算南部
     - ⚠ **匯入月表只汰換「同一區」同月的舊紀錄**（`getMonthlyImported(ym, region)`）：不帶地區的話，匯入中部月表會把南部同月的紀錄一起刪掉；比對既有樣品也只比同一區（別區同名的樣品不是同一件）
-- **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。要強制重建 history 改用 `sync_formlabs_manual` 的 backfill
+- **Firestore `.set()` 即使內容不變也計費一筆寫入**：`perform_sync` 對已在 `last_processed_prints` 的 guid 必須 `continue` 跳過，**勿改回「冪等重寫確保存在」**。曾因每輪重寫全部 ~777 筆 history × 每10分144次/天 ≈ 11萬寫入/天（免費額度僅2萬/天）爆量。⚠ 2026-10-12 起**已沒有**「清空重建 history」的 backfill 模式（誤用會清掉全部消耗紀錄、畫面上從來沒有入口，使用者決定移除）；真的需要重建時另外寫一次性工具
 - `.gitignore` 須含 `venv/ functions/venv/ **/venv/ __pycache__/`
 - 「網頁沒更新」多半是 (a) 部署未觸發 或 (b) portal js 沒升 cache 版本號；若換無痕/換瀏覽器還是舊的 = 伺服器/CDN 端，非瀏覽器 cache
 

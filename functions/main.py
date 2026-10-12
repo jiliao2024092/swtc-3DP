@@ -1219,17 +1219,6 @@ def _perform_sync_eiger_unlocked(access_key: str, secret_key: str) -> dict:
         devices = eiger_get_all("/devices", access_key, secret_key)
         stats["devices_seen"] = len(devices)
 
-        # 北中南分區用：印出組織底下「所有」Markforged 機台（不只白名單那台）。
-        # 使用者要把 Markforged 也納入分區，但要排除中國地區的機台，而目前程式碼裡
-        # 只有一台的 device id，其餘 9 台的名稱與所在地都不知道 —— 只能從 API 撈。
-        # 純 log、不影響任何行為；決定好納管範圍後可移除。
-        # 查看方式：firebase functions:log --project swtc-3dp-poc，搜 [region-scan-mf]
-        for _d in devices:
-            print(f"[region-scan-mf] id={_d.get('id')!r} name={_d.get('name')!r} "
-                  f"type={_d.get('device_type')!r} series={_d.get('device_series')!r} "
-                  f"state={_d.get('state')!r} "
-                  f"tracked={_d.get('id') in EIGER_TRACKED_DEVICES}")
-
         db_mr = get_db()
         machine_regions = load_machine_regions(db_mr)
 
@@ -1446,12 +1435,11 @@ def _migrate_material_splits(db, inv_ref, inv) -> int:
 #     qdate（YYYY-MM-DD）＝依日期範圍查已結案時用的日期
 #   原本的「已完成」是前端用好幾個欄位**算出來的**（工作看板見 portal.html 的 K.statusOf），
 #   Firestore 沒辦法直接查，所以存成欄位。
-# ★ 前端存檔時就會寫這兩個欄位（firebase-service.js 的 closedOf／qdateOf）。這裡負責：
-#     1. 一次性補齊既有資料（_migrate_closed_flags，簽章存 inventory/main.closed_flag_sig）
-#     2. 每輪檢查最近 2 小時有更新的文件（_heal_closed_flags）—— 開著舊版頁面沒重新整理的人
-#        存檔時不會寫這兩個欄位，新增的工單就會「哪個查詢都查不到」，等於從畫面上消失
+# ★ 前端存檔時就會寫這兩個欄位（firebase-service.js 的 withClosed）。既有資料已於 2026-10-12
+#   一次性補齊（工作看板 25 筆、客戶異常 19 筆，之後移除了那段一次性程式）。這裡只剩：
+#     每輪檢查最近 2 小時有更新的文件（_heal_closed_flags）—— 開著舊版頁面沒重新整理的人
+#     存檔時不會寫這兩個欄位，新增的工單就會「哪個查詢都查不到」，等於從畫面上消失
 # ⚠⚠ 判定規則必須與前端一字不差（tools/test_deduct_outcome.py 與 tools/test_regions.js 用同一組案例守）
-CLOSED_FLAG_SIG = "v1"
 CLOSED_HEAL_WINDOW_SEC = 2 * 3600   # 排程 30 分鐘一輪；2 小時可容忍連續漏跑 3 輪
 
 
@@ -1505,43 +1493,6 @@ def _closed_patch(d: dict, closed_fn, date_field: str) -> dict:
     return {k: v for k, v in want.items() if (d or {}).get(k) != v}
 
 
-def _migrate_closed_flags(db, inv_ref, inv) -> int:
-    """一次性補齊既有工單與異常的 closed／qdate。完成後記簽章，之後每輪 0 次讀取。"""
-    if (inv or {}).get("closed_flag_sig") == CLOSED_FLAG_SIG:
-        return 0
-    changed = 0
-    batch, pending = db.batch(), 0
-    for coll, closed_fn, date_field in CLOSED_COLLECTIONS:
-        n_closed = n_open = n_nodate = 0
-        for snap in db.collection(coll).stream():
-            d = snap.to_dict() or {}
-            patch = _closed_patch(d, closed_fn, date_field)
-            final = {**d, **patch}
-            if final.get("closed"):
-                n_closed += 1
-            else:
-                n_open += 1
-            if not final.get("qdate"):
-                n_nodate += 1
-            if not patch:
-                continue
-            batch.update(snap.reference, patch)
-            pending += 1
-            changed += 1
-            if pending >= 400:
-                batch.commit()
-                batch, pending = db.batch(), 0
-        # ★ 沒有 qdate 的已結案資料，日期範圍查詢會永遠查不到 —— 數量印出來，非 0 就要處理
-        print(f"[sync] 結案欄位補齊 {coll}：未結案 {n_open}、已結案 {n_closed}、"
-              f"無查詢日期 {n_nodate}")
-    if pending:
-        batch.commit()
-    # ★ 全部寫完才記簽章：中途失敗下一輪整批重來（只寫有差異的，重跑安全）
-    inv_ref.set({"closed_flag_sig": CLOSED_FLAG_SIG}, merge=True)
-    print(f"[sync] 結案欄位補齊完成（{CLOSED_FLAG_SIG}）：共更新 {changed} 筆")
-    return changed
-
-
 def _heal_closed_flags(db) -> int:
     """每輪檢查最近更新過的工單與異常，closed／qdate 不對就補正（見本段開頭的說明）。"""
     from google.cloud.firestore_v1.base_query import FieldFilter
@@ -1557,45 +1508,6 @@ def _heal_closed_flags(db) -> int:
     if fixed:
         print(f"[sync] 結案欄位補正：{fixed} 筆（多半是開著舊版頁面的人存檔）")
     return fixed
-
-
-# ── 樣品清冊／出借紀錄分區：既有資料一律歸中部（2026-10-12 使用者決定）──────────
-# ★ 為什麼需要：樣品原本刻意不分區（全公司共用一份），改成各區各看各的之後，
-#   前端對單一區的人會用 where('region','==',自己那區) 查詢 —— Firestore 查不到
-#   「沒有 region 欄位」的文件，舊資料會整筆從畫面消失。所以先把 region 補齊。
-# ★ 使用者決定「既有資料全部歸中部」（實體樣品箱在台中），所以已經帶了別區 region 的
-#   也一律改成中部，不是只補缺漏的。
-# ★ 只跑一次：簽章存 inventory/main.sample_region_sig，之後每輪 0 次讀取。
-#   之後新增的樣品／出借紀錄由前端帶上正確的地區，這裡不再碰。
-SAMPLE_REGION_SIG = "v1"
-SAMPLE_REGION_COLLECTIONS = ("sample_items", "sample_loans")
-
-
-def _migrate_sample_regions(db, inv_ref, inv) -> int:
-    if (inv or {}).get("sample_region_sig") == SAMPLE_REGION_SIG:
-        return 0
-    changed = 0
-    batch, pending = db.batch(), 0
-    for coll in SAMPLE_REGION_COLLECTIONS:
-        n_all = n_fix = 0
-        for snap in db.collection(coll).stream():
-            n_all += 1
-            if (snap.to_dict() or {}).get("region") == "central":
-                continue                          # 已經是中部，不寫（內容相同也計費）
-            batch.update(snap.reference, {"region": "central"})
-            pending += 1
-            n_fix += 1
-            if pending >= 400:
-                batch.commit()
-                batch, pending = db.batch(), 0
-        changed += n_fix
-        print(f"[sync] 樣品分區 {coll}：共 {n_all} 筆，改成中部 {n_fix} 筆")
-    if pending:
-        batch.commit()
-    # ★ 全部寫完才記簽章：中途失敗下一輪整批重來（已是中部的會跳過，重跑安全）
-    inv_ref.set({"sample_region_sig": SAMPLE_REGION_SIG}, merge=True)
-    print(f"[sync] 樣品分區補齊完成（{SAMPLE_REGION_SIG}）：共更新 {changed} 筆")
-    return changed
 
 
 # ── 同步柵欄：同一時間只允許一輪 Formlabs 同步 ─────────────────────────
@@ -1645,7 +1557,7 @@ def _release_sync_lock(db, name: str, owner: str) -> None:
     _txn(db.transaction())
 
 
-def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> dict:
+def perform_sync(client_id: str, client_secret: str) -> dict:
     """排程與手動同步共用的入口：先搶柵欄，搶到才真的同步（見上方說明）。"""
     db = get_db()
     owner = f"{os.environ.get('K_SERVICE', 'local')}:{os.getpid()}:{datetime.datetime.utcnow().isoformat()}"
@@ -1659,7 +1571,7 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
         print(f"[sync][柵欄] 已有一輪同步在進行（{holder}），本輪跳過")
         return {"skipped": "another_sync_running", "holder": holder, "errors": []}
     try:
-        return _perform_sync_unlocked(client_id, client_secret, backfill)
+        return _perform_sync_unlocked(client_id, client_secret)
     finally:
         try:
             _release_sync_lock(db, "formlabs", owner)
@@ -1668,13 +1580,12 @@ def perform_sync(client_id: str, client_secret: str, backfill: bool = False) -> 
             print(f"[sync][柵欄] 釋放同步鎖失敗（{SYNC_LOCK_LEASE_SEC} 秒後自動到期）: {e}")
 
 
-def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = False) -> dict:
+def _perform_sync_unlocked(client_id: str, client_secret: str) -> dict:
     """執行一次完整同步：拉 printers + prints，更新 Firestore。回傳 stats。
     ★ 不可直接呼叫：一律經過 perform_sync()（同步柵欄）。"""
     db = get_db()
     stats = {
         "started_at":       datetime.datetime.utcnow().isoformat() + "Z",
-        "backfill":         backfill,
         "printers_count":   0,
         "prints_total":     0,
         "processed_new":    0,
@@ -1724,15 +1635,6 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             inside = c.get("inside_printer")
             if inside:
                 carts_by_inside.setdefault(inside, []).append(c)
-
-        # debug：dump 第一台 printer 結構（看 cartridge_status 真實型別）
-        if printers and not all_cartridges:
-            import json as _j
-            first = printers[0]
-            cs = first.get("cartridge_status")
-            print(f"[sync DEBUG] printer[0].alias={first.get('alias')}, "
-                  f"cartridge_status type={type(cs).__name__}, "
-                  f"sample={_j.dumps(cs, default=str)[:300] if cs else None}")
 
         # 機台 → 區的對照（admin 在後台設定的那份；讀一次給整輪同步用）
         machine_regions = load_machine_regions(db)
@@ -1801,11 +1703,6 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             print_progress = (cur_print.get("progress") or cur_print.get("percent")
                               or pstatus.get("progress") or 0)
             cur_status = pstatus.get("status") or p.get("status") or ""
-            # debug：列印中但抓不到檔名時，dump printer_status 結構以便補欄位
-            if str(cur_status).upper() in ("PRINTING", "PAUSED", "PAUSING") and not print_name:
-                import json as _jj
-                print(f"[sync][DEBUG列印中無檔名] alias={alias} "
-                      f"printer_status={_jj.dumps(pstatus, default=str)[:400]}")
 
             printers_summary.append({
                 "alias":      alias,
@@ -1831,20 +1728,6 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             "updated_at": firestore.SERVER_TIMESTAMP,
         }, merge=True)
         print(f"[sync] 已寫入 printer_status/current ({len(printers_summary)} 台)")
-
-        # 北中南分區用：印出「帳號底下所有機台」的 alias 與 serial（不只 TRACKED_ALIASES）。
-        # 純 log、不影響任何行為。
-        # 查看方式：firebase functions:log --project swtc-3dp-poc，搜 [region-scan]
-        #
-        # ★★ tracked 必須用 tracked_alias()，不可以自己寫一份只看 alias 的判斷 ★★
-        #   舊版這裡寫死 `any(a in (_p.get('alias') or ''))`，於是南部兩台
-        #   （alias=None）永遠印 tracked=False，但實際上 tracked_serials 有收它們。
-        #   **診斷訊息與真實行為不一致比沒有訊息更糟**——2026-08-25 查「北/南沒有
-        #   消耗紀錄」時就是被這行帶偏，白繞了一圈。
-        for _p in printers:
-            print(f"[region-scan] alias={_p.get('alias')!r} serial={_p.get('serial')!r} "
-                  f"machine_type_id={_p.get('machine_type_id')!r} "
-                  f"tracked={tracked_alias(_p) is not None}")
 
         # 4. 拉 inventory/main 看 last_processed_prints
         inv_ref = db.collection("inventory").document("main")
@@ -1872,18 +1755,12 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             stats["material_splits_fixed"] = _migrate_material_splits(db, inv_ref, inv)
         except Exception as _se:
             print(f"[sync][警示] 材料拆分更正失敗（不影響本輪同步）: {_se}")
-        # 工作看板／客戶異常的 closed／qdate（前端「依日期查已結案」要用，見 _migrate_closed_flags）
+        # 工作看板／客戶異常的 closed／qdate 補正（前端「依日期查已結案」要用，見 _heal_closed_flags）
         # ★ 獨立 try/except：資料修正失敗不可讓整輪同步（扣庫存）停擺
         try:
-            stats["closed_flags_migrated"] = _migrate_closed_flags(db, inv_ref, inv)
             stats["closed_flags_healed"] = _heal_closed_flags(db)
         except Exception as _ce:
-            print(f"[sync][警示] 結案欄位補齊失敗（不影響本輪同步）: {_ce}")
-        # 樣品清冊／出借紀錄分區（見 _migrate_sample_regions）。★ 獨立 try/except
-        try:
-            stats["sample_regions_migrated"] = _migrate_sample_regions(db, inv_ref, inv)
-        except Exception as _sre:
-            print(f"[sync][警示] 樣品分區補齊失敗（不影響本輪同步）: {_sre}")
+            print(f"[sync][警示] 結案欄位補正失敗（不影響本輪同步）: {_ce}")
         family_latest = inv["family_latest_version"]
 
         # 4b. 北中南分區的庫存文件 inventory/{region}
@@ -1917,26 +1794,7 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             for f in REGION_INV_FIELDS:
                 region_invs[_rk].setdefault(f, {})
 
-        # backfill 模式：清空 history + last_processed_prints
-        if backfill:
-            print("[sync] BACKFILL: 清空 inventory_history...")
-            purged = 0
-            while True:
-                docs = list(db.collection("inventory_history").limit(500).stream())
-                if not docs:
-                    break
-                batch = db.batch()
-                for d in docs:
-                    batch.delete(d.reference)
-                batch.commit()
-                purged += len(docs)
-                if len(docs) < 500:
-                    break
-            print(f"[sync] BACKFILL: 已清空 {purged} 筆")
-            inv["last_processed_prints"] = []
-            processed = set()
-        else:
-            processed = set(inv["last_processed_prints"])
+        processed = set(inv["last_processed_prints"])
 
         # ── 消耗自動扣備料庫存（每筆 print 只扣一次）──
         # 模型：總庫存 = 備料庫存；消耗（列印/中止）自動扣備料；樹脂罐純顯示不計入
@@ -2055,24 +1913,14 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
                 #   history doc_id = guid，紀錄內容（材料/體積/完成時間）在 print 完成後
                 #   不再變動；每輪重寫只是浪費 Firestore 寫入配額——曾造成每輪約 777 筆 ×
                 #   144 次/天 ≈ 11 萬寫入/天（免費額度僅 2 萬/天）。
-                #   若確需強制重建 history，改用 sync_formlabs_manual 的 backfill 模式。
+                #   （2026-10-12 起已沒有「清空重建 history」的模式：誤用會清掉全部消耗紀錄，
+                #     而畫面上從來沒有入口。真的需要重建時另外寫一次性工具。）
                 if guid in processed:
                     stats["skipped_old"] += 1
                     continue
 
                 status = (pr.get("status") or "").upper()
                 stats["skipped_status"][status] = stats["skipped_status"].get(status, 0) + 1
-
-                # ★ 針對使用者回報一直沒抓到的特定 print 印詳細資料（依名稱比對）
-                _pname = pr.get("name", "") or ""
-                _DEBUG_PRINT_MARKERS = ("202606180001", "百盛鐵氟龍", "FC-118", "壓輪支撐架")
-                _is_debug_print = any(m in _pname for m in _DEBUG_PRINT_MARKERS)
-                if _is_debug_print:
-                    print(f"[sync][DEBUG目標print] name={_pname!r} guid={guid} "
-                          f"status={status} printer={pr.get('printer')!r} "
-                          f"material={pr.get('material')!r} volume_ml={pr.get('volume_ml')!r} "
-                          f"finished={pr.get('print_finished_at')!r} created={pr.get('created_at')!r} "
-                          f"in_processed={guid in processed} in_deducted={guid in deducted}")
 
                 # 對應的機台 alias
                 # ★ Formlabs prints API 的 printer 欄位可能是 serial 或 alias，兩者都比對
@@ -2160,10 +2008,6 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
 
                 volume_num = round(float(volume), 1)
                 record_type = "aborted" if is_abort else "consume"
-                if _is_debug_print:
-                    print(f"[sync][DEBUG目標print] 分類結果 name={_pname!r} status={status!r} "
-                          f"is_done={is_done} is_error={is_error} is_abort={is_abort} "
-                          f"is_consume={is_consume} → record_type={record_type!r}")
 
                 # 寫紀錄 — 完成時間優先；但 Formlabs 偶爾對 FINISHED 的 print 回傳
                 # epoch(1970) 的 print_finished_at（見「百盛鐵氟龍」案例），會把紀錄
@@ -2175,8 +2019,6 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
                          or parse_valid_ts(pr.get("created_at"))
                          or parse_valid_ts(now_iso))
                 finished = ts_dt.isoformat()
-                if _is_debug_print:
-                    print(f"[sync][DEBUG目標print] 採用時間 ts={finished!r} → tsDate={ts_dt.isoformat()}")
 
                 # 舊版本代碼（如家族已看過 FLTO2002 時的 FLTO2001）**照樣扣庫存**
                 # （使用者 2026-09-18 決定，取代原本「舊版只記錄不扣」的規則）：
@@ -2192,7 +2034,7 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
                 #   （實掃 1475 筆驗證過），但 status 的 enum 官方有完整文件，
                 #   而 print_run_success 沒有——用有文件保證的那個當扣帳依據。
                 bad_outcome = status in NO_DEDUCT_OUTCOME_STATUSES
-                will_deduct = ((not backfill) and (guid not in deducted)
+                will_deduct = ((guid not in deducted)
                                and (not is_new_machine_history)
                                and (not bad_outcome))
                 if bad_outcome:
@@ -2204,17 +2046,12 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
 
                 # 這筆是否真的扣過備料庫存；前端刪除紀錄時據此決定要不要回補
                 # （沒扣過就回補會憑空多出庫存）。舊紀錄無此欄位 → 前端視為 True（沿用舊行為）
-                # ★ backfill 會重建整份 history，但「當初有沒有扣過」是既成事實，不能一律寫 False，
-                #   否則這些紀錄日後被刪除時不會回補（少補庫存）。deducted_prints 在 backfill
-                #   模式下是保留的（不像 last_processed_prints 會被清空），直接拿它當事實依據。
-                actually_deducted = (guid in deducted) if backfill else will_deduct
+                actually_deducted = will_deduct
                 if actually_deducted:
                     skip_reason = None
                 elif bad_outcome:
                     # 前端「未扣庫存」tooltip 會顯示這個原因
                     skip_reason = "failed_or_aborted"
-                elif backfill:
-                    skip_reason = "backfill"
                 elif is_new_machine_history:
                     # 前端「未扣庫存」tooltip 會顯示這個原因，讓人看得懂為什麼沒扣
                     skip_reason = "newly_tracked_machine"
@@ -2259,7 +2096,7 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
                 processed.add(guid)
                 stats["processed_new"] += 1
 
-                # ── 消耗扣備料庫存：每筆 print 只扣一次（backfill 不扣、舊版本不扣）──
+                # ── 消耗扣備料庫存：每筆 print 只扣一次 ──
                 if will_deduct:
                     stock_deductions[material] = stock_deductions.get(material, 0.0) + volume_num
                     # 分區：同一筆消耗另外依機台所屬區累加，供扣減 inventory/{region}
@@ -2349,7 +2186,7 @@ def _perform_sync_unlocked(client_id: str, client_secret: str, backfill: bool = 
             "updatedAt":             firestore.SERVER_TIMESTAMP,
             "updatedBy":             "cloud-function",
             "updatedByEmail":        "sync-formlabs@cloud-function",
-            "lastReason":            f"Cloud Function 同步（{'BACKFILL' if backfill else 'INCREMENTAL'}）",
+            "lastReason":            "Cloud Function 同步",
         }, merge=True)
 
         # 10. 寫回 inventory/{region}
@@ -2405,55 +2242,14 @@ def sync_formlabs_scheduled(event: scheduler_fn.ScheduledEvent) -> None:
     stats = perform_sync(
         client_id=FORMLABS_CLIENT_ID.value,
         client_secret=FORMLABS_CLIENT_SECRET.value,
-        backfill=False,
     )
     if stats.get("errors"):
         print(f"[scheduled trigger] 有錯誤: {stats['errors']}")
 
 
 # ════════════════════════════════════════════════════════════════
-# HTTPS callable function（手動觸發 / backfill）
+# HTTPS callable function（手動觸發）
 # ════════════════════════════════════════════════════════════════
-# ★ 這支是純內部 helper，不是 callable —— 裝飾器必須留在 sync_formlabs_manual 上。
-#   2026-09-04 踩過：把這支插進「裝飾器與 sync_formlabs_manual 之間」，
-#   裝飾器就被它接走了，結果 sync_formlabs_manual 整支沒被部署，
-#   而它自己被當成 callable 部署卻少了 req 參數（呼叫必 TypeError）且沒有 auth 檢查。
-#   要在這一段插入新函式時，先確認裝飾器還黏在它該黏的那支上面。
-def backfill_ef_no_only():
-    """把 ef_no 補到既有的 inventory_history 上（只加這一個欄位）。
-
-    ★ 只 update ef_no，不碰其他欄位 —— 用 update() 而不是 set()，
-      避免把 stock_deducted / outcome / ml 等既有值洗掉。
-    ★ 已經有 ef_no 的跳過，重複執行是安全的（冪等）。
-    ★ 解析不出單號的也跳過，不寫 null —— 寫了只是白白多一筆寫入。
-    """
-    db = get_db()
-    stats = {"scanned": 0, "updated": 0, "skipped_has_value": 0, "skipped_no_ef": 0}
-    batch, pending = db.batch(), 0
-
-    for doc in db.collection("inventory_history").stream():
-        stats["scanned"] += 1
-        d = doc.to_dict() or {}
-        if d.get("ef_no"):
-            stats["skipped_has_value"] += 1
-            continue
-        ef = parse_ef_no(d.get("note", ""))
-        if not ef:
-            stats["skipped_no_ef"] += 1
-            continue
-        batch.update(doc.reference, {"ef_no": ef})
-        pending += 1
-        stats["updated"] += 1
-        if pending >= 400:          # Firestore writeBatch 上限 500，留餘裕
-            batch.commit()
-            batch, pending = db.batch(), 0
-    if pending:
-        batch.commit()
-
-    print(f"[backfill ef_no] {stats}")
-    return stats
-
-
 @https_fn.on_call(
     timeout_sec=540,
     memory=options.MemoryOption.MB_512,
@@ -2467,8 +2263,7 @@ def backfill_ef_no_only():
     region="asia-east1",
 )
 def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
-    """從前端呼叫的手動觸發。
-    可傳 { backfill: true } 觸發回填模式。
+    """從前端（後台「資料同步」分頁）呼叫的手動觸發。
     僅 admin 可呼叫（檢查 auth.token.role === 'admin'）。"""
     # 驗證 auth
     if not req.auth:
@@ -2485,23 +2280,11 @@ def sync_formlabs_manual(req: https_fn.CallableRequest) -> dict:
             message="僅 admin 可手動觸發同步",
         )
 
-    # ── 只補 ef_no 的一次性回填 ──────────────────────────────────
-    # ★ 與 backfill 完全不同：backfill 會清空重建整份 inventory_history
-    #   （所有紀錄的 stock_deducted 會被重寫）。這個模式**只加 ef_no 一個欄位**，
-    #   不動 ml／outcome／stock_deducted／任何既有值，也不重算庫存。
-    #   既有紀錄不會再經過寫入路徑（guid in processed 就跳過），所以要單獨補一次。
-    if bool(req.data.get("backfill_ef_no", False)):
-        print(f"[manual trigger] uid={uid} 模式=backfill_ef_no")
-        return backfill_ef_no_only()
-
-    backfill = bool(req.data.get("backfill", False))
-    print(f"[manual trigger] uid={uid} backfill={backfill}")
-    stats = perform_sync(
+    print(f"[manual trigger] uid={uid}")
+    return perform_sync(
         client_id=FORMLABS_CLIENT_ID.value,
         client_secret=FORMLABS_CLIENT_SECRET.value,
-        backfill=backfill,
     )
-    return stats
 
 
 # ════════════════════════════════════════════════════════════════

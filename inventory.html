@@ -1209,7 +1209,6 @@ function subscribeMfRegionInventory(){
     if (unsubscribeMf) { unsubscribeMf(); unsubscribeMf = null; }
     const region = activeRegion;
     const docId = mfRegionDocId(region);
-    console.log('[mf-region-inv] 訂閱 inventory/' + docId);
     unsubscribeMf = onSnapshot(doc(db, 'inventory', docId), async (snap) => {
         let d = snap.exists() ? snap.data() : null;
         if (!d && region === 'central') {
@@ -1239,7 +1238,6 @@ function subscribeMfRegionInventory(){
 function subscribeRegionInventory(){
     if (unsubscribeRegionInv) { unsubscribeRegionInv(); unsubscribeRegionInv = null; }
     regionInvLoaded = false;
-    console.log('[region-inv] 訂閱 inventory/' + activeRegion);
     unsubscribeRegionInv = onSnapshot(doc(db, 'inventory', activeRegion), (snap) => {
         regionInvData = snap.exists() ? snap.data() : null;
         regionInvLoaded = true;
@@ -1818,7 +1816,6 @@ function mapHistoryDoc(d) {
 
 // ══ Firestore 即時訂閱 ══
 function subscribeAll() {
-    console.log('[subscribeAll] 開始訂閱，user:', currentUser?.email, 'role:', currentUser?.role);
     if (unsubscribeInv)  unsubscribeInv();
     if (unsubscribeHist) unsubscribeHist();
     if (unsubscribeMf)   unsubscribeMf();
@@ -1854,7 +1851,6 @@ function subscribeAll() {
 
     // 訂閱 mf_material_log（材料餘量觀測，觀測模式不扣庫存）
     // 只取最近 200 筆：這個 collection 會隨時間累積，不設上限會讓讀取量無限成長
-    console.log('[subscribeAll] 訂閱 mf_material_log...');
     unsubscribeMfObs = onSnapshot(
         query(collection(db, 'mf_material_log'), orderBy('observed_at', 'desc'), limit(200)),
         (snap) => {
@@ -1871,13 +1867,10 @@ function subscribeAll() {
     subscribeRegionInventory();
 
     // 訂閱 inventory/main（全域帳務與產品層級設定）
-    console.log('[subscribeAll] 訂閱 inventory/main...');
     unsubscribeInv = onSnapshot(doc(db, 'inventory', 'main'), (snap) => {
-        console.log('[inventory snapshot] 觸發，exists:', snap.exists());
         try {
             if (snap.exists()) {
                 const d = snap.data();
-                console.log('[inventory snapshot] 資料欄位:', Object.keys(d));
                 // ★ 分區後 stock / safety / cartridges / stock_shortfalls 改由
                 //   inventory/{activeRegion} 供應（見 subscribeRegionInventory），
                 //   這裡「不再」從 main 取，否則兩份會互相蓋掉。
@@ -1900,7 +1893,7 @@ function subscribeAll() {
                 invLoadedFromFirestore = regionInvLoaded || mainLoaded;
             } else {
                 // 文件不存在（首次使用或還沒匯入）
-                console.warn('[inventory snapshot] inventory/main 文件不存在！請先執行 migrate.html');
+                console.warn('[inventory snapshot] inventory/main 文件不存在（Cloud Function 第一次同步時會建立）');
                 inv.cartridges = {}; inv.stock = {}; inv.safety = {}; inv.partno = {}; inv.matNames = {}; inv.last_processed_prints = []; inv.disabled_materials = []; inv.disabled_overrides = []; inv.family_latest_version = {}; inv.stock_shortfalls = {}; inv.l_tank_materials = [];
                 invLoadedFromFirestore = true;  // 即使空文件也算載入過，後續操作可寫入
             }
@@ -1909,9 +1902,7 @@ function subscribeAll() {
             // 嘗試讀取列印機狀態並同步樹脂罐（不阻斷渲染）
             autoSyncCartridges().catch(e => console.warn('autoSyncCartridges 失敗:', e.message));
             setSyncStatus('ok');
-            console.log('[inventory snapshot] 呼叫 renderAll()');
             renderAll();
-            console.log('[inventory snapshot] renderAll 完成');
             // 若合併過材料別名（如 FLRG1011→FLRG1002）或標記過既有耗材，把結果存回 Firestore 永久清除殘留
             // ★ 每個 session 只存一次，避免「寫入→snapshot→再 merge→再寫入」無限迴圈
             if ((merged || consumablesTagged) && isEditor && invLoadedFromFirestore && !mergeSavedThisSession) {
@@ -1942,14 +1933,12 @@ function subscribeAll() {
         d.setHours(0, 0, 0, 0);
         historySinceDate = d;
     }
-    console.log('[subscribeAll] 訂閱 inventory_history since', historySinceDate.toISOString());
     const histQ = query(
         collection(db, 'inventory_history'),
         where('tsDate', '>=', Timestamp.fromDate(historySinceDate)),
         orderBy('tsDate', 'desc')
     );
     unsubscribeHist = onSnapshot(histQ, (snap) => {
-        console.log('[history snapshot] 觸發，筆數:', snap.docs.length);
         try {
             historyFromSubscription = snap.docs.map(mapHistoryDoc);
             rebuildInvHistory();
@@ -2352,7 +2341,6 @@ let mfPrinters = [];
 
 function subscribePrinterStatus() {
     if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
-    console.log(`[printer_status ${new Date().toLocaleTimeString()}] 訂閱 Firestore`);
     unsubscribePrinterStatus = onSnapshot(
         doc(db, 'printer_status', 'current'),
         (snap) => {
@@ -2363,7 +2351,6 @@ function subscribePrinterStatus() {
             const data = snap.data();
             const printers = data.printers || [];
             mfPrinters = data.mf_printers || [];   // Markforged（Eiger），可能尚未寫入
-            console.log(`[printer_status ${new Date().toLocaleTimeString()}] 收到 ${printers.length} 台 Formlabs、${mfPrinters.length} 台 Markforged`);
 
             // 更新 printerStatus（用於 inventory 卡片邊框色）
             const newPrinterStatus = {};
@@ -2383,7 +2370,6 @@ function subscribePrinterStatus() {
 //  - Firestore onSnapshot 已即時推送，這個函式幾乎不需要被呼叫
 //  - 保留只是為了「重新載入」按鈕點下去仍有實際操作可做
 async function autoSyncCartridges() {
-    console.log(`[autoSyncCartridges] 強制 re-fetch printer_status/current`);
     // 一次性讀取（不訂閱），純粹確保拿到最新值
     try {
         const snap = await getDoc(doc(db, 'printer_status', 'current'));
@@ -2856,9 +2842,6 @@ function cartridgeCardHTML(printer) {
     const slots=inv.cartridges[printer]||[];
     // 依列印機狀態決定卡片邊框色與狀態標籤
     const status = (printerStatus[printer] || '').toUpperCase();
-    if (status && status !== 'IDLE' && status !== 'READY') {
-        console.log(`[printer status] ${printer} = "${status}"`);  // debug：印出實際狀態值
-    }
     let borderClass, headerBg, badge;
     // 閒置類：IDLE / READY / ONLINE / FINISHED / DONE / SLEEPING / STANDBY
     if (['IDLE','READY','ONLINE','FINISHED','DONE','SUCCESS','COMPLETE','SLEEPING','STANDBY','AVAILABLE'].includes(status)) {
@@ -5951,7 +5934,6 @@ function renderAll() {
 
 // ══ 重新載入資料（unsubscribe → 重新訂閱，讓 onSnapshot 拉最新資料回來）══
 async function reloadData() {
-    console.log(`[reloadData ${new Date().toLocaleTimeString()}] 開始`);
     const icon = document.getElementById('reload-icon');
     if(icon) icon.style.animation = 'spin 0.7s linear infinite';
     setSyncStatus('loading');
@@ -5974,7 +5956,6 @@ async function reloadData() {
     } finally {
         if(icon) icon.style.animation = '';
         setSyncStatus('ok');
-        console.log(`[reloadData ${new Date().toLocaleTimeString()}] 結束`);
     }
 }
 

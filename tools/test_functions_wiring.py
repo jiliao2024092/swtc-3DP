@@ -130,7 +130,7 @@ for name, trigger in EXPECTED_DEPLOYED.items():
 # 原本 `return backfill_ef_no_only()` 這種一般呼叫會當場壞掉。
 # ⚠ 名字打錯就等於這道守衛消失，所以「找不到」本身要 FAIL，不可靜默跳過
 #   （初版寫成 perform_eiger_sync，實際叫 perform_sync_eiger，那一項等於沒測）。
-INTERNAL_HELPERS = ["backfill_ef_no_only", "perform_sync", "perform_sync_eiger"]
+INTERNAL_HELPERS = ["perform_sync", "perform_sync_eiger"]
 for name in INTERNAL_HELPERS:
     eq(name in FUNCS, True,
        f"★ main.py 要找得到內部 helper {name}（找不到通常是改名了，這道守衛會跟著失效）")
@@ -138,14 +138,6 @@ for name in INTERNAL_HELPERS:
         continue
     eq(DECORATED.get(name), None,
        f"★ {name} 是內部 helper，不可被裝飾（被裝飾就不能再用一般方式呼叫，且會多開一個對外 endpoint）")
-
-# backfill_ef_no_only 必須真的被 sync_formlabs_manual 呼叫得到
-# （這是 backfill_ef_no 這條路徑唯一的入口，斷了就沒有別的方式可以跑）
-eq("backfill_ef_no_only()" in ast.unparse(FUNCS["sync_formlabs_manual"]), True,
-   "★ sync_formlabs_manual 要呼叫得到 backfill_ef_no_only()（前端沒有其他入口）")
-eq("backfill_ef_no" in ast.unparse(FUNCS["sync_formlabs_manual"]), True,
-   "sync_formlabs_manual 要看得懂 backfill_ef_no 這個參數")
-
 
 # ── 5. 部署參數 ───────────────────────────────────────────────────────
 # region 打錯不會報錯，只會部署到另一個地區去，前端照著 asia-east1 呼叫就找不到。

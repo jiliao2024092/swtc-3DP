@@ -572,10 +572,10 @@ check("與 inventory.html 的分隔符規則一致",
 
 check("ef_no 有寫進 inventory_history",
       bool(re.search(r'"ef_no":\s*parse_ef_no\(', src)), True)
-check("有 backfill_ef_no 一次性回填",  "def backfill_ef_no_only" in src, True)
-# ★ 回填只能用 update（加欄位），用 set 會把既有欄位洗掉
-check("回填用 update 不是 set",
-      bool(re.search(r"batch\.update\(doc\.reference, \{\"ef_no\"", src)), True)
+# 2026-10-12：backfill_ef_no 與 backfill（清空重建）兩種手動模式已移除（使用者決定）
+check("★ 已移除「清空重建消耗紀錄」模式（誤用會清掉全部消耗紀錄）",
+      "inventory_history\").limit(500)" in src or "BACKFILL:" in src, False)
+check("已移除 backfill_ef_no 回填", "backfill_ef_no_only" in src, False)
 
 print("── 與 main.py 實作接線一致 ──")
 check("duration_hr 有寫進 inventory_history",
@@ -653,7 +653,7 @@ def _lock_ns(db, sync_impl):
 
 import datetime, os
 _calls = []
-def _ok_sync(cid, sec, backfill): _calls.append(1); return {"ok": True}
+def _ok_sync(cid, sec): _calls.append(1); return {"ok": True}
 
 # 1) 沒人持有 → 跑，跑完釋放
 _db = _FakeDb(); _ns = _lock_ns(_db, _ok_sync); _calls.clear()
@@ -679,7 +679,7 @@ _r = _ns["perform_sync"]("id", "sec")
 check("★ 過期的柵欄可接手（否則函式被強制終止一次就永遠不再同步）", len(_calls), 1)
 
 # 4) 同步本身拋錯 → 仍要釋放
-def _bad_sync(cid, sec, backfill): raise RuntimeError("boom")
+def _bad_sync(cid, sec): raise RuntimeError("boom")
 _db = _FakeDb(); _ns = _lock_ns(_db, _bad_sync)
 try:
     _ns["perform_sync"]("id", "sec")
@@ -736,7 +736,7 @@ check("★ 沒有入口直接呼叫 _perform_sync_eiger_unlocked（會繞過柵�
 
 # ── 工作看板／客戶異常的 closed／qdate（2026-10-12）────────────────────
 print("── 結案欄位：判定規則（與前端共用 tools/closed_cases.json）──")
-_cl_src = re.search(r"^CLOSED_FLAG_SIG = .*?(?=^# ── 同步柵欄)", src, re.M | re.S)
+_cl_src = re.search(r"^CLOSED_HEAL_WINDOW_SEC = .*?(?=^# ── 同步柵欄)", src, re.M | re.S)
 check("main.py 找得到結案欄位段落", bool(_cl_src), True)
 _cl = {"datetime": datetime, "re": re}
 exec(_cl_src.group(0), _cl)
@@ -824,15 +824,7 @@ _an = _CColl({
 })
 _db = _CDb({"workboard_orders": _wb, "issues_anomalies": _an})
 _inv_ref = _CInvRef()
-_n = _cl["_migrate_closed_flags"](_db, _inv_ref, {})
-check("補齊：只寫有差異的（4+2 筆裡 5 筆要寫）", _n, 5)
-check("完成的工單 → closed=True", (_wb.docs["a"]["closed"], _wb.docs["a"]["qdate"]), (True, "2026-08-01"))
-check("★ 未完成的工單也要寫 closed=False（沒有這個欄位，預設查詢就查不到它）", _wb.docs["b"]["closed"], False)
-check("取消且沒交期 → qdate 退回建立日期", (_wb.docs["c"]["closed"], _wb.docs["c"]["qdate"]), (True, "2026-10-01"))
-check("★ 沒狀態的舊異常 → 未結案（不可從畫面消失）", _an.docs["y"]["closed"], False)
-check("完成後記簽章", _inv_ref.data.get("closed_flag_sig"), _cl["CLOSED_FLAG_SIG"])
-_wb.reads = 0
-check("簽章相同 → 一次都不讀", (_cl["_migrate_closed_flags"](_db, _inv_ref, {"closed_flag_sig": _cl["CLOSED_FLAG_SIG"]}), _wb.reads), (0, 0))
+check("★ 一次性補齊已移除（2026-10-12 已補完），只留每輪補正", "_migrate_closed_flags" in src, False)
 
 print("── 結案欄位：每輪補正最近更新的（擋開著舊版頁面的人）──")
 _wb2 = _CColl({
@@ -848,29 +840,11 @@ check("★ 被改回未完成的工單 closed 要翻回 False（否則從預設�
 check("超過 2 小時沒動的不檢查（每輪不可整份重讀）", "closed" in _wb2.docs["old"], False)
 
 print("── 結案欄位：接線 ──")
-check("perform_sync 有呼叫一次性補齊", "_migrate_closed_flags(db, inv_ref, inv)" in src, True)
 check("perform_sync 有呼叫每輪補正", "_heal_closed_flags(db)" in src, True)
-check("★ 獨立 try/except（補齊失敗不可讓扣庫存停擺）", "結案欄位補齊失敗（不影響本輪同步）" in src, True)
+check("★ 獨立 try/except（補正失敗不可讓扣庫存停擺）", "結案欄位補正失敗（不影響本輪同步）" in src, True)
 
-print("── 樣品分區：既有資料一律歸中部（假 Firestore 實際執行）──")
-check("main.py 找得到樣品分區補齊", "_migrate_sample_regions" in _cl, True)
-_si = _CColl({"s1": {"name": "角度調整器"},                       # 沒有 region → 補中部
-              "s2": {"name": "齒輪", "region": "central"},        # 已是中部 → 不寫
-              "s3": {"name": "外殼", "region": "south"}})         # ★ 使用者決定全部歸中部 → 也要改
-_sl = _CColl({"l1": {"loanDate": "2026-09-01"},
-              "l2": {"loanDate": "2026-09-02", "region": "north"}})
-_db3 = _CDb({"sample_items": _si, "sample_loans": _sl})
-_inv3 = _CInvRef()
-check("只寫不是中部的（5 筆裡 4 筆）", _cl["_migrate_sample_regions"](_db3, _inv3, {}), 4)
-check("★ 沒有 region 的舊樣品補成中部（否則單一區的查詢查不到它）", _si.docs["s1"]["region"], "central")
-check("★ 已帶別區 region 的也改成中部（使用者決定既有資料全部歸中部）", _si.docs["s3"]["region"], "central")
-check("出借紀錄也一起補", (_sl.docs["l1"]["region"], _sl.docs["l2"]["region"]), ("central", "central"))
-check("完成後記簽章", _inv3.data.get("sample_region_sig"), _cl["SAMPLE_REGION_SIG"])
-_si.reads = 0
-check("簽章相同 → 一次都不讀（之後新增的資料不可被改回中部）",
-      (_cl["_migrate_sample_regions"](_db3, _inv3, {"sample_region_sig": _cl["SAMPLE_REGION_SIG"]}), _si.reads), (0, 0))
-check("perform_sync 有呼叫樣品分區補齊（獨立 try/except）",
-      "_migrate_sample_regions(db, inv_ref, inv)" in src and "樣品分區補齊失敗（不影響本輪同步）" in src, True)
+print("── 樣品分區：一次性補齊已移除 ──")
+check("樣品分區一次性補齊已移除（2026-10-12 已補完 73 筆）", "_migrate_sample_regions" in src, False)
 
 total = passed + failed
 print(f"\n{total} 項：{passed} PASS / {failed} FAIL")
