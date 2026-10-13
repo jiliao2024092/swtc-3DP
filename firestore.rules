@@ -283,6 +283,19 @@ service cloud.firestore {
       allow delete: if hasPerm('delete_issues') && canDeleteRegion();
     }
 
+    // 客戶設備保養（工作包 4，2026-10-13）：比照工作看板分區。
+    // ★ 相容：帳號還沒有任何一個保養權限時，沿用「異常與資源」的對應權限；一旦有任何一個保養權限，
+    //   就完全以保養權限為準。必須與 portal/firebase-service.js 的 hasMaintPerm() 一致
+    function maintPerm(p, legacy) {
+      return hasPerm(p)
+        || (!perms().hasAny(['view_maintenance', 'edit_maintenance', 'delete_maintenance']) && hasPerm(legacy));
+    }
+    match /maint_devices/{id} {
+      allow read: if maintPerm('view_maintenance', 'view_issues') && canReadRegion();
+      allow create, update: if maintPerm('edit_maintenance', 'edit_issues') && canWriteRegion();
+      allow delete: if maintPerm('delete_maintenance', 'delete_issues') && canDeleteRegion();
+    }
+
     // 樣品清冊：項目本身（新增/編輯/刪除）限 admin；刪除為直接刪除，不做隱藏/停用
     // ★ 2026-10-12 起分區（使用者決定三區各看各的）：讀取比照其他分區 collection 加
     //   canReadRegion()。單一區的人查詢必須帶 where('region','==',自己那區)，否則整個 list 被拒。

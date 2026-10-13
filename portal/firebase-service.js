@@ -46,6 +46,10 @@
     // ★ 與 firestore.rules 的 canSeeInvSummary() 及 settings/purchase_stock 規則一致
     view_inventory_summary: '查看北中南材料總覽（三區庫存並列）',
     edit_purchase_stock: '編輯北中南材料總覽的「採購工程庫存」',
+    // 客戶設備保養（工作包 4）。帳號還沒有任何保養權限時沿用「異常與資源」的對應權限（見 hasMaintPerm）
+    view_maintenance:   '查看設備保養（排程、到期總表、達成率）',
+    edit_maintenance:   '編輯設備保養（新增設備、填寫保養）',
+    delete_maintenance: '刪除設備保養的設備',
     manage_users: '後台管理：使用者管理（僅可套用角色，不可個別授權、不可異動管理員）',
     manage_announcements: '後台管理：公告欄（發布／編輯公告）',
     // 北中南分區：跨區權限做成可勾選的權限，而不是綁死在「主管」這個角色上，
@@ -63,16 +67,17 @@
     { key:'inventory', label:'材料庫存',     perm:'view_inventory' },
     { key:'quote',     label:'3D 列印估價',  perm:'view_quote' },
     { key:'issues',    label:'異常與資源',   perm:'view_issues' },
+    { key:'maintenance', label:'設備保養',   perm:'view_maintenance' },
   ];
 
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','manage_users','manage_announcements','view_all_regions','edit_all_regions','admin'],
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','view_all_regions','edit_all_regions','admin'],
     // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權、「後台使用者管理」權、「公告欄」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
     // 主管預設可跨區檢視「與編輯」（2026-08-21 決定：原本只給檢視，改成也能修改其他區）
-    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','manage_users','manage_announcements','view_all_regions','edit_all_regions'],
-    operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote'],
-    viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote'],
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','view_all_regions','edit_all_regions'],
+    operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote','view_maintenance','edit_maintenance'],
+    viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote','view_maintenance'],
   };
   window.ROLE_PRESETS = JSON.parse(JSON.stringify(window.DEFAULT_ROLE_PRESETS));
   // 以 settings 覆蓋角色預設（admin 後台「角色權限設定」儲存後套用）
@@ -103,6 +108,21 @@
       if (!p.includes('view_booking') && !p.includes('view_inventory')) return true;  // 尚未設定 → 相容顯示
     }
     return false;
+  };
+
+  // 設備保養權限（工作包 4）。
+  // ★ 相容：新功能上線前建立的帳號還沒有任何一個保養權限，這時沿用「異常與資源」的對應權限
+  //   （查看→view_issues、編輯→edit_issues、刪除→delete_issues），不必等管理員逐一重新套用角色。
+  //   一旦帳號有任何一個保養權限，就完全以保養權限為準（才能做到「看得到異常、看不到保養」）。
+  //   ★ 必須與 firestore.rules 的 maintPerm() 一致
+  const MAINT_PERMS = ['view_maintenance', 'edit_maintenance', 'delete_maintenance'];
+  const MAINT_LEGACY = { view_maintenance: 'view_issues', edit_maintenance: 'edit_issues', delete_maintenance: 'delete_issues' };
+  window.hasMaintPerm = function (user, perm) {
+    if (!user) return false;
+    if (window.hasPerm(user, perm)) return true;
+    const p = user.permissions || [];
+    if (MAINT_PERMS.some(k => p.includes(k))) return false;
+    return !!MAINT_LEGACY[perm] && window.hasPerm(user, MAINT_LEGACY[perm]);
   };
 
   // 由 permissions 推導出舊系統用的 role（讓 3DP-BK / inventory 也能正確判斷權限）
@@ -293,6 +313,12 @@
   // ════════════════════════════════════════════════
   // 異常與資源 → collections: issues_anomalies / issues_ipa / issues_equipment
   // ════════════════════════════════════════════════
+  // 客戶設備保養（工作包 4）→ collection: maint_devices（分區，比照工作看板）
+  // ★ 查詢「不排序」（orderField = null）：單一區的人查詢會帶 where('region','==')，
+  //   再加 orderBy 就需要新的複合索引；缺索引時一般人整頁空白、admin 卻看得到（2026-08-25 事故）。
+  //   設備只有一百台上下，全部讀回來在畫面上排序即可，不設筆數上限。
+  window.FBMaint = makeCollectionService('maint_devices', null, null, { regional: true });
+
   window.FBAnomalies = makeCollectionService('issues_anomalies', 'seq', 'asc', {
     regional: true, qdateField: 'date',
     closedOf: d => (d && d.status) === '已完成',   // 處理中／暫停／空白都算未結案

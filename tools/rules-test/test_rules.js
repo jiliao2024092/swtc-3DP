@@ -67,6 +67,8 @@ const USERS = {
   invViewN:   { uid: 'u_invV', email: 'invv@swtc.com', permissions: ['edit_board','view_board','view_inventory_summary'], region: 'north' },
   purchaserN: { uid: 'u_pur',  email: 'pur@swtc.com',  permissions: ['view_board','edit_purchase_stock'], region: 'north' },
   invMgrN:    { uid: 'u_invM', email: 'invm@swtc.com', permissions: ['edit_board','view_board','manage_inventory'], region: 'north' },
+  // 設備保養：明確只給查看（同時有 edit_issues，證明「有保養權限就不再沿用異常權限」）
+  maintViewN: { uid: 'u_mtV',  email: 'mtv@swtc.com',  permissions: ['view_issues','edit_issues','view_maintenance'], region: 'north' },
 };
 
 async function main() {
@@ -99,6 +101,9 @@ async function main() {
     await db.doc('bookings/b_south').set({ printer: 'Form3L', region: 'south' });
     // 樣品分區（2026-10-12）：中部與南部各一筆樣品、各一筆出借紀錄
     await db.doc('sample_items/si_central').set({ name: '角度調整器', region: 'central', seq: 1 });
+    // 設備保養（工作包 4）
+    await db.doc('maint_devices/md_north').set({ customer: '北部客戶', region: 'north', list: 'active' });
+    await db.doc('maint_devices/md_south').set({ customer: '南部客戶', region: 'south', list: 'active' });
     await db.doc('sample_items/si_south').set({ name: '南部樣品', region: 'south', seq: 1 });
     await db.doc('sample_loans/sl_central').set({ itemId: 'si_central', loanDate: '2026-10-01', ym: '2026-10', src: 'monthly', region: 'central' });
     await db.doc('sample_loans/sl_south').set({ itemId: 'si_south', loanDate: '2026-10-02', ym: '2026-10', src: 'monthly', region: 'south' });
@@ -394,6 +399,32 @@ async function main() {
     as(USERS.invMgrN).doc('settings/material_prices').set({ items: { 'fl:FLGPCL': 3200 } }));
   await ok('管理員可改單價',
     as(USERS.admin).doc('settings/material_prices').set({ items: { 'fl:FLGPCL': 3300 } }));
+
+  // ══ maint_devices：設備保養（分區；沒有保養權限的舊帳號沿用異常與資源權限）══
+  await ok('★ 舊帳號（有 view_issues、沒有保養權限）可讀自己那區的設備',
+    as(USERS.engN).doc('maint_devices/md_north').get());
+  await nok('★ 不可讀別區的設備',
+    as(USERS.engN).doc('maint_devices/md_south').get());
+  await ok('單一區的人查詢帶 where(region) 可列出',
+    as(USERS.engN).collection('maint_devices').where('region', '==', 'north').get());
+  await nok('★ 單一區的人查詢不帶 region 條件會被整個拒絕',
+    as(USERS.engN).collection('maint_devices').get());
+  await ok('舊帳號有 edit_issues → 可在自己那區新增設備',
+    as(USERS.engN).doc('maint_devices/md_new_n').set({ customer: 'x', region: 'north' }));
+  await nok('★ 不可在別區新增設備',
+    as(USERS.engN).doc('maint_devices/md_new_s').set({ customer: 'x', region: 'south' }));
+  await nok('沒有 delete_issues 的舊帳號不可刪除',
+    as(USERS.engN).doc('maint_devices/md_new_n').delete());
+  await ok('舊主管（有 delete_issues）可刪除自己那區的設備',
+    as(USERS.mgrN).doc('maint_devices/md_new_n').delete());
+  await nok('只有 view_board 的帳號不可讀設備保養',
+    as(USERS.pureView).doc('maint_devices/md_north').get());
+  await nok('未登入不可讀設備保養',
+    anon().doc('maint_devices/md_north').get());
+  await ok('★ 明確給了 view_maintenance 者可讀',
+    as(USERS.maintViewN).doc('maint_devices/md_north').get());
+  await nok('★ 有任何保養權限後就不再沿用 edit_issues（只給查看就不能編輯）',
+    as(USERS.maintViewN).doc('maint_devices/md_north').set({ customer: 'y', region: 'north' }, { merge: true }));
 
   // ══ inventory_history：備註開放給工程師改，其餘欄位仍限 admin ══════
   // ★ 這一組守的是「開放備註」不可變成「開放改帳」：同一份文件裡的 ml／material／
