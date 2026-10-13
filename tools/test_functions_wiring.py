@@ -87,6 +87,8 @@ EXPECTED_DEPLOYED = {
     "sync_formlabs_manual":    "https_fn.on_call",
     "sync_eiger_scheduled":    "scheduler_fn.on_schedule",
     "sync_eiger_manual":       "https_fn.on_call",
+    # 後台新增使用者（2026-10-13）：取代前端 createUserWithEmailAndPassword，Auth 開放註冊才能關
+    "create_user":             "https_fn.on_call",
 }
 
 eq(sorted(DECORATED.keys()), sorted(EXPECTED_DEPLOYED.keys()),

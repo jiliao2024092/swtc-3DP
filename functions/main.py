@@ -21,7 +21,7 @@ import traceback
 from typing import Optional
 
 import requests
-from firebase_admin import initialize_app, firestore
+from firebase_admin import initialize_app, firestore, auth
 from firebase_functions import scheduler_fn, https_fn, options
 from firebase_functions.params import SecretParam
 
@@ -2330,3 +2330,147 @@ def sync_eiger_manual(req: https_fn.CallableRequest) -> dict:
         access_key=EIGER_ACCESS_KEY.value,
         secret_key=EIGER_SECRET_KEY.value,
     )
+
+
+# ════════════════════════════════════════════════════════════════
+# 後台「新增使用者」（2026-10-13）
+#   portal 的使用者管理（admin／有 manage_users 的主管）與 3DP-BK 的使用者管理（admin）
+#   原本都在前端用 secondary app 呼叫 createUserWithEmailAndPassword，所以 Firebase Auth
+#   的「開放註冊」必須開著 —— 任何拿到公開 API key 的人都能自行註冊、登入，讀到只檢查
+#   「有沒有登入」的資料。改由這支用 Admin SDK 建帳號並寫 users 文件，開放註冊才能關掉。
+#   ⚠ 前端不可改回 createUserWithEmailAndPassword：開放註冊關掉之後那條路會直接失敗。
+# ════════════════════════════════════════════════════════════════
+LEGACY_USER_ROLES = ("viewer", "editor", "admin")
+
+
+def role_from_permissions(perms) -> str:
+    """由 permissions 推導舊系統用的 role（3DP-BK / inventory 只看 role）。
+    ★ 與 portal/firebase-service.js 的 roleFromPermissions() 一致。"""
+    p = perms or []
+    if "admin" in p:
+        return "admin"
+    if "edit_board" in p or "edit_issues" in p:
+        return "editor"
+    return "viewer"
+
+
+def user_caps(d) -> tuple:
+    """呼叫者的 users 文件 → (是否 admin, 能否新增使用者)。
+    admin 的認定與 firestore.rules 的 hasPerm() 一致：permissions 含 admin，或舊 role == 'admin'。
+    已停用（active == false）的帳號一律不行 —— 停用的人在 token 過期前仍算登入。"""
+    if not isinstance(d, dict) or d.get("active", True) is False:
+        return (False, False)
+    perms = d.get("permissions")
+    perms = perms if isinstance(perms, list) else []
+    is_admin = "admin" in perms or d.get("role") == "admin"
+    return (is_admin, is_admin or "manage_users" in perms)
+
+
+def new_user_doc(data: dict, caller_is_admin: bool) -> dict:
+    """前端送來的資料 → 要寫進 users/{uid} 的內容（createdAt／createdBy 由呼叫端補）。
+    兩種形狀，各自維持原本前端寫入的欄位：
+      portal：permissions（＋active、region）；role 一律由 permissions 推導，不採用前端傳來的 role
+      3DP-BK：只有 role（viewer／editor／admin），沒有 permissions
+    非 admin（主管）不可建出管理員：permissions 含 admin 或 role == 'admin' 都擋，
+    與 firestore.rules 的 canCreateOtherUser() 同一條邊界。
+    不合法 → ValueError；權限不足 → PermissionError（訊息會直接顯示給操作的人）。"""
+    email = data.get("email")
+    if not isinstance(email, str) or not email.strip():
+        raise ValueError("請填寫 email")
+    display_name = data.get("displayName", "")
+    if not isinstance(display_name, str):
+        raise ValueError("顯示名稱格式錯誤")
+    doc = {"email": email.strip(), "displayName": display_name.strip()}
+
+    if "permissions" in data:
+        perms = data["permissions"]
+        if not isinstance(perms, list) or not all(isinstance(p, str) and p for p in perms):
+            raise ValueError("權限格式錯誤")
+        active = data.get("active", True)
+        if not isinstance(active, bool):
+            raise ValueError("啟用狀態格式錯誤")
+        doc.update(permissions=perms, role=role_from_permissions(perms), active=active)
+    else:
+        role = data.get("role", "viewer")
+        if role not in LEGACY_USER_ROLES:
+            raise ValueError("角色格式錯誤")
+        doc["role"] = role
+
+    if not caller_is_admin and doc["role"] == "admin":
+        raise PermissionError("主管無法建立管理員帳號")
+
+    # 地區：portal 的 UserModal 一定會送（必選）；3DP-BK 沒有這個欄位 → 不寫，視為中部（與原本相同）
+    if "region" in data:
+        if data["region"] not in REGION_CODES:
+            raise ValueError("請選擇地區")
+        doc["region"] = data["region"]
+    return doc
+
+
+@https_fn.on_call(
+    timeout_sec=60,
+    memory=options.MemoryOption.MB_256,
+    region="asia-east1",
+)
+def create_user(req: https_fn.CallableRequest) -> dict:
+    """後台「新增使用者」：建 Auth 帳號＋寫 users 文件。
+    admin，或有 manage_users 的主管可呼叫（主管不可建立管理員）。
+    ★ 授權比 sync_*_manual 寬：那兩支只認 role == 'admin'，但主管本來就能在 portal
+      新增使用者（firestore.rules 的 canCreateOtherUser），這裡要維持一樣。"""
+    if not req.auth:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            message="必須登入",
+        )
+    uid = req.auth.uid
+    db = get_db()
+    caller = db.collection("users").document(uid).get()
+    caller_is_admin, can_create = user_caps(caller.to_dict() if caller.exists else None)
+    if not can_create:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.PERMISSION_DENIED,
+            message="僅管理員或有使用者管理權限的主管可新增使用者",
+        )
+
+    data = req.data if isinstance(req.data, dict) else {}
+    try:
+        doc = new_user_doc(data, caller_is_admin)
+    except PermissionError as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.PERMISSION_DENIED, message=str(e))
+    except ValueError as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=str(e))
+    password = data.get("password")
+    if not isinstance(password, str) or len(password) < 6:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message="密碼至少 6 字元")
+
+    try:
+        new_uid = auth.create_user(email=doc["email"], password=password).uid
+    except auth.EmailAlreadyExistsError:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.ALREADY_EXISTS, message="此 email 已被使用")
+    except ValueError as e:
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INVALID_ARGUMENT, message=f"email 格式錯誤（{e}）")
+
+    # ★ 先建 Auth 再寫文件；文件寫失敗就把 Auth 帳號刪掉。留著的話 email 被佔住、
+    #   後台卻看不到這個人（使用者清單讀的是 users 文件），而且沒有文件的帳號登不進任何頁面
+    try:
+        db.collection("users").document(new_uid).set({
+            **doc,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+            "createdBy": uid,
+        })
+    except Exception as e:
+        print(f"[create_user] 寫入 users 文件失敗，回滾 Auth 帳號 uid={new_uid}: {e}")
+        try:
+            auth.delete_user(new_uid)
+        except Exception as e2:
+            print(f"[create_user] ⚠ 回滾失敗，要到 Console 手動刪除 uid={new_uid}: {e2}")
+        raise https_fn.HttpsError(
+            code=https_fn.FunctionsErrorCode.INTERNAL, message="建立失敗，請再試一次")
+
+    print(f"[create_user] uid={new_uid} by={uid}")
+    return {"uid": new_uid}
