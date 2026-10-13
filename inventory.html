@@ -617,6 +617,7 @@
                         <option value="評估">評估</option>
                         <option value="代工">代工</option>
                         <option value="工程測試">工程測試</option>
+                        <option value="行銷">行銷</option>
                         <option value="其他">其他</option>
                         <option value="未分類">未分類（備註不符格式）</option>
                     </select>
@@ -1040,6 +1041,16 @@
                     </button>
                 </div>
             </div>
+            <!-- 月報：北中南 × 工程測試／行銷／BM代工 的用量與金額（工作包 3） -->
+            <div class="flex items-center gap-2 flex-wrap mb-4 p-3 rounded-lg border border-[var(--line)] bg-[var(--bg-soft)]">
+                <i data-lucide="calendar-range" class="w-4 h-4 text-[var(--ink-4)]"></i>
+                <span class="text-sm font-medium text-[var(--ink-2)]">月報</span>
+                <input type="month" id="report-month" class="text-sm border border-[var(--line-strong)] rounded-md px-2 py-1 bg-[var(--bg)] text-[var(--ink)] outline-none focus:ring-1 focus:ring-blue-500">
+                <button id="report-export-btn" onclick="exportMonthlyReport()" class="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-2)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
+                    <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> 匯出月報
+                </button>
+                <span class="text-xs text-[var(--ink-5)]">三個工作表：① 當月每筆明細與價格 ② 三區 × 類別總價 ③ 當月與當年累計佔比。類別依列印檔名第 2 段：工程測試／行銷／BM 代工（評估與代工）／其他與未分類</span>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse text-sm sum-table">
                     <thead id="sum-thead"></thead>
@@ -1395,8 +1406,9 @@ const ML_PER_BOTTLE = 1000;  // 1 罐 = 1000ml
 
 // ══ 工作類別（依備註解析）══
 // 備註(檔名)規範：客戶簡稱-工作類別-EF單號，例：鑫元鴻-代工-202607020001、實威-工程測試
-// 取第2欄位([1])比對這4種狀態；不符合規範或無備註 → 歸類「未分類」
-const WORK_CATEGORIES = ['評估','代工','工程測試','其他'];
+// 取第2欄位([1])比對這5種狀態；不符合規範或無備註 → 歸類「未分類」
+// 「行銷」2026-10-13 加入（使用者決定：客戶簡稱-行銷-活動名稱，以中間的工作類別判斷）
+const WORK_CATEGORIES = ['評估','代工','工程測試','行銷','其他'];
 // ★ 分隔符要同時吃 `-` 與 `_`：實掃 29 筆列印消耗紀錄，27 筆用連字號、2 筆用底線
 //   （例：實威國際_工程測試_翹曲試片）。原本只 split('-')，那 2 筆的第2段永遠是
 //   undefined → 被歸成「未分類」，月度分析的工作類別佔比因此少算，而畫面上沒有
@@ -1424,7 +1436,7 @@ function parseNote(note){
     const isNo  = APP_NO_RE.test(tail);
     return {
         customer: parts[0] || '',      // 客戶「簡稱」——不是 EIP 公司全名
-        category: cat,                 // 評估 / 代工 / 工程測試 / 其他（對不上則空字串）
+        category: cat,                 // 評估 / 代工 / 工程測試 / 行銷 / 其他（對不上則空字串）
         appNo:    isNo ? tail : '',    // R 備註欄
         event:    (!isNo && tail) ? tail : '',  // I 活動名稱欄
     };
@@ -2549,7 +2561,12 @@ function switchTab(tab) {
     if(tab==='mf')          renderMfPanel();
     if(tab==='mf-history')  renderMfHistory();
     if(tab==='mf-monthly')  renderMfMonthly();
-    if(tab==='summary')     { subscribeInvSummary(); renderInvSummary(); }
+    if(tab==='summary') {
+        subscribeInvSummary(); renderInvSummary();
+        // 月報預設本月
+        const rm = document.getElementById('report-month');
+        if (rm && !rm.value) { const d = new Date(); rm.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    }
 }
 
 // ══ 計算函式 ══
@@ -4167,6 +4184,187 @@ function exportInvSummaryExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '北中南材料總覽');
     XLSX.writeFile(wb, `北中南材料總覽_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+// ════════════════════════════════════════════════════════════════
+// ══ 月報（工作包 3）：北中南 × 工程測試／行銷／BM代工 的用量與金額 ══
+// 類別對應（2026-10-13 使用者決定）：列印檔名第 2 段
+//   工程測試 → 工程測試；行銷 → 行銷；評估、代工 → BM/代工；其他與檔名沒照格式 → 其他／未分類
+// ★「其他／未分類」一定要另列一欄：丟掉的話三類加總會比實際消耗少，而且看不出差在哪。
+// 消耗的定義與「月度分析」相同：type 為 consume 或 aborted 的紀錄。
+// Markforged 一次列印會被同步切成好幾筆，先用 mfHistoryMerged() 併回「同一次列印、同一種材料」一列。
+// 金額＝用量 × 目前單價（工作包 2，只存目前單價）；沒設單價的紀錄金額留空並計數，不可當成 0。
+// ════════════════════════════════════════════════════════════════
+const REPORT_CATS = ['工程測試', '行銷', 'BM/代工', '其他／未分類'];
+function reportCategory(note) {
+    const c = parseWorkCategory(note);
+    if (c === '工程測試') return '工程測試';
+    if (c === '行銷') return '行銷';
+    if (c === '評估' || c === '代工') return 'BM/代工';
+    return '其他／未分類';
+}
+
+// records：mapHistoryDoc() 後的 inventory_history（至少涵蓋當年 1 月 1 日到該月月底）
+// ym：'YYYY-MM'。回傳 { detail（當月每一列）, regions, month, ytd, unpriced }
+function buildMonthlyReport(records, ym) {
+    const [Y, M] = String(ym).split('-').map(Number);
+    const regions = sumRegions().map(r => r.key);
+    const consumes = (records || []).filter(h => h && (h.type === 'consume' || h.type === 'aborted'));
+    const fl = consumes.filter(h => (h.source || 'formlabs') !== 'markforged');
+    const mf = mfHistoryMerged(consumes.filter(h => h.source === 'markforged'));
+    const emptyTotals = () => {
+        const t = { amount: {}, flQty: {}, mfQty: {} };
+        ['amount', 'flQty', 'mfQty'].forEach(k => regions.forEach(r => { t[k][r] = {}; REPORT_CATS.forEach(c => { t[k][r][c] = 0; }); }));
+        return t;
+    };
+    const month = emptyTotals(), ytd = emptyTotals();
+    const unpriced = { month: 0, ytd: 0 };
+    const detail = [];
+    [...fl, ...mf].forEach(h => {
+        const d = new Date(h.ts);
+        if (!isFinite(d.getTime()) || d.getFullYear() !== Y || d.getMonth() + 1 > M) return;
+        const inMonth = d.getMonth() + 1 === M;
+        const isMf = h.source === 'markforged';
+        const qty = isMf ? Math.abs(+h.ml || 0) : (+h.ml || 0) / 1000;      // Formlabs：L；Markforged：cc
+        const group = isMf ? 'mf' : 'fl';
+        const key = isMf ? h.material : matCode(h.material);
+        const price = getPrice(group, key);
+        const amount = price === '' ? '' : Math.round(qty * price);
+        const cat = reportCategory(h.note);
+        let region = regionOfHistory(h);
+        if (!regions.includes(region)) region = regions.includes('central') ? 'central' : regions[0];
+        const add = (t) => {
+            if (amount !== '') t.amount[region][cat] += amount;
+            t[isMf ? 'mfQty' : 'flQty'][region][cat] += qty;
+        };
+        add(ytd);
+        if (price === '' && qty > 0) unpriced.ytd++;
+        if (!inMonth) return;
+        add(month);
+        if (price === '' && qty > 0) unpriced.month++;
+        const p = parseNote(h.note);
+        detail.push({
+            ts: h.ts, region, brand: isMf ? 'Markforged' : 'Formlabs', printer: h.printer || '',
+            note: h.note || '', customer: p.customer, workCat: parseWorkCategory(h.note), cat,
+            appNo: p.appNo, material: isMf ? (h.material || '') : historyMaterialName(h),
+            partno: isMf ? getMfPartNo(h.material) : getPartNo(h.material),
+            qty: sumRound(qty, isMf ? 1 : 3), unit: isMf ? 'cc' : 'L', price, amount, h,
+        });
+    });
+    detail.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+    return { detail, regions, month, ytd, unpriced };
+}
+
+// 一個合計表：類別 × 地區，最後一列與最後一欄是合計
+function reportTotalsAoa(title, byRegion, regions, digits) {
+    const rl = r => (window.regionLabel ? window.regionLabel(r) : r);
+    const rows = [[title], ['類別', ...regions.map(rl), '合計']];
+    const colSum = regions.map(() => 0);
+    REPORT_CATS.forEach(c => {
+        const vals = regions.map(r => sumRound(byRegion[r][c], digits));
+        vals.forEach((v, i) => { colSum[i] += v; });
+        rows.push([c, ...vals, sumRound(vals.reduce((s, v) => s + v, 0), digits)]);
+    });
+    rows.push(['合計', ...colSum.map(v => sumRound(v, digits)), sumRound(colSum.reduce((s, v) => s + v, 0), digits)]);
+    return rows;
+}
+// 佔比格：值是 0～1 的數字（Excel 可直接計算），顯示格式設成百分比；分母為 0 時留空
+function reportPct(v, sum) {
+    return sum > 0 ? { t: 'n', v: v / sum, z: '0.0%' } : '';
+}
+// 一個佔比表：類別 × [當月、當月佔比、當年累計、當年累計佔比]（全公司，三區加總）
+function reportShareAoa(title, monthBy, ytdBy, regions, digits) {
+    const total = (by, c) => regions.reduce((s, r) => s + (by[r][c] || 0), 0);
+    const m = REPORT_CATS.map(c => total(monthBy, c)), y = REPORT_CATS.map(c => total(ytdBy, c));
+    const mSum = m.reduce((s, v) => s + v, 0), ySum = y.reduce((s, v) => s + v, 0);
+    const rows = [[title], ['類別', '當月', '當月佔比', '當年累計', '當年累計佔比']];
+    REPORT_CATS.forEach((c, i) => rows.push([c, sumRound(m[i], digits), reportPct(m[i], mSum), sumRound(y[i], digits), reportPct(y[i], ySum)]));
+    rows.push(['合計', sumRound(mSum, digits), reportPct(mSum, mSum), sumRound(ySum, digits), reportPct(ySum, ySum)]);
+    return rows;
+}
+// 各區的金額佔比（每一區自己的類別分布）
+function reportRegionShareAoa(title, by, regions) {
+    const rl = r => (window.regionLabel ? window.regionLabel(r) : r);
+    const rows = [[title], ['類別', ...regions.map(rl)]];
+    const sums = regions.map(r => REPORT_CATS.reduce((s, c) => s + (by[r][c] || 0), 0));
+    REPORT_CATS.forEach(c => rows.push([c, ...regions.map((r, i) => reportPct(by[r][c], sums[i]))]));
+    return rows;
+}
+
+async function exportMonthlyReport() {
+    const input = document.getElementById('report-month');
+    const ym = (input && input.value) || '';
+    if (!/^\d{4}-\d{2}$/.test(ym)) { showToast('請先選擇月份', 'error'); return; }
+    const [Y, M] = ym.split('-').map(Number);
+    const btn = document.getElementById('report-export-btn');
+    if (btn) btn.disabled = true;
+    showToast(`正在讀取 ${Y} 年 1～${M} 月的消耗紀錄…`, 'success');
+    let records;
+    try {
+        // 當年 1 月 1 日 ～ 該月月底（當年累計佔比要用整段）
+        const snap = await getDocs(query(
+            collection(db, 'inventory_history'),
+            where('tsDate', '>=', Timestamp.fromDate(new Date(Y, 0, 1))),
+            where('tsDate', '<',  Timestamp.fromDate(new Date(Y, M, 1))),
+            orderBy('tsDate', 'desc')
+        ));
+        records = snap.docs.map(mapHistoryDoc);
+    } catch (err) {
+        console.error('[月報] 讀取消耗紀錄失敗:', err);
+        showToast('讀取消耗紀錄失敗（不是沒有資料）：' + (err.code || err.message), 'error');
+        if (btn) btn.disabled = false;
+        return;
+    }
+    try {
+        const rep = buildMonthlyReport(records, ym);
+        const rl = r => (window.regionLabel ? window.regionLabel(r) : r);
+        const wb = XLSX.utils.book_new();
+
+        // ① 當月每筆明細與價格
+        const head = ['日期', '地區', '品牌', '機台', '列印檔名（備註）', '客戶簡稱', '工作類別', '月報類別', '單號',
+                      '材料', '料號', '用量', '單位', '單價（元）', '金額（元）', '責任工程師'];
+        const aoa1 = [head, ...rep.detail.map(x => [
+            x.ts ? new Date(x.ts).toLocaleString('zh-TW', { hour12: false }) : '', rl(x.region), x.brand, exportModelName(x.h),
+            x.note, x.customer, x.workCat, x.cat, x.appNo, x.material, x.partno, x.qty, x.unit, x.price, x.amount, operatorLabel(x.h),
+        ])];
+        const ws1 = XLSX.utils.aoa_to_sheet(aoa1);
+        ws1['!cols'] = [18, 6, 11, 14, 36, 14, 9, 11, 14, 22, 12, 8, 5, 10, 10, 18].map(w => ({ wch: w }));
+        XLSX.utils.book_append_sheet(wb, ws1, '①每筆明細');
+
+        // ② 三區 × 類別總價（另附兩個品牌的用量，單位不同不可相加）
+        const note = rep.unpriced.month ? [[`※ 當月有 ${rep.unpriced.month} 筆紀錄的材料沒有設定單價，金額未計入（請到「安全庫存與單價設定」補上）`]] : [];
+        const aoa2 = [
+            [`${Y} 年 ${M} 月 北中南 × 類別`], ...note, [],
+            ...reportTotalsAoa('金額（元）', rep.month.amount, rep.regions, 0), [],
+            ...reportTotalsAoa('Formlabs 樹脂用量（L）', rep.month.flQty, rep.regions, 3), [],
+            ...reportTotalsAoa('Markforged 線材用量（cc）', rep.month.mfQty, rep.regions, 1),
+        ];
+        const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+        ws2['!cols'] = [{ wch: 26 }, ...rep.regions.map(() => ({ wch: 12 })), { wch: 12 }];
+        XLSX.utils.book_append_sheet(wb, ws2, '②三區類別總價');
+
+        // ③ 當月佔比與當年累計佔比
+        const ytdNote = rep.unpriced.ytd ? [[`※ 當年累計有 ${rep.unpriced.ytd} 筆紀錄沒有設定單價，金額佔比未計入這些紀錄`]] : [];
+        const aoa3 = [
+            [`${Y} 年 ${M} 月佔比（當年累計＝${Y} 年 1～${M} 月）`], ...ytdNote, [],
+            ...reportShareAoa('金額（元）', rep.month.amount, rep.ytd.amount, rep.regions, 0), [],
+            ...reportShareAoa('Formlabs 樹脂用量（L）', rep.month.flQty, rep.ytd.flQty, rep.regions, 3), [],
+            ...reportShareAoa('Markforged 線材用量（cc）', rep.month.mfQty, rep.ytd.mfQty, rep.regions, 1), [],
+            ...reportRegionShareAoa('各區當月金額佔比', rep.month.amount, rep.regions), [],
+            ...reportRegionShareAoa('各區當年累計金額佔比', rep.ytd.amount, rep.regions),
+        ];
+        const ws3 = XLSX.utils.aoa_to_sheet(aoa3);   // 佔比格已是 {t,v,z} 儲存格物件，帶百分比格式
+        ws3['!cols'] = [{ wch: 26 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+        XLSX.utils.book_append_sheet(wb, ws3, '③佔比');
+
+        XLSX.writeFile(wb, `北中南月報_${ym}.xlsx`);
+        showToast(`✓ 已匯出 ${Y} 年 ${M} 月月報（當月 ${rep.detail.length} 筆）`, 'success');
+    } catch (err) {
+        console.error('[月報] 產生失敗:', err);
+        showToast('月報產生失敗：' + err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 function updateMfEditButtons() {
@@ -5809,7 +6007,7 @@ function renderMonthlyWorkCategory() {
         byCat[cat].count += 1;
     });
     const total = recs.reduce((s,h)=>s+(h.ml||0), 0);
-    const CAT_COLOR = { '評估':'bg-sky-500', '代工':'bg-teal-500', '工程測試':'bg-purple-500', '其他':'bg-amber-500', '未分類':'bg-gray-400' };
+    const CAT_COLOR = { '評估':'bg-sky-500', '代工':'bg-teal-500', '工程測試':'bg-purple-500', '行銷':'bg-pink-500', '其他':'bg-amber-500', '未分類':'bg-gray-400' };
 
     box.innerHTML = ALL_CATS.filter(c=>byCat[c].count>0).map(c=>{
         const ml = byCat[c].ml;
@@ -6554,7 +6752,7 @@ async function editHistoryNote(id) {
     const newNote = prompt(
         '編輯備註（建議格式：客戶簡稱-工作類別-EF單號）\n' +
         '例：鑫元鴻-代工-202607020001 / 高禎-評估-202606300001 / 實威-工程測試\n' +
-        '第2欄位需為：評估、代工、工程測試、其他 之一，才能被正確分類統計',
+        '第2欄位需為：評估、代工、工程測試、行銷、其他 之一，才能被正確分類統計',
         h.note || ''
     );
     if (newNote === null) return;   // 取消
@@ -6610,6 +6808,7 @@ window.startPurchaseEdit = startPurchaseEdit;
 window.cancelPurchaseEdit = cancelPurchaseEdit;
 window.savePurchaseEdits = savePurchaseEdits;
 window.exportInvSummaryExcel = exportInvSummaryExcel;
+window.exportMonthlyReport = exportMonthlyReport;
 window.renderMfHistory = renderMfHistory;
 window.mfMonthShift = mfMonthShift;
 window.startMfEdit = startMfEdit;
