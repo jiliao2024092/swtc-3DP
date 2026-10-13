@@ -20,10 +20,10 @@ const {
   assertSucceeds,
   assertFails,
 } = require('@firebase/rules-unit-testing');
-// 只拿 serverTimestamp()：首次登入的自助建立測試要送出與前端一模一樣的內容
-const firebaseCompat = require('firebase/compat/app').default;
+// rules-unit-testing 回傳的是 compat 版 Firestore，伺服器時間與 increment 要用同一套
+const firebase = require('firebase/compat/app');
 require('firebase/compat/firestore');
-const serverTimestamp = () => firebaseCompat.firestore.FieldValue.serverTimestamp();
+const FV = firebase.firestore.FieldValue;
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const RULES = fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8');
@@ -73,6 +73,9 @@ const USERS = {
   invMgrN:    { uid: 'u_invM', email: 'invm@swtc.com', permissions: ['edit_board','view_board','manage_inventory'], region: 'north' },
   // 設備保養：明確只給查看（同時有 edit_issues，證明「有保養權限就不再沿用異常權限」）
   maintViewN: { uid: 'u_mtV',  email: 'mtv@swtc.com',  permissions: ['view_issues','edit_issues','view_maintenance'], region: 'north' },
+  // 公共事項看板：發文者（只有 manage_posts，沒有其他管理權限）、已停用的帳號
+  poster:     { uid: 'u_post', email: 'post@swtc.com', permissions: ['view_board','manage_posts'], region: 'south' },
+  disabled:   { uid: 'u_off',  email: 'off@swtc.com',  permissions: ['view_board'], active: false },
 };
 
 async function main() {
@@ -91,7 +94,7 @@ async function main() {
         ...(u.permissions ? { permissions: u.permissions } : {}),
         ...(u.role ? { role: u.role } : {}),
         ...(u.region ? { region: u.region } : {}),
-        active: true,
+        active: u.active !== false,
       });
     }
     await db.doc('bookings/b1').set({ printer: 'Form4', region: 'central', purpose: '測試' });
@@ -108,6 +111,11 @@ async function main() {
     // 設備保養（工作包 4）
     await db.doc('maint_devices/md_north').set({ customer: '北部客戶', region: 'north', list: 'active' });
     await db.doc('maint_devices/md_south').set({ customer: '南部客戶', region: 'south', list: 'active' });
+    // 公共事項看板（工作包 5）
+    await db.doc('board_posts/bp1').set({ title: '台中工程週會', content: '<p>x</p>', region: 'central', authorUid: 'u_post', likes: {}, commentCount: 2, createdAt: new Date() });
+    await db.doc('board_posts/bp_del').set({ title: '要刪的', likes: {}, commentCount: 0, createdAt: new Date() });
+    await db.doc('board_posts/bp1/comments/c_view').set({ text: '已接收', authorUid: 'u_view2', authorName: 'view2', parentId: '', likes: {}, createdAt: new Date() });
+    await db.doc('board_posts/bp1/comments/c_eng').set({ text: '已完成', authorUid: 'u_eng', authorName: 'eng', parentId: '', likes: { u_eng: 'eng' }, createdAt: new Date() });
     await db.doc('sample_items/si_south').set({ name: '南部樣品', region: 'south', seq: 1 });
     await db.doc('sample_loans/sl_central').set({ itemId: 'si_central', loanDate: '2026-10-01', ym: '2026-10', src: 'monthly', region: 'central' });
     await db.doc('sample_loans/sl_south').set({ itemId: 'si_south', loanDate: '2026-10-02', ym: '2026-10', src: 'monthly', region: 'south' });
@@ -169,13 +177,13 @@ async function main() {
   // 原本只擋 admin：自己寫 manage_users 就能改別人權限、寫 role:'editor' 就能寫預約與庫存。
   await ok('首次登入：3DP-BK / inventory 實際送出的內容可以建立',
     as({ uid: 'u_sc1', email: 'sc1@swtc.com' }).doc('users/u_sc1').set({
-      email: 'sc1@swtc.com', displayName: 'sc1', role: 'viewer', createdAt: serverTimestamp(),
+      email: 'sc1@swtc.com', displayName: 'sc1', role: 'viewer', createdAt: FV.serverTimestamp(),
     }));
   await ok('首次登入：不寫 role、不寫 permissions 也可以建立',
     as({ uid: 'u_sc2', email: 'sc2@swtc.com' }).doc('users/u_sc2').set({ email: 'sc2@swtc.com' }));
   await ok('保底管理員首次登入：實際送出的內容（role:admin）可以建立',
     as({ uid: 'u_sc_def', email: 'jiliao@swtc.com' }).doc('users/u_sc_def').set({
-      email: 'jiliao@swtc.com', displayName: 'jiliao', role: 'admin', createdAt: serverTimestamp(),
+      email: 'jiliao@swtc.com', displayName: 'jiliao', role: 'admin', createdAt: FV.serverTimestamp(),
     }));
   await nok('★ 自助建立不可寫 manage_users（否則可改別人的權限）',
     as({ uid: 'u_sc3', email: 'sc3@swtc.com' }).doc('users/u_sc3')
@@ -467,6 +475,60 @@ async function main() {
     as(USERS.maintViewN).doc('maint_devices/md_north').get());
   await nok('★ 有任何保養權限後就不再沿用 edit_issues（只給查看就不能編輯）',
     as(USERS.maintViewN).doc('maint_devices/md_north').set({ customer: 'y', region: 'north' }, { merge: true }));
+
+  // ══ board_posts：公共事項看板（全公司可讀；發文限 manage_posts；留言與按讚只能動自己的）══
+  const newComment = (u, extra) => ({ text: '收到', authorUid: u.uid, authorName: u.uid, parentId: '', likes: {},
+                                      createdAt: FV.serverTimestamp(), ...(extra || {}) });
+  await ok('任何登入者可讀文章', as(USERS.pureView).doc('board_posts/bp1').get());
+  await ok('★★ 任何登入者可 list 文章（前端真正的查詢：createdAt 倒序、limit）',
+    as(USERS.engS).collection('board_posts').orderBy('createdAt', 'desc').limit(20).get());
+  await ok('任何登入者可 list 留言', as(USERS.pureView).collection('board_posts/bp1/comments').orderBy('createdAt', 'asc').get());
+  await nok('未登入者不可讀文章', anon().doc('board_posts/bp1').get());
+  await ok('有 manage_posts 的人可以發文', as(USERS.poster).doc('board_posts/bp_new').set({ title: 't', likes: {}, commentCount: 0 }));
+  await ok('admin 可以發文', as(USERS.admin).doc('board_posts/bp_new2').set({ title: 't', likes: {}, commentCount: 0 }));
+  await nok('★ 一般使用者不可發文', as(USERS.pureView).doc('board_posts/bp_x').set({ title: 't' }));
+  await nok('★ 沒有 manage_posts 的舊主管不可發文（獨立權限，不綁角色）', as(USERS.manager).doc('board_posts/bp_x').set({ title: 't' }));
+  await ok('★ 發文者可以編輯「別人」的文章（使用者決定：任何人的都可以）',
+    as(USERS.poster).doc('board_posts/bp_new2').update({ title: '改過', updatedByName: 'u_post' }));
+  await nok('★ 一般使用者不可改文章內容', as(USERS.pureView).doc('board_posts/bp1').update({ title: '亂改' }));
+  await ok('★ 一般使用者可以替文章按讚（只動自己的 key）',
+    as(USERS.pureView).doc('board_posts/bp1').update({ ['likes.' + USERS.pureView.uid]: 'view2' }));
+  await ok('一般使用者可以收回自己的讚', as(USERS.pureView).doc('board_posts/bp1').update({ ['likes.' + USERS.pureView.uid]: FV.delete() }));
+  await nok('★ 不可替別人按讚／收回別人的讚', as(USERS.pureView).doc('board_posts/bp1').update({ 'likes.u_eng': 'eng' }));
+  await nok('★ 按讚時不可順便改標題', as(USERS.pureView).doc('board_posts/bp1').update({ ['likes.' + USERS.pureView.uid]: 'v', title: 'x' }));
+  await nok('★ 留言數只能 ±1', as(USERS.pureView).doc('board_posts/bp1').update({ commentCount: FV.increment(5) }));
+  await nok('一般使用者不可刪文章', as(USERS.pureView).doc('board_posts/bp_del').delete());
+  await ok('發文者可以刪文章', as(USERS.poster).doc('board_posts/bp_del').delete());
+
+  await ok('★★ 一般使用者可以留言（前端真正的寫法：留言＋留言數 +1 同一個 batch）', (async () => {
+    const db = as(USERS.pureView), b = db.batch();
+    b.set(db.collection('board_posts/bp1/comments').doc('c_new'), newComment(USERS.pureView));
+    b.update(db.doc('board_posts/bp1'), { commentCount: FV.increment(1) });
+    await b.commit();
+  })());
+  await ok('可以回覆（parentId＝上層留言 id）',
+    as(USERS.engineer).doc('board_posts/bp1/comments/c_reply').set(newComment(USERS.engineer, { parentId: 'c_view' })));
+  await nok('★ 不可冒名留言（authorUid 不是自己）', as(USERS.pureView).doc('board_posts/bp1/comments/c_fake').set(newComment(USERS.engineer)));
+  await nok('空白留言不可', as(USERS.pureView).doc('board_posts/bp1/comments/c_e').set(newComment(USERS.pureView, { text: '' })));
+  await nok('超過 2000 字不可', as(USERS.pureView).doc('board_posts/bp1/comments/c_l').set(newComment(USERS.pureView, { text: 'x'.repeat(2001) })));
+  await nok('★ 建立時不可自帶讚', as(USERS.pureView).doc('board_posts/bp1/comments/c_lk').set(newComment(USERS.pureView, { likes: { u_eng: 'eng' } })));
+  await nok('不可多帶其他欄位', as(USERS.pureView).doc('board_posts/bp1/comments/c_x').set(newComment(USERS.pureView, { pinned: true })));
+  await nok('★ 時間必須是伺服器時間（不可偽造留言時間）',
+    as(USERS.pureView).doc('board_posts/bp1/comments/c_t').set(newComment(USERS.pureView, { createdAt: new Date(2020, 0, 1) })));
+  await nok('不存在的文章不可留言', as(USERS.pureView).doc('board_posts/nope/comments/c1').set(newComment(USERS.pureView)));
+  await nok('★ 已停用的帳號不可留言', as(USERS.disabled).doc('board_posts/bp1/comments/c_off').set(newComment(USERS.disabled)));
+  await nok('未登入者不可留言', anon().doc('board_posts/bp1/comments/c_anon').set(newComment({ uid: 'x' })));
+
+  await ok('可以編輯自己的留言（text＋editedAt）',
+    as(USERS.pureView).doc('board_posts/bp1/comments/c_view').update({ text: '已接收，已完成', editedAt: FV.serverTimestamp() }));
+  await nok('★ 不可編輯別人的留言', as(USERS.pureView).doc('board_posts/bp1/comments/c_eng').update({ text: '亂改' }));
+  await nok('★ 編輯自己的留言時不可改作者', as(USERS.pureView).doc('board_posts/bp1/comments/c_view').update({ authorUid: 'u_eng' }));
+  await ok('★ 可以替別人的留言按讚（只動自己的 key）',
+    as(USERS.pureView).doc('board_posts/bp1/comments/c_eng').update({ ['likes.' + USERS.pureView.uid]: 'view2' }));
+  await nok('★ 不可收回別人在留言上的讚', as(USERS.pureView).doc('board_posts/bp1/comments/c_eng').update({ 'likes.u_eng': FV.delete() }));
+  await nok('★ 一般使用者不可刪別人的留言', as(USERS.pureView).doc('board_posts/bp1/comments/c_eng').delete());
+  await ok('可以刪自己的留言', as(USERS.engineer).doc('board_posts/bp1/comments/c_reply').delete());
+  await ok('★ 發文者可以刪任何人的留言', as(USERS.poster).doc('board_posts/bp1/comments/c_eng').delete());
 
   // ══ inventory_history：備註開放給工程師改，其餘欄位仍限 admin ══════
   // ★ 這一組守的是「開放備註」不可變成「開放改帳」：同一份文件裡的 ml／material／
