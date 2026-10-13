@@ -263,15 +263,15 @@
 
 <!-- ══ 安全庫存設定 Modal ══ -->
 <div id="safety-modal" class="modal-overlay hidden">
-    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-lg mx-4 max-h-screen overflow-y-auto">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-3xl mx-4 max-h-screen overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center gap-3">
                 <div class="bg-[var(--warn-soft)] p-2.5 rounded-lg"><i data-lucide="shield-alert" class="w-5 h-5 text-[var(--warn)]"></i></div>
-                <h2 class="text-xl font-bold">安全庫存設定</h2>
+                <h2 class="text-xl font-bold">安全庫存與單價設定</h2>
             </div>
             <button onclick="closeSafetyModal()" class="text-[var(--ink-5)] hover:text-[var(--ink-3)]"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
-        <p class="text-sm text-[var(--ink-4)] mb-4">設定每種材料的安全庫存量（L），低於此量時會顯示叫料提醒。</p>
+        <p class="text-sm text-[var(--ink-4)] mb-4">設定每種材料的料號、安全庫存量（L，低於此量時會顯示叫料提醒）與<b>單價</b>（新台幣；樹脂每 L、零件／耗材每個）。料號與單價三區共用，單價會出現在匯出的報表裡。</p>
         <div class="space-y-3" id="safety-modal-body"></div>
         <div class="flex gap-3 mt-6">
             <button onclick="closeSafetyModal()" class="flex-1 px-4 py-2.5 border border-[var(--line-strong)] rounded-lg text-sm font-medium text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">取消</button>
@@ -450,7 +450,7 @@
             <!-- 這兩顆只作用於 Formlabs（安全庫存寫 inv.safety、匯出取樹脂資料），切到 Markforged 時隱藏 -->
             <div class="ml-auto flex gap-2" id="toolbar-formlabs">
                 <button data-inv-manage-only onclick="showSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-soft)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">
-                    <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
+                    <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存與單價設定
                 </button>
                 <button onclick="exportInventoryExcel()" title="庫存視角：庫存總覽 + 所有異動（入庫/調整/消耗）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出庫存
@@ -857,7 +857,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <button data-inv-manage-only onclick="showMfSafetyModal()" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--warn-border)] bg-[var(--warn-soft)] text-[var(--warn)] hover:bg-[var(--warn-soft)] transition-colors">
-                        <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存設定
+                        <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i> 安全庫存與單價設定
                     </button>
                     <button id="mf-edit-btn" data-editor-only onclick="startMfEdit()"
                         class="flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-lg border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
@@ -1102,16 +1102,16 @@
 <!-- ══ Markforged 安全庫存設定 Modal（含每捲容量）══════════════
      每捲 cc 是入庫換算的基準，會直接影響庫存數字，故與安全庫存一起限主管／admin 設定 -->
 <div id="mf-safety-modal" class="modal-overlay hidden">
-    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-3xl mx-4 max-h-screen overflow-y-auto">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-4xl mx-4 max-h-screen overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
             <div class="flex items-center gap-3">
                 <div class="bg-[var(--warn-soft)] p-2.5 rounded-lg"><i data-lucide="shield-alert" class="w-5 h-5 text-[var(--warn)]"></i></div>
-                <h2 class="text-xl font-bold">Markforged 安全庫存設定</h2>
+                <h2 class="text-xl font-bold">Markforged 安全庫存與單價設定</h2>
             </div>
             <button onclick="closeMfSafetyModal()" class="text-[var(--ink-5)] hover:text-[var(--ink-3)]"><i data-lucide="x" class="w-5 h-5"></i></button>
         </div>
         <p class="text-sm text-[var(--ink-4)] mb-4">
-            設定每種線材的<b>料號</b>、<b>安全庫存</b>（低於此量顯示叫料提醒）與<b>每捲容量</b>（入庫時以此換算捲數 → cc）。料號三區共用。
+            設定每種線材的<b>料號</b>、<b>安全庫存</b>（低於此量顯示叫料提醒）、<b>每捲容量</b>（入庫時以此換算捲數 → cc）與<b>單價</b>（新台幣；線材每 cc、耗材每個）。料號與單價三區共用，單價會出現在匯出的報表裡。
         </p>
         <div id="mf-safety-body" class="space-y-2"></div>
         <div class="flex gap-3 mt-6">
@@ -1571,6 +1571,12 @@ let unsubscribeMf = null;
 let mfObservations = [];
 let unsubscribeMfObs = null;
 let unsubscribeWs = null;   // settings/workspace（分區設定）
+// 材料單價（新台幣）：樹脂每 L、Markforged 線材每 cc、零件／耗材每個。三區共用一份，
+// 存在 settings/material_prices.items，key 與採購工程庫存相同（群組:品項，見 sumPurchaseKey）。
+// 只有主管與管理員可設定（canManageInventorySettings，與 firestore.rules 一致）；匯出報表時帶出。
+let matPrices = {};
+let matPricesMeta = null;
+let unsubscribePrices = null;
 // Markforged 消耗紀錄：與 Formlabs 共用 inventory_history collection，靠 source 欄位區分。
 // rebuildInvHistory() 會把兩者拆開 —— inv.history 只留 Formlabs，既有統計邏輯完全不受影響。
 let mfHistory = [];
@@ -1685,6 +1691,7 @@ onAuthStateChanged(auth, async (user) => {
         if (unsubscribeHist) { unsubscribeHist(); unsubscribeHist = null; }
         if (unsubscribeMf)   { unsubscribeMf();   unsubscribeMf   = null; }
         if (unsubscribeWs)   { unsubscribeWs();   unsubscribeWs   = null; }
+        if (unsubscribePrices) { unsubscribePrices(); unsubscribePrices = null; }
         if (unsubscribeRegionInv) { unsubscribeRegionInv(); unsubscribeRegionInv = null; }
         if (unsubscribePrinterStatus) { unsubscribePrinterStatus(); unsubscribePrinterStatus = null; }
         stopInvSummary();
@@ -1928,6 +1935,14 @@ function subscribeAll() {
         renderCartridges();
         if (currentTab === 'mf') renderMfPanel();
     }, (err) => console.error('[settings/workspace] 訂閱失敗:', err));
+
+    // 訂閱材料單價（settings/material_prices）。只有一份小文件，匯出時要用，所以常駐訂閱
+    if (unsubscribePrices) unsubscribePrices();
+    unsubscribePrices = onSnapshot(doc(db, 'settings', 'material_prices'), (snap) => {
+        const d = snap.exists() ? (snap.data() || {}) : {};
+        matPrices = d.items || {};
+        matPricesMeta = snap.exists() ? d : null;
+    }, (err) => console.error('[settings/material_prices] 訂閱失敗:', err));
 
     // 訂閱 mf_material_log（材料餘量觀測，觀測模式不扣庫存）
     // 只取最近 200 筆：這個 collection 會隨時間累積，不設上限會讓讀取量無限成長
@@ -3877,6 +3892,49 @@ let isPurchaseEditMode = false;
 const sumRound = (v, digits) => { const f = Math.pow(10, digits); return Math.round((Number(v) || 0) * f) / f; };
 function sumRegions() { return (window.REGIONS || [{ key: 'central', label: '中部' }]); }
 function sumPurchaseKey(group, key) { return `${group}:${key}`; }
+// 單價：數字，或 ''（沒設定）。key 格式與採購工程庫存相同
+function getPrice(group, key) {
+    const v = matPrices[sumPurchaseKey(group, key)];
+    return (v === undefined || v === null || v === '') ? '' : Number(v);
+}
+const PRICE_UNIT = { fl: '元/L', flc: '元/個', mf: '元/cc', mfc: '元/個' };
+// 單價設定視窗的輸入格（Formlabs 與 Markforged 兩個視窗共用）
+function priceInputHTML(group, key, cls) {
+    const v = getPrice(group, key);
+    return `<input type="number" min="0" step="any" value="${v === '' ? '' : v}" placeholder="未設定"
+        data-pkey="${escHtml(sumPurchaseKey(group, key))}"
+        class="${cls} w-full p-2 text-right border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">`;
+}
+// 讀取設定視窗裡的單價輸入格 → 合併進目前的單價表。驗證不過回傳 null（呼叫端要中止，不可寫半套）
+function collectPriceInputs(selector) {
+    const next = { ...matPrices };
+    for (const el of document.querySelectorAll(selector)) {
+        const key = el.getAttribute('data-pkey');
+        const raw = String(el.value || '').trim();
+        if (raw === '') { delete next[key]; continue; }
+        const v = parseFloat(raw);
+        if (isNaN(v) || v < 0) { showToast('單價要填 0 以上的數字（留空＝未設定）', 'error'); el.focus(); return null; }
+        next[key] = v;
+    }
+    return next;
+}
+// 有變動才寫（沒改單價就不多一筆寫入）
+async function saveMaterialPrices(next) {
+    if (JSON.stringify(next) === JSON.stringify(matPrices)) return true;
+    try {
+        await setDoc(doc(db, 'settings', 'material_prices'), {
+            items:          next,
+            updatedAt:      serverTimestamp(),
+            updatedBy:      currentUser.displayName || currentUser.uid,
+            updatedByEmail: currentUser.email,
+        });
+        matPrices = next;
+        return true;
+    } catch (err) {
+        showToast('單價儲存失敗：' + err.message, 'error');
+        return false;
+    }
+}
 
 function subscribeInvSummary() {
     if (sumUnsubs.length) return;   // 已在訂閱中
@@ -4097,14 +4155,15 @@ function exportInvSummaryExcel() {
     if (sumLoadError) { showToast('資料載入失敗，無法匯出', 'error'); return; }
     if (!invSummaryReady()) { showToast('資料還在載入，請稍候', 'error'); return; }
     const cols = sumColumns();
-    const aoa = [['料號', '庫存品項', ...cols.map(c => c.label)]];
+    // 最後一欄是單價（只在匯出時帶出；單位依分組：樹脂元/L、線材元/cc、零件耗材元/個，寫在分組標題列）
+    const aoa = [['料號', '庫存品項', ...cols.map(c => c.label), '單價（元）']];
     buildInvSummary(sumRegionDocs, sumMfDocs).forEach(g => {
         if (!g.rows.length) return;
-        aoa.push([`${g.label}（單位：${g.unit}）`]);
-        g.rows.forEach(row => aoa.push([row.partno || '', row.name, ...cols.map(c => sumValue(row, c))]));
+        aoa.push([`${g.label}（單位：${g.unit}；單價：${PRICE_UNIT[g.key]}）`]);
+        g.rows.forEach(row => aoa.push([row.partno || '', row.name, ...cols.map(c => sumValue(row, c)), getPrice(row.group, row.key)]));
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 14 }, { wch: 36 }, ...cols.map(() => ({ wch: 12 }))];
+    ws['!cols'] = [{ wch: 14 }, { wch: 36 }, ...cols.map(() => ({ wch: 12 })), { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '北中南材料總覽');
     XLSX.writeFile(wb, `北中南材料總覽_${new Date().toISOString().slice(0, 10)}.xlsx`);
@@ -4310,15 +4369,15 @@ function showMfSafetyModal() {
         body.innerHTML = '<p class="text-sm text-[var(--ink-5)] text-center py-6">尚無材料，請先於列表新增</p>';
     } else {
         body.innerHTML = `
-            <div class="grid grid-cols-[1fr_8rem_7rem_7rem] gap-2 text-xs font-medium text-[var(--ink-4)] px-1">
-                <div>材料</div><div class="text-center">料號</div><div class="text-right">安全庫存</div><div class="text-right">每捲 (cc)</div>
+            <div class="grid grid-cols-[1fr_8rem_7rem_7rem_9rem] gap-2 text-xs font-medium text-[var(--ink-4)] px-1">
+                <div>材料</div><div class="text-center">料號</div><div class="text-right">安全庫存</div><div class="text-right">每捲 (cc)</div><div class="text-right">單價</div>
             </div>` + names.map(n => {
             const isCon = mfIsConsumable(n);
             const tag = isCon
                 ? '<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--warn-soft)] text-[var(--warn)]">耗材</span>'
                 : `<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded-full ${mfInv.stock[n]?.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-4)]'}">${MF_CATEGORY_LABEL[mfInv.stock[n]?.category]||'—'}</span>`;
             return `
-            <div class="grid grid-cols-[1fr_8rem_7rem_7rem] gap-2 items-center" data-mfsafety="${escHtml(n)}">
+            <div class="grid grid-cols-[1fr_8rem_7rem_7rem_9rem] gap-2 items-center" data-mfsafety="${escHtml(n)}">
                 <div class="text-sm text-[var(--ink)] truncate">${escHtml(n)}${tag}</div>
                 <input type="text" value="${escHtml(getMfPartNo(n))}" placeholder="料號"
                     class="mfsafety-partno w-full p-2 border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">
@@ -4331,6 +4390,10 @@ function showMfSafetyModal() {
                     ? '<input type="text" value="—" disabled title="耗材以「個」計，無每捲容量" class="mfsafety-perspool p-2 text-right border border-[var(--line)] rounded-md text-sm bg-[var(--bg-soft)] text-[var(--ink-5)]">'
                     : `<input type="number" min="0" step="1" value="${Number(mfInv.stock[n]?.cc_per_spool)||''}" placeholder="未設定"
                         class="mfsafety-perspool p-2 text-right border border-[var(--line-strong)] rounded-md text-sm outline-none focus:ring-1 focus:ring-blue-500 bg-[var(--bg)] text-[var(--ink)]">`}
+                <div class="flex items-center gap-1">
+                    ${priceInputHTML(isCon ? 'mfc' : 'mf', n, 'mfsafety-price')}
+                    <span class="text-xs text-[var(--ink-5)] whitespace-nowrap">${isCon ? PRICE_UNIT.mfc : PRICE_UNIT.mf}</span>
+                </div>
             </div>`;
         }).join('');
     }
@@ -4341,6 +4404,8 @@ function closeMfSafetyModal() { document.getElementById('mf-safety-modal').class
 async function saveMfSafety() {
     if (!canManageInventorySettings()) { showToast('需要材料庫存設定權限', 'error'); return; }
     // 全部讀完驗證通過才套用，避免中途失敗留下半套設定
+    const nextPrices = collectPriceInputs('#mf-safety-body .mfsafety-price');
+    if (!nextPrices) return;
     const rows = [];
     for (const el of document.querySelectorAll('#mf-safety-body [data-mfsafety]')) {
         const name = el.getAttribute('data-mfsafety');
@@ -4374,6 +4439,7 @@ async function saveMfSafety() {
             showToast('料號儲存失敗：' + err.message, 'error');
         }
     }
+    await saveMaterialPrices(nextPrices);
     closeMfSafetyModal();
     renderMfPanel();
 }
@@ -4940,7 +5006,7 @@ function showSafetyModal() {
     else {
         const hdr=document.createElement('div');
         hdr.className='flex items-center gap-3 pb-1 border-b border-[var(--line-soft)] text-xs font-medium text-[var(--ink-5)]';
-        hdr.innerHTML=`<span class="flex-1">材料</span><span class="w-32 text-center">料號</span><span class="w-24 text-right">安全庫存</span><span class="w-4"></span>`;
+        hdr.innerHTML=`<span class="flex-1">材料</span><span class="w-32 text-center">料號</span><span class="w-24 text-right">安全庫存</span><span class="w-4"></span><span class="w-28 text-right">單價</span><span class="w-10"></span>`;
         body.appendChild(hdr);
     }
     mats.forEach(m=>{
@@ -4959,6 +5025,8 @@ function showSafetyModal() {
             <input type="number" value="${(safety/1000).toFixed(1)}" min="0" step="1" data-material="${m}"
                 class="safety-input w-24 p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-amber-500 outline-none text-right">
             <span class="text-sm text-[var(--ink-5)] w-4">L</span>
+            <div class="w-28">${isConsumableStock(m) ? priceInputHTML('flc', m, 'price-input') : priceInputHTML('fl', matCode(m), 'price-input')}</div>
+            <span class="text-xs text-[var(--ink-5)] w-10">${isConsumableStock(m) ? PRICE_UNIT.flc : PRICE_UNIT.fl}</span>
         `;
         body.appendChild(row);
     });
@@ -4966,6 +5034,9 @@ function showSafetyModal() {
 }
 function closeSafetyModal() { document.getElementById('safety-modal').classList.add('hidden'); }
 async function saveSafetyStock() {
+    // 單價先驗證：有一格不合法就整批不存（不可存一半）
+    const nextPrices = collectPriceInputs('#safety-modal-body .price-input');
+    if (!nextPrices) return;
     document.querySelectorAll('.safety-input').forEach(el=>{
         const liters = parseFloat(el.value)||0;
         inv.safety[el.dataset.material] = Math.round(liters * 1000 * 10) / 10;
@@ -4991,6 +5062,7 @@ async function saveSafetyStock() {
     closeSafetyModal();
     renderAll();
     await saveAll('更新安全庫存設定');
+    await saveMaterialPrices(nextPrices);
 }
 
 // ══ 已停用材料管理 ══
@@ -5972,14 +6044,22 @@ function renderMonthlyPie() {
 function exportInventoryExcel() {
     const wb=XLSX.utils.book_new();
     // 總覽
-    const ovRows=getAllMaterials().map(m=>({
-        '材料':matName(m),
-        '機台樹脂罐 (L)':+(getCartridgeTotal(m)/1000).toFixed(2),
-        '備料庫存 (L)':+(getStockTotal(m)/1000).toFixed(2),
-        '總庫存 (L)':+(getTotalInventory(m)/1000).toFixed(2),
-        '安全庫存 (L)':+(getSafetyStock(m)/1000).toFixed(2),
-        '狀態':isLowStock(m)?'需叫料':'充足'
-    }));
+    const ovRows=getAllMaterials().map(m=>{
+        // 單價（元/L，主管與管理員在「安全庫存與單價設定」填）；庫存金額＝總庫存 × 單價，沒設單價留空
+        const price = getPrice('fl', matCode(m));
+        const totalL = +(getTotalInventory(m)/1000).toFixed(2);
+        return {
+            '料號':getPartNo(m),
+            '材料':matName(m),
+            '機台樹脂罐 (L)':+(getCartridgeTotal(m)/1000).toFixed(2),
+            '備料庫存 (L)':+(getStockTotal(m)/1000).toFixed(2),
+            '總庫存 (L)':totalL,
+            '安全庫存 (L)':+(getSafetyStock(m)/1000).toFixed(2),
+            '狀態':isLowStock(m)?'需叫料':'充足',
+            '單價 (元/L)':price,
+            '庫存金額 (元)':price === '' ? '' : Math.round(totalL * price),
+        };
+    });
     XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(ovRows),'庫存總覽');
     // 歷史
     const hRows=inv.history.map(h=>{

@@ -37,7 +37,7 @@ const FNS = ['familyCode', 'canonCode', 'matCode', 'matName', 'isNonMaterialItem
   'isConsumableStock', 'getStockTotal', 'getSafetyStock', 'getPartNo',
   'regionInvFields', 'withRegionInv', 'withMfInv',
   'mfSafety', 'mfTotal', 'mfIsConsumable', 'mfQty', 'mfMaterialNames', 'mfConsumableNames', 'mfCurrent', 'mfIsLow',
-  'getMfPartNo', 'sumRegions', 'sumPurchaseKey', 'sumCell', 'buildInvSummary', 'sumColumns', 'sumValue'];
+  'getMfPartNo', 'sumRegions', 'sumPurchaseKey', 'sumCell', 'buildInvSummary', 'sumColumns', 'sumValue', 'getPrice'];
 
 const src = [
   grab(/const CODE_TO_NAME = \{[\s\S]*?^\};/m, 'CODE_TO_NAME'),
@@ -59,9 +59,9 @@ const src = [
 const factory = new Function('window', 'init', `
   let inv = init.inv, mfInv = init.mfInv, mfPartno = init.mfPartno;
   let mainDisabledFallback = init.mainDisabledFallback, mainOverridesFallback = init.mainOverridesFallback;
-  let sumPurchase = init.sumPurchase;
+  let sumPurchase = init.sumPurchase, matPrices = init.matPrices;
   ${src}
-  return { buildInvSummary, sumColumns, sumValue, getInv: () => inv, getMfInv: () => mfInv };
+  return { buildInvSummary, sumColumns, sumValue, getPrice, getInv: () => inv, getMfInv: () => mfInv };
 `);
 
 let pass = 0, fail = 0;
@@ -83,6 +83,7 @@ const api = factory({ REGIONS }, {
   mainDisabledFallback: ['FLGPWH'],      // 還沒分家的區沿用這份舊停用清單
   mainOverridesFallback: [],
   sumPurchase: { 'fl:FLGPCL': 2 },
+  matPrices: { 'fl:FLGPCL': 3200, 'mf:Onyx': 5.5, 'mfc:Nozzle': '' },
 });
 
 const regionDocs = {
@@ -148,6 +149,13 @@ eq(vals(rowOf('mfc', 'Nozzle')), [1, 2, '', 0, '', 0, ''], 'Markforged 耗材以
 // ── 每一格都是純數字或空白 ──────────────────────────────
 const allVals = groups.flatMap(g => g.rows.flatMap(vals));
 eq(allVals.every(v => v === '' || (typeof v === 'number' && Number.isFinite(v))), true, '★ 每一格都是純數字或空白（不夾文字）');
+
+// ── 單價（工作包 2）：key 與採購工程庫存同一套「群組:品項」──────────
+eq(api.getPrice('fl', 'FLGPCL'), 3200, '單價依「群組:品項」取得');
+eq(api.getPrice('mf', 'Onyx'), 5.5, 'Markforged 線材單價（元/cc）可有小數');
+eq(api.getPrice('fl', 'FLGPWH'), '', '沒設定單價 → 空白（不可當成 0，否則金額會算成 0）');
+eq(api.getPrice('mfc', 'Nozzle'), '', '存成空字串也視為沒設定');
+eq(api.getPrice('flc', 'FLGPCL'), '', '★ 群組不同就是不同品項（樹脂的單價不可套到同名耗材）');
 
 // ── 借用的全域變數一定要換回來 ─────────────────────────
 eq(api.getInv().stock === sentinelStock, true, '★ 算完後 inv 換回目前檢視那一區（不可被別區資料污染）');

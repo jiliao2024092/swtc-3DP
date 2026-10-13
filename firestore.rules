@@ -324,6 +324,13 @@ service cloud.firestore {
       allow write: if hasPerm('manage_inventory') || hasPerm('edit_purchase_stock');
     }
 
+    // 材料單價（材料庫存頁「安全庫存與單價設定」）：只有管理員與主管（庫存設定權限）可寫。
+    // 讀取開放登入者：匯出報表時要帶出單價。與 inventory.html 的 canManageInventorySettings() 一致
+    match /settings/material_prices {
+      allow read: if isLoggedIn();
+      allow write: if hasPerm('manage_inventory');
+    }
+
     // settings/workspace（工程師/機台/業務/借用人清單，AdminPanel「工作看板設定」等分頁）：
     // admin 或主管都可寫入。前端 UI 本來就把這個分頁開放給主管看到並編輯、儲存按鈕沒有
     // admin-only 限制，「主管」的定義沿用前端 roleTierOf() 同一套判斷（持有 delete_board

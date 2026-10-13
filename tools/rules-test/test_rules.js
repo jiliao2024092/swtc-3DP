@@ -381,6 +381,20 @@ async function main() {
   await ok('管理員可改',
     as(USERS.admin).doc('settings/purchase_stock').set({ items: { 'fl:FLGPCL': 4 } }));
 
+  // ══ settings/material_prices：材料單價（主管與管理員設定，匯出時帶出）══════
+  await ok('登入者可讀單價（匯出報表要用）',
+    as(USERS.engN).doc('settings/material_prices').get());
+  await nok('未登入不可讀單價',
+    anon().doc('settings/material_prices').get());
+  await nok('★ 一般工程師不可改單價',
+    as(USERS.engN).doc('settings/material_prices').set({ items: { 'fl:FLGPCL': 3200 } }));
+  await nok('★ 只有「編輯採購工程庫存」權限者不可改單價（兩者是不同權限）',
+    as(USERS.purchaserN).doc('settings/material_prices').set({ items: { 'fl:FLGPCL': 3200 } }));
+  await ok('有庫存設定權限（主管）者可改單價',
+    as(USERS.invMgrN).doc('settings/material_prices').set({ items: { 'fl:FLGPCL': 3200 } }));
+  await ok('管理員可改單價',
+    as(USERS.admin).doc('settings/material_prices').set({ items: { 'fl:FLGPCL': 3300 } }));
+
   // ══ inventory_history：備註開放給工程師改，其餘欄位仍限 admin ══════
   // ★ 這一組守的是「開放備註」不可變成「開放改帳」：同一份文件裡的 ml／material／
   //   stock_deducted 直接牽動庫存數字，而消耗紀錄沒有版本歷程，改了帳面看不出來。
