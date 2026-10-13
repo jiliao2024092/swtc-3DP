@@ -1966,9 +1966,11 @@ def _perform_sync_unlocked(client_id: str, client_secret: str) -> dict:
                 #   顯示 1475 筆 prints 裡當下真正在列印的只有 1 筆 —— 那 27 筆全是
                 #   「在飛行中被寫進去、之後再也沒更新」的陳舊值。
                 #   跳過之後，下一輪看到 FINISHED 才寫，狀態與用量都是最終值。
+                #   ★ 檔名直接取 pr.get('name')：2026-10-12 清除錯輸出時把原本的檔名變數連定義一起刪了，
+                #   有機台列印中時這裡拋 NameError（每輪 errors 一筆；消耗不受影響，例外是逐筆攔下）
                 if status in IN_FLIGHT_STATUSES:
                     stats["skipped_in_flight"] = stats.get("skipped_in_flight", 0) + 1
-                    _in_flight_names.append(f"{_pname or guid[:8]}({status})")
+                    _in_flight_names.append(f"{pr.get('name') or guid[:8]}({status})")
                     continue
 
                 # 取得用量（先算出來，供 CANCELED 判斷用）

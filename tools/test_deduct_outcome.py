@@ -92,6 +92,9 @@ check("main.py 有在飛行中 continue",
       bool(re.search(r"if status in IN_FLIGHT_STATUSES:[\s\S]{0,200}?continue", src)), True)
 # FC-118 風險（永遠回報 PRINTING 的已完成 print）必須是看得見的，不能靜默
 check("飛行中有印進 log（FC-118 風險可追蹤）", "[sync] 飛行中" in src, True)
+# ★ 2026-10-13 實際事故：清除錯輸出時刪掉了 _pname 的定義，飛行中那行每輪拋 NameError。
+#   結構測試只看得到 continue 在不在，看不到變數沒定義 —— 這類問題要靠 pyflakes（見 CLAUDE.md 驗證指令）
+check("飛行中那行不可再用已刪掉的 _pname", bool(re.search(r"\b_pname\b", src)), False)
 
 print("── 排除清單語意：沒見過的值一律落在「扣」那側 ──")
 check("UNKNOWN 要扣",                       will_deduct("UNKNOWN"),   True)
