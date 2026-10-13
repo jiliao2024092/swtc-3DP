@@ -217,9 +217,16 @@ service cloud.firestore {
     function invDocRegion(docId) {
       return docId.replace('markforged_', '');
     }
+    // 北中南材料總覽（材料庫存頁的「北中南總覽」）要同時讀三區的庫存文件。
+    // 放行：庫存設定權限（主管）、或後台勾了「查看北中南材料總覽」／「編輯採購工程庫存」的人。
+    // ★ 只放寬「讀」，寫入仍照原本的地區規則。與 inventory.html 的 canViewInvSummary() 一致
+    function canSeeInvSummary() {
+      return hasPerm('manage_inventory') || hasPerm('view_inventory_summary') || hasPerm('edit_purchase_stock');
+    }
     match /inventory/{docId} {
       allow read: if isLoggedIn()
-        && (!isRegionInvDoc(docId) || isCrossRegionViewer() || invDocRegion(docId) == myRegion());
+        && (!isRegionInvDoc(docId) || isCrossRegionViewer() || invDocRegion(docId) == myRegion()
+            || canSeeInvSummary());
       allow write: if isLegacyEditorOrAdmin()
         && (!isRegionInvDoc(docId) || isCrossRegionEditor() || invDocRegion(docId) == myRegion());
     }
@@ -308,6 +315,13 @@ service cloud.firestore {
     match /settings/quote_studio_pricing {
       allow read: if isLoggedIn();
       allow write: if isAdmin() || hasPerm('manage_quote_pricing');
+    }
+
+    // 北中南材料總覽的「採購工程庫存」（人工填寫）：管理員、主管（庫存設定權限）、
+    // 或後台勾了「編輯採購工程庫存」的人可寫。與 inventory.html 的 canEditPurchaseStock() 一致
+    match /settings/purchase_stock {
+      allow read: if isLoggedIn();
+      allow write: if hasPerm('manage_inventory') || hasPerm('edit_purchase_stock');
     }
 
     // settings/workspace（工程師/機台/業務/借用人清單，AdminPanel「工作看板設定」等分頁）：

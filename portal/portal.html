@@ -512,7 +512,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20260827a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261012d"></script>
+<script src="firebase-service.js?v=20261013a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -3013,6 +3013,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-13', type:'feat',
+    text:'材料庫存頁新增「北中南總覽」：三區的庫存並列在同一張表（版面比照原本的 Excel 庫存統計表），低於安全庫存的數量以紅底標示、每格都是純數字，可一鍵匯出 Excel；並多一欄「採購工程庫存」可手動填寫（主管與有權限者）。各區的材料庫存表也加上「料號」欄，Markforged 的料號在它的「安全庫存設定」裡填。看得到這一頁的是管理員、主管，以及後台勾了「查看北中南材料總覽」的人。' },
   { hash:'5eb3602', date:'2026-10-12', type:'tweak',
     text:'材料庫存頁頂端移除「清除並重建」與「去除重複」兩個管理按鈕：前者會刪光全部消耗紀錄、還指向一個已不存在的流程，誤按風險高；後者是早期消耗紀錄會重複時用的，現在每筆列印各自獨立，不會再重複。' },
   { hash:'b730eae', date:'2026-10-12', type:'tweak',
@@ -3031,8 +3033,6 @@ const CHANGELOG = [
     text:'修正 Formlabs 同步重疊時重複扣庫存：排程正在同步時按「立即同步」，兩輪會同時把同一批列印當成新的、各扣一次庫存（10/6 中部 Rigid 4000 與 Clear V5 就被多扣了一次）。現在同一時間只會有一輪同步，後到的那一輪會直接跳過，並在後台顯示「已有一輪同步正在進行」。' },
   { hash:'3e32514', date:'2026-09-21', type:'tweak',
     text:'異常與資源的「新增／編輯異常」多了兩個提醒：一、儲存時如果一筆後續進度都沒有，會先問一次再存；二、進度說明打了字卻還沒按 Enter 或「＋」就關視窗，會提醒那段文字會消失。' },
-  { hash:'370726c', date:'2026-09-21', type:'tweak',
-    text:'材料的「停用／恢復顯示」改成各地區獨立：在南部停用一個材料，北部與中部不會再跟著消失。原本三區共用同一份清單。目前已經停用的材料會原封不動套用到三個地區，之後各區可以各自調整——切到某一區，該區的「已停用材料」就只管那一區。' }
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

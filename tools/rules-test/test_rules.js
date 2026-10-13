@@ -62,6 +62,11 @@ const USERS = {
   mgrViewOnly:{ uid: 'u_mgrV', email: 'mgrv@swtc.com', permissions: ['edit_board','view_board','delete_board','view_all_regions'], region: 'north' },
   // 一般工程師被單獨授予跨區編輯（證明跨區能力綁在權限、不是綁在角色）
   engCross:   { uid: 'u_engX', email: 'engx@swtc.com', permissions: ['edit_board','view_board','view_all_regions','edit_all_regions'], region: 'north' },
+  // 北中南材料總覽（2026-10-13）：三個帳號都綁北部、都沒有跨區權限，
+  // 證明能讀別區庫存是因為「總覽」的權限，不是因為跨區檢視
+  invViewN:   { uid: 'u_invV', email: 'invv@swtc.com', permissions: ['edit_board','view_board','view_inventory_summary'], region: 'north' },
+  purchaserN: { uid: 'u_pur',  email: 'pur@swtc.com',  permissions: ['view_board','edit_purchase_stock'], region: 'north' },
+  invMgrN:    { uid: 'u_invM', email: 'invm@swtc.com', permissions: ['edit_board','view_board','manage_inventory'], region: 'north' },
 };
 
 async function main() {
@@ -345,6 +350,36 @@ async function main() {
     as(USERS.mgrFull).doc('inventory/markforged_south').set({ stock: {} }, { merge: true }));
   await ok('markforged_watch（觀測基準）不是分區文件，維持全域可讀',
     as(USERS.engN).doc('inventory/markforged_watch').get());
+
+  // ══ 北中南材料總覽：要同時讀三區的庫存文件，另外有權限放行「讀」══════
+  await ok('★ 勾了「查看北中南材料總覽」者可讀別區的樹脂庫存',
+    as(USERS.invViewN).doc('inventory/south').get());
+  await ok('★ 勾了「查看北中南材料總覽」者可讀別區的 Markforged 庫存',
+    as(USERS.invViewN).doc('inventory/markforged_south').get());
+  await nok('★ 總覽權限只放寬「讀」：不可寫別區庫存',
+    as(USERS.invViewN).doc('inventory/south').set({ stock: {} }, { merge: true }));
+  await ok('勾了「編輯採購工程庫存」者也看得到總覽（讀得到別區庫存）',
+    as(USERS.purchaserN).doc('inventory/central').get());
+  await ok('有庫存設定權限（主管）者不必另外勾，也讀得到別區庫存',
+    as(USERS.invMgrN).doc('inventory/south').get());
+  await nok('★ 沒有總覽權限的工程師仍不可讀別區庫存（放寬沒有外溢）',
+    as(USERS.engN).doc('inventory/central').get());
+
+  // ══ settings/purchase_stock：採購工程庫存（人工填寫）══════════════
+  await ok('登入者可讀採購工程庫存',
+    as(USERS.engN).doc('settings/purchase_stock').get());
+  await nok('未登入不可讀採購工程庫存',
+    anon().doc('settings/purchase_stock').get());
+  await nok('★ 一般工程師不可改採購工程庫存',
+    as(USERS.engN).doc('settings/purchase_stock').set({ items: { 'fl:FLGPCL': 1 } }));
+  await nok('★ 只有「查看」總覽權限者不可改採購工程庫存',
+    as(USERS.invViewN).doc('settings/purchase_stock').set({ items: { 'fl:FLGPCL': 1 } }));
+  await ok('勾了「編輯採購工程庫存」者可改',
+    as(USERS.purchaserN).doc('settings/purchase_stock').set({ items: { 'fl:FLGPCL': 2 } }));
+  await ok('有庫存設定權限（主管）者可改',
+    as(USERS.invMgrN).doc('settings/purchase_stock').set({ items: { 'fl:FLGPCL': 3 } }));
+  await ok('管理員可改',
+    as(USERS.admin).doc('settings/purchase_stock').set({ items: { 'fl:FLGPCL': 4 } }));
 
   // ══ inventory_history：備註開放給工程師改，其餘欄位仍限 admin ══════
   // ★ 這一組守的是「開放備註」不可變成「開放改帳」：同一份文件裡的 ml／material／

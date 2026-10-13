@@ -450,8 +450,12 @@ eq(/ref\.update\(/.test(svcSrc), true,
 console.log('── 停用清單分區 ──');
 {
   const invHtml = fs.readFileSync(path.join(__dirname, '..', 'inventory.html'), 'utf8');
-  const body = invHtml.match(/function applyRegionInv\(\)\{[\s\S]*?\n\}/);
-  if (!body) { console.log('FAIL  inventory.html 找不到 applyRegionInv'); fail++; }
+  // applyRegionInv() 委派給 regionInvFields()（北中南總覽共用同一份對應規則，2026-10-13），兩支一起抽
+  const applyFn  = invHtml.match(/function applyRegionInv\(\)\{[\s\S]*?\n\}/);
+  const fieldsFn = invHtml.match(/function regionInvFields\(d\)\{[\s\S]*?\n\}/);
+  if (!applyFn)  { console.log('FAIL  inventory.html 找不到 applyRegionInv'); fail++; }
+  if (!fieldsFn) { console.log('FAIL  inventory.html 找不到 regionInvFields'); fail++; }
+  const body = [applyFn[0] + '\n' + fieldsFn[0]];
   const run = (regionInvData, activeRegion, mainDisabled, mainOverrides) => {
     const inv = {};
     new Function('inv', 'regionInvData', 'activeRegion', 'mainStockFallback',
