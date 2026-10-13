@@ -50,3 +50,32 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # ★ 同一份 _site 也部署到 Firebase Hosting（2026-10-13 起與 GitHub Pages 並行測試）。
+      #   網址：https://swtc-3dp-poc.web.app/portal/portal.html
+      #   設定刻意放在 firebase.hosting.json 而不是 firebase.json：後者列在
+      #   deploy-functions.yml 的觸發條件裡，動它會白白重新部署一次 Cloud Function。
+      #   排在 GitHub Pages 之後：這一步失敗時，GitHub Pages 已經更新完成，不受影響。
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase Hosting
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          echo "$SA_JSON" > "$HOME/sa-key.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$HOME/sa-key.json"
+          firebase deploy \
+            --only hosting \
+            --config firebase.hosting.json \
+            --project swtc-3dp-poc \
+            --non-interactive
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$HOME/sa-key.json"

@@ -11,6 +11,8 @@ __pycache__/
 
 # Firebase
 .firebase/
+# 網站部署時才組出來的前端檔案資料夾（GitHub Pages 與 Firebase Hosting 共用）
+_site/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log

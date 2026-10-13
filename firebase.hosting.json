@@ -1,0 +1,8 @@
+{
+  "hosting": {
+    "public": "_site",
+    "redirects": [
+      { "source": "/swtc-3DP/:path*", "destination": "/:path*", "type": 301 }
+    ]
+  }
+}
