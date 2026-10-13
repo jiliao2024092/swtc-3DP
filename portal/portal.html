@@ -412,6 +412,20 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .ann-opt{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;cursor:pointer;background:var(--bg)}
 .ann-opt.on{border-color:var(--accent);background:var(--accent-soft)}
 
+/* 公共事項看板（posts.js） */
+.pb-card{display:block;width:100%;text-align:left;font-family:inherit;cursor:pointer;padding:14px 16px;margin-bottom:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.pb-card:hover{border-color:var(--accent-border);background:var(--bg-soft)}
+.pb-chip{flex-shrink:0;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.pb-act{display:inline-flex;align-items:center;gap:4px;border:none;background:none;padding:3px 8px;border-radius:6px;font-size:12.5px;font-family:inherit;color:var(--ink-3);cursor:pointer}
+.pb-act:hover{background:var(--bg-soft);color:var(--ink)}
+.pb-act.on{color:var(--accent);font-weight:700}
+.pb-act.danger:hover{color:var(--danger)}
+.pb-bubble{display:inline-block;max-width:100%;margin-top:4px;padding:8px 12px;border-radius:10px;background:var(--bg-soft);color:var(--ink);font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+.pb-input{flex:1;min-width:0;resize:none;padding:9px 16px;border:1.5px solid var(--line);border-radius:20px;font-size:13px;font-family:inherit;line-height:1.5;outline:none;background:var(--bg);color:var(--ink)}
+.pb-input:focus{border-color:var(--accent);border-radius:12px}
+/* 螢光標記是淺黃底：黑暗模式的淺色字會看不見，標記範圍內一律深色字 */
+.pb-content [style*="background"]{color:#1a1a1a}
+
 /* Login */
 .login-page{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,var(--ink),#131c2e,#0c2340);display:flex;align-items:center;justify-content:center}
 .login-card{background:var(--bg);border-radius:16px;padding:40px 48px;width:420px;max-width:95vw;box-shadow:0 24px 48px rgba(0,0,0,.3)}
@@ -512,7 +526,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20260827a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261013b"></script>
+<script src="firebase-service.js?v=20261013c"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1695,6 +1709,9 @@ window.DashboardView = DashboardView;
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
 <script src="maintenance-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="maintenance.js?v=20261013a"></script>
+<!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
+<script src="posts-logic.js?v=20261013a"></script>
+<script type="text/babel" data-presets="react" src="posts.js?v=20261013a"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -3016,6 +3033,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-13', type:'feat',
+    text:'新增「公共事項」頁（左側選單）：全公司共用的看板，用來放週會紀錄與北中南共同事項。每篇文章可以標示地區（全公司／北部／中部／南部）並依地區篩選、搜尋。所有人都可以在文章下方留言、回覆某則留言、替文章或留言按讚，也可以編輯或刪除自己的留言（編輯過的會標示「已編輯」）。發文、編輯文章與刪除任何留言需要「公共事項看板」權限，預設給管理員與主管；文章編輯器可以設定粗體、螢光標記、清單、插入圖片，也可以直接從 SharePoint／Word 貼上。' },
   { hash:'ae2540e', date:'2026-10-13', type:'feat',
     text:'新增「設備保養」頁（左側選單）：記錄每位客戶、每台設備、每位工程師的保養排程與完成日期，版面比照原本的《RP 客戶定期保養追蹤表》。點月份格子填寫是否排定保養、完成日期與未完成原因（A 客戶沒空／B 工程時間無法配合／C 其他／續簽）；「維護到期總表」依到期日排序並標示已過期與 60 天內到期，可匯出 Excel；「達成率報表」依地區顯示每月需保養數、已保養數與達成率。延期到下個月才完成的，算在完成的那個月。管理員可用「匯入 Excel」把原本的追蹤表一次匯進來，再匯入同一份只會更新、不會重複。既有帳號沿用「異常與資源」的查看／編輯／刪除權限，後台也可以單獨設定「設備保養」的權限。' },
   { hash:'c5fdb6c', date:'2026-10-13', type:'feat',
@@ -3034,8 +3053,6 @@ const CHANGELOG = [
     text:'樣品出借改成分地區：北部、中部、南部各有自己的樣品清冊與出借紀錄，三區都看得到「樣品出借」分頁（原本只有中部看得到、全公司共用一份）。既有的樣品與出借紀錄全部歸中部。樣品清冊仍只有 admin 能新增／編輯／刪除，admin 新增樣品與匯入月表時可以選要建在哪一區；登記出借會自動算在該樣品所屬的地區。' },
   { hash:'d15a15f', date:'2026-10-12', type:'feat',
     text:'新增日期查詢，並改變讀取方式：一、樣品出借可以選「出借月份」起訖，清冊的出借次數、出借總表、借出統計圖表與匯出都只算那段月份（預設本月；甘特圖依顯示的那一週）。二、工作看板（依期望交期）與客戶異常（依異常日期）新增日期區間篩選，看板、時間軸、Dashboard、分析頁也套用同一個期間。三、未完成的工作與異常一律全部顯示，不會再因為太舊被擠出畫面；已完成的改成要看時才讀取，沒設期間時預設只讀近 12 個月，畫面上會標示目前讀到的範圍。原本的「載入更早的」按鈕已不需要，拿掉了。' },
-  { hash:'24fe1af', date:'2026-10-06', type:'tweak',
-    text:'機台樹脂罐改成顯示「機台上那罐的實際版本」：例如南部 Form3+ 裝的是 Elastic 50A V1，先前一律顯示成最新版 V2。機台上就是最新版的罐子顯示不變。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
@@ -3193,6 +3210,10 @@ function Shell({ user, onLogout }) {
     { key:'maintenance', label:'設備保養', sub:'MAINTENANCE',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M11.5 2.5a3.5 3.5 0 0 0-3.2 4.9L3 12.7a1.4 1.4 0 0 0 2 2l5.3-5.3a3.5 3.5 0 0 0 4.9-3.2l-2.1 2.1-1.9-.5-.5-1.9 2.1-2.1a3.5 3.5 0 0 0-1.3-.3Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/></svg>,
       show: canMaint },
+    // 公共事項看板：所有登入者都看得到、都能留言（發文另需 manage_posts）
+    { key:'posts', label:'公共事項', sub:'NOTICES',
+      icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 7.5v3a1 1 0 0 0 1 1h1.5l4.5 3V3.5l-4.5 3H4a1 1 0 0 0-1 1Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M12.5 6.5a3.5 3.5 0 0 1 0 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+      show: true },
     { key:'admin', label:'後台管理', sub:'ADMIN',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="6" r="3" stroke="currentColor" strokeWidth="1.4"/><path d="M3 15c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
       show: canAdminPage },
@@ -3269,6 +3290,7 @@ function Shell({ user, onLogout }) {
         {page==='workboard' && <window.WorkBoardApp user={user}/>}
         {page==='issues'    && <window.IssuesApp    user={user}/>}
         {page==='maintenance' && canMaint && window.MaintenanceApp && <window.MaintenanceApp user={user}/>}
+        {page==='posts' && window.PostsApp && <window.PostsApp user={user}/>}
         {page==='admin'     && canAdminPage && <AdminPanel    user={user} isAdmin={isAdmin}/>}
         {page==='booking'   && canBooking && <iframe ref={bookingIframeRef} onLoad={applyThemeToBookingIframe} src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="機台預約"/>}
         {page==='inventory' && canInventory && <iframe ref={inventoryIframeRef} onLoad={applyThemeToInventoryIframe} src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}

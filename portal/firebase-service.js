@@ -52,6 +52,8 @@
     delete_maintenance: '刪除設備保養的設備',
     manage_users: '後台管理：使用者管理（僅可套用角色，不可個別授權、不可異動管理員）',
     manage_announcements: '後台管理：公告欄（發布／編輯公告）',
+    // 公共事項看板（工作包 5）：所有人都能看、留言、按讚，發文才要這個權限
+    manage_posts: '公共事項看板：發文、編輯任何文章、刪除任何留言',
     // 北中南分區：跨區權限做成可勾選的權限，而不是綁死在「主管」這個角色上，
     // 這樣日後誰能跨區由 admin 在「角色權限設定」決定，不必改程式。
     // 讀與寫刻意分開：只給檢視、不給編輯，是常見且合理的中間狀態。
@@ -72,10 +74,10 @@
 
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','view_all_regions','edit_all_regions','admin'],
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions','admin'],
     // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權、「後台使用者管理」權、「公告欄」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
     // 主管預設可跨區檢視「與編輯」（2026-08-21 決定：原本只給檢視，改成也能修改其他區）
-    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','view_all_regions','edit_all_regions'],
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions'],
     operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote','view_maintenance','edit_maintenance'],
     viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote','view_maintenance'],
   };
@@ -381,6 +383,85 @@
       },
     }
   );
+
+  // ════════════════════════════════════════════════
+  // 公共事項看板（工作包 5）→ board_posts（文章）＋ board_posts/{id}/comments（留言）
+  //   全公司共用、不分區。文章內容是 HTML（圖片 base64 內嵌，同公告欄）；留言是純文字。
+  //   按讚存成 likes: { uid: 顯示名稱 }，一般使用者只能動自己那一個 key（見 firestore.rules）。
+  //   留言數 commentCount 與留言的新增／刪除放在同一個 batch：列表才不必為了顯示數字把每篇的留言都讀一遍。
+  // ════════════════════════════════════════════════
+  (function () {
+    const FV = () => firebase.firestore.FieldValue;
+    const posts = () => db.collection('board_posts');
+    const comments = id => posts().doc(id).collection('comments');
+    // 顯示名稱：沒設定姓名時退回 email 的 @ 前段（不存完整 email）
+    const nameOf = u => (u && (u.displayName || String(u.email || '').split('@')[0])) || '';
+    // ★ 查詢失敗不可只回空陣列（理由見上方 makeCollectionService 的 onSnapshot）
+    const onErr = (label, cb) => err => {
+      console.error(`[${label}] onSnapshot 失敗:`, err);
+      const code = (err && err.code) || '';
+      cb([], { hasMore: false, error: err, code,
+               hint: code === 'permission-denied' ? '沒有讀取權限。' : '',
+               message: (err && err.message) || String(err) });
+    };
+    const rowsOf = snap => snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+    window.FBPosts = {
+      nameOf,
+      // 最新 N 篇（「載入更多」再加大 N）。createdAt 單一欄位排序，不需要複合索引
+      onList(cb, limitN) {
+        return posts().orderBy('createdAt', 'desc').limit(limitN)
+          .onSnapshot(snap => cb(rowsOf(snap), { hasMore: snap.size >= limitN }), onErr('board_posts', cb));
+      },
+      onComments(postId, cb) {
+        return comments(postId).orderBy('createdAt', 'asc')
+          .onSnapshot(snap => cb(rowsOf(snap), {}), onErr('board_posts/comments', cb));
+      },
+      async add(data, user) {
+        const ref = await posts().add({
+          ...data, authorUid: user._id, authorName: nameOf(user), likes: {}, commentCount: 0,
+          createdAt: FV().serverTimestamp(), updatedAt: FV().serverTimestamp(),
+        });
+        return ref.id;
+      },
+      async update(id, data, user) {
+        await posts().doc(id).update({ ...data, updatedByName: nameOf(user), updatedAt: FV().serverTimestamp() });
+      },
+      // ★ 先刪留言再刪文章：Firestore 不會連帶刪除子集合，留著就變成永遠讀不到、卻一直佔空間的資料
+      async del(id) {
+        const snap = await comments(id).get();
+        for (let i = 0; i < snap.docs.length; i += 400) {
+          const b = db.batch();
+          snap.docs.slice(i, i + 400).forEach(d => b.delete(d.ref));
+          await b.commit();
+        }
+        await posts().doc(id).delete();
+      },
+      setLike(postId, user, on) {
+        return posts().doc(postId).update({ ['likes.' + user._id]: on ? nameOf(user) : FV().delete() });
+      },
+      async addComment(postId, user, text, parentId) {
+        const b = db.batch();
+        b.set(comments(postId).doc(), {
+          text, authorUid: user._id, authorName: nameOf(user), parentId: parentId || '', likes: {},
+          createdAt: FV().serverTimestamp(),
+        });
+        b.update(posts().doc(postId), { commentCount: FV().increment(1) });
+        await b.commit();
+      },
+      editComment(postId, commentId, text) {
+        return comments(postId).doc(commentId).update({ text, editedAt: FV().serverTimestamp() });
+      },
+      async delComment(postId, commentId) {
+        const b = db.batch();
+        b.delete(comments(postId).doc(commentId));
+        b.update(posts().doc(postId), { commentCount: FV().increment(-1) });
+        await b.commit();
+      },
+      setCommentLike(postId, commentId, user, on) {
+        return comments(postId).doc(commentId).update({ ['likes.' + user._id]: on ? nameOf(user) : FV().delete() });
+      },
+    };
+  })();
 
   // 角色分級（與後台使用者清單的「權限」欄一致）：公告跳顯的對象就用這四級
   window.roleTierOf = function (u) {

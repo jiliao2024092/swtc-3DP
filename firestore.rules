@@ -15,6 +15,8 @@ rules_version = '2';
 //   issues_equipment    - 設備清單
 //   settings/workspace  - 平台共用設定（工程師/機台/業務/借用人清單）
 //   announcements       - 公告欄（開啟系統時依角色跳顯）
+//   maint_devices       - 客戶設備保養（分區）
+//   board_posts         - 公共事項看板文章（子集合 comments＝留言；全公司共用）
 //
 // 權限模型（7 種細權限，存在 users/{uid}.permissions array）：
 //   view_board edit_board delete_board
@@ -316,6 +318,59 @@ service cloud.firestore {
     match /announcements/{id} {
       allow read: if isLoggedIn();
       allow create, update, delete: if isAdmin() || hasPerm('manage_announcements');
+    }
+
+    // ══ 公共事項看板（工作包 5，2026-10-13）════════════════════════════
+    // 全公司看得到（不分區）。文章限有 manage_posts 的人新增、編輯（任何人的文章）、刪除。
+    // 所有使用者可以留言與按讚，但只能動到「自己的」：
+    //   - 文章：一般使用者只能改 likes 裡自己 uid 那一個 key，或讓 commentCount ±1（與留言同一個 batch）
+    //   - 留言：建立時作者必須是自己；只能改自己留言的內容；按讚同樣只能動自己那一個 key
+    //   - 刪除留言：作者本人，或有 manage_posts 的人
+    // ★ 這是第一個「所有使用者都能寫」的 collection，寫入要求 isMember()（users 文件存在且未停用），
+    //   不能只看 isLoggedIn()：停用的帳號在 token 過期前仍算登入
+    function isMember() {
+      return isLoggedIn() && userDoc().get('active', true) != false;
+    }
+    function onlyChanged(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    function onlyMyLike() {
+      return onlyChanged(['likes'])
+        && request.resource.data.get('likes', {}).diff(resource.data.get('likes', {}))
+             .affectedKeys().hasOnly([request.auth.uid]);
+    }
+    function commentCountStep() {
+      return onlyChanged(['commentCount'])
+        && (request.resource.data.commentCount == resource.data.get('commentCount', 0) + 1
+            || request.resource.data.commentCount == resource.data.get('commentCount', 0) - 1);
+    }
+    function validCommentText() {
+      return request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000;
+    }
+    match /board_posts/{postId} {
+      allow read: if isLoggedIn();
+      allow create, delete: if hasPerm('manage_posts');
+      allow update: if hasPerm('manage_posts') || (isMember() && (onlyMyLike() || commentCountStep()));
+
+      match /comments/{commentId} {
+        allow read: if isLoggedIn();
+        allow create: if isMember()
+          && request.resource.data.keys().hasOnly(['text', 'authorUid', 'authorName', 'parentId', 'likes', 'createdAt'])
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.authorName is string && request.resource.data.authorName.size() <= 80
+          && request.resource.data.parentId is string
+          && request.resource.data.likes == {}
+          && request.resource.data.createdAt == request.time
+          && validCommentText()
+          && exists(/databases/$(database)/documents/board_posts/$(postId));
+        allow update: if isMember() && (
+          (resource.data.authorUid == request.auth.uid && onlyChanged(['text', 'editedAt']) && validCommentText())
+          || onlyMyLike());
+        allow delete: if isMember()
+          && (resource.data.authorUid == request.auth.uid || hasPerm('manage_posts'));
+      }
     }
 
     // quote-studio.html 材料/價格設定：admin 或有 manage_quote_pricing 權限的主管都可寫入
