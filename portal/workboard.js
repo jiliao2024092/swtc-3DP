@@ -455,10 +455,12 @@
     const [closedErr,  setClosedErr]  = useState('');   // 已結案查詢的錯誤
     const [range,      setRange]      = useState({ from:'', to:'' });   // 期間（依期望交期）
     const [tableNeedsClosed, setTableNeedsClosed] = useState(false);    // 總表要不要已結案（由 WorkTable 回報）
+    const [viewsClosed, setViewsClosed] = useState(false);              // 看板／時間軸／Dashboard 的「含已完成」篩選
 
-    // 什麼時候才讀已結案：總表按了「顯示已完成」或篩選狀態選了已完成／已取消；
-    // 看板／時間軸／Dashboard 本來就要呈現完成的工作，一律讀（受期間限制）
-    const needClosed = tab !== 'table' || tableNeedsClosed;
+    // 什麼時候才讀已結案（2026-10-13 使用者決定：預設一律只顯示未完成，要看已完成／已取消就用篩選）：
+    //   總表＝狀態篩選選了已完成／已取消／全部；看板／時間軸／Dashboard＝上方篩選選「含已完成／已取消」。
+    //   ★ 原本看板等三頁一律讀近 12 個月的已結案，每次切過去就是一批讀取
+    const needClosed = tab === 'table' ? tableNeedsClosed : viewsClosed;
     // 已結案實際查詢的範圍：使用者有設就用，沒設就近 12 個月
     const closedRange = (range.from || range.to) ? range
       : { from: ymdLocal(new Date(Date.now() - CLOSED_DEFAULT_DAYS * 864e5)), to: '' };
@@ -604,6 +606,11 @@
           {/* 看板／時間軸／Dashboard 的期間（總表的期間在它自己的工具列上） */}
           {tab !== 'table' && (
             <div className="toolbar">
+              <select className="t-sel" value={viewsClosed ? 'all' : 'open'} onChange={e => setViewsClosed(e.target.value === 'all')}
+                title="預設只看未完成；統計已完成的工作請選「含已完成／已取消」（會另外讀取該期間的資料）">
+                <option value="open">只看未完成</option>
+                <option value="all">含已完成／已取消</option>
+              </select>
               <DateRangeInputs range={range} setRange={setRange}/>
               <ClosedNote range={range} closedRange={closedRange} loaded={needClosed}/>
             </div>
@@ -704,10 +711,10 @@
     const [sortKey,  setSortKey]  = useState('score');   // 預設依分數排序（交期越近＋類型加權，分數越低越前）
     const [sortDir,  setSortDir]  = useState('asc');
     const [page,     setPage]     = useState(1);
-    const [hideDone, setHideDone] = useState(true);
     const PAGE_SIZE = 20;
-    // 已完成／已取消只在要顯示時才讀：回報給上層決定要不要訂閱
-    const needClosed = !hideDone || fStatus === 'done' || fStatus === 'cancelled';
+    // 已完成／已取消只在狀態篩選要它們時才讀（2026-10-13 起沒有「顯示已完成」按鈕）：回報給上層決定要不要訂閱
+    //   fStatus：''＝未完成（預設）；'all'＝全部（含已完成／已取消）；其餘＝單一狀態
+    const needClosed = fStatus === 'done' || fStatus === 'cancelled' || fStatus === 'all';
     useEffect(() => { if (onNeedClosed) onNeedClosed(needClosed); }, [needClosed]);
 
     // 每次都即時從 window 讀取最新設定（labelVer 變動時觸發重新渲染）
@@ -725,15 +732,10 @@
       if (fRegion && (window.normRegion ? window.normRegion(o.region) : o.region) !== fRegion) return false;
       if (fResin    && (o.resin||'')    !== fResin)    return false;
       if (fCategory && (o.category||'') !== fCategory) return false;
-      if (fStatus) {
-        const st = K.statusOf(o);
-        if (st !== fStatus) return false;
-      }
-      if (hideDone && !fStatus) {
-        const st = K.statusOf(o);
-        if (st === 'done' || st === 'cancelled') return false;
-      }
-      return true;
+      const st = K.statusOf(o);
+      if (fStatus === 'all') return true;
+      if (fStatus) return st === fStatus;
+      return st !== 'done' && st !== 'cancelled';
     });
 
     // 優先分數：本日距交期越近分數越低（逾期為負，最前）；類型加權 評估+1 / 代工+2 / 無+3
@@ -844,12 +846,13 @@
             </select>
           )}
           <select className="t-sel" value={fStatus} onChange={e=>{setFStatus(e.target.value);setPage(1);}}>
-            <option value="">所有狀態</option>
+            <option value="">未完成（全部）</option>
             <option value="todo">待開始</option>
             <option value="progress">進行中</option>
             <option value="blocked">等待材料</option>
             <option value="done">已完成</option>
             <option value="cancelled">已取消</option>
+            <option value="all">全部（含已完成／已取消）</option>
           </select>
           {/* 篩選要與新增/編輯用同一份來源，否則 Markforged 的工單篩不出來。
               另外把「資料裡出現過、但已不在清單上」的材料也列進去（自訂或已下架的），
@@ -866,12 +869,7 @@
             <option value="">所有類型</option>
             {K.CATEGORIES.map(c=><option key={c}>{c}</option>)}
           </select>
-          <button
-            onClick={()=>{setHideDone(v=>!v);setPage(1);}}
-            style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'var(--accent-soft)',color:hideDone?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
-            {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
-          </button>
-          <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出目前已載入的工作（含已完成／已取消要先按「顯示已完成／已取消」，範圍依期間）">⬇ 匯出Excel</button>
+          <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportWorkTable} title="匯出目前已載入的工作（要含已完成／已取消，狀態篩選先選「已完成」「已取消」或「全部」；範圍依期間）">⬇ 匯出Excel</button>
           {range && setRange && <DateRangeInputs range={range} setRange={f=>{setRange(f);setPage(1);}}/>}
           {range && <ClosedNote range={range} closedRange={closedRange} loaded={needClosed}/>}
           <span style={{fontSize:12,color:'var(--ink-4)',marginLeft:'auto'}}>

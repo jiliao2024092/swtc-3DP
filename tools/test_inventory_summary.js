@@ -37,7 +37,7 @@ const FNS = ['familyCode', 'canonCode', 'matCode', 'matName', 'isNonMaterialItem
   'isConsumableStock', 'getStockTotal', 'getSafetyStock', 'getPartNo',
   'regionInvFields', 'withRegionInv', 'withMfInv',
   'mfSafety', 'mfTotal', 'mfIsConsumable', 'mfQty', 'mfMaterialNames', 'mfConsumableNames', 'mfCurrent', 'mfIsLow',
-  'getMfPartNo', 'sumRegions', 'sumPurchaseKey', 'sumCell', 'buildInvSummary', 'sumColumns', 'sumValue', 'getPrice'];
+  'getMfPartNo', 'sumRegions', 'sumPurchaseKey', 'sumCell', 'sumLevel', 'buildInvSummary', 'sumColumns', 'sumValue', 'getPrice'];
 
 const src = [
   grab(/const CODE_TO_NAME = \{[\s\S]*?^\};/m, 'CODE_TO_NAME'),
@@ -61,7 +61,7 @@ const factory = new Function('window', 'init', `
   let mainDisabledFallback = init.mainDisabledFallback, mainOverridesFallback = init.mainOverridesFallback;
   let sumPurchase = init.sumPurchase, matPrices = init.matPrices;
   ${src}
-  return { buildInvSummary, sumColumns, sumValue, getPrice, getInv: () => inv, getMfInv: () => mfInv };
+  return { buildInvSummary, sumColumns, sumValue, getPrice, sumLevel, sumCell, getInv: () => inv, getMfInv: () => mfInv };
 `);
 
 let pass = 0, fail = 0;
@@ -157,6 +157,15 @@ eq(api.getPrice('fl', 'FLGPWH'), '', '沒設定單價 → 空白（不可當成 
 eq(api.getPrice('mfc', 'Nozzle'), '', '存成空字串也視為沒設定');
 eq(api.getPrice('flc', 'FLGPCL'), '', '★ 群組不同就是不同品項（樹脂的單價不可套到同名耗材）');
 
+// ── 水位顯示（2026-10-13）：≤0 整格、0～1 紅、1～安全庫存 橘，填色＝庫存÷安全庫存 ──
+eq(api.sumLevel(api.sumCell(4, 4, false)), null, '達到安全庫存 → 不填色');
+eq(api.sumLevel(api.sumCell(1, null, false)), null, '沒設安全庫存（或停用）→ 不填色');
+eq(api.sumLevel(api.sumCell(0, 4, true)), { tier: 'empty', pct: 100 }, '★ 庫存 0 → 整格深紅（缺貨）');
+eq(api.sumLevel(api.sumCell(-0.3, 4, true)), { tier: 'empty', pct: 100 }, '★ 負庫存（消耗多於帳上）也算缺貨，不可算成負的水位');
+eq(api.sumLevel(api.sumCell(0.5, 4, true)), { tier: 'under1', pct: 12.5 }, '★ 0.5／4 → 紅、填 12.5%');
+eq(api.sumLevel(api.sumCell(2, 4, true)), { tier: 'low', pct: 50 }, '★ 2／4 → 橘、填一半');
+eq(api.sumLevel(api.sumCell(1, 4, true)).tier, 'low', '剛好 1 → 橘（不到 1 才是紅）');
+eq(api.sumLevel(api.sumCell(0.8, 0.5, true)), { tier: 'under1', pct: 100 }, '填色不超過 100%');
 // ── 借用的全域變數一定要換回來 ─────────────────────────
 eq(api.getInv().stock === sentinelStock, true, '★ 算完後 inv 換回目前檢視那一區（不可被別區資料污染）');
 eq(api.getMfInv() === sentinelMf, true, '★ 算完後 mfInv 換回目前檢視那一區');

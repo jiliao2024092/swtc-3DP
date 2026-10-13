@@ -137,6 +137,17 @@ const { FBOrders, FBAnomalies, FBSampleLoans } = window;
   eq(/FBOrders\.maxSeq\(user\)/.test(wb), true, '★ 工作看板新增用 maxSeq（不可用已載入資料的最大值）');
   eq(/FBAnomalies\.maxSeq\(user\)/.test(is), true, '★ 客戶異常新增用 maxSeq');
   eq(/seq:nextSeq\(allAnomalies\)/.test(is), false, '客戶異常不可再用已載入資料算序號');
+  // ★ 2026-10-13 使用者決定：預設一律只顯示未完成，已完成／已取消要用篩選才讀（不再有「顯示已完成」按鈕）
+  eq(/const needClosed = tab === 'table' \? tableNeedsClosed : viewsClosed;/.test(wb), true,
+     '★ 工作看板：看板／時間軸／Dashboard 不可再一律讀已結案（由「含已完成」篩選決定）');
+  eq(/useState\(false\);\s*\/\/ 看板／時間軸／Dashboard 的「含已完成」篩選/.test(wb), true, '工作看板：「含已完成」預設關閉');
+  eq(/const needClosed = fStatus === 'done' \|\| fStatus === 'cancelled' \|\| fStatus === 'all';/.test(wb), true,
+     '★ 工作看板總表：只有狀態篩選選已完成／已取消／全部才讀已結案');
+  eq(/hideDone/.test(wb), false, '工作看板不可再有「顯示已完成」開關');
+  eq(/const needClosedA = \(sub === 'stats' && statsClosedA\) \|\| \(sub === 'anomaly' && \(statusF === '已完成' \|\| statusF === 'all'\)\);/.test(is), true,
+     '★ 客戶異常：分析頁不可再一律讀已完成（由篩選決定）');
+  eq(/const \[statsClosedA, setStatsClosedA\] = useState\(false\)/.test(is), true, '客戶異常分析頁：「含已完成」預設關閉');
+  eq(/hideDoneA/.test(is), false, '客戶異常不可再有「顯示已完成」開關');
 
   // ══ 5. 樣品出借紀錄 ══════════════════════════════════════════
   console.log('── 樣品出借紀錄依範圍讀 ──');

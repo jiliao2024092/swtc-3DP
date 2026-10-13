@@ -850,7 +850,7 @@ function KanbanView({ data, setData }) {
   const [machF, setMachF] = useStateK('');
   const [groupBy, setGroupBy] = useStateK('status');
   const [density, setDensity] = useStateK('comfortable');
-  const [hideDone, setHideDone] = useStateK(true);
+  // 2026-10-13 起看板自己沒有「顯示已完成」：要不要含已完成／已取消由工作看板上方的篩選決定（決定要不要讀那批資料）
   const [open, setOpen] = useStateK(null);
   const [dragItem, setDragItem] = useStateK(null);
 
@@ -887,10 +887,8 @@ function KanbanView({ data, setData }) {
   }
 
   const filtered = useMemoK(() => {
-    let r = K.applyFilters(data, { search, engineer:engF, machine:machF });
-    if (hideDone) r = r.filter(d => { const s=K.statusOf(d); return s!=='done' && s!=='cancelled'; });
-    return r;
-  }, [data, search, engF, machF, hideDone]);
+    return K.applyFilters(data, { search, engineer:engF, machine:machF });
+  }, [data, search, engF, machF]);
   const grouped  = useMemoK(() => {
     const m = {}; cols.forEach(c => { m[c.key] = []; });
     filtered.forEach(it => { const k = columnKeyFor(it); if (m[k]) m[k].push(it); });
@@ -1103,11 +1101,6 @@ function KanbanView({ data, setData }) {
           <option value="">所有機台</option>
           {machines.map(m=><option key={m} value={m}>{m}</option>)}
         </select>
-        <button
-          onClick={()=>setHideDone(v=>!v)}
-          style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDone?'var(--bg-soft)':'var(--accent-soft)',color:hideDone?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDone?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
-          {hideDone ? '顯示已完成／已取消' : '👁 顯示已完成／已取消'}
-        </button>
         <div className="seg">
           {[['status','狀態'],['progress','進度'],['engineer','工程師'],['machine','機台'],['resin','樹脂'],['category','類型']].map(([g,l])=>(
             <button key={g} className={`seg-btn${groupBy===g?' active':''}`} onClick={()=>setGroupBy(g)}>{l}</button>
@@ -1136,16 +1129,15 @@ function GanttView({ data }) {
   const { useState: useStateG, useMemo: useMemoG, useRef: useRefG, useEffect: useEffectG } = React;
   const [engF, setEngF] = useStateG('');
   const [statusF, setStatusF] = useStateG('');
-  const [showDone, setShowDone] = useStateG(false);
+  // 2026-10-13 起時間軸自己沒有「顯示已完成」：要不要含已完成／已取消由工作看板上方的篩選決定
   const [tooltip, setTooltip] = useStateG(null); // { item, x, y }
   const ganttRef = useRefG(null);
   const filtered = useMemoG(() => {
     let d = data;
-    if (!showDone) d = d.filter(x => K.statusOf(x) !== 'done');
     if (engF) d = d.filter(x => x.engineer === engF);
     if (statusF) d = d.filter(x => K.statusOf(x) === statusF);
     return d;
-  }, [data, engF, statusF, showDone]);
+  }, [data, engF, statusF]);
   const today = K.TODAY;
   const DAY = K.DAY;
   const DAY_W = 22;
@@ -1213,11 +1205,9 @@ function GanttView({ data }) {
           <option value="todo">待處理</option>
           <option value="progress">進行中</option>
           <option value="blocked">封鎖中</option>
+          <option value="done">已完成</option>
           <option value="cancelled">已取消</option>
         </select>
-        <button className={`t-pill-btn${showDone?' active':''}`} onClick={()=>setShowDone(v=>!v)}>
-          {showDone ? '👁 顯示已完成' : '顯示已完成'}
-        </button>
       </div>
       <div className="gantt" ref={ganttRef}>
         <div className="gantt-left">
@@ -1704,11 +1694,11 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20261012a"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20261012c"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20261013a"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
 <script src="maintenance-logic.js?v=20261013a"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261013a"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261013b"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261013a"></script>
@@ -3033,6 +3023,16 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-13', type:'feat',
+    text:'北中南總覽多了「月度分析」分頁：選月份後按「顯示圖表」，以圖表呈現月報 ② 北中南 × 類別（金額、樹脂用量、線材用量的直條圖）與 ③ 佔比（當月與當年累計的圓餅圖、各區佔比的堆疊圖），和匯出月報是同一份計算。匯出的月報 Excel 也附上同樣的圖表，是 Excel 原生圖表，可以直接在 Excel 裡修改格式。' },
+  { hash:'待補', date:'2026-10-13', type:'tweak',
+    text:'工作看板與客戶異常改成預設只顯示未完成的案件，拿掉「顯示已完成」按鈕；要看已完成／已取消，請在狀態篩選選「已完成」「已取消」或「全部」。看板、時間軸、Dashboard 與異常分析頁上方也多了「只看未完成／含已完成」篩選，預設只看未完成。已完成的資料只有在篩選要用時才讀取，減少資料庫讀取量。' },
+  { hash:'待補', date:'2026-10-13', type:'tweak',
+    text:'北中南總覽的庫存改用「水位」顯示：低於安全庫存的格子依「庫存÷安全庫存」從左往右填色，0 以下整格深紅（缺貨）、不到 1 為紅色、其餘為橘色，達到安全庫存不填色；滑鼠停在格子上會顯示百分比。表格上方有顏色說明。' },
+  { hash:'待補', date:'2026-10-13', type:'tweak',
+    text:'設備保養的排程表縮到頁面寬度，不用再左右捲動，文字不換行，放不下的會以「…」省略、滑鼠停留可看全文；維護到期總表的文字也一律橫排不換行。' },
+  { hash:'待補F', date:'2026-10-13', type:'fix',
+    text:'修正：機台正在列印時，每一輪 Formlabs 同步的結果都會多出一筆錯誤訊息（NameError）。不影響消耗紀錄與庫存，只是同步紀錄裡有錯誤。' },
   { hash:'9c26273', date:'2026-10-13', type:'feat',
     text:'新增「公共事項」頁（左側選單）：全公司共用的看板，用來放週會紀錄與北中南共同事項。每篇文章可以標示地區（全公司／北部／中部／南部）並依地區篩選、搜尋。所有人都可以在文章下方留言、回覆某則留言、替文章或留言按讚，也可以編輯或刪除自己的留言（編輯過的會標示「已編輯」）。發文、編輯文章與刪除任何留言需要「公共事項看板」權限，預設給管理員與主管；文章編輯器可以設定粗體、螢光標記、清單、插入圖片，也可以直接從 SharePoint／Word 貼上。' },
   { hash:'ae2540e', date:'2026-10-13', type:'feat',
@@ -3043,16 +3043,6 @@ const CHANGELOG = [
     text:'材料庫存頁可以設定材料單價：主管與管理員在「安全庫存與單價設定」（Formlabs 與 Markforged 各一個）填寫，樹脂以每公升、Markforged 線材以每 cc、零件與耗材以每個計價，三區共用。「匯出庫存」的庫存總覽多了料號、單價與庫存金額三欄，「北中南總覽」匯出的 Excel 多了單價欄。' },
   { hash:'462bd91', date:'2026-10-13', type:'feat',
     text:'材料庫存頁新增「北中南總覽」：三區的庫存並列在同一張表（版面比照原本的 Excel 庫存統計表），低於安全庫存的數量以紅底標示、每格都是純數字，可一鍵匯出 Excel；並多一欄「採購工程庫存」可手動填寫（主管與有權限者）。各區的材料庫存表也加上「料號」欄，Markforged 的料號在它的「安全庫存設定」裡填。看得到這一頁的是管理員、主管，以及後台勾了「查看北中南材料總覽」的人。' },
-  { hash:'5eb3602', date:'2026-10-12', type:'tweak',
-    text:'材料庫存頁頂端移除「清除並重建」與「去除重複」兩個管理按鈕：前者會刪光全部消耗紀錄、還指向一個已不存在的流程，誤按風險高；後者是早期消耗紀錄會重複時用的，現在每筆列印各自獨立，不會再重複。' },
-  { hash:'b730eae', date:'2026-10-12', type:'tweak',
-    text:'清理不再使用的功能：後台「地區」分頁底部的「一次性：補齊既有資料的地區欄位」工具已移除（8 月分區時已補完，之後用不到）。其餘清理都在系統內部，畫面與操作不受影響。' },
-  { hash:'cfcf2c5', date:'2026-10-12', type:'tweak',
-    text:'樣品出借工具列的按鈕拿掉圖示、文字不再折成兩行（匯出 Excel、空白月表、匯入月表、甘特圖、出借總表、借出統計）。' },
-  { hash:'d8f728c', date:'2026-10-12', type:'tweak',
-    text:'樣品出借改成分地區：北部、中部、南部各有自己的樣品清冊與出借紀錄，三區都看得到「樣品出借」分頁（原本只有中部看得到、全公司共用一份）。既有的樣品與出借紀錄全部歸中部。樣品清冊仍只有 admin 能新增／編輯／刪除，admin 新增樣品與匯入月表時可以選要建在哪一區；登記出借會自動算在該樣品所屬的地區。' },
-  { hash:'d15a15f', date:'2026-10-12', type:'feat',
-    text:'新增日期查詢，並改變讀取方式：一、樣品出借可以選「出借月份」起訖，清冊的出借次數、出借總表、借出統計圖表與匯出都只算那段月份（預設本月；甘特圖依顯示的那一週）。二、工作看板（依期望交期）與客戶異常（依異常日期）新增日期區間篩選，看板、時間軸、Dashboard、分析頁也套用同一個期間。三、未完成的工作與異常一律全部顯示，不會再因為太舊被擠出畫面；已完成的改成要看時才讀取，沒設期間時預設只讀近 12 個月，畫面上會標示目前讀到的範圍。原本的「載入更早的」按鈕已不需要，拿掉了。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

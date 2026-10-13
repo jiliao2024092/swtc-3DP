@@ -283,12 +283,22 @@
       const title = c ? [c.plan ? '排定保養' : '', c.done ? `完成 ${c.done}` : '', c.reason ? ML.REASON_LABEL[c.reason] : '', c.note || ''].filter(Boolean).join('\n') : '';
       return { bg, fg, main, sub, title };
     };
+    // ★ 縮到頁面寬度、不橫向捲動（2026-10-13 使用者要求）：固定版面＋百分比欄寬，
+    //   文字欄一律不換行、放不下就「…」，滑鼠停留看全文
+    const ELL = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+    const TH = { padding: '8px 4px', letterSpacing: 0 };
+    const TD = { padding: '6px 4px', ...ELL };
     return (
-      <table className="kt" style={{ minWidth: 1400 }}>
+      <table className="kt" style={{ tableLayout: 'fixed', fontSize: 11.5 }}>
+        <colgroup>
+          <col style={{ width: '2.4%' }} /><col style={{ width: '12%' }} /><col style={{ width: '6.8%' }} /><col style={{ width: '7.6%' }} />
+          <col style={{ width: '7.1%' }} /><col style={{ width: '7.3%' }} /><col style={{ width: '7.3%' }} /><col style={{ width: '6%' }} /><col style={{ width: '6%' }} />
+          {ML.MONTHS.map(m => <col key={m} style={{ width: '3.125%' }} />)}
+        </colgroup>
         <thead><tr>
-          <th style={{ width: 34, textAlign: 'center' }}>#</th>
-          <th>客戶名稱</th><th>廠牌</th><th>機型</th><th>序號</th><th>安裝</th><th>維護到期</th><th>責任業務</th><th>保養負責</th>
-          {ML.MONTHS.map(m => <th key={m} style={{ textAlign: 'center', minWidth: 54 }}>{m}月</th>)}
+          <th style={{ ...TH, textAlign: 'center' }}>#</th>
+          {['客戶名稱', '廠牌', '機型', '序號', '安裝', '維護到期', '責任業務', '保養負責'].map(h => <th key={h} style={{ ...TH, ...ELL }} title={h}>{h}</th>)}
+          {ML.MONTHS.map(m => <th key={m} style={{ ...TH, textAlign: 'center' }}>{m}月</th>)}
         </tr></thead>
         <tbody>
           {groups.map(g => <React.Fragment key={g.r}>
@@ -298,22 +308,23 @@
               const editable = canEditDev(d);
               return (
                 <tr key={d._id}>
-                  <td style={{ textAlign: 'center', color: 'var(--ink-4)' }}>{idx + 1}</td>
-                  <td style={{ fontWeight: 600, cursor: editable ? 'pointer' : 'default' }} onClick={editable ? () => onEditDev(d) : undefined} title={editable ? '點擊編輯設備資料' : ''}>
-                    {d.customer}{d.list === 'expired' && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--ink-4)' }}>（已過維）</span>}
+                  <td style={{ ...TD, textAlign: 'center', color: 'var(--ink-4)' }}>{idx + 1}</td>
+                  <td style={{ ...TD, fontWeight: 600, cursor: editable ? 'pointer' : 'default' }} onClick={editable ? () => onEditDev(d) : undefined}
+                      title={d.customer + (d.list === 'expired' ? '（已過維）' : '') + (editable ? '\n點擊編輯設備資料' : '')}>
+                    {d.customer}{d.list === 'expired' && <span style={{ marginLeft: 4, fontSize: 10.5, color: 'var(--ink-4)' }}>（已過維）</span>}
                   </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{d.brand}</td>
-                  <td>{d.model}</td>
-                  <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{d.serial}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{d.installDate}</td>
-                  <td style={{ whiteSpace: 'nowrap', color: STATUS[st].fg }} title={STATUS[st].label}>{d.expiryDate}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{salesLabel(d.sales)}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{engLabel(d.engineer)}</td>
+                  <td style={TD} title={d.brand}>{d.brand}</td>
+                  <td style={TD} title={d.model}>{d.model}</td>
+                  <td style={{ ...TD, fontFamily: 'var(--font-mono)', fontSize: 11 }} title={d.serial}>{d.serial}</td>
+                  <td style={TD} title={d.installDate}>{d.installDate}</td>
+                  <td style={{ ...TD, color: STATUS[st].fg }} title={`${d.expiryDate || ''}　${STATUS[st].label}`}>{d.expiryDate}</td>
+                  <td style={TD} title={salesLabel(d.sales)}>{salesLabel(d.sales)}</td>
+                  <td style={TD} title={engLabel(d.engineer)}>{engLabel(d.engineer)}</td>
                   {ML.MONTHS.map(m => {
                     const v = cellView(d, m);
                     return (
                       <td key={m} title={v.title} onClick={editable ? () => onEditCell(d, m) : undefined}
-                          style={{ textAlign: 'center', background: v.bg, color: v.fg, cursor: editable ? 'pointer' : 'default', fontSize: 11.5, padding: '6px 4px', whiteSpace: 'nowrap' }}>
+                          style={{ textAlign: 'center', background: v.bg, color: v.fg, cursor: editable ? 'pointer' : 'default', fontSize: 11, padding: '6px 1px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                         <div style={{ fontWeight: 600 }}>{v.main}</div>
                         {v.sub && <div style={{ fontSize: 10.5, color: 'var(--ink-4)' }}>{v.sub}</div>}
                       </td>
@@ -336,8 +347,9 @@
       .filter(x => !statusF || x.st === statusF)
       .sort((a, b) => String(a.d.expiryDate || '9999').localeCompare(String(b.d.expiryDate || '9999')));
     if (!list.length) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-4)' }}>沒有符合條件的設備</div>;
+    // ★ 一律不換行、文字橫向排（2026-10-13 使用者要求）：寬度不夠時整張表橫向捲動，而不是把客戶名稱折成好幾行
     return (
-      <table className="kt">
+      <table className="kt" style={{ whiteSpace: 'nowrap' }}>
         <thead><tr><th>狀態</th><th>維護到期</th><th>剩餘天數</th><th>客戶名稱</th><th>廠牌</th><th>機型</th><th>序號</th><th>地區</th><th>清單</th><th>責任業務</th><th>保養負責</th></tr></thead>
         <tbody>{list.map(({ d, st, days }) => (
           <tr key={d._id}>

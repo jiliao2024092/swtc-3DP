@@ -11,6 +11,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <!-- 月報的 Excel 原生圖表：SheetJS 免費版不寫圖表，用 JSZip 在產生的 xlsx 裡補上（見 addXlsxCharts） -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         body { font-family: 'Noto Sans TC', 'Segoe UI', Tahoma, 'Microsoft JhengHei', sans-serif; font-size: 13px; line-height: 1.4; }
         /* 嵌在 portal 內時隱藏自己的帳號控制（改由 portal 統一提供）*/
@@ -49,7 +51,12 @@
         .sum-table th, .sum-table td { border:1px solid var(--line); padding:6px 10px; white-space:nowrap; }
         .sum-table th { background:var(--bg-panel); color:var(--ink-3); font-weight:600; text-align:center; }
         .sum-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
-        .sum-table td.sum-low { background:var(--danger); color:var(--bg); font-weight:600; }
+        /* 水位顯示（2026-10-13 使用者決定）：低於安全庫存的格子，依「庫存÷安全庫存」從左往右填色。
+           ≤0 整格深紅；0～1 紅；1～安全庫存 橘。--lv 由 sumLevel() 算出 */
+        .sum-table td.sum-lv-empty { background:var(--danger); color:#fff; font-weight:600; }
+        .sum-table td.sum-lv-under1 { background:linear-gradient(to right, rgba(220,38,38,.55) var(--lv), transparent var(--lv)); font-weight:600; }
+        .sum-table td.sum-lv-low { background:linear-gradient(to right, rgba(245,158,11,.55) var(--lv), transparent var(--lv)); font-weight:600; }
+        .sum-legend { display:inline-block; width:22px; height:11px; border:1px solid var(--line); vertical-align:-1px; margin:0 3px 0 10px; }
         .sum-table td.sum-purchase { background:var(--accent-soft); }
         .sum-table tr.sum-group td { background:var(--warn-soft); color:var(--ink); font-weight:600; text-align:center; }
         /* Beta 標籤：Markforged 尚未接上 Eiger API，標示功能仍在測試 */
@@ -443,9 +450,10 @@
                 <button class="tab-btn" id="tab-mf-history" onclick="switchTab('mf-history')">消耗記錄</button>
                 <button class="tab-btn" id="tab-mf-monthly" onclick="switchTab('mf-monthly')">月度分析</button>
             </div>
-            <!-- 北中南總覽子分頁（目前只有一頁） -->
+            <!-- 北中南總覽子分頁 -->
             <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5 hidden" id="subtabs-summary">
                 <button class="tab-btn active" id="tab-summary" onclick="switchTab('summary')">北中南材料總覽</button>
+                <button class="tab-btn" id="tab-sum-monthly" onclick="switchTab('sum-monthly')">月度分析</button>
             </div>
             <!-- 這兩顆只作用於 Formlabs（安全庫存寫 inv.safety、匯出取樹脂資料），切到 Markforged 時隱藏 -->
             <div class="ml-auto flex gap-2" id="toolbar-formlabs">
@@ -1016,14 +1024,14 @@
         </div>
 
         <!-- 北中南材料總覽：三區並列（版面比照原本的 Excel 庫存統計表）。
-             ★ 每一格保持純數字（低於安全庫存只用紅底表示，不加文字），匯出的 Excel 才能直接計算 -->
+             ★ 每一格保持純數字（低於安全庫存只用底色水位表示，不加文字），匯出的 Excel 才能直接計算 -->
         <div id="panel-summary" class="p-6 hidden">
             <div class="flex items-start justify-between mb-4 flex-wrap gap-3">
                 <div class="flex items-center gap-2">
                     <i data-lucide="table-2" class="w-4 h-4 text-[var(--ink-4)]"></i>
                     <div>
                         <h3 class="text-base font-semibold text-[var(--ink)]">北中南材料總覽</h3>
-                        <p class="text-xs text-[var(--ink-4)]">三區庫存並列；數量低於該區安全庫存時以紅底標示。單位寫在各分組標題列。</p>
+                        <p class="text-xs text-[var(--ink-4)]">三區庫存並列；數量低於該區安全庫存時以「水位」填色標示。單位寫在各分組標題列。</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -1049,8 +1057,12 @@
                 <button id="report-export-btn" onclick="exportMonthlyReport()" class="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-2)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
                     <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> 匯出月報
                 </button>
-                <span class="text-xs text-[var(--ink-5)]">三個工作表：① 當月每筆明細與價格 ② 三區 × 類別總價 ③ 當月與當年累計佔比。類別依列印檔名第 2 段：工程測試／行銷／BM 代工（評估與代工）／其他與未分類</span>
+                <span class="text-xs text-[var(--ink-5)]">三個工作表：① 當月每筆明細與價格 ② 三區 × 類別總價 ③ 當月與當年累計佔比（② ③ 附 Excel 圖表）。類別依列印檔名第 2 段：工程測試／行銷／BM 代工（評估與代工）／其他與未分類</span>
             </div>
+            <p class="text-xs text-[var(--ink-4)] mb-2">低於安全庫存的數量以「水位」顯示，填色長度＝庫存÷安全庫存：
+                <span class="sum-legend" style="background:var(--danger)"></span>缺貨（≤0）
+                <span class="sum-legend" style="background:linear-gradient(to right, rgba(220,38,38,.55) 30%, transparent 30%)"></span>不到 1
+                <span class="sum-legend" style="background:linear-gradient(to right, rgba(245,158,11,.55) 60%, transparent 60%)"></span>低於安全庫存</p>
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse text-sm sum-table">
                     <thead id="sum-thead"></thead>
@@ -1058,6 +1070,27 @@
                 </table>
             </div>
             <p id="sum-updated" class="text-xs text-[var(--ink-5)] mt-3"></p>
+        </div>
+
+        <!-- 月度分析：月報 ② ③ 工作表的圖表（2026-10-13 使用者要求）。與匯出月報共用 monthlyReportSheets() -->
+        <div id="panel-sum-monthly" class="p-6 hidden">
+            <div class="flex items-start justify-between mb-4 flex-wrap gap-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4 text-[var(--ink-4)]"></i>
+                    <div>
+                        <h3 class="text-base font-semibold text-[var(--ink)]">月度分析（北中南 × 類別）</h3>
+                        <p class="text-xs text-[var(--ink-4)]">與「匯出月報」的 ② 三區類別總價、③ 佔比 同一份計算。類別依列印檔名第 2 段；金額＝用量 × 目前單價。</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <input type="month" id="ra-month" class="text-sm border border-[var(--line-strong)] rounded-md px-2 py-1 bg-[var(--bg)] text-[var(--ink)] outline-none focus:ring-1 focus:ring-blue-500">
+                    <button id="ra-btn" onclick="renderReportAnalysis()" class="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-2)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] transition-colors">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> 顯示圖表
+                    </button>
+                </div>
+            </div>
+            <p id="ra-status" class="text-xs text-[var(--ink-4)] mb-4">選擇月份後按「顯示圖表」（會讀取當年 1 月起到該月的消耗紀錄）。</p>
+            <div id="ra-charts"></div>
         </div>
     </div>
 
@@ -2503,13 +2536,13 @@ function showToast(msg,type) {
 const BRAND_TABS = {
     formlabs:   ['stock', 'history', 'monthly'],
     markforged: ['mf', 'mf-history', 'mf-monthly'],
-    summary:    ['summary'],
+    summary:    ['summary', 'sum-monthly'],
 };
 const ALL_TABS = [...BRAND_TABS.formlabs, ...BRAND_TABS.markforged, ...BRAND_TABS.summary];
 const BRAND_HINT = {
     formlabs:   '樹脂材料，單位 ml；由 Formlabs API 自動同步',
     markforged: '線材，單位 cc；Eiger API 尚未接上，目前手動維護',
-    summary:    '北中南三區庫存並列；低於安全庫存以紅底標示',
+    summary:    '北中南三區庫存並列；低於安全庫存以水位顯示',
 };
 
 // ══ 品牌大分頁切換 ══
@@ -2565,6 +2598,11 @@ function switchTab(tab) {
         subscribeInvSummary(); renderInvSummary();
         // 月報預設本月
         const rm = document.getElementById('report-month');
+        if (rm && !rm.value) { const d = new Date(); rm.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+    }
+    // 月度分析：預設本月，但要按「顯示圖表」才讀資料（讀的是當年 1 月起的全部紀錄，不在切分頁時自動讀）
+    if (tab === 'sum-monthly') {
+        const rm = document.getElementById('ra-month');
         if (rm && !rm.value) { const d = new Date(); rm.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
     }
 }
@@ -3886,7 +3924,7 @@ function renderMfConsumables() {
 // ══ 北中南材料總覽（三區並列，版面比照原本的 Excel 庫存統計表）══
 // 資料：inventory/{north|central|south}（樹脂與 Formlabs 耗材）、inventory/markforged_{區}（線材與耗材）、
 //       settings/purchase_stock（採購工程庫存，人工填寫）。料號與顯示名稱來自 inventory/main。
-// ★ 每一格保持純數字：低於安全庫存只用紅底表示，不加「低」「需叫料」這類文字，
+// ★ 每一格保持純數字：低於安全庫存只用底色（水位）表示，不加「低」「需叫料」這類文字，
 //   匯出的 Excel 才能直接加總、比對（使用者 2026-10-13 指定）。
 // ★ 各區的數字一律用 withRegionInv()／withMfInv() 套用各區頁面原本的計算函式，
 //   不另寫一份 —— 兩邊一旦算法不同，總覽和各區頁面的數字會對不上，而且看不出原因。
@@ -3991,6 +4029,17 @@ function invSummaryReady() {
 
 // 一區一格：{ qty, safety, low }。safety 為 null＝該區沒有這個品項（或已停用），不判斷是否偏低
 function sumCell(qty, safety, low) { return { qty, safety, low: !!low }; }
+
+// 水位：低於安全庫存的格子要填多少、什麼顏色（2026-10-13 使用者決定，像水庫水位）
+//   ≤0 → empty（整格深紅）；0～1 → under1（紅）；1～安全庫存 → low（橘）。pct＝庫存÷安全庫存（0～100）
+//   「1」是 1 個顯示單位：樹脂 1 L、線材與零件 1 個計量單位。沒有偏低（含沒設安全庫存）回 null
+function sumLevel(cell) {
+    if (!cell || !cell.low) return null;
+    const q = Number(cell.qty) || 0, sf = Number(cell.safety) || 0;
+    if (q <= 0) return { tier: 'empty', pct: 100 };
+    const pct = sf > 0 ? Math.max(0, Math.min(100, Math.round(q / sf * 1000) / 10)) : 100;
+    return { tier: q < 1 ? 'under1' : 'low', pct };
+}
 
 // 組出四個分組的列。每列：{ group, key, name, partno, cells: { 區碼: {qty, safety, low} } }
 function buildInvSummary(regionDocs, mfDocs) {
@@ -4103,9 +4152,10 @@ function renderInvSummary() {
                     }
                     return `<td class="num sum-purchase">${v}</td>`;
                 }
+                const lv = col.kind === 'qty' ? sumLevel(row.cells[col.region]) : null;
+                if (!lv) return `<td class="num">${v}</td>`;
                 const c = row.cells[col.region];
-                const low = col.kind === 'qty' && c && c.low;
-                return `<td class="num${low ? ' sum-low' : ''}">${v}</td>`;
+                return `<td class="num sum-lv-${lv.tier}" style="--lv:${lv.pct}%" title="庫存 ${c.qty}／安全庫存 ${c.safety}（${lv.tier === 'empty' ? '缺貨' : lv.pct + '%'}）">${v}</td>`;
             }).join('');
             html.push(`<tr>${partNoCell(row.partno).replace('class="p-3 ', 'class="')}<td>${escHtml(row.name)}</td>${tds}</tr>`);
         });
@@ -4291,6 +4341,254 @@ function reportRegionShareAoa(title, by, regions) {
     return rows;
 }
 
+// ══ 月報圖表（2026-10-13 使用者決定：Excel 裡放「原生圖表」，網頁另有「月度分析」分頁）══
+// 兩邊共用 monthlyReportSheets() 產生的圖表定義，畫面與 Excel 才不會各算各的。
+// 圖表定義：{ sheet, type:'bar'|'pie'|'stack100', title, cats:{ref, labels}, series:[{name, nameRef, ref, values}], pos:{col,row,w,h} }
+//   ref 是 Excel 儲存格範圍（圖表在 Excel 裡改數字會跟著變），labels／values 是同一份資料的快取（網頁直接用）
+const xlCol = i => { let s = ''; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; };
+const xlRef = (sheet, c1, r1, c2, r2) =>
+    `'${String(sheet).replace(/'/g, "''")}'!$${xlCol(c1)}$${r1 + 1}` + (c2 === undefined ? '' : `:$${xlCol(c2)}$${r2 + 1}`);
+const xlCellNum = v => (v && typeof v === 'object') ? v.v : (typeof v === 'number' ? v : null);
+
+// 月報的 ② ③ 兩個工作表（內容與原本相同）＋ 圖表定義
+function monthlyReportSheets(rep, Y, M) {
+    const S2 = '②三區類別總價', S3 = '③佔比';
+    const rl = r => (window.regionLabel ? window.regionLabel(r) : r);
+    const nc = REPORT_CATS.length, nr = rep.regions.length, regionNames = rep.regions.map(rl);
+    const charts = [];
+    const CHART_COL = nr + 3;   // 表格佔 類別＋各區＋合計，空一欄再放圖
+
+    // ② 三區 × 類別總價：每張表配一張群組直條圖（類別 × 地區）
+    const aoa2 = [[`${Y} 年 ${M} 月 北中南 × 類別`]];
+    if (rep.unpriced.month) aoa2.push([`※ 當月有 ${rep.unpriced.month} 筆紀錄的材料沒有設定單價，金額未計入（請到「安全庫存與單價設定」補上）`]);
+    [['金額（元）', rep.month.amount, 0, '金額（元）'],
+     ['Formlabs 樹脂用量（L）', rep.month.flQty, 3, 'Formlabs 樹脂用量（L）'],
+     ['Markforged 線材用量（cc）', rep.month.mfQty, 1, 'Markforged 線材用量（cc）']].forEach(([title, by, digits, label], k) => {
+        aoa2.push([]);
+        const r = aoa2.length;   // 這張表的標題列；r+1 表頭、r+2 起是各類別
+        aoa2.push(...reportTotalsAoa(title, by, rep.regions, digits));
+        charts.push({ sheet: S2, type: 'bar', title: `${M} 月${label}`,
+            cats: { ref: xlRef(S2, 0, r + 2, 0, r + 1 + nc), labels: REPORT_CATS.slice() },
+            series: rep.regions.map((_, i) => ({ name: regionNames[i], nameRef: xlRef(S2, i + 1, r + 1),
+                ref: xlRef(S2, i + 1, r + 2, i + 1, r + 1 + nc),
+                values: REPORT_CATS.map((_, j) => xlCellNum(aoa2[r + 2 + j][i + 1])) })),
+            pos: { col: CHART_COL, row: k * 18, w: 8, h: 17 } });
+    });
+
+    // ③ 佔比：每張表的「當月」與「當年累計」各一張圓餅圖；各區佔比用 100% 堆疊直條圖
+    const aoa3 = [[`${Y} 年 ${M} 月佔比（當年累計＝${Y} 年 1～${M} 月）`]];
+    if (rep.unpriced.ytd) aoa3.push([`※ 當年累計有 ${rep.unpriced.ytd} 筆紀錄沒有設定單價，金額佔比未計入這些紀錄`]);
+    let gridRow = 0;
+    [['金額（元）', rep.month.amount, rep.ytd.amount, 0, '金額'],
+     ['Formlabs 樹脂用量（L）', rep.month.flQty, rep.ytd.flQty, 3, '樹脂用量'],
+     ['Markforged 線材用量（cc）', rep.month.mfQty, rep.ytd.mfQty, 1, '線材用量']].forEach(([title, mBy, yBy, digits, label]) => {
+        aoa3.push([]);
+        const r = aoa3.length;
+        aoa3.push(...reportShareAoa(title, mBy, yBy, rep.regions, digits));
+        [[1, `${M} 月${label}佔比`], [3, `${Y} 年累計${label}佔比`]].forEach(([col, t], i) => charts.push({
+            sheet: S3, type: 'pie', title: t,
+            cats: { ref: xlRef(S3, 0, r + 2, 0, r + 1 + nc), labels: REPORT_CATS.slice() },
+            series: [{ name: aoa3[r + 1][col], nameRef: xlRef(S3, col, r + 1), ref: xlRef(S3, col, r + 2, col, r + 1 + nc),
+                values: REPORT_CATS.map((_, j) => xlCellNum(aoa3[r + 2 + j][col])) }],
+            pos: { col: 6 + i * 7, row: gridRow * 16, w: 7, h: 15 } }));
+        gridRow++;
+    });
+    [['各區當月金額佔比', rep.month.amount], ['各區當年累計金額佔比', rep.ytd.amount]].forEach(([title, by], i) => {
+        aoa3.push([]);
+        const r = aoa3.length;
+        aoa3.push(...reportRegionShareAoa(title, by, rep.regions));
+        charts.push({ sheet: S3, type: 'stack100', title,
+            cats: { ref: xlRef(S3, 1, r + 1, nr, r + 1), labels: regionNames.slice() },
+            series: REPORT_CATS.map((c, j) => ({ name: c, nameRef: xlRef(S3, 0, r + 2 + j),
+                ref: xlRef(S3, 1, r + 2 + j, nr, r + 2 + j),
+                values: rep.regions.map((_, k) => xlCellNum(aoa3[r + 2 + j][k + 1])) })),
+            pos: { col: 6 + i * 7, row: gridRow * 16, w: 7, h: 15 } });
+    });
+
+    return {
+        sheets: [
+            { name: S2, aoa: aoa2, cols: [{ wch: 26 }, ...rep.regions.map(() => ({ wch: 12 })), { wch: 12 }] },
+            { name: S3, aoa: aoa3, cols: [{ wch: 26 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }] },
+        ],
+        charts,
+    };
+}
+
+// ── Excel 原生圖表：SheetJS 免費版不會寫圖表，所以在它產生的 xlsx（zip）裡自己補上
+//    圖表檔（xl/charts）、繪圖層（xl/drawings）、關聯（_rels）與 [Content_Types].xml ──
+const xlEsc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const XL_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const XL_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+function xlStrCache(arr) {
+    return `<c:strCache><c:ptCount val="${arr.length}"/>${arr.map((v, i) => `<c:pt idx="${i}"><c:v>${xlEsc(v)}</c:v></c:pt>`).join('')}</c:strCache>`;
+}
+// 沒有數字的格子（例如該區金額為 0 時佔比留空）不寫點，Excel 會當成空白
+function xlNumCache(arr, fmt) {
+    const pts = arr.map((v, i) => (typeof v === 'number' && isFinite(v)) ? `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>` : '').join('');
+    return `<c:numCache><c:formatCode>${xlEsc(fmt)}</c:formatCode><c:ptCount val="${arr.length}"/>${pts}</c:numCache>`;
+}
+function xlChartXml(ch) {
+    const stacked = ch.type === 'stack100';
+    const ser = ch.series.map((s, i) =>
+        `<c:ser><c:idx val="${i}"/><c:order val="${i}"/>`
+        + `<c:tx><c:strRef><c:f>${xlEsc(s.nameRef)}</c:f>${xlStrCache([s.name])}</c:strRef></c:tx>`
+        // 圓餅圖顯示百分比；整份都是 0 時不加標籤（否則一疊「0%」擠在中間）
+        + (ch.type !== 'pie' ? '<c:invertIfNegative val="0"/>'
+            : s.values.some(v => typeof v === 'number' && v > 0)
+            ? '<c:dLbls><c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/><c:showBubbleSize val="0"/><c:showLeaderLines val="1"/></c:dLbls>'
+            : '')
+        + `<c:cat><c:strRef><c:f>${xlEsc(ch.cats.ref)}</c:f>${xlStrCache(ch.cats.labels)}</c:strRef></c:cat>`
+        + `<c:val><c:numRef><c:f>${xlEsc(s.ref)}</c:f>${xlNumCache(s.values, stacked ? '0.0%' : 'General')}</c:numRef></c:val>`
+        + '</c:ser>').join('');
+    // ★ 座標軸一定要寫 <c:delete val="0"/>：沒寫的話新版 Excel 會把座標軸整個藏起來
+    const plot = ch.type === 'pie'
+        ? `<c:pieChart><c:varyColors val="1"/>${ser}<c:firstSliceAng val="0"/></c:pieChart>`
+        : `<c:barChart><c:barDir val="col"/><c:grouping val="${stacked ? 'percentStacked' : 'clustered'}"/><c:varyColors val="0"/>${ser}`
+          + `<c:gapWidth val="${stacked ? 60 : 150}"/>${stacked ? '<c:overlap val="100"/>' : ''}<c:axId val="111"/><c:axId val="222"/></c:barChart>`
+          + '<c:catAx><c:axId val="111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/>'
+          + '<c:numFmt formatCode="General" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>'
+          + '<c:crossAx val="222"/><c:crosses val="autoZero"/><c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>'
+          + '<c:valAx><c:axId val="222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines/>'
+          + `<c:numFmt formatCode="${stacked ? '0%' : 'General'}" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/>`
+          + '<c:crossAx val="111"/><c:crosses val="autoZero"/><c:crossBetween val="between"/></c:valAx>';
+    return XL_HEAD
+        + '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="' + XL_REL + '">'
+        + '<c:roundedCorners val="0"/><c:chart>'
+        + `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="1200" b="1"/></a:pPr><a:r><a:rPr lang="zh-TW" sz="1200" b="1"/><a:t>${xlEsc(ch.title)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
+        + `<c:autoTitleDeleted val="0"/><c:plotArea><c:layout/>${plot}</c:plotArea>`
+        + '<c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend><c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart></c:chartSpace>';
+}
+function xlDrawingXml(items) {   // items: [{ pos, rid }]
+    const anchors = items.map((d, i) =>
+        '<xdr:twoCellAnchor editAs="oneCell">'
+        + `<xdr:from><xdr:col>${d.pos.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${d.pos.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`
+        + `<xdr:to><xdr:col>${d.pos.col + d.pos.w}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${d.pos.row + d.pos.h}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>`
+        + `<xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 2}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>`
+        + '<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>'
+        + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="${d.rid}"/></a:graphicData></a:graphic>`
+        + '</xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor>').join('');
+    return XL_HEAD + '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        + ' xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="' + XL_REL + '">' + anchors + '</xdr:wsDr>';
+}
+const xlRelsXml = rels => XL_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + rels.map(r => `<Relationship Id="${r.id}" Type="${XL_REL}/${r.type}" Target="${xlEsc(r.target)}"/>`).join('') + '</Relationships>';
+const xlAttr = (tag, name) => { const m = tag.match(new RegExp(`\\s${name}="([^"]*)"`)); return m ? m[1] : ''; };
+
+// data：XLSX.write(..., {type:'array'}) 的結果；回傳加上圖表的 xlsx（Uint8Array）
+async function addXlsxCharts(data, charts, JSZipLib) {
+    const zip = await JSZipLib.loadAsync(data);
+    // 工作表名稱 → 檔案路徑（照 workbook.xml 與它的關聯檔查，不假設 sheetN 的順序）
+    const wbXml = await zip.file('xl/workbook.xml').async('string');
+    const wbRels = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+    const relTarget = {};
+    (wbRels.match(/<Relationship\b[^>]*>/g) || []).forEach(t => { relTarget[xlAttr(t, 'Id')] = xlAttr(t, 'Target'); });
+    const sheetPath = {};
+    (wbXml.match(/<sheet\b[^>]*>/g) || []).forEach(t => {
+        const target = relTarget[xlAttr(t, 'r:id')] || '';
+        sheetPath[xlAttr(t, 'name')] = target.startsWith('/') ? target.slice(1) : 'xl/' + target;
+    });
+    let ct = await zip.file('[Content_Types].xml').async('string');
+    const addOverride = (part, type) => { ct = ct.replace('</Types>', `<Override PartName="${part}" ContentType="${type}"/></Types>`); };
+    let chartNo = 0, drawNo = 0;
+    for (const name of [...new Set(charts.map(c => c.sheet))]) {
+        const path = sheetPath[xlEsc(name)];
+        if (!path || !zip.file(path)) throw new Error(`找不到工作表「${name}」`);
+        drawNo++;
+        const items = charts.filter(c => c.sheet === name).map((ch, i) => {
+            chartNo++;
+            zip.file(`xl/charts/chart${chartNo}.xml`, xlChartXml(ch));
+            addOverride(`/xl/charts/chart${chartNo}.xml`, 'application/vnd.openxmlformats-officedocument.drawingml.chart+xml');
+            return { pos: ch.pos, rid: `rId${i + 1}`, target: `../charts/chart${chartNo}.xml` };
+        });
+        zip.file(`xl/drawings/drawing${drawNo}.xml`, xlDrawingXml(items));
+        zip.file(`xl/drawings/_rels/drawing${drawNo}.xml.rels`, xlRelsXml(items.map(it => ({ id: it.rid, type: 'chart', target: it.target }))));
+        addOverride(`/xl/drawings/drawing${drawNo}.xml`, 'application/vnd.openxmlformats-officedocument.drawing+xml');
+        // 工作表 → 繪圖層的關聯（SheetJS 這些工作表沒有關聯檔；萬一有就附加）
+        const relPath = path.replace(/([^/]+)$/, '_rels/$1.rels');
+        const rid = 'rIdChartDrawing';
+        const rel = { id: rid, type: 'drawing', target: `../drawings/drawing${drawNo}.xml` };
+        const old = zip.file(relPath);
+        zip.file(relPath, old
+            ? (await old.async('string')).replace('</Relationships>', xlRelsXml([rel]).replace(/^[\s\S]*?<Relationships[^>]*>/, ''))
+            : xlRelsXml([rel]));
+        // <drawing> 要放在 worksheet 的最後（schema 規定在 ignoredErrors 之後）
+        let sx = await zip.file(path).async('string');
+        if (!/<worksheet\b[^>]*xmlns:r=/.test(sx)) sx = sx.replace('<worksheet', `<worksheet xmlns:r="${XL_REL}"`);
+        zip.file(path, sx.replace('</worksheet>', `<drawing r:id="${rid}"/></worksheet>`));
+    }
+    zip.file('[Content_Types].xml', ct);
+    return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+}
+
+// ── 網頁「月度分析」分頁：用同一份圖表定義畫 Chart.js ──
+let raChartObjs = [];
+function raChartConfig(c) {
+    const color = i => PIE_COLORS[i % PIE_COLORS.length];
+    if (c.type === 'pie') {
+        const data = c.series[0].values.map(v => (typeof v === 'number' ? v : 0));
+        const total = data.reduce((s, v) => s + v, 0);
+        return { type: 'pie',
+            data: { labels: c.cats.labels, datasets: [{ data, backgroundColor: data.map((_, i) => color(i)), borderWidth: 2, borderColor: '#fff' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: ctx => `${ctx.label}：${ctx.parsed.toLocaleString()}（${total ? (ctx.parsed / total * 100).toFixed(1) : 0}%）` } } } } };
+    }
+    const stacked = c.type === 'stack100';   // 值是 0～1 的比例，畫成百分比
+    return { type: 'bar',
+        data: { labels: c.cats.labels, datasets: c.series.map((s, i) => ({ label: s.name, backgroundColor: color(i),
+            data: s.values.map(v => (typeof v === 'number' ? (stacked ? +(v * 100).toFixed(1) : v) : 0)) })) },
+        options: { responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' },
+                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}：${ctx.parsed.y.toLocaleString()}${stacked ? '%' : ''}` } } },
+            scales: { x: { stacked, grid: { display: false } },
+                      y: { stacked, beginAtZero: true, ...(stacked ? { max: 100, ticks: { callback: v => v + '%' } } : {}) } } } };
+}
+async function renderReportAnalysis() {
+    const ym = (document.getElementById('ra-month') || {}).value || '';
+    if (!/^\d{4}-\d{2}$/.test(ym)) { showToast('請先選擇月份', 'error'); return; }
+    const [Y, M] = ym.split('-').map(Number);
+    const status = document.getElementById('ra-status'), box = document.getElementById('ra-charts'), btn = document.getElementById('ra-btn');
+    if (btn) btn.disabled = true;
+    status.textContent = `正在讀取 ${Y} 年 1～${M} 月的消耗紀錄…`;
+    let records;
+    try { records = await loadReportRecords(Y, M); }
+    catch (err) {
+        console.error('[月度分析] 讀取消耗紀錄失敗:', err);
+        status.textContent = '讀取消耗紀錄失敗（不是沒有資料）：' + (err.code || err.message);
+        if (btn) btn.disabled = false;
+        return;
+    }
+    const rep = buildMonthlyReport(records, ym);
+    const { charts } = monthlyReportSheets(rep, Y, M);
+    raChartObjs.forEach(ch => ch.destroy());
+    raChartObjs = [];
+    const card = (c, i) => `<div class="rounded-lg border border-[var(--line)] bg-[var(--bg)] p-3">
+        <div class="text-sm font-medium text-[var(--ink-2)] mb-2">${escHtml(c.title)}</div>
+        <div style="height:260px;position:relative"><canvas id="ra-c${i}"></canvas>
+        <p id="ra-e${i}" class="hidden absolute inset-0 flex items-center justify-center text-sm text-[var(--ink-5)]">這個月沒有資料</p></div></div>`;
+    box.innerHTML = [['② 北中南 × 類別', '②三區類別總價'], ['③ 佔比（當月與當年累計）', '③佔比']].map(([h, sheet]) =>
+        `<h4 class="text-sm font-semibold text-[var(--ink)] mb-3">${h}</h4>
+         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">${charts.map((c, i) => c.sheet === sheet ? card(c, i) : '').join('')}</div>`).join('');
+    charts.forEach((c, i) => {
+        const has = c.series.some(s => s.values.some(v => typeof v === 'number' && v > 0));
+        if (!has) { document.getElementById('ra-c' + i).style.display = 'none'; document.getElementById('ra-e' + i).classList.remove('hidden'); return; }
+        raChartObjs.push(new Chart(document.getElementById('ra-c' + i), raChartConfig(c)));
+    });
+    const un = rep.unpriced.month ? `；其中 ${rep.unpriced.month} 筆材料沒有設定單價，金額未計入` : '';
+    status.textContent = `${Y} 年 ${M} 月：當月 ${rep.detail.length} 筆消耗紀錄${un}。當年累計＝${Y} 年 1～${M} 月。`;
+    if (btn) btn.disabled = false;
+}
+
+// 月報與月度分析共用：當年 1 月 1 日 ～ 該月月底的紀錄（當年累計佔比要用整段）
+async function loadReportRecords(Y, M) {
+    const snap = await getDocs(query(
+        collection(db, 'inventory_history'),
+        where('tsDate', '>=', Timestamp.fromDate(new Date(Y, 0, 1))),
+        where('tsDate', '<',  Timestamp.fromDate(new Date(Y, M, 1))),
+        orderBy('tsDate', 'desc')
+    ));
+    return snap.docs.map(mapHistoryDoc);
+}
+
 async function exportMonthlyReport() {
     const input = document.getElementById('report-month');
     const ym = (input && input.value) || '';
@@ -4301,14 +4599,7 @@ async function exportMonthlyReport() {
     showToast(`正在讀取 ${Y} 年 1～${M} 月的消耗紀錄…`, 'success');
     let records;
     try {
-        // 當年 1 月 1 日 ～ 該月月底（當年累計佔比要用整段）
-        const snap = await getDocs(query(
-            collection(db, 'inventory_history'),
-            where('tsDate', '>=', Timestamp.fromDate(new Date(Y, 0, 1))),
-            where('tsDate', '<',  Timestamp.fromDate(new Date(Y, M, 1))),
-            orderBy('tsDate', 'desc')
-        ));
-        records = snap.docs.map(mapHistoryDoc);
+        records = await loadReportRecords(Y, M);
     } catch (err) {
         console.error('[月報] 讀取消耗紀錄失敗:', err);
         showToast('讀取消耗紀錄失敗（不是沒有資料）：' + (err.code || err.message), 'error');
@@ -4331,34 +4622,34 @@ async function exportMonthlyReport() {
         ws1['!cols'] = [18, 6, 11, 14, 36, 14, 9, 11, 14, 22, 12, 8, 5, 10, 10, 18].map(w => ({ wch: w }));
         XLSX.utils.book_append_sheet(wb, ws1, '①每筆明細');
 
-        // ② 三區 × 類別總價（另附兩個品牌的用量，單位不同不可相加）
-        const note = rep.unpriced.month ? [[`※ 當月有 ${rep.unpriced.month} 筆紀錄的材料沒有設定單價，金額未計入（請到「安全庫存與單價設定」補上）`]] : [];
-        const aoa2 = [
-            [`${Y} 年 ${M} 月 北中南 × 類別`], ...note, [],
-            ...reportTotalsAoa('金額（元）', rep.month.amount, rep.regions, 0), [],
-            ...reportTotalsAoa('Formlabs 樹脂用量（L）', rep.month.flQty, rep.regions, 3), [],
-            ...reportTotalsAoa('Markforged 線材用量（cc）', rep.month.mfQty, rep.regions, 1),
-        ];
-        const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
-        ws2['!cols'] = [{ wch: 26 }, ...rep.regions.map(() => ({ wch: 12 })), { wch: 12 }];
-        XLSX.utils.book_append_sheet(wb, ws2, '②三區類別總價');
+        // ② 三區 × 類別總價（另附兩個品牌的用量，單位不同不可相加）、③ 當月佔比與當年累計佔比
+        //   內容與圖表定義都在 monthlyReportSheets()（網頁「月度分析」用同一份）
+        const { sheets, charts } = monthlyReportSheets(rep, Y, M);
+        sheets.forEach(s => {
+            const ws = XLSX.utils.aoa_to_sheet(s.aoa);   // ③ 的佔比格已是 {t,v,z} 儲存格物件，帶百分比格式
+            ws['!cols'] = s.cols;
+            XLSX.utils.book_append_sheet(wb, ws, s.name);
+        });
 
-        // ③ 當月佔比與當年累計佔比
-        const ytdNote = rep.unpriced.ytd ? [[`※ 當年累計有 ${rep.unpriced.ytd} 筆紀錄沒有設定單價，金額佔比未計入這些紀錄`]] : [];
-        const aoa3 = [
-            [`${Y} 年 ${M} 月佔比（當年累計＝${Y} 年 1～${M} 月）`], ...ytdNote, [],
-            ...reportShareAoa('金額（元）', rep.month.amount, rep.ytd.amount, rep.regions, 0), [],
-            ...reportShareAoa('Formlabs 樹脂用量（L）', rep.month.flQty, rep.ytd.flQty, rep.regions, 3), [],
-            ...reportShareAoa('Markforged 線材用量（cc）', rep.month.mfQty, rep.ytd.mfQty, rep.regions, 1), [],
-            ...reportRegionShareAoa('各區當月金額佔比', rep.month.amount, rep.regions), [],
-            ...reportRegionShareAoa('各區當年累計金額佔比', rep.ytd.amount, rep.regions),
-        ];
-        const ws3 = XLSX.utils.aoa_to_sheet(aoa3);   // 佔比格已是 {t,v,z} 儲存格物件，帶百分比格式
-        ws3['!cols'] = [{ wch: 26 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
-        XLSX.utils.book_append_sheet(wb, ws3, '③佔比');
-
-        XLSX.writeFile(wb, `北中南月報_${ym}.xlsx`);
-        showToast(`✓ 已匯出 ${Y} 年 ${M} 月月報（當月 ${rep.detail.length} 筆）`, 'success');
+        const fname = `北中南月報_${ym}.xlsx`;
+        let withCharts = false;
+        try {
+            if (!window.JSZip) throw new Error('JSZip 未載入');
+            const out = await addXlsxCharts(XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), charts, window.JSZip);
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+            a.download = fname;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+            withCharts = true;
+        } catch (err) {
+            // 圖表加不上去時，至少把數字交出去（圖表是附加的，不能因為它整份匯出失敗）
+            console.error('[月報] 加入圖表失敗，改匯出不含圖表的版本:', err);
+            XLSX.writeFile(wb, fname);
+        }
+        showToast(withCharts
+            ? `✓ 已匯出 ${Y} 年 ${M} 月月報（當月 ${rep.detail.length} 筆，含 ${charts.length} 張圖表）`
+            : `已匯出 ${Y} 年 ${M} 月月報，但圖表沒加上去（只有數字），請把主控台(F12)的錯誤訊息給管理員`, withCharts ? 'success' : 'error');
     } catch (err) {
         console.error('[月報] 產生失敗:', err);
         showToast('月報產生失敗：' + err.message, 'error');
@@ -6809,6 +7100,7 @@ window.cancelPurchaseEdit = cancelPurchaseEdit;
 window.savePurchaseEdits = savePurchaseEdits;
 window.exportInvSummaryExcel = exportInvSummaryExcel;
 window.exportMonthlyReport = exportMonthlyReport;
+window.renderReportAnalysis = renderReportAnalysis;
 window.renderMfHistory = renderMfHistory;
 window.mfMonthShift = mfMonthShift;
 window.startMfEdit = startMfEdit;

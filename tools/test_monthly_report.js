@@ -22,7 +22,7 @@ function grab(re, what) {
   return m[0];
 }
 function grabFn(name) {
-  const start = html.search(new RegExp(`^function ${name}\\s*\\(`, 'm'));
+  const start = html.search(new RegExp(`^(async )?function ${name}\\s*\\(`, 'm'));
   if (start < 0) { console.error(`✗ inventory.html 找不到 function ${name}`); process.exit(1); }
   let i = html.indexOf('{', html.indexOf(')', start));
   let depth = 0;
@@ -36,7 +36,8 @@ function grabFn(name) {
 const FNS = ['familyCode', 'canonCode', 'matCode', 'matName', 'historyMaterialName',
   'parseWorkCategory', 'parseNote', 'getPartNo', 'getMfPartNo',
   'sumRegions', 'sumPurchaseKey', 'getPrice', 'tagMfJobs', 'mfHistoryMerged', 'regionOfHistory',
-  'reportCategory', 'buildMonthlyReport', 'reportPct', 'reportTotalsAoa', 'reportShareAoa', 'reportRegionShareAoa'];
+  'reportCategory', 'buildMonthlyReport', 'reportPct', 'reportTotalsAoa', 'reportShareAoa', 'reportRegionShareAoa',
+  'monthlyReportSheets', 'xlStrCache', 'xlNumCache', 'xlChartXml', 'xlDrawingXml', 'addXlsxCharts'];
 
 const src = [
   grab(/const CODE_TO_NAME = \{[\s\S]*?^\};/m, 'CODE_TO_NAME'),
@@ -51,6 +52,14 @@ const src = [
   grab(/const sumRound = [^\r\n]*/, 'sumRound'),
   grab(/const MF_JOB_GAP_MS = [^\r\n]*/, 'MF_JOB_GAP_MS'),
   grab(/const REPORT_CATS = \[[^\]]*\];/, 'REPORT_CATS'),
+  grab(/const xlCol = [^\r\n]*/, 'xlCol'),
+  grab(/const xlRef = [^\r\n]*\r?\n[^\r\n]*/, 'xlRef'),
+  grab(/const xlCellNum = [^\r\n]*/, 'xlCellNum'),
+  grab(/const xlEsc = [^\r\n]*/, 'xlEsc'),
+  grab(/const XL_REL = [^\r\n]*/, 'XL_REL'),
+  grab(/const XL_HEAD = [^\r\n]*/, 'XL_HEAD'),
+  grab(/const xlRelsXml = [^\r\n]*\r?\n[^\r\n]*/, 'xlRelsXml'),
+  grab(/const xlAttr = [^\r\n]*/, 'xlAttr'),
   ...FNS.map(grabFn),
 ].join('\n');
 
@@ -58,7 +67,8 @@ const factory = new Function('window', 'init', `
   let inv = init.inv, mfPartno = init.mfPartno, matPrices = init.matPrices;
   const regionOfMachine = () => 'central';
   ${src}
-  return { buildMonthlyReport, reportCategory, reportTotalsAoa, reportShareAoa, reportRegionShareAoa, REPORT_CATS, WORK_CATEGORIES, parseWorkCategory };
+  return { buildMonthlyReport, reportCategory, reportTotalsAoa, reportShareAoa, reportRegionShareAoa, REPORT_CATS, WORK_CATEGORIES, parseWorkCategory,
+           monthlyReportSheets, xlChartXml, addXlsxCharts, xlCol };
 `);
 
 let pass = 0, fail = 0;
@@ -137,5 +147,63 @@ eq([tot[1], tot[2].v, tot[3], tot[4].v], [2280, 1, 5280, 1], '③ 合計列：�
 const rs = api.reportRegionShareAoa('各區當月金額佔比', rep.month.amount, rep.regions);
 eq(rs.find(r => r[0] === '其他／未分類')[3], '', '★ 該區金額為 0 時佔比留空（不可除以 0）');
 
-console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
-process.exit(fail ? 1 : 0);
+// ── 圖表（2026-10-13：Excel 原生圖表＋網頁月度分析共用同一份定義）────────
+eq([api.xlCol(0), api.xlCol(25), api.xlCol(26), api.xlCol(27)], ['A', 'Z', 'AA', 'AB'], '欄號 → Excel 欄名');
+const { sheets, charts } = api.monthlyReportSheets(rep, 2026, 10);
+eq(sheets.map(s => s.name), ['②三區類別總價', '③佔比'], '② ③ 兩個工作表');
+eq(charts.map(c => c.type), ['bar', 'bar', 'bar', 'pie', 'pie', 'pie', 'pie', 'pie', 'pie', 'stack100', 'stack100'],
+  '★ 11 張圖：② 三張直條、③ 六張圓餅＋兩張 100% 堆疊');
+const s2 = sheets[0].aoa, c0 = charts[0];
+// 這份資料有「沒設單價」的紀錄 → ② 第 2 列是提示，表格整個往下一列；圖表參照必須跟著移
+eq(String(s2[1][0]).startsWith('※'), true, '（前提）有沒設單價的提示列');
+eq(c0.cats.ref, "'②三區類別總價'!$A$6:$A$9", '★ 類別範圍跟著提示列往下移（A6:A9），不可寫死');
+eq(c0.series.map(s => s.ref), ["'②三區類別總價'!$B$6:$B$9", "'②三區類別總價'!$C$6:$C$9", "'②三區類別總價'!$D$6:$D$9"],
+  '★ 每區一個數列，不含「合計」欄');
+eq([s2[4][0], s2[5][0], s2[8][0], s2[9][0]], ['類別', '工程測試', '其他／未分類', '合計'], '（對照）表頭在第 5 列、類別在 6～9 列、合計在第 10 列');
+eq(c0.series[0].values, s2.slice(5, 9).map(r => r[1]), '★ 圖表快取的數字＝表格裡的數字');
+const pieM = charts[3], pieY = charts[4];
+eq([pieM.series[0].ref.endsWith('$B$6:$B$9'), pieY.series[0].ref.endsWith('$D$6:$D$9')], [true, true], '★ 圓餅：當月取 B 欄、當年累計取 D 欄（不是佔比欄）');
+const st = charts[9];
+eq(st.cats.labels, ['北部', '中部', '南部'], '各區佔比圖：橫軸是地區');
+eq(st.series.map(s => s.name), api.REPORT_CATS, '各區佔比圖：每個類別一個數列');
+
+const xBar = api.xlChartXml(c0), xStack = api.xlChartXml(st), xPie = api.xlChartXml(pieM);
+eq((xBar.match(/<c:delete val="0"\/>/g) || []).length, 2, '★ 兩個座標軸都要寫 delete=0（沒寫的話新版 Excel 會藏起座標軸）');
+eq([xBar.includes('val="clustered"'), xStack.includes('val="percentStacked"'), xStack.includes('<c:overlap val="100"/>')], [true, true, true], '群組直條／100% 堆疊');
+eq([xPie.includes('<c:pieChart>'), xPie.includes('<c:showPercent val="1"/>'), xPie.includes('invertIfNegative')], [true, true, false], '★ 圓餅顯示百分比，且不可帶直條圖專用的 invertIfNegative（Excel 會拒開）');
+const emptyPie = api.xlChartXml({ ...pieM, series: [{ ...pieM.series[0], values: [0, 0, null, 0] }] });
+eq([emptyPie.includes('dLbls'), emptyPie.includes('invertIfNegative')], [false, false], '整份都是 0 的圓餅不加標籤（否則一疊 0% 擠在中間）');
+eq(api.xlChartXml({ ...c0, title: 'A&B<C>' }).includes('A&amp;B&lt;C&gt;'), true, '標題要跳脫 XML 特殊字元');
+
+// 用假的 zip 實際跑一次組裝：工作表對應、關聯檔、Content_Types、<drawing> 位置
+function fakeZip(files) {
+  const z = { files: { ...files },
+    file(p, c) { if (c === undefined) return p in this.files ? { async: async () => this.files[p] } : null; this.files[p] = c; return this; },
+    async generateAsync() { return this; } };
+  return { loadAsync: async () => z };
+}
+const sheetXml = '<?xml version="1.0"?><worksheet xmlns="m" xmlns:r="r"><sheetData/><ignoredErrors/></worksheet>';
+const zipIn = {
+  'xl/workbook.xml': '<workbook><sheets><sheet name="①每筆明細" sheetId="1" r:id="rId1"/><sheet name="②三區類別總價" sheetId="2" r:id="rId3"/><sheet name="③佔比" sheetId="3" r:id="rId2"/></sheets></workbook>',
+  // ★ 刻意讓 ② 對到 sheet3.xml、③ 對到 sheet2.xml（與 sheetId 不同）：程式必須照關聯檔找，不能假設順序
+  'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Target="worksheets/sheet2.xml" Id="rId2"/><Relationship Id="rId3" Target="worksheets/sheet3.xml"/></Relationships>',
+  'xl/worksheets/sheet1.xml': sheetXml, 'xl/worksheets/sheet2.xml': sheetXml, 'xl/worksheets/sheet3.xml': sheetXml,
+  '[Content_Types].xml': '<Types></Types>',
+};
+(async () => {
+  const z = (await api.addXlsxCharts(null, charts, fakeZip(zipIn))).files;
+  eq(Object.keys(z).filter(p => /^xl\/charts\/chart\d+\.xml$/.test(p)).length, 11, '寫出 11 個圖表檔');
+  eq(z['xl/worksheets/sheet1.xml'], sheetXml, '沒有圖表的工作表不動');
+  eq(z['xl/worksheets/sheet3.xml'].endsWith('<ignoredErrors/><drawing r:id="rIdChartDrawing"/></worksheet>'), true, '★ <drawing> 放在 worksheet 最後（ignoredErrors 之後）');
+  eq(z['xl/worksheets/_rels/sheet3.xml.rels'].includes('Target="../drawings/drawing1.xml"'), true, '★ ② 依 workbook 的關聯找到 sheet3.xml（不假設順序）');
+  eq(z['xl/worksheets/_rels/sheet2.xml.rels'].includes('Target="../drawings/drawing2.xml"'), true, '★ ③ 依 workbook 的關聯找到 sheet2.xml');
+  eq((z['xl/drawings/drawing2.xml'].match(/<xdr:twoCellAnchor/g) || []).length, 8, '③ 的繪圖層有 8 張圖');
+  eq((z['[Content_Types].xml'].match(/drawingml\.chart\+xml/g) || []).length, 11, 'Content_Types 登記 11 個圖表');
+  eq((z['[Content_Types].xml'].match(/officedocument\.drawing\+xml/g) || []).length, 2, 'Content_Types 登記 2 個繪圖層');
+  let err = '';
+  try { await api.addXlsxCharts(null, [{ ...c0, sheet: '不存在' }], fakeZip(zipIn)); } catch (e) { err = e.message; }
+  eq(err.includes('找不到工作表'), true, '找不到工作表要丟錯（匯出端會退回不含圖表的版本）');
+
+  console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
+  process.exit(fail ? 1 : 0);
+})();

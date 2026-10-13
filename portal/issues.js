@@ -1032,7 +1032,7 @@
     const [editItem,  setEditItem]  = useState(null);
     const [search1,   setSearch1]   = useState('');
     const [statusF,   setStatusF]   = useState('');
-    const [hideDoneA, setHideDoneA] = useState(true);   // 客戶異常：預設隱藏已完成
+    const [statsClosedA, setStatsClosedA] = useState(false);   // 分析頁：「含已完成」篩選（預設只看未完成）
     const [engF,      setEngF]      = useState('');
     const [search2,   setSearch2]   = useState('');
     const [personF,   setPersonF]   = useState('');
@@ -1126,8 +1126,9 @@
       return () => { u1(); u2(); u3(); u4(); };
     }, [user, limI, limE]);
 
-    // 客戶異常的已完成：只在要看時讀（顯示已完成、狀態篩選選已完成、或在分析頁）
-    const needClosedA = sub === 'stats' || (sub === 'anomaly' && (!hideDoneA || statusF === '已完成'));
+    // 客戶異常的已完成：只在篩選要它時才讀（2026-10-13 使用者決定：預設一律只顯示未完成，沒有「顯示已完成」按鈕）
+    //   列表＝狀態篩選選「已完成」或「全部」；分析頁＝上方篩選選「含已完成」
+    const needClosedA = (sub === 'stats' && statsClosedA) || (sub === 'anomaly' && (statusF === '已完成' || statusF === 'all'));
     const closedRangeA = (rangeA.from || rangeA.to) ? rangeA
       : { from: ymdLocal(new Date(Date.now() - CLOSED_DEFAULT_DAYS * 864e5)), to: '' };
     useEffect(() => {
@@ -1363,8 +1364,9 @@
     const filtA = anomalies.filter(it=>{
       const s=search1.toLowerCase();
       if(s && !it.customer.toLowerCase().includes(s) && !it.product.toLowerCase().includes(s)) return false;
-      if(statusF && it.status!==statusF) return false;
-      if(hideDoneA && !statusF && it.status==='已完成') return false;
+      if(statusF === 'all') { /* 全部（含已完成） */ }
+      else if(statusF) { if(it.status!==statusF) return false; }
+      else if(it.status==='已完成') return false;   // 預設：未完成
       if(engF    && it.engineer!==engF)  return false;
       if(!matchRegion(it)) return false;
       return true;
@@ -1506,17 +1508,12 @@
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5"/><path d="M11 11l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 <input value={search1} onChange={e=>setSearch1(e.target.value)} placeholder="搜尋客戶 / 品名"/>
               </div>
-              <select className="t-sel" value={statusF} onChange={e=>setStatusF(e.target.value)}><option value="">所有狀態</option><option>處理中</option><option>已完成</option><option>暫停</option></select>
+              <select className="t-sel" value={statusF} onChange={e=>setStatusF(e.target.value)}><option value="">未完成（全部）</option><option>處理中</option><option>暫停</option><option>已完成</option><option value="all">全部（含已完成）</option></select>
               <select className="t-sel" value={engF} onChange={e=>setEngF(e.target.value)}><option value="">所有工程師</option>{engineers.map(k=><option key={k} value={k}>{K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k}</option>)}</select>
               {regionSelect()}
-              <button
-                onClick={()=>setHideDoneA(v=>!v)}
-                style={{height:30,padding:'0 13px',border:'1px solid var(--line)',borderRadius:999,background:hideDoneA?'var(--bg-soft)':'var(--accent-soft)',color:hideDoneA?'var(--ink-3)':'var(--accent)',fontSize:12,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,whiteSpace:'nowrap',flexShrink:0,fontWeight:hideDoneA?400:600,transition:'all 0.12s',fontFamily:'inherit'}}>
-                {hideDoneA ? '顯示已完成' : '👁 顯示已完成'}
-              </button>
               <RangeInputs label="異常日期" type="date" range={rangeA} setRange={setRangeA} clearable title="依「異常日期」篩選；兩端都可留空"/>
               <ClosedNote range={rangeA} closedRange={closedRangeA} loaded={needClosedA}/>
-              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出目前已載入的客戶異常（含已完成要先按「顯示已完成」，範圍依期間）">⬇ 匯出Excel</button>
+              <button className="btn-cancel" style={{padding:'0 12px',fontSize:12}} onClick={exportAnomalies} title="匯出目前已載入的客戶異常（要含已完成，狀態篩選先選「已完成」或「全部」；範圍依期間）">⬇ 匯出Excel</button>
               <SettingsBtn/>
             </div>
             <div className="table-wrap">
@@ -1735,6 +1732,11 @@
           {/* 分析 */}
           {sub==='stats'&&<>
             <div className="toolbar">
+              <select className="t-sel" value={statsClosedA ? 'all' : 'open'} onChange={e=>setStatsClosedA(e.target.value === 'all')}
+                title="預設只統計未完成的客戶異常；要含已完成請選「含已完成」（會另外讀取該期間的資料）">
+                <option value="open">客戶異常：只看未完成</option>
+                <option value="all">客戶異常：含已完成</option>
+              </select>
               <RangeInputs label="客戶異常期間" type="date" range={rangeA} setRange={setRangeA} clearable title="依「異常日期」；兩端都可留空"/>
               <ClosedNote range={rangeA} closedRange={closedRangeA} loaded={needClosedA}/>
             </div>
