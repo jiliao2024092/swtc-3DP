@@ -20,6 +20,10 @@ const {
   assertSucceeds,
   assertFails,
 } = require('@firebase/rules-unit-testing');
+// 只拿 serverTimestamp()：首次登入的自助建立測試要送出與前端一模一樣的內容
+const firebaseCompat = require('firebase/compat/app').default;
+require('firebase/compat/firestore');
+const serverTimestamp = () => firebaseCompat.firestore.FieldValue.serverTimestamp();
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const RULES = fs.readFileSync(path.join(ROOT, 'firestore.rules'), 'utf8');
@@ -159,6 +163,44 @@ async function main() {
   await ok('保底管理員首次登入可寫 role:admin（isDefaultAdmin 放行）',
     as({ uid: 'u_new6', email: 'jiliao@swtc.com' })
       .doc('users/u_new6').set({ email: 'jiliao@swtc.com', role: 'admin' }));
+
+  // ══ users：自助建立只能是最低權限（不只擋 admin）════════════════════
+  // Auth 的開放註冊必須開著（後台新增使用者靠它），所以任何人都能註冊後直接打 API。
+  // 原本只擋 admin：自己寫 manage_users 就能改別人權限、寫 role:'editor' 就能寫預約與庫存。
+  await ok('首次登入：3DP-BK / inventory 實際送出的內容可以建立',
+    as({ uid: 'u_sc1', email: 'sc1@swtc.com' }).doc('users/u_sc1').set({
+      email: 'sc1@swtc.com', displayName: 'sc1', role: 'viewer', createdAt: serverTimestamp(),
+    }));
+  await ok('首次登入：不寫 role、不寫 permissions 也可以建立',
+    as({ uid: 'u_sc2', email: 'sc2@swtc.com' }).doc('users/u_sc2').set({ email: 'sc2@swtc.com' }));
+  await ok('保底管理員首次登入：實際送出的內容（role:admin）可以建立',
+    as({ uid: 'u_sc_def', email: 'jiliao@swtc.com' }).doc('users/u_sc_def').set({
+      email: 'jiliao@swtc.com', displayName: 'jiliao', role: 'admin', createdAt: serverTimestamp(),
+    }));
+  await nok('★ 自助建立不可寫 manage_users（否則可改別人的權限）',
+    as({ uid: 'u_sc3', email: 'sc3@swtc.com' }).doc('users/u_sc3')
+      .set({ email: 'sc3@swtc.com', role: 'viewer', permissions: ['manage_users'] }));
+  await nok('★ 自助建立不可寫跨區權限',
+    as({ uid: 'u_sc4', email: 'sc4@swtc.com' }).doc('users/u_sc4')
+      .set({ email: 'sc4@swtc.com', permissions: ['view_all_regions', 'edit_all_regions'] }));
+  await nok('★ 自助建立不可寫任何權限，連 viewer 預設的 view_board 也不行',
+    as({ uid: 'u_sc5', email: 'sc5@swtc.com' }).doc('users/u_sc5')
+      .set({ email: 'sc5@swtc.com', permissions: ['view_board'] }));
+  await nok('★ 自助建立不可寫 role:editor（舊 role 欄位就能過 isLegacyEditorOrAdmin）',
+    as({ uid: 'u_sc6', email: 'sc6@swtc.com' }).doc('users/u_sc6')
+      .set({ email: 'sc6@swtc.com', role: 'editor' }));
+  await nok('★ 自助建立不可冒用保底管理員的 email（否則 admin 刪不掉、停用不了）',
+    as({ uid: 'u_sc7', email: 'sc7@swtc.com' }).doc('users/u_sc7')
+      .set({ email: 'jiliao@swtc.com', role: 'viewer' }));
+  await nok('★ 自助建立的 email 必須等於登入的 email',
+    as({ uid: 'u_sc8', email: 'sc8@swtc.com' }).doc('users/u_sc8')
+      .set({ email: 'someone-else@swtc.com' }));
+  await nok('★ 自助建立不可寫白名單以外的欄位（例：active）',
+    as({ uid: 'u_sc9', email: 'sc9@swtc.com' }).doc('users/u_sc9')
+      .set({ email: 'sc9@swtc.com', active: true }));
+  await nok('★ 不可替別人自助建立（uid 不符，且沒有 manage_users）',
+    as({ uid: 'u_sc10', email: 'sc10@swtc.com' }).doc('users/u_sc_other')
+      .set({ email: 'sc10@swtc.com' }));
 
   // ══ users：保底管理員不可被降權 / 停用 / 刪除 ══════════════════════
   await nok('★ 不可移除保底管理員的 admin 權限',

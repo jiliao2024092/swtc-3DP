@@ -121,13 +121,22 @@ service cloud.firestore {
     }
 
     // 首次登入時前端會自助建立自己的 users 文件（3DP-BK.html / inventory.html 的
-    // onAuthStateChanged）。原本 create 只檢查 uid 相符、完全不看內容，任何能登入的人
-    // 都可以繞過前端、直接呼叫 Firestore API 寫 { role:'admin' } 或
-    // { permissions:['admin'] } 把自己變成管理員。這裡把自助建立限制成非 admin；
+    // onAuthStateChanged），只寫 email / displayName / role:'viewer' / createdAt。
+    // 自助建立一律限制成「最低權限」，任何能登入的人都可以繞過前端直接打 Firestore API：
+    //   - 原本只擋 admin，其他權限照寫：自己寫 manage_users 就能改別人權限、寫
+    //     edit_all_regions 就能跨區改資料；寫 role:'editor' 就過 isLegacyEditorOrAdmin()
+    //   - Auth 的「開放註冊」必須開著（後台新增使用者是前端 createUserWithEmailAndPassword），
+    //     所以「任何能登入的人」＝任何拿到公開 API key 自行註冊的人
+    //   - email 必須等於登入的 email：否則冒用保底管理員的 email 寫進文件，
+    //     isProtectedAdminDoc() 會讓這份文件變成 admin 刪不掉、也停用不了
+    // permissions 只能不寫或空陣列；要給權限由 admin / manage_users 在後台套用角色。
     // 保底管理員帳號本身首次登入要寫 role:'admin'，用 isDefaultAdmin() 放行。
-    function selfCreateIsNotAdmin() {
-      return !('admin' in request.resource.data.get('permissions', []))
-        && request.resource.data.get('role', 'viewer') != 'admin';
+    function selfCreateIsMinimal() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['email', 'displayName', 'role', 'createdAt', 'region', 'permissions'])
+        && d.get('email', '') == request.auth.token.email
+        && d.get('role', 'viewer') == 'viewer'
+        && d.get('permissions', []) == [];
     }
 
     // 地區（北中南）不可自助變更：分區上線後 region 決定看得到哪一區的資料，
@@ -167,7 +176,7 @@ service cloud.firestore {
         || hasPerm('manage_users')
       );
       allow create: if isLoggedIn() && (
-        (request.auth.uid == userId && selfCreateRegionOk() && (selfCreateIsNotAdmin() || isDefaultAdmin()))
+        (request.auth.uid == userId && selfCreateRegionOk() && (selfCreateIsMinimal() || isDefaultAdmin()))
         || isAdmin()
         || canCreateOtherUser()
       );
