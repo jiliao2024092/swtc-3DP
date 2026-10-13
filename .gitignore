@@ -24,6 +24,10 @@ serviceAccountKey.json
 # Eiger API 探測輸出（含員工 email/姓名、客戶件名、AWS presigned URL，不可外流）
 tools/_eiger_dump*/
 
+# 文件（.md）不進版控（2026-10-13 使用者決定）：repo 是公開的，CLAUDE.md、docs/ 含內部資訊。
+# 本機仍保留這些檔案（Claude Code 每次開工要讀 CLAUDE.md），備份要另外處理。
+*.md
+
 # 系統檔
 .DS_Store
 Thumbs.db
