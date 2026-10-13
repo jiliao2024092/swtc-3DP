@@ -108,47 +108,24 @@ service cloud.firestore {
 
     // 主管（有 manage_users 權限）可代其他使用者套用角色/停用帳號，但兩道防線都要過：
     //   1) 目標使用者「原本」不能是 admin（不可異動管理員本人）
-    //   2) 寫入後的 permissions「不能」含 admin（不可把別人升級成管理員）
+    //   2) 寫入後「不能」是 admin（不可把別人或自己升級成管理員）
     // 個別權限勾選限制（只能套角色預設、不能勾細項）是前端 UserModal 的 UI 限制，
     // 規則層只把關「不能造出/異動 admin」這條硬邊界，避免過度複雜難以維護。
     // ★ 一律用 .get(欄位, 預設值)：舊資料可能只有 role 沒有 permissions，直接取欄位
     //   會讓整條規則求值失敗（結果是拒絕），造成「明明有權限卻寫不進去」的難查問題。
+    // ★ permissions 與舊 role 兩個欄位都要擋（2026-10-13 模擬器實測）：hasPerm() 把
+    //   role == 'admin' 也當成 admin，原本只看 permissions，主管把自己的文件寫成
+    //   { role:'admin' } 就變成管理員（能列出、刪除所有使用者）。
+    function isAdminDoc(d) {
+      return 'admin' in d.get('permissions', []) || d.get('role', 'viewer') == 'admin';
+    }
     function canManageOtherUser() {
       return hasPerm('manage_users')
-        && !('admin' in resource.data.get('permissions', []))
-        && !('admin' in request.resource.data.get('permissions', []));
+        && !isAdminDoc(resource.data)
+        && !isAdminDoc(request.resource.data);
     }
     function canCreateOtherUser() {
-      return hasPerm('manage_users') && !('admin' in request.resource.data.get('permissions', []));
-    }
-
-    // 首次登入時前端會自助建立自己的 users 文件（3DP-BK.html / inventory.html 的
-    // onAuthStateChanged），只寫 email / displayName / role:'viewer' / createdAt。
-    // 自助建立一律限制成「最低權限」，任何能登入的人都可以繞過前端直接打 Firestore API：
-    //   - 原本只擋 admin，其他權限照寫：自己寫 manage_users 就能改別人權限、寫
-    //     edit_all_regions 就能跨區改資料；寫 role:'editor' 就過 isLegacyEditorOrAdmin()
-    //   - Auth 的「開放註冊」必須開著（後台新增使用者是前端 createUserWithEmailAndPassword），
-    //     所以「任何能登入的人」＝任何拿到公開 API key 自行註冊的人
-    //   - email 必須等於登入的 email：否則冒用保底管理員的 email 寫進文件，
-    //     isProtectedAdminDoc() 會讓這份文件變成 admin 刪不掉、也停用不了
-    // permissions 只能不寫或空陣列；要給權限由 admin / manage_users 在後台套用角色。
-    // 保底管理員帳號本身首次登入要寫 role:'admin'，用 isDefaultAdmin() 放行。
-    function selfCreateIsMinimal() {
-      let d = request.resource.data;
-      return d.keys().hasOnly(['email', 'displayName', 'role', 'createdAt', 'region', 'permissions'])
-        && d.get('email', '') == request.auth.token.email
-        && d.get('role', 'viewer') == 'viewer'
-        && d.get('permissions', []) == [];
-    }
-
-    // 地區（北中南）不可自助變更：分區上線後 region 決定看得到哪一區的資料，
-    // 等同於一種權限。只有 admin 或有 manage_users 的主管能透過後台改別人的 region。
-    // 這裡擋的是「自己改自己」——update 規則本來就只放行 admin/manage_users，
-    // 但一般使用者仍能 create 自己的文件（首次登入），所以要在 create 端也守住：
-    // 自助建立時只能寫合法區碼，不能藉此把自己塞進別區。
-    function selfCreateRegionOk() {
-      return !('region' in request.resource.data)
-        || request.resource.data.region in ['north', 'central', 'south'];
+      return hasPerm('manage_users') && !isAdminDoc(request.resource.data);
     }
 
     // 保底管理員：保證系統永遠至少有一位 admin。
@@ -177,8 +154,13 @@ service cloud.firestore {
         || isAdmin()
         || hasPerm('manage_users')
       );
+      // 自助建立（自己建自己的文件）只留給保底管理員首次登入（2026-10-13 使用者決定）。
+      // 帳號一律由後台建立：Cloud Function create_user 用 Admin SDK 同時建 Auth 帳號與
+      // 這份文件（Admin SDK 不經規則）。原本任何能登入的人都能在 3DP-BK／inventory 首次登入時
+      // 自建文件，而 Auth 的開放註冊又開著 → 拿公開 API key 註冊就能自建文件、讀預約、留言；
+      // 只刪了文件、沒刪 Auth 帳號的人，重新登入也會自己長回來。
       allow create: if isLoggedIn() && (
-        (request.auth.uid == userId && selfCreateRegionOk() && (selfCreateIsMinimal() || isDefaultAdmin()))
+        (request.auth.uid == userId && isDefaultAdmin())
         || isAdmin()
         || canCreateOtherUser()
       );

@@ -76,6 +76,13 @@ const USERS = {
   // 公共事項看板：發文者（只有 manage_posts，沒有其他管理權限）、已停用的帳號
   poster:     { uid: 'u_post', email: 'post@swtc.com', permissions: ['view_board','manage_posts'], region: 'south' },
   disabled:   { uid: 'u_off',  email: 'off@swtc.com',  permissions: ['view_board'], active: false },
+  // 主管 × 舊 role 欄位（2026-10-13）：以下都是專用帳號。規則若有漏洞，斷言失敗的同時
+  // 這些帳號會真的被寫成 admin，用共用帳號的話後面的測試會跟著失真
+  mgrRole:    { uid: 'u_mgrR',  email: 'mgrr@swtc.com',  permissions: ['view_board','manage_users'] },
+  roleTarget: { uid: 'u_tgtR',  email: 'tgtr@swtc.com',  permissions: ['view_board'] },
+  roleTarget2:{ uid: 'u_tgtR2', email: 'tgtr2@swtc.com', permissions: ['view_board'] },
+  // 只有舊 role:'admin'、沒有 permissions（3DP-BK 使用者管理建出來的管理員就長這樣）
+  legacyAdm:  { uid: 'u_legAdm', email: 'legadm@swtc.com', role: 'admin' },
 };
 
 async function main() {
@@ -152,63 +159,37 @@ async function main() {
   await ok('admin 可列出整個 users 集合',
     as(USERS.admin).collection('users').get());
 
-  // ══ users：自助建立不可自我提權（盤點時發現的漏洞）══════════════════
-  await ok('首次登入可自助建立自己的文件（非 admin 內容）',
-    as({ uid: 'u_new1', email: 'new1@swtc.com' })
-      .doc('users/u_new1').set({ email: 'new1@swtc.com', role: 'viewer', permissions: [] }));
+  // ══ users：自助建立只留給保底管理員（2026-10-13）══════════════════
+  // 帳號一律由後台 Cloud Function create_user（Admin SDK，不經規則）建立。
+  // Auth 的開放註冊關掉之前，任何人拿公開 API key 註冊後都能直接打 Firestore API，
+  // 所以第一條用 3DP-BK／inventory 首次登入實際送出的內容來測。
+  await nok('★ 一般帳號首次登入不可自助建立文件（3DP-BK／inventory 實際送出的內容）',
+    as({ uid: 'u_new1', email: 'new1@swtc.com' }).doc('users/u_new1').set({
+      email: 'new1@swtc.com', displayName: 'new1', role: 'viewer', createdAt: FV.serverTimestamp(),
+    }));
+  await nok('★ 一般帳號自助建立：什麼權限都不寫也不行（有文件就能讀預約、在公共事項留言）',
+    as({ uid: 'u_new1b', email: 'new1b@swtc.com' }).doc('users/u_new1b').set({ email: 'new1b@swtc.com' }));
   await nok('★ 自助建立不可把自己寫成 role:admin',
     as({ uid: 'u_new2', email: 'new2@swtc.com' })
       .doc('users/u_new2').set({ email: 'new2@swtc.com', role: 'admin' }));
   await nok('★ 自助建立不可把自己寫成 permissions:[admin]',
     as({ uid: 'u_new3', email: 'new3@swtc.com' })
       .doc('users/u_new3').set({ email: 'new3@swtc.com', permissions: ['admin'] }));
-  await nok('★ 自助建立不可寫入非法的 region',
+  await nok('★ 自助建立不可寫 manage_users（模擬器實測：之後再寫 role:admin 就成了管理員）',
     as({ uid: 'u_new4', email: 'new4@swtc.com' })
-      .doc('users/u_new4').set({ email: 'new4@swtc.com', region: '偷改的區' }));
-  await ok('自助建立可寫入合法的 region',
+      .doc('users/u_new4').set({ email: 'new4@swtc.com', role: 'viewer', permissions: ['manage_users'] }));
+  await nok('★ 不可冒用保底管理員的 email 自助建立（認的是登入的 email，不是文件內容）',
     as({ uid: 'u_new5', email: 'new5@swtc.com' })
-      .doc('users/u_new5').set({ email: 'new5@swtc.com', region: 'north' }));
+      .doc('users/u_new5').set({ email: 'jiliao@swtc.com', role: 'admin' }));
+  await nok('★ 一般使用者不可替別人建立文件（uid 不符、又沒有 manage_users）',
+    as(USERS.engineer).doc('users/u_new_by_eng').set({ email: 'x@swtc.com', role: 'viewer' }));
   await ok('保底管理員首次登入可寫 role:admin（isDefaultAdmin 放行）',
     as({ uid: 'u_new6', email: 'jiliao@swtc.com' })
       .doc('users/u_new6').set({ email: 'jiliao@swtc.com', role: 'admin' }));
-
-  // ══ users：自助建立只能是最低權限（不只擋 admin）════════════════════
-  // Auth 的開放註冊必須開著（後台新增使用者靠它），所以任何人都能註冊後直接打 API。
-  // 原本只擋 admin：自己寫 manage_users 就能改別人權限、寫 role:'editor' 就能寫預約與庫存。
-  await ok('首次登入：3DP-BK / inventory 實際送出的內容可以建立',
-    as({ uid: 'u_sc1', email: 'sc1@swtc.com' }).doc('users/u_sc1').set({
-      email: 'sc1@swtc.com', displayName: 'sc1', role: 'viewer', createdAt: FV.serverTimestamp(),
-    }));
-  await ok('首次登入：不寫 role、不寫 permissions 也可以建立',
-    as({ uid: 'u_sc2', email: 'sc2@swtc.com' }).doc('users/u_sc2').set({ email: 'sc2@swtc.com' }));
-  await ok('保底管理員首次登入：實際送出的內容（role:admin）可以建立',
-    as({ uid: 'u_sc_def', email: 'jiliao@swtc.com' }).doc('users/u_sc_def').set({
+  await ok('保底管理員首次登入：3DP-BK／inventory 實際送出的內容可以建立',
+    as({ uid: 'u_new7', email: 'jiliao@swtc.com' }).doc('users/u_new7').set({
       email: 'jiliao@swtc.com', displayName: 'jiliao', role: 'admin', createdAt: FV.serverTimestamp(),
     }));
-  await nok('★ 自助建立不可寫 manage_users（否則可改別人的權限）',
-    as({ uid: 'u_sc3', email: 'sc3@swtc.com' }).doc('users/u_sc3')
-      .set({ email: 'sc3@swtc.com', role: 'viewer', permissions: ['manage_users'] }));
-  await nok('★ 自助建立不可寫跨區權限',
-    as({ uid: 'u_sc4', email: 'sc4@swtc.com' }).doc('users/u_sc4')
-      .set({ email: 'sc4@swtc.com', permissions: ['view_all_regions', 'edit_all_regions'] }));
-  await nok('★ 自助建立不可寫任何權限，連 viewer 預設的 view_board 也不行',
-    as({ uid: 'u_sc5', email: 'sc5@swtc.com' }).doc('users/u_sc5')
-      .set({ email: 'sc5@swtc.com', permissions: ['view_board'] }));
-  await nok('★ 自助建立不可寫 role:editor（舊 role 欄位就能過 isLegacyEditorOrAdmin）',
-    as({ uid: 'u_sc6', email: 'sc6@swtc.com' }).doc('users/u_sc6')
-      .set({ email: 'sc6@swtc.com', role: 'editor' }));
-  await nok('★ 自助建立不可冒用保底管理員的 email（否則 admin 刪不掉、停用不了）',
-    as({ uid: 'u_sc7', email: 'sc7@swtc.com' }).doc('users/u_sc7')
-      .set({ email: 'jiliao@swtc.com', role: 'viewer' }));
-  await nok('★ 自助建立的 email 必須等於登入的 email',
-    as({ uid: 'u_sc8', email: 'sc8@swtc.com' }).doc('users/u_sc8')
-      .set({ email: 'someone-else@swtc.com' }));
-  await nok('★ 自助建立不可寫白名單以外的欄位（例：active）',
-    as({ uid: 'u_sc9', email: 'sc9@swtc.com' }).doc('users/u_sc9')
-      .set({ email: 'sc9@swtc.com', active: true }));
-  await nok('★ 不可替別人自助建立（uid 不符，且沒有 manage_users）',
-    as({ uid: 'u_sc10', email: 'sc10@swtc.com' }).doc('users/u_sc_other')
-      .set({ email: 'sc10@swtc.com' }));
 
   // ══ users：保底管理員不可被降權 / 停用 / 刪除 ══════════════════════
   await nok('★ 不可移除保底管理員的 admin 權限',
@@ -240,6 +221,27 @@ async function main() {
   await ok('主管可以套用一般角色給一般使用者',
     as(USERS.manager).doc(`users/${USERS.viewer.uid}`)
       .set({ permissions: ['view_board','edit_board'] }, { merge: true }));
+
+  // ══ users：主管 × 舊 role 欄位（2026-10-13 模擬器實測的提權路徑）══════
+  // hasPerm() 把 role == 'admin' 也當成 admin。原本主管的邊界只看 permissions，
+  // 把自己的文件寫成 { role:'admin' } 就變成管理員（之後能列出、刪除所有使用者）。
+  await nok('★ 主管不可把自己寫成 role:admin',
+    as(USERS.mgrRole).doc(`users/${USERS.mgrRole.uid}`).set({ role: 'admin' }, { merge: true }));
+  await nok('★ 承上：主管仍不可刪除使用者（若上一條被放行，這條也會跟著被放行）',
+    as(USERS.mgrRole).doc(`users/${USERS.roleTarget2.uid}`).delete());
+  await nok('★ 主管不可把別人寫成 role:admin',
+    as(USERS.manager).doc(`users/${USERS.roleTarget.uid}`).set({ role: 'admin' }, { merge: true }));
+  await nok('★ 主管不可建立 role:admin 的使用者文件',
+    as(USERS.manager).doc('users/u_mgr_new_adm').set({ email: 'mna@swtc.com', role: 'admin' }));
+  await nok('★ 主管不可異動只有舊 role:admin 的帳號（沒有 permissions 也是管理員）',
+    as(USERS.manager).doc(`users/${USERS.legacyAdm.uid}`).set({ active: false }, { merge: true }));
+  await ok('主管套用角色：portal 實際寫入的內容（permissions 連同推導出的 role）可以寫',
+    as(USERS.manager).doc(`users/${USERS.roleTarget.uid}`)
+      .set({ permissions: ['view_board','edit_board'], role: 'editor', active: true }, { merge: true }));
+  await ok('主管仍可建立一般使用者文件',
+    as(USERS.manager).doc('users/u_mgr_new').set({ email: 'mn@swtc.com', permissions: ['view_board'], role: 'viewer', active: true }));
+  await ok('admin 仍可把別人設成 role:admin（3DP-BK 使用者管理的角色下拉）',
+    as(USERS.admin).doc(`users/${USERS.roleTarget2.uid}`).set({ role: 'admin' }, { merge: true }));
 
   // ══ print_history：刪自己的、不能刪別人的 ═════════════════════════
   await ok('登入者可建立自己的 print_history（uid 等於自己）',

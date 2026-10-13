@@ -588,7 +588,10 @@ onAuthStateChanged(auth, async (user) => {
             let role, displayName;
 
             if (!snap.exists()) {
-                role = (user.email === DEFAULT_ADMIN_EMAIL) ? 'admin' : 'viewer';
+                // 只有保底管理員能自建文件（firestore.rules，2026-10-13）；其他帳號一律由後台建立。
+                // 沒有文件＝不是後台建的帳號、或文件被刪了，直接說清楚，不要讓它撞出權限錯誤
+                if (user.email !== DEFAULT_ADMIN_EMAIL) throw new Error('此帳號尚未建立使用者資料，請聯絡管理員');
+                role = 'admin';
                 displayName = user.email.split('@')[0];
                 await setDoc(userRef, {
                     email: user.email,
