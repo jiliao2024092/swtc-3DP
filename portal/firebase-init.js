@@ -19,10 +19,6 @@ if (window.initAppCheckCompat) window.initAppCheckCompat();
 // 對外暴露
 window.fbAuth = firebase.auth();
 window.fbDb   = firebase.firestore();
+// （原本這裡還有一個 secondary app 給「新增使用者」用；2026-10-13 起改由 Cloud Function create_user 建帳號）
 
-// secondary app：admin 新增使用者時用（避免覆蓋自己的登入 session）
-// 一次性建立並重用，跟原本 3DP-BK / inventory 的做法一致
-window.fbSecondaryApp  = firebase.initializeApp(firebaseConfig, 'Secondary');
-window.fbSecondaryAuth = window.fbSecondaryApp.auth();
-
-console.log('[firebase-init] 已連線 swtc-3dp-poc（含 secondary app）');
+console.log('[firebase-init] 已連線 swtc-3dp-poc');

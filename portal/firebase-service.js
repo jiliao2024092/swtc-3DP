@@ -745,30 +745,32 @@
         err => { console.error('[user] onSnapshot 失敗:', err); }
       );
     },
-    // 建立新帳號：用第二個 Firebase app instance，避免把目前管理員登出
+    // 建立新帳號：交給 Cloud Function create_user（functions/main.py，Admin SDK 建 Auth 帳號＋寫 users 文件，
+    // role 由伺服器依 permissions 推導）。
+    // ★ 不可改回前端 createUserWithEmailAndPassword：那需要 Firebase Auth 的「開放註冊」開著，
+    //   任何拿到公開 API key 的人都能自行註冊（2026-10-13 起關閉，tools/test_create_user.py 有守）
     async createUser(email, password, profile) {
-      const secondaryAuth = window.fbSecondaryAuth;
-      if (!secondaryAuth) {
-        throw new Error('secondary auth 未初始化（firebase-init.js）');
-      }
+      if (!window.loadFirebaseCompatModule) throw new Error('appcheck.js 未載入，無法取得 Firebase SDK 版本');
+      await window.loadFirebaseCompatModule('functions');
       try {
-        // 用 secondary auth 建立新 user，不影響目前管理員的登入 session
-        const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
-        const uid = cred.user.uid;
-        await secondaryAuth.signOut();
-        // 用主 app 的 db 寫 Firestore（仍以 admin 身分，符合 rules）
-        const permissions = profile.permissions || window.ROLE_PRESETS.viewer;
-        await db.collection('users').doc(uid).set({
-          email:        profile.email || email,
-          displayName:  profile.displayName || '',
-          permissions:  permissions,
-          role:         roleFromPermissions(permissions),  // 同步寫 role 給 3DP-BK / inventory 用
-          active:       profile.active !== false,
-          createdAt:    firebase.firestore.FieldValue.serverTimestamp(),
+        // ★ region 一定要帶：預設是 us-central1，找不到函式時錯誤訊息不會提到 region
+        const res = await firebase.app().functions('asia-east1').httpsCallable('create_user')({
+          email:       profile.email || email,
+          password,
+          displayName: profile.displayName || '',
+          permissions: profile.permissions || window.ROLE_PRESETS.viewer,
+          active:      profile.active !== false,
+          region:      profile.region,   // 原本這裡沒寫入，新帳號一律被當成中部
         });
-        return uid;
+        return res.data.uid;
       } catch (e) {
         console.error('[createUser] 失敗:', e.code, e.message);
+        // 伺服器自己丟的錯誤（email 已被使用、主管不可建立管理員…）訊息是中文，直接顯示。
+        // 只剩代碼的 internal／not-found 是函式根本沒執行到（還在部署、或 Cloud Run 沒開公開叫用）
+        const code = (e.code || '').replace(/^functions\//, '');
+        if (code === 'not-found' || (code === 'internal' && e.message === 'internal')) {
+          throw new Error('新增使用者的服務目前無法使用（可能正在部署，或 Cloud Run 未開放叫用），請稍後再試');
+        }
         throw e;
       }
     },

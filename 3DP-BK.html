@@ -509,7 +509,6 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
     getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
-    createUserWithEmailAndPassword,
     updatePassword, reauthenticateWithCredential, EmailAuthProvider
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
@@ -527,9 +526,6 @@ const app = initializeApp(firebaseConfig);
 if (window.initAppCheckModular) window.initAppCheckModular(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
-// secondary app 用於 admin 新增使用者（避免覆蓋自己的 session）
-const secondaryApp = initializeApp(firebaseConfig, 'Secondary');
-const secondaryAuth = getAuth(secondaryApp);
 
 // 預設 admin（首次登入時自動設為 admin）
 const DEFAULT_ADMIN_EMAIL = 'jiliao@swtc.com';
@@ -1783,27 +1779,25 @@ window.createNewUser = async function(){
     const btn = document.getElementById('create-user-btn');
     btn.disabled = true; btn.textContent = '建立中...';
     try {
-        // 用 secondary auth 建立新 user，不影響主 session
-        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pwd);
-        const newUid = cred.user.uid;
-        await signOut(secondaryAuth);
-        // 在主 db 建立 users 文件
-        await setDoc(doc(db,'users',newUid), {
-            email,
-            displayName: name || email.split('@')[0],
-            role,
-            createdAt: serverTimestamp(),
-            createdBy: currentUser.uid,
+        // 交給 Cloud Function create_user（Admin SDK 建 Auth 帳號＋寫 users 文件，createdBy 由伺服器填）。
+        // ★ 不可改回前端 createUserWithEmailAndPassword：那需要 Firebase Auth 的「開放註冊」開著，
+        //   任何拿到公開 API key 的人都能自行註冊（2026-10-13 起關閉，tools/test_create_user.py 有守）
+        // ★ functions SDK 只有建帳號時才載；版號取 appcheck.js 的單一來源，與上方靜態 import 同一版
+        const { getFunctions, httpsCallable } = await import(
+            `https://www.gstatic.com/firebasejs/${window.FIREBASE_SDK_VERSION}/firebase-functions.js`);
+        await httpsCallable(getFunctions(app, 'asia-east1'), 'create_user')({
+            email, password: pwd, displayName: name || email.split('@')[0], role,
         });
         showToast(`✓ 已建立 ${email} (${role})`,'success');
         hideAddUserForm();
         await loadUsersList();
     } catch(err){
-        const msg = {
-            'auth/email-already-in-use': '此 email 已被使用',
-            'auth/invalid-email': 'email 格式錯誤',
-            'auth/weak-password': '密碼強度不足（至少 6 字元）',
-        }[err.code] || ('建立失敗：' + err.message);
+        // 伺服器丟的錯誤（email 已被使用、密碼太短…）訊息是中文；只剩代碼的 internal／not-found
+        // 是函式根本沒執行到（還在部署、或 Cloud Run 沒開公開叫用）
+        const code = (err.code || '').replace(/^functions\//, '');
+        const msg = (code === 'not-found' || (code === 'internal' && err.message === 'internal'))
+            ? '新增使用者的服務目前無法使用（可能正在部署，或 Cloud Run 未開放叫用），請稍後再試'
+            : ('建立失敗：' + err.message);
         showToast(msg,'error');
     } finally {
         btn.disabled = false; btn.textContent = '建立帳號';
