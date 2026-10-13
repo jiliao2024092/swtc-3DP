@@ -30,10 +30,22 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      # ★ 只上傳前端會用到的檔案（2026-10-13）。原本 path: '.' 會把整個 repo 放上網站，
+      #   CLAUDE.md、functions/main.py、docs/、tools/ 任何人都能直接用網址打開。
+      #   前端只需要：根目錄的 *.html／*.js、favicon.ico、portal/ 資料夾。
+      #   ⚠ 新增前端檔案若放在其他位置（例如新的資料夾或圖片），要加進下面的清單，否則網站上會 404。
+      - name: Collect front-end files
+        run: |
+          mkdir _site
+          cp *.html *.js favicon.ico _site/
+          cp -r portal _site/portal
+          echo "上傳到網站的檔案："
+          find _site -type f | sort
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment
