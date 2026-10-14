@@ -3029,7 +3029,7 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
-  { hash:'PENDING', date:'2026-10-14', type:'tweak',
+  { hash:'8c3e07d', date:'2026-10-14', type:'tweak',
     text:'材料庫存 Markforged：「消耗記錄」新增材料、機台、責任工程師與日期篩選（匯出列印記錄也照篩選範圍），「月度分析」新增機台篩選。Formlabs 與 Markforged 的月度分析選了較早的年份或月份會自動載入那段資料，不用再先到消耗記錄按「載入更早一個月」。也更正了兩處過時的說明（Markforged 早已自動同步並扣庫存）。' },
   { hash:'00186ca', date:'2026-10-14', type:'fix',
     text:'安全性修正：機台預約的用途、公告內容、材料名稱裡如果夾帶程式碼，現在只會當成文字顯示，不會被執行。材料庫存 Markforged 分頁拿掉了「材料餘量觀測」區塊（內容與「Markforged 消耗記錄」重複，說明也已過時）。工作看板開啟新工單時不再額外讀取大量消耗紀錄，畫面與帶入結果不變。' },
