@@ -235,73 +235,6 @@
     </div>
 </div>
 
-<!-- ══ 使用者管理 Modal (僅 admin) ═══════════════ -->
-<div id="users-modal" class="modal-overlay hidden">
-    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-8 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-        <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center gap-3">
-                <div class="bg-[var(--danger-soft)] p-2.5 rounded-lg"><i data-lucide="users" class="w-5 h-5 text-[var(--danger)]"></i></div>
-                <h2 class="text-xl font-bold text-[var(--ink)]">使用者管理</h2>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="showAddUserForm()" class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-1.5">
-                    <i data-lucide="user-plus" class="w-4 h-4"></i> 新增使用者
-                </button>
-                <button onclick="closeUsersModal()" class="text-[var(--ink-5)] hover:text-[var(--ink-3)] px-2"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-        </div>
-        <!-- 新增使用者表單（預設隱藏）-->
-        <div id="add-user-form" class="hidden border border-[var(--accent-border)] bg-[var(--accent-soft)] rounded-lg p-4 mb-4 space-y-3">
-            <div class="grid grid-cols-2 gap-3">
-                <div class="space-y-1">
-                    <label class="text-xs font-medium text-[var(--ink-2)]">電子郵件</label>
-                    <input id="new-user-email" type="email" placeholder="user@example.com" class="w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-xs font-medium text-[var(--ink-2)]">顯示名稱</label>
-                    <input id="new-user-name" type="text" placeholder="John Doe" class="w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-xs font-medium text-[var(--ink-2)]">初始密碼（至少 6 字元）</label>
-                    <input id="new-user-password" type="password" class="w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div class="space-y-1">
-                    <label class="text-xs font-medium text-[var(--ink-2)]">角色</label>
-                    <select id="new-user-role" class="w-full p-2 border border-[var(--line-strong)] rounded-md text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="viewer">查看者（業務）</option>
-                        <option value="editor">編輯者（工程師）</option>
-                        <option value="admin">管理員</option>
-                    </select>
-                </div>
-            </div>
-            <div class="flex gap-2 justify-end">
-                <button onclick="hideAddUserForm()" class="px-3 py-1.5 text-sm border border-[var(--line-strong)] rounded-md hover:bg-[var(--bg-soft)]">取消</button>
-                <button onclick="createNewUser()" id="create-user-btn" class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-md disabled:opacity-60">建立帳號</button>
-            </div>
-        </div>
-        <!-- 使用者列表 -->
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse text-sm">
-                <thead>
-                    <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                        <th class="p-3 border-b font-medium">電子郵件</th>
-                        <th class="p-3 border-b font-medium">顯示名稱</th>
-                        <th class="p-3 border-b font-medium w-32">角色</th>
-                        <th class="p-3 border-b font-medium w-32">建立時間</th>
-                        <th class="p-3 border-b font-medium w-20 text-center">操作</th>
-                    </tr>
-                </thead>
-                <tbody id="users-tbody" class="divide-y divide-gray-100"></tbody>
-            </table>
-        </div>
-        <div class="mt-4 bg-[var(--warn-soft)] border border-[var(--warn-border)] rounded-lg p-3 text-xs text-[var(--warn)]">
-            <p class="font-medium mb-1">💡 提醒：</p>
-            <p>· 刪除使用者只會移除其權限資料，Firebase Authentication 帳號需另至 Console 刪除。</p>
-            <p>· 無法刪除自己的帳號。</p>
-        </div>
-    </div>
-</div>
-
 <!-- ══ 主介面 ════════════════════════════════════════ -->
 <div id="main-app" class="hidden p-4 md:p-8">
     <div class="max-w-7xl mx-auto space-y-6">
@@ -513,7 +446,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
 import {
     getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc,
-    getDoc, getDocs, onSnapshot, serverTimestamp, query, orderBy, where
+    getDoc, onSnapshot, serverTimestamp, query, orderBy, where
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 // ══ Firebase 配置 ══════════════════════════════
@@ -1713,116 +1646,6 @@ window.saveEdit = async function(){
         showToast('✓ 已儲存','success');
         closeEditModal();
     } catch(err){ showToast('儲存失敗：'+err.message,'error'); }
-};
-
-// ══════════════════════════════════════════════
-// ══ 7. 使用者管理 ═════════════════════════════
-// ══════════════════════════════════════════════
-window.showUsersModal = async function(){
-    if(currentUser.role !== 'admin'){ showToast('僅管理員可使用此功能','error'); return; }
-    document.getElementById('users-modal').classList.remove('hidden');
-    hideAddUserForm();
-    await loadUsersList();
-    lucide.createIcons();
-};
-window.closeUsersModal = function(){ document.getElementById('users-modal').classList.add('hidden'); };
-
-async function loadUsersList() {
-    const tbody = document.getElementById('users-tbody');
-    tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-[var(--ink-5)]">載入中...</td></tr>';
-    try {
-        const snap = await getDocs(collection(db,'users'));
-        const users = snap.docs.map(d=>({id:d.id, ...d.data()}));
-        if(!users.length){ tbody.innerHTML = '<tr><td colspan="5" class="p-6 text-center text-[var(--ink-5)]">尚無使用者</td></tr>'; return; }
-        tbody.innerHTML = '';
-        users.sort((a,b)=>(a.email||'').localeCompare(b.email||'')).forEach(u=>{
-            const isSelf = u.id === currentUser.uid;
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-[var(--bg-soft)]';
-            const roleSel = `<select onchange="changeUserRole('${u.id}', this.value)" ${isSelf?'disabled':''} class="text-xs border border-[var(--line-strong)] rounded px-2 py-1 ${isSelf?'bg-[var(--bg-panel)] cursor-not-allowed':''}">
-                <option value="admin"  ${u.role==='admin'?'selected':''}>管理員</option>
-                <option value="editor" ${u.role==='editor'?'selected':''}>編輯者</option>
-                <option value="viewer" ${u.role==='viewer'?'selected':''}>查看者</option>
-            </select>`;
-            tr.innerHTML = `
-                <td class="p-3 text-sm">${u.email||'—'}${isSelf?' <span class="text-xs text-[var(--accent)]">(你)</span>':''}</td>
-                <td class="p-3 text-sm text-[var(--ink-3)]">${u.displayName||'—'}</td>
-                <td class="p-3">${roleSel}</td>
-                <td class="p-3 text-xs text-[var(--ink-5)]">${u.createdAt?fmtRelTime(u.createdAt):'—'}</td>
-                <td class="p-3 text-center">
-                    ${isSelf?'<span class="text-xs text-[var(--ink-6)]">—</span>':
-                    `<button onclick="deleteUser('${u.id}','${u.email||''}')" class="p-1.5 text-[var(--ink-5)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-md"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`}
-                </td>
-            `;
-            tbody.appendChild(tr);
-        });
-        lucide.createIcons();
-    } catch(err){
-        tbody.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-[var(--danger)]">載入失敗：${err.message}</td></tr>`;
-    }
-}
-
-window.showAddUserForm = function(){
-    document.getElementById('add-user-form').classList.remove('hidden');
-    ['new-user-email','new-user-name','new-user-password'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('new-user-role').value='viewer';
-};
-window.hideAddUserForm = function(){ document.getElementById('add-user-form').classList.add('hidden'); };
-
-window.createNewUser = async function(){
-    const email = document.getElementById('new-user-email').value.trim();
-    const name  = document.getElementById('new-user-name').value.trim();
-    const pwd   = document.getElementById('new-user-password').value;
-    const role  = document.getElementById('new-user-role').value;
-    if(!email || !pwd){ showToast('請填寫 email 和密碼','error'); return; }
-    if(pwd.length < 6){ showToast('密碼至少 6 字元','error'); return; }
-    const btn = document.getElementById('create-user-btn');
-    btn.disabled = true; btn.textContent = '建立中...';
-    try {
-        // 交給 Cloud Function create_user（Admin SDK 建 Auth 帳號＋寫 users 文件，createdBy 由伺服器填）。
-        // ★ 不可改回前端 createUserWithEmailAndPassword：那需要 Firebase Auth 的「開放註冊」開著，
-        //   任何拿到公開 API key 的人都能自行註冊（2026-10-13 起關閉，tools/test_create_user.py 有守）
-        // ★ functions SDK 只有建帳號時才載；版號取 appcheck.js 的單一來源，與上方靜態 import 同一版
-        const { getFunctions, httpsCallable } = await import(
-            `https://www.gstatic.com/firebasejs/${window.FIREBASE_SDK_VERSION}/firebase-functions.js`);
-        await httpsCallable(getFunctions(app, 'asia-east1'), 'create_user')({
-            email, password: pwd, displayName: name || email.split('@')[0], role,
-        });
-        showToast(`✓ 已建立 ${email} (${role})`,'success');
-        hideAddUserForm();
-        await loadUsersList();
-    } catch(err){
-        // 伺服器丟的錯誤（email 已被使用、密碼太短…）訊息是中文；只剩代碼的 internal／not-found
-        // 是函式根本沒執行到（還在部署、或 Cloud Run 沒開公開叫用）
-        const code = (err.code || '').replace(/^functions\//, '');
-        const msg = (code === 'not-found' || (code === 'internal' && err.message === 'internal'))
-            ? '新增使用者的服務目前無法使用（可能正在部署，或 Cloud Run 未開放叫用），請稍後再試'
-            : ('建立失敗：' + err.message);
-        showToast(msg,'error');
-    } finally {
-        btn.disabled = false; btn.textContent = '建立帳號';
-    }
-};
-
-window.changeUserRole = async function(uid, newRole){
-    try {
-        await updateDoc(doc(db,'users',uid), { role: newRole });
-        showToast('✓ 角色已更新','success');
-    } catch(err){
-        showToast('更新失敗：'+err.message,'error');
-        await loadUsersList();
-    }
-};
-
-window.deleteUser = async function(uid, email){
-    if(!confirm(`確定要移除使用者「${email}」？\n\n注意：這只會移除其權限資料，登入帳號仍存在於 Authentication，需另至 Firebase Console 刪除。`)) return;
-    try {
-        await deleteDoc(doc(db,'users',uid));
-        showToast('✓ 已移除權限','success');
-        await loadUsersList();
-    } catch(err){
-        showToast('移除失敗：'+err.message,'error');
-    }
 };
 
 // ══════════════════════════════════════════════
