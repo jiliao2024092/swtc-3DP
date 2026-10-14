@@ -642,7 +642,7 @@
                     <button onclick="loadEarlierMonth()" class="flex items-center gap-1 px-2 py-1 border border-[var(--line-strong)] rounded-md hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] text-[var(--ink-3)]">
                         <i data-lucide="rewind" class="w-3 h-3"></i> 載入更早一個月
                     </button>
-                    <span id="history-loading" class="text-[var(--accent)] hidden">⏳ 載入中...</span>
+                    <span id="history-loading" data-hist-loading class="text-[var(--accent)] hidden">⏳ 載入中...</span>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -678,8 +678,8 @@
                         <!-- 選項由 populatePrinterFilters() 依 TRACKED_PRINTERS 產生 -->
                         <option value="">全部機台</option>
                     </select>
-                    <select id="monthly-year" onchange="renderMonthly()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
-                    <select id="monthly-month" onchange="onMonthlySelChange()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="monthly-year" onchange="onMonthlySelChange('year')" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="monthly-month" onchange="onMonthlySelChange('month')" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
             </div>
             <!-- 圓餅圖 -->
@@ -919,9 +919,26 @@
                     <input type="text" id="mf-hist-filter" oninput="renderMfHistory()" placeholder="搜尋材料 / 機台 / 責任工程師 / 備註..."
                         class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)] w-52">
                     <span id="mf-hist-count" class="text-xs text-[var(--ink-4)]"></span>
-                    <button onclick="exportMfPrintLogExcel()" title="列印視角：每次列印一列，欄位與 Formlabs 的「匯出列印記錄」完全相同（塑料與纖維會併成一列）。★ 匯出範圍以上面的搜尋條件為準" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                    <button onclick="exportMfPrintLogExcel()" title="列印視角：每次列印一列，欄位與 Formlabs 的「匯出列印記錄」完全相同（塑料與纖維會併成一列）。★ 匯出範圍以目前的搜尋與篩選條件為準" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                         <i data-lucide="printer" class="w-3.5 h-3.5"></i> 匯出列印記錄
                     </button>
+                </div>
+            </div>
+            <!-- 篩選（選項依目前載入的紀錄產生；起始日期早於已載入範圍時會自動補撈） -->
+            <div class="mb-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-medium text-[var(--ink-4)] mr-1">篩選：</span>
+                    <select id="mf-hist-material" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]"><option value="">全部材料</option></select>
+                    <select id="mf-hist-printer" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]"><option value="">全部機台</option></select>
+                    <select id="mf-hist-operator" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="依實際執行列印的人篩選（2026-09-11 之前的紀錄沒有這個欄位）"><option value="">全部責任工程師</option></select>
+                    <input type="date" id="mf-hist-from" onchange="applyMfHistoryDateRange()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="起始日期（早於目前載入範圍時會自動補撈）">
+                    <span class="text-xs text-[var(--ink-5)]">～</span>
+                    <input type="date" id="mf-hist-to" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="結束日期">
+                    <button onclick="resetMfHistoryFilters()" class="text-xs text-[var(--ink-4)] hover:text-[var(--accent)] underline ml-1">清除</button>
+                </div>
+                <div class="mt-2 flex items-center gap-3 text-xs">
+                    <span id="mf-hist-range" class="text-[var(--ink-4)]"></span>
+                    <span data-hist-loading class="text-[var(--accent)] hidden">⏳ 載入中...</span>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -953,6 +970,8 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-1">
+                    <span data-hist-loading class="text-xs text-[var(--accent)] hidden mr-2">⏳ 載入中...</span>
+                    <select id="mf-month-printer" onchange="renderMfMonthly()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" style="margin-right:.5rem"><option value="">全部機台</option></select>
                     <button onclick="mfMonthShift(-1)" title="上個月" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
                         <i data-lucide="chevron-left" class="w-4 h-4"></i>
                     </button>
@@ -2494,7 +2513,7 @@ const BRAND_TABS = {
 const ALL_TABS = [...BRAND_TABS.formlabs, ...BRAND_TABS.markforged, ...BRAND_TABS.summary];
 const BRAND_HINT = {
     formlabs:   '樹脂材料，單位 ml；由 Formlabs API 自動同步',
-    markforged: '線材，單位 cc；Eiger API 尚未接上，目前手動維護',
+    markforged: '線材，單位 cc；由 Eiger API 每 30 分鐘自動同步消耗並扣庫存',
     summary:    '北中南三區庫存並列；低於安全庫存以水位顯示',
 };
 
@@ -3435,18 +3454,81 @@ function mfHistoryMerged(rows) {
 function mfHistoryKeyword() {
     return (document.getElementById('mf-hist-filter')?.value || '').trim().toLowerCase();
 }
-function mfHistoryRows(kw) {
-    const k = (kw === undefined) ? mfHistoryKeyword() : kw;
-    return mfHistory.filter(h => !k
-        || String(h.material||'').toLowerCase().includes(k)
-        || String(h.printer||'').toLowerCase().includes(k)
-        || String(h.operator||'').toLowerCase().includes(k)
-        || String(h.note||'').toLowerCase().includes(k));
+// 這一頁目前的搜尋＋篩選條件（表格與「匯出列印記錄」共用，理由同 applyHistoryFilters）
+function mfHistoryFilters() {
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    return { kw: mfHistoryKeyword(), material: v('mf-hist-material'), printer: v('mf-hist-printer'),
+             operator: v('mf-hist-operator'), from: v('mf-hist-from'), to: v('mf-hist-to') };
+}
+function mfFilterSummary(f) {
+    const parts = [];
+    if (f.kw) parts.push(`搜尋「${f.kw}」`);
+    if (f.from || f.to) parts.push(`日期 ${f.from || '最早'}～${f.to || '最新'}`);
+    if (f.material) parts.push(`材料 ${f.material}`);
+    if (f.printer)  parts.push(`機台 ${f.printer}`);
+    if (f.operator) parts.push(`責任工程師 ${f.operator === OPERATOR_NONE ? '未填' : operatorLabel({ operator: f.operator })}`);
+    return parts;
+}
+function mfHistoryRows(f) {
+    f = f || mfHistoryFilters();
+    const k = f.kw || '';
+    return mfHistory.filter(h => {
+        if (f.material && h.material !== f.material) return false;
+        if (f.printer  && h.printer  !== f.printer)  return false;
+        // 比對原始值 operator（理由同 applyHistoryFilters）；'(未填)' 專挑沒有這個欄位的舊紀錄
+        if (f.operator) {
+            const op = (h.operator || '').trim();
+            if (f.operator === OPERATOR_NONE ? op !== '' : op !== f.operator) return false;
+        }
+        if (f.from && (h.ts||'').slice(0,10) < f.from) return false;
+        if (f.to   && (h.ts||'').slice(0,10) > f.to)   return false;
+        return !k
+            || String(h.material||'').toLowerCase().includes(k)
+            || String(h.printer||'').toLowerCase().includes(k)
+            || String(h.operator||'').toLowerCase().includes(k)
+            || String(h.note||'').toLowerCase().includes(k);
+    });
+}
+// 下拉選項依目前載入的紀錄產生（寫死清單會與實際資料走偏）；重建後把原本選的值選回來
+function fillMfSelect(id, allLabel, values, labelOf, tail) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const keep = el.value;
+    el.innerHTML = `<option value="">${allLabel}</option>`
+        + values.map(v => `<option value="${escHtml(v)}">${escHtml(labelOf ? labelOf(v) : v)}</option>`).join('')
+        + (tail || '');
+    el.value = keep;
+}
+function mfDistinct(field) {
+    return [...new Set(mfHistory.map(h => (h[field] || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+// 目前已載入的最早日期（Formlabs 與 Markforged 共用同一份範圍）
+function historyLoadedSinceText() {
+    const earliest = extraHistorySinceDate || historySinceDate;
+    return earliest ? earliest.toLocaleDateString('zh-TW') : '';
+}
+async function applyMfHistoryDateRange() {
+    const v = document.getElementById('mf-hist-from')?.value;
+    if (v) await ensureHistoryLoadedSince(new Date(v + 'T00:00:00'));
+    renderMfHistory();
+}
+function resetMfHistoryFilters() {
+    ['mf-hist-filter','mf-hist-material','mf-hist-printer','mf-hist-operator','mf-hist-from','mf-hist-to']
+        .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    renderMfHistory();
 }
 
 function renderMfHistory() {
     const tbody = document.getElementById('mf-hist-body');
     if (!tbody) return;
+    fillMfSelect('mf-hist-material', '全部材料', mfDistinct('material'));
+    fillMfSelect('mf-hist-printer',  '全部機台', mfDistinct('printer'));
+    fillMfSelect('mf-hist-operator', '全部責任工程師', mfDistinct('operator'),
+        n => operatorLabel({ operator: n }),
+        mfHistory.some(h => !(h.operator || '').trim()) ? `<option value="${OPERATOR_NONE}">（未填）</option>` : '');
+    const since = historyLoadedSinceText();
+    const rangeEl = document.getElementById('mf-hist-range');
+    if (rangeEl) rangeEl.textContent = since ? `資料範圍：${since} 起（起始日期選更早會自動載入）` : '';
     const raw  = mfHistoryRows();
     const rows = mfHistoryMerged(raw);
     const cnt = document.getElementById('mf-hist-count');
@@ -3457,8 +3539,8 @@ function renderMfHistory() {
         : '';
     if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-[var(--ink-5)]">${
-            mfHistory.length ? '沒有符合搜尋條件的紀錄'
-                             : '尚無 Markforged 消耗紀錄（接上 Eiger API 後自動產生）'}</td></tr>`;
+            mfHistory.length ? '沒有符合搜尋或篩選條件的紀錄'
+                             : `目前載入的範圍（${since || '最近 30 天'} 起）沒有 Markforged 消耗紀錄。機台離線或沒有列印時不會產生紀錄；要看更早的資料請選起始日期。`}</td></tr>`;
         return;
     }
     const fmtTs = t => { const d = t ? new Date(t) : null;
@@ -3501,9 +3583,13 @@ function renderMfHistory() {
 
 // ══ Markforged 月度分析 ══
 function mfMonthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-function mfMonthShift(delta) {
+// 換月份：先畫（標題立刻跟著變），該月不在已載入範圍內就補撈再畫一次
+async function mfMonthShift(delta) {
     if (!mfMonthCursor) mfMonthCursor = new Date();
     mfMonthCursor = new Date(mfMonthCursor.getFullYear(), mfMonthCursor.getMonth() + delta, 1);
+    renderMfMonthly();
+    const c = mfMonthCursor;
+    await ensureHistoryLoadedSince(new Date(c), `${c.getFullYear()} 年 ${c.getMonth()+1} 月起`);
     renderMfMonthly();
 }
 function renderMfMonthly() {
@@ -3511,8 +3597,11 @@ function renderMfMonthly() {
     const label = document.getElementById('mf-month-label');
     if (label) label.textContent = `${mfMonthCursor.getFullYear()} 年 ${mfMonthCursor.getMonth()+1} 月`;
 
+    fillMfSelect('mf-month-printer', '全部機台', mfDistinct('printer'));
+    const printerF = document.getElementById('mf-month-printer')?.value || '';
     const key = mfMonthKey(mfMonthCursor);
-    const rows = mfHistory.filter(h => h.ts && mfMonthKey(new Date(h.ts)) === key);
+    const rows = mfHistory.filter(h => h.ts && mfMonthKey(new Date(h.ts)) === key
+                                    && (!printerF || h.printer === printerF));
 
     // 責任工程師佔比。★ 用「原始那幾筆」而不是併過的列：佔比算的是用量，
     //   併不併都一樣；筆數則以實際的同步紀錄為準，與表格上方的數字一致。
@@ -3550,8 +3639,8 @@ function renderMfMonthly() {
     if (!tbody) return;
     if (!names.length) {
         tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[var(--ink-5)]">${
-            mfHistory.length ? '本月尚無 Markforged 消耗紀錄'
-                             : '尚無 Markforged 消耗紀錄（接上 Eiger API 後自動產生）'}</td></tr>`;
+            printerF ? '這台機台本月沒有消耗紀錄'
+                     : '本月沒有 Markforged 消耗紀錄（機台離線或沒有列印時不會產生紀錄）'}</td></tr>`;
         return;
     }
     tbody.innerHTML = names.map(m => {
@@ -5643,25 +5732,29 @@ async function loadEarlierMonth() {
     }
 }
 
-// 確保「該年度」資料已經涵蓋在 inv.history 內（月度分析選「全年」時用）。
-// 只補撈目前已載入範圍以外的缺口（[yearStart, 目前已載入的最早日期)），已涵蓋就不重撈，避免浪費 Firestore 讀取額度。
-async function ensureYearLoaded(year) {
-    if (!historySinceDate) return;
-    const yearStart = new Date(year, 0, 1);
+// 確保 [from, 目前已載入的最早日期) 這段已經載入（Formlabs 與 Markforged 共用同一份範圍）。
+// 只補撈缺口，已涵蓋就不重撈，避免浪費 Firestore 讀取額度。what＝提示訊息裡的範圍說明。
+async function ensureHistoryLoadedSince(from, what) {
+    if (!historySinceDate || !from || Number.isNaN(from.getTime())) return;
     const earliest = extraHistorySinceDate || historySinceDate;
-    if (earliest <= yearStart) return;   // 已經涵蓋整年，不用再撈
+    if (earliest <= from) return;   // 已涵蓋，不用再撈
 
-    const loadIcon = document.getElementById('history-loading');
-    if (loadIcon) loadIcon.classList.remove('hidden');
+    const icons = document.querySelectorAll('[data-hist-loading]');
+    icons.forEach(el => el.classList.remove('hidden'));
     try {
-        const addedCount = await fetchHistoryRange(yearStart, earliest);
-        showToast(`✓ 已載入 ${year}年整年資料：新增 ${addedCount} 筆（本次 session 暫存）`, 'success');
+        const addedCount = await fetchHistoryRange(from, earliest);
+        showToast(`✓ 已載入 ${what || (from.toLocaleDateString('zh-TW') + ' 起')}的資料：新增 ${addedCount} 筆（本次 session 暫存）`, 'success');
     } catch (err) {
-        console.error('ensureYearLoaded 失敗:', err);
-        showToast('載入年度資料失敗：' + err.message, 'error');
+        console.error('ensureHistoryLoadedSince 失敗:', err);
+        showToast('載入資料失敗：' + err.message, 'error');
     } finally {
-        if (loadIcon) loadIcon.classList.add('hidden');
+        icons.forEach(el => el.classList.add('hidden'));
     }
+}
+
+// 確保「該年度」資料已經涵蓋在內（月度分析換年份、選「全年」時用）
+async function ensureYearLoaded(year) {
+    return ensureHistoryLoadedSince(new Date(year, 0, 1), `${year}年整年`);
 }
 function updateHistorySortIndicators(){
     ['ts','material','printer','ml'].forEach(f=>{
@@ -5966,7 +6059,7 @@ function trendShiftYear(delta) {
         if (!inserted) yearSel.appendChild(opt);
         yearSel.value = newYear;
     }
-    renderMonthly();
+    onMonthlySelChange('year');
 }
 
 function trendPrevYear() { trendShiftYear(-1); }
@@ -6332,14 +6425,20 @@ function renderWorkcatMaterialChart() {
     });
 }
 
-// 月份選單改變：選「全年」時先確保該年度資料已載入(不足才補撈)，再重繪圖表
-async function onMonthlySelChange() {
+// 年份／月份選單改變：先確保那段資料已載入（不足才補撈），再重繪。
+// ★ 2026-10-14 使用者要求：原本只有「全年」會補撈，選更早的單一月份會是一片空白，
+//   要先到「消耗記錄」按「載入更早一個月」才看得到。
+//   換年份 → 補整年（下方年度表與趨勢圖是 12 個月）；換月份 → 補到該月 1 號；「全年」→ 補整年。
+async function onMonthlySelChange(which) {
     const monthVal = document.getElementById('monthly-month').value;
-    if (monthVal === 'all') {
-        const curYear = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    const curYear = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    if (which === 'year' || monthVal === 'all') {
         await ensureYearLoaded(curYear);
+    } else {
+        const mo = parseInt(monthVal) || (new Date().getMonth() + 1);
+        await ensureHistoryLoadedSince(new Date(curYear, mo - 1, 1), `${curYear} 年 ${mo} 月起`);
     }
-    renderMonthlyPie();
+    renderMonthly();
 }
 
 // 取得目前選的月份：'all' 代表全年彙總，否則回傳 1~12 的月份數字
@@ -6697,18 +6796,18 @@ async function exportPrintLogExcel(){
 // ══ Markforged 的「匯出列印記錄」═══════════════════════════════════
 // 與 Formlabs 走同一套規則、同一份 19 欄格式（PRINT_LOG_HEADERS）：塑料與纖維
 // 併成一列、備註解析出客戶／工作類別／APP 單號、以 EF 單號 join 工單補三欄。
-// ★ 差別只有「篩選從哪來」：這一頁只有一個搜尋框，沒有日期／材料／類別下拉。
+// ★ 差別只有「篩選從哪來」：這一頁自己的搜尋框與篩選列（mfHistoryFilters）。
 // ★ 舊的 MF 紀錄沒有 duration_hr（後端沒寫），列印時間那欄會留空給人工填；
 //   列印結果一律走 exportPrintResult()，MF 有扣庫存＝成功。
 async function exportMfPrintLogExcel(){
-    const kw = mfHistoryKeyword();
-    const active = kw ? [`搜尋「${kw}」`] : [];
+    const f = mfHistoryFilters();
+    const active = mfFilterSummary(f);
     // ★ 第二個參數一定要給 mfHistoryRows()：MF 紀錄不在 inv.history 裡。
     //   filters 傳空物件而不是省略 —— 省略會去讀 Formlabs 那頁的篩選欄位，
     //   使用者在另一個分頁選的日期區間會莫名其妙套到這裡來。
-    const rows = buildPrintLogRows({}, mfHistoryRows(kw));
+    const rows = buildPrintLogRows({}, mfHistoryRows(f));
     if (!rows.length) {
-        showToast(kw ? `搜尋「${kw}」沒有列印紀錄` : '目前沒有 Markforged 列印紀錄可匯出', 'error');
+        showToast(active.length ? `${active.join('、')}：沒有列印紀錄` : '目前沒有 Markforged 列印紀錄可匯出', 'error');
         return;
     }
     await finishPrintLogExport(rows, { active, span: '', prefix: 'Markforged列印記錄' });
@@ -6996,7 +7095,10 @@ window.exportInvSummaryExcel = exportInvSummaryExcel;
 window.exportMonthlyReport = exportMonthlyReport;
 window.renderReportAnalysis = renderReportAnalysis;
 window.renderMfHistory = renderMfHistory;
+window.renderMfMonthly = renderMfMonthly;
 window.mfMonthShift = mfMonthShift;
+window.applyMfHistoryDateRange = applyMfHistoryDateRange;
+window.resetMfHistoryFilters = resetMfHistoryFilters;
 window.startMfEdit = startMfEdit;
 window.cancelMfEdit = cancelMfEdit;
 window.saveMfEdits = saveMfEdits;
