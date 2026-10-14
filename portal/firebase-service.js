@@ -80,6 +80,9 @@
     manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions'],
     operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote','view_maintenance','edit_maintenance'],
     viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote','view_maintenance'],
+    // 資材（2026-10-14 使用者要求）：只看得到材料庫存（含北中南總覽），能填「採購工程庫存」。
+    // 其他分頁一律看不到；材料庫存頁其餘部分是唯讀（role 推導為 viewer）。
+    materials: ['view_inventory','view_inventory_summary','edit_purchase_stock'],
   };
   window.ROLE_PRESETS = JSON.parse(JSON.stringify(window.DEFAULT_ROLE_PRESETS));
   // 以 settings 覆蓋角色預設（admin 後台「角色權限設定」儲存後套用）

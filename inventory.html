@@ -771,6 +771,9 @@
                         <button onclick="trendNextYear()" title="後一年" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
                             <i data-lucide="chevron-right" class="w-4 h-4"></i>
                         </button>
+                        <button onclick="loadTrendYear()" title="把這一年的消耗紀錄全部載入（預設只載入最近 30 天）" class="flex items-center gap-1 ml-2 px-2 py-1 text-xs border border-[var(--line-strong)] rounded-md hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] text-[var(--ink-3)]">
+                            <i data-lucide="calendar-range" class="w-3 h-3"></i> 載入整年
+                        </button>
                         <div class="ml-2 inline-flex rounded-md border border-[var(--line-strong)] overflow-hidden text-xs">
                             <button onclick="setTrendType('line')" id="trend-line-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">折線圖</button>
                             <button onclick="setTrendType('bar')" id="trend-bar-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">長條圖</button>
@@ -780,6 +783,7 @@
                 <div style="position:relative; height:300px;">
                     <canvas id="monthly-trend"></canvas>
                 </div>
+                <p id="trend-partial" class="text-xs text-[var(--warn)] mt-2 hidden"></p>
                 <p id="trend-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">本年度尚無消耗紀錄</p>
             </div>
 
@@ -795,14 +799,13 @@
 
         <!-- Markforged 材料（線材，單位 cc；與樹脂材料完全分離，資料來源 inventory/markforged）-->
         <div id="panel-mf" class="p-6 hidden">
-            <!-- 尚未接上 Eiger API 的提示（接上後由 JS 隱藏）-->
+            <!-- Eiger API 同步狀態提示（文字由 renderMfPanel() 依是否收到機台資料切換）-->
             <div id="mf-api-notice" class="mb-6 flex items-start gap-3 p-4 rounded-xl border border-[var(--warn-border)] bg-[var(--warn-soft)]">
                 <i data-lucide="plug-zap" class="w-5 h-5 text-[var(--warn)] shrink-0 mt-0.5"></i>
                 <div class="text-sm">
-                    <div data-mf-notice-title class="font-semibold text-[var(--warn)]">尚未連接 Eiger API，目前為純手動維護</div>
+                    <div data-mf-notice-title class="font-semibold text-[var(--warn)]">尚未收到 Eiger API 的機台資料</div>
                     <div data-mf-notice-body class="text-xs text-[var(--ink-3)] mt-1 leading-relaxed">
-                        取得 Markforged API 金鑰後，機台掛載材料與列印消耗將自動同步。
-                        屆時本頁的庫存數字會由系統自動扣減，手動輸入僅作校正之用。
+                        同步正常時，機台掛載材料、餘量與列印消耗每 30 分鐘自動更新，並自動扣減下方庫存。
                     </div>
                 </div>
             </div>
@@ -959,51 +962,128 @@
             </div>
         </div>
 
-        <!-- Markforged 月度分析 -->
+        <!-- Markforged 月度分析（版面比照 Formlabs 的月度分析；單位 cc）-->
         <div id="panel-mf-monthly" class="p-6 hidden">
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+                <p class="text-sm text-[var(--ink-4)]">各材料每月線材消耗量統計（cc）。</p>
                 <div class="flex items-center gap-2">
-                    <i data-lucide="chart-column" class="w-4 h-4 text-[var(--ink-4)]"></i>
-                    <div>
-                        <h3 class="text-base font-semibold text-[var(--ink)]">Markforged 月度分析</h3>
-                        <p class="text-xs text-[var(--ink-4)]">各月份、各材料的線材消耗量（cc）</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-1">
-                    <span data-hist-loading class="text-xs text-[var(--accent)] hidden mr-2">⏳ 載入中...</span>
-                    <select id="mf-month-printer" onchange="renderMfMonthly()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" style="margin-right:.5rem"><option value="">全部機台</option></select>
-                    <button onclick="mfMonthShift(-1)" title="上個月" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
-                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
-                    </button>
-                    <span id="mf-month-label" class="text-sm font-medium text-[var(--ink-2)] px-2 min-w-[7rem] text-center"></span>
-                    <button onclick="mfMonthShift(1)" title="下個月" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
-                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                    </button>
+                    <span data-hist-loading class="text-xs text-[var(--accent)] hidden">⏳ 載入中...</span>
+                    <select id="mfm-printer" onchange="renderMfMonthly()" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"><option value="">全部機台</option></select>
+                    <select id="mfm-year" onchange="onMfMonthlySelChange('year')" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
+                    <select id="mfm-month" onchange="onMfMonthlySelChange('month')" class="text-sm border border-[var(--line-strong)] rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"></select>
                 </div>
             </div>
-            <div id="mf-month-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-px bg-[var(--line-soft)] border border-[var(--line)] rounded-xl overflow-hidden mb-6"></div>
+            <!-- 圓餅圖 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <div class="border border-[var(--line-soft)] rounded-xl p-4">
+                    <h3 id="mfm-pie-title" class="text-sm font-semibold text-[var(--ink-2)] mb-3">當月各材料消耗佔比</h3>
+                    <div style="position:relative; height:280px;">
+                        <canvas id="mfm-pie"></canvas>
+                    </div>
+                    <p id="mfm-pie-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月沒有消耗紀錄（機台離線或沒有列印時不會產生紀錄）</p>
+                </div>
+                <div class="border border-[var(--line-soft)] rounded-xl p-4">
+                    <h3 class="text-sm font-semibold text-[var(--ink-2)] mb-3">當月消耗明細</h3>
+                    <div id="mfm-pie-legend" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <!-- 工作類別佔比（依備註解析：客戶簡稱-工作類別-EF單號）-->
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 id="mfm-workcat-title" class="text-sm font-semibold text-[var(--ink-2)]">當月工作類別佔比</h3>
+                    <span class="text-xs text-[var(--ink-5)]">依備註解析：客戶簡稱-工作類別-EF單號</span>
+                </div>
+                <div id="mfm-workcat-breakdown" class="space-y-2"></div>
+                <p id="mfm-workcat-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月沒有消耗紀錄</p>
+                <div class="mt-4 pt-4 border-t border-[var(--line-soft)]">
+                    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                        <h4 class="text-xs font-semibold text-[var(--ink-3)]">各工作類別的材料種類佔比</h4>
+                        <div class="flex items-center gap-2">
+                            <select id="mfm-wcm-pie-cat" onchange="renderMfmWorkcatMaterialChart()" class="hidden text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]"></select>
+                            <div class="inline-flex rounded-md border border-[var(--line-strong)] overflow-hidden text-xs">
+                                <button onclick="setMfmWorkcatMatChartType('bar')" id="mfm-wcm-bar-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">直條圖</button>
+                                <button onclick="setMfmWorkcatMatChartType('barh')" id="mfm-wcm-barh-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">橫條圖</button>
+                                <button onclick="setMfmWorkcatMatChartType('line')" id="mfm-wcm-line-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">折線圖</button>
+                                <button onclick="setMfmWorkcatMatChartType('pie')" id="mfm-wcm-pie-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">圓餅圖</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="position:relative; height:300px;">
+                        <canvas id="mfm-wcm-chart"></canvas>
+                    </div>
+                    <p id="mfm-wcm-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月沒有消耗紀錄</p>
+                </div>
+            </div>
+
+            <!-- 責任工程師佔比（依工作結案後回填的實際執行者）-->
             <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
                     <h3 id="mf-operator-title" class="text-sm font-semibold text-[var(--ink-2)]">當月責任工程師佔比</h3>
-                    <span class="text-xs text-[var(--ink-5)]">依工作結案後回填的實際執行者</span>
+                    <span class="text-xs text-[var(--ink-5)]">依工作結案後回填的實際執行者；2026-09-11 之前的紀錄歸「未填」</span>
                 </div>
                 <div id="mf-operator-breakdown" class="space-y-2"></div>
-                <p id="mf-operator-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月尚無消耗紀錄</p>
+                <p id="mf-operator-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月沒有消耗紀錄</p>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse text-sm">
-                    <thead>
-                        <tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
-                            <th class="p-3 border-b font-medium">材料</th>
-                            <th class="p-3 border-b font-medium text-center w-24">類別</th>
-                            <th class="p-3 border-b font-medium text-right w-32">當月消耗 (cc)</th>
-                            <th class="p-3 border-b font-medium text-right w-24">筆數</th>
-                            <th class="p-3 border-b font-medium w-56">佔比</th>
-                        </tr>
-                    </thead>
-                    <tbody id="mf-month-body" class="divide-y divide-gray-100"></tbody>
-                </table>
+
+            <!-- 當月消耗紀錄（同一次列印的多段同步紀錄併成一列，依用量排序）-->
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="mfm-consume-title" class="text-sm font-semibold text-[var(--ink-2)]">當月消耗紀錄（依用量排序）</h3>
+                    <span id="mfm-consume-sum" class="text-xs text-[var(--ink-4)]"></span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm border-collapse">
+                        <thead><tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
+                            <th class="p-2 border-b font-medium text-left w-8">#</th>
+                            <th class="p-2 border-b font-medium text-left">列印 / 備註</th>
+                            <th class="p-2 border-b font-medium text-left">材料</th>
+                            <th class="p-2 border-b font-medium text-left">機台</th>
+                            <th class="p-2 border-b font-medium text-right w-24">用量</th>
+                            <th class="p-2 border-b font-medium text-left w-40">佔比</th>
+                            <th class="p-2 border-b font-medium text-left w-28">日期</th>
+                        </tr></thead>
+                        <tbody id="mfm-consume-body" class="divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+                <p id="mfm-consume-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">當月沒有消耗紀錄</p>
             </div>
+
+            <!-- 月度趨勢圖 -->
+            <div class="border border-[var(--line-soft)] rounded-xl p-4 mb-6">
+                <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h3 id="mfm-trend-title" class="text-sm font-semibold text-[var(--ink-2)]">月度消耗趨勢</h3>
+                    <div class="flex items-center gap-1">
+                        <button onclick="mfmShiftYear(-1)" title="前一年" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="mfmShiftYear(1)" title="後一年" class="p-1.5 border border-[var(--line-strong)] hover:bg-[var(--bg-soft)] rounded-md text-[var(--ink-4)]">
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="loadMfTrendYear()" title="把這一年的消耗紀錄全部載入（預設只載入最近 30 天）" class="flex items-center gap-1 ml-2 px-2 py-1 text-xs border border-[var(--line-strong)] rounded-md hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] text-[var(--ink-3)]">
+                            <i data-lucide="calendar-range" class="w-3 h-3"></i> 載入整年
+                        </button>
+                        <div class="ml-2 inline-flex rounded-md border border-[var(--line-strong)] overflow-hidden text-xs">
+                            <button onclick="setMfmTrendType('line')" id="mfm-trend-line-btn" class="px-3 py-1.5 bg-blue-600 text-white transition-colors">折線圖</button>
+                            <button onclick="setMfmTrendType('bar')" id="mfm-trend-bar-btn" class="px-3 py-1.5 bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">長條圖</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="position:relative; height:300px;">
+                    <canvas id="mfm-trend"></canvas>
+                </div>
+                <p id="mfm-trend-partial" class="text-xs text-[var(--warn)] mt-2 hidden"></p>
+                <p id="mfm-trend-empty" class="text-center text-[var(--ink-5)] text-sm py-8 hidden">本年度沒有消耗紀錄</p>
+            </div>
+
+            <!-- 詳細統計（可折疊）-->
+            <details class="border border-[var(--line)] rounded-xl overflow-hidden">
+                <summary class="cursor-pointer p-4 font-medium text-sm text-[var(--ink-2)] hover:bg-[var(--bg-soft)] flex items-center gap-2 select-none">
+                    <i data-lucide="chevron-right" class="w-4 h-4 detail-chevron transition-transform"></i>
+                    <span id="mfm-detail-title">詳細統計（當年每月各材料）</span>
+                </summary>
+                <div id="mfm-detail-content" class="p-4 border-t border-[var(--line-soft)]"></div>
+            </details>
         </div>
 
         <!-- 北中南材料總覽：三區並列（版面比照原本的 Excel 庫存統計表）。
@@ -1607,7 +1687,6 @@ let unsubscribePrices = null;
 // Markforged 消耗紀錄：與 Formlabs 共用 inventory_history collection，靠 source 欄位區分。
 // rebuildInvHistory() 會把兩者拆開 —— inv.history 只留 Formlabs，既有統計邏輯完全不受影響。
 let mfHistory = [];
-let mfMonthCursor = null;            // 月度分析目前檢視的月份（Date，指向該月 1 號）
 let currentBrand = 'formlabs';       // 'formlabs' | 'markforged'
 // 「刪除列印紀錄(回補庫存)」權限：admin 或主管(有 delete_board/delete_issues，與 portal 後台的主管定義一致)
 // role 這個舊欄位只有 admin/editor/viewer 三級、無法分辨主管，故另外檢查 permissions 陣列
@@ -3581,86 +3660,356 @@ function renderMfHistory() {
     lucide.createIcons();
 }
 
-// ══ Markforged 月度分析 ══
-function mfMonthKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
-// 換月份：先畫（標題立刻跟著變），該月不在已載入範圍內就補撈再畫一次
-async function mfMonthShift(delta) {
-    if (!mfMonthCursor) mfMonthCursor = new Date();
-    mfMonthCursor = new Date(mfMonthCursor.getFullYear(), mfMonthCursor.getMonth() + delta, 1);
-    renderMfMonthly();
-    const c = mfMonthCursor;
-    await ensureHistoryLoadedSince(new Date(c), `${c.getFullYear()} 年 ${c.getMonth()+1} 月起`);
+// ══ Markforged 月度分析（版面與 Formlabs 的月度分析相同；單位 cc）══
+// ★ 刻意另寫一套而不是改 Formlabs 那幾支去共用：那邊是 L／mL 與材料家族代碼，
+//   這邊是 cc 與純材料名稱（不可套 matCode／matName），硬併只會讓兩邊都更難改。
+let mfmPieChart = null, mfmTrendChart = null, mfmWcmChart = null;
+let mfmTrendType = 'line', mfmWcmType = 'bar';
+const fmtCc = v => `${(+v || 0).toFixed(1)} cc`;
+
+// 目前選的年／月／機台。m＝'all'（全年）或 1～12
+function mfmSel() {
+    const y = parseInt(document.getElementById('mfm-year')?.value) || new Date().getFullYear();
+    const mv = document.getElementById('mfm-month')?.value;
+    const m = mv === 'all' ? 'all' : (parseInt(mv) || (new Date().getMonth() + 1));
+    const printer = document.getElementById('mfm-printer')?.value || '';
+    return { y, m, printer, monthLabel: m === 'all' ? '全年' : `${m}月`, printerLabel: printer ? ` · ${printer}` : '' };
+}
+// 該年（wholeYear）或該年該月的消耗紀錄（依機台篩選）
+function mfmRecs(sel, wholeYear) {
+    return mfHistory.filter(h => (h.type === 'consume' || h.type === 'aborted') && h.ts
+        && (!sel.printer || h.printer === sel.printer)
+        && new Date(h.ts).getFullYear() === sel.y
+        && (wholeYear || matchesCurMonth(h.ts, sel.m)));
+}
+
+// 年份／月份選單改變：先補撈那段資料再畫（規則同 Formlabs 的 onMonthlySelChange）
+async function onMfMonthlySelChange(which) {
+    const sel = mfmSel();
+    if (which === 'year' || sel.m === 'all') await ensureYearLoaded(sel.y);
+    else await ensureHistoryLoadedSince(new Date(sel.y, sel.m - 1, 1), `${sel.y} 年 ${sel.m} 月起`);
     renderMfMonthly();
 }
-function renderMfMonthly() {
-    if (!mfMonthCursor) { const n = new Date(); mfMonthCursor = new Date(n.getFullYear(), n.getMonth(), 1); }
-    const label = document.getElementById('mf-month-label');
-    if (label) label.textContent = `${mfMonthCursor.getFullYear()} 年 ${mfMonthCursor.getMonth()+1} 月`;
-
-    fillMfSelect('mf-month-printer', '全部機台', mfDistinct('printer'));
-    const printerF = document.getElementById('mf-month-printer')?.value || '';
-    const key = mfMonthKey(mfMonthCursor);
-    const rows = mfHistory.filter(h => h.ts && mfMonthKey(new Date(h.ts)) === key
-                                    && (!printerF || h.printer === printerF));
-
-    // 責任工程師佔比。★ 用「原始那幾筆」而不是併過的列：佔比算的是用量，
-    //   併不併都一樣；筆數則以實際的同步紀錄為準，與表格上方的數字一致。
-    const mfOpTitle = document.getElementById('mf-operator-title');
-    if (mfOpTitle) mfOpTitle.textContent = `${mfMonthCursor.getFullYear()} 年 ${mfMonthCursor.getMonth()+1} 月 責任工程師佔比`;
-    renderOperatorBreakdown('mf-operator-breakdown', 'mf-operator-empty', rows,
-        cc => cc.toFixed(1) + ' cc');
-
-    // 依材料彙總
-    const agg = {};
-    rows.forEach(h => {
-        const m = h.material || '—';
-        if (!agg[m]) agg[m] = { cc: 0, n: 0, category: h.category };
-        agg[m].cc += Number(h.ml) || 0;
-        agg[m].n  += 1;
-    });
-    const names = Object.keys(agg).sort((a,b) => agg[b].cc - agg[a].cc);
-    const totalCc = names.reduce((s,m) => s + agg[m].cc, 0);
-    const plasticCc = names.filter(m=>agg[m].category!=='fiber').reduce((s,m)=>s+agg[m].cc,0);
-    const fiberCc   = totalCc - plasticCc;
-
-    const stats = document.getElementById('mf-month-stats');
-    if (stats) {
-        const cell = (label, value) => `<div class="bg-[var(--bg)] p-4">
-            <div class="text-xs text-[var(--ink-4)] mb-1">${label}</div>
-            <div class="text-lg font-semibold text-[var(--ink)]">${value}</div>
-        </div>`;
-        stats.innerHTML = cell('當月總消耗', `${totalCc.toFixed(1)} cc`)
-                        + cell('塑料', `${plasticCc.toFixed(1)} cc`)
-                        + cell('纖維', `${fiberCc.toFixed(1)} cc`)
-                        + cell('紀錄筆數', `${rows.length} 筆`);
+function mfmShiftYear(delta) {
+    const yearSel = document.getElementById('mfm-year');
+    const ny = (parseInt(yearSel.value) || new Date().getFullYear()) + delta;
+    if (![...yearSel.options].some(o => parseInt(o.value) === ny)) {
+        const o = document.createElement('option'); o.value = ny; o.textContent = ny + '年';
+        yearSel.appendChild(o);
     }
+    yearSel.value = ny;
+    onMfMonthlySelChange('year');
+}
+async function loadMfTrendYear() {
+    await ensureYearLoaded(mfmSel().y);
+    renderMfMonthly();
+}
+function setMfmTrendType(t) {
+    mfmTrendType = t;
+    ['line', 'bar'].forEach(k => {
+        document.getElementById('mfm-trend-' + k + '-btn').className = 'px-3 py-1.5 transition-colors ' + (t === k ? 'bg-blue-600 text-white' : 'bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]');
+    });
+    renderMfmTrend();
+}
+function setMfmWorkcatMatChartType(t) {
+    mfmWcmType = t;
+    ['bar', 'barh', 'line', 'pie'].forEach(k => {
+        document.getElementById('mfm-wcm-' + k + '-btn').className = 'px-3 py-1.5 transition-colors ' + (t === k ? 'bg-blue-600 text-white' : 'bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)]');
+    });
+    document.getElementById('mfm-wcm-pie-cat').classList.toggle('hidden', t !== 'pie');
+    renderMfmWorkcatMaterialChart();
+}
 
-    const tbody = document.getElementById('mf-month-body');
-    if (!tbody) return;
-    if (!names.length) {
-        tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-[var(--ink-5)]">${
-            printerF ? '這台機台本月沒有消耗紀錄'
-                     : '本月沒有 Markforged 消耗紀錄（機台離線或沒有列印時不會產生紀錄）'}</td></tr>`;
+function renderMfMonthly() {
+    const yearSel = document.getElementById('mfm-year');
+    const monthSel = document.getElementById('mfm-month');
+    if (!yearSel || !monthSel) return;
+    // 年份選項：有資料的年份＋今年＋目前選的那一年（沒資料的年份也要能停在上面）
+    const nowY = new Date().getFullYear();
+    const keepY = parseInt(yearSel.value) || nowY;
+    const years = new Set(mfHistory.filter(h => h.ts).map(h => new Date(h.ts).getFullYear()));
+    years.add(nowY); years.add(keepY);
+    yearSel.innerHTML = [...years].sort((a, b) => b - a).map(y => `<option value="${y}">${y}年</option>`).join('');
+    yearSel.value = keepY;
+    if (!monthSel.options.length) {
+        monthSel.innerHTML = '<option value="all">全年</option>'
+            + Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${i + 1}月</option>`).join('');
+        monthSel.value = String(new Date().getMonth() + 1);
+    }
+    fillMfSelect('mfm-printer', '全部機台', mfDistinct('printer'));
+
+    const sel = mfmSel();
+    const recs = mfmRecs(sel);
+    renderMfmPie(sel, recs);
+    renderMfmWorkCategory(sel, recs);
+    renderMfmWorkcatMaterialChart();
+    const opTitle = document.getElementById('mf-operator-title');
+    if (opTitle) opTitle.textContent = `${sel.y}年 ${sel.monthLabel} 責任工程師佔比${sel.printerLabel}`;
+    renderOperatorBreakdown('mf-operator-breakdown', 'mf-operator-empty', recs, fmtCc);
+    renderMfmConsume(sel, recs);
+    renderMfmTrend();
+    renderMfmDetail(sel);
+}
+
+function renderMfmPie(sel, recs) {
+    document.getElementById('mfm-pie-title').textContent = `${sel.y}年 ${sel.monthLabel} 各材料消耗佔比${sel.printerLabel}`;
+    const byMat = {};
+    recs.forEach(h => {
+        const m = h.material || '—';
+        if (!byMat[m]) byMat[m] = { cc: 0, category: h.category };
+        byMat[m].cc += Math.abs(+h.ml || 0);
+    });
+    const entries = Object.entries(byMat).filter(([, v]) => v.cc > 0).sort((a, b) => b[1].cc - a[1].cc);
+    const canvas = document.getElementById('mfm-pie');
+    const empty = document.getElementById('mfm-pie-empty');
+    const legend = document.getElementById('mfm-pie-legend');
+    if (mfmPieChart) { mfmPieChart.destroy(); mfmPieChart = null; }
+    if (!entries.length) {
+        canvas.style.display = 'none';
+        empty.classList.remove('hidden');
+        legend.innerHTML = '<p class="text-[var(--ink-5)] text-sm text-center py-8">當月沒有消耗紀錄</p>';
         return;
     }
-    tbody.innerHTML = names.map(m => {
-        const a = agg[m];
-        const pct = totalCc > 0 ? (a.cc / totalCc * 100) : 0;
+    canvas.style.display = 'block';
+    empty.classList.add('hidden');
+    const labels = entries.map(e => e[0]);
+    const data = entries.map(e => +e[1].cc.toFixed(1));
+    const total = data.reduce((s, v) => s + v, 0);
+    const colors = labels.map((_, i) => PIE_COLORS[i % PIE_COLORS.length]);
+    mfmPieChart = new Chart(canvas, {
+        type: 'pie',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtCc(c.parsed)} (${Math.round(c.parsed / total * 100)}%)` } }
+            }
+        }
+    });
+    // 塑料／纖維小計：Markforged 獨有，Formlabs 版面沒有，放在總計上方
+    const plastic = entries.filter(([, v]) => v.category !== 'fiber').reduce((s, [, v]) => s + v.cc, 0);
+    const fiber = entries.filter(([, v]) => v.category === 'fiber').reduce((s, [, v]) => s + v.cc, 0);
+    legend.innerHTML = entries.map(([mat, v], i) => {
+        const pct = Math.round(v.cc / total * 100);
+        const cat = MF_CATEGORY_LABEL[v.category];
+        return `<div class="flex items-center justify-between text-sm">
+            <div class="flex items-center gap-2">
+                <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colors[i]}"></span>
+                <span class="text-[var(--ink-2)]">${escHtml(mat)}</span>
+                ${cat ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full ${v.category === 'fiber' ? 'bg-[var(--indigo-soft)] text-[var(--indigo)]' : 'bg-[var(--bg-panel)] text-[var(--ink-4)]'}">${cat}</span>` : ''}
+            </div>
+            <div class="text-[var(--ink-4)]"><span class="font-medium text-[var(--ink)]">${v.cc.toFixed(1)}</span> cc · ${pct}%</div>
+        </div>`;
+    }).join('') + `<div class="flex items-center justify-between text-xs pt-2 mt-2 border-t border-[var(--line-soft)] text-[var(--ink-4)]">
+        <span>塑料 ${fmtCc(plastic)} · 纖維 ${fmtCc(fiber)}</span></div>
+        <div class="flex items-center justify-between text-sm">
+        <span class="font-medium text-[var(--ink-2)]">當月總計</span>
+        <span class="font-bold text-[var(--ink)]">${fmtCc(total)}</span></div>`;
+}
+
+function renderMfmWorkCategory(sel, recs) {
+    const title = document.getElementById('mfm-workcat-title');
+    if (title) title.textContent = `${sel.y}年 ${sel.monthLabel} 工作類別佔比${sel.printerLabel}`;
+    const box = document.getElementById('mfm-workcat-breakdown');
+    const empty = document.getElementById('mfm-workcat-empty');
+    if (!box) return;
+    if (!recs.length) { box.innerHTML = ''; empty.classList.remove('hidden'); return; }
+    empty.classList.add('hidden');
+    const ALL_CATS = [...WORK_CATEGORIES, '未分類'];
+    const byCat = {};
+    ALL_CATS.forEach(c => { byCat[c] = { cc: 0, count: 0 }; });
+    recs.forEach(h => { const c = parseWorkCategory(h.note); byCat[c].cc += Math.abs(+h.ml || 0); byCat[c].count += 1; });
+    const total = ALL_CATS.reduce((s, c) => s + byCat[c].cc, 0);
+    const CAT_COLOR = { '評估': 'bg-sky-500', '代工': 'bg-teal-500', '工程測試': 'bg-purple-500', '行銷': 'bg-pink-500', '其他': 'bg-amber-500', '未分類': 'bg-gray-400' };
+    box.innerHTML = ALL_CATS.filter(c => byCat[c].count > 0).map(c => {
+        const pct = total > 0 ? (byCat[c].cc / total * 100) : 0;
+        return `<div class="flex items-center gap-2">
+            <span class="text-sm text-[var(--ink-2)] w-20 flex-shrink-0">${escHtml(c)}</span>
+            <div class="flex-1 h-3 bg-[var(--bg-panel)] rounded-full overflow-hidden">
+                <div class="h-full ${CAT_COLOR[c] || 'bg-gray-400'} rounded-full" style="width:${Math.max(2, Math.min(100, pct))}%"></div>
+            </div>
+            <span class="text-xs text-[var(--ink-4)] w-16 text-right">${byCat[c].count} 筆</span>
+            <span class="text-xs text-[var(--ink-2)] font-medium w-20 text-right">${fmtCc(byCat[c].cc)}</span>
+            <span class="text-xs text-[var(--ink-5)] w-10 text-right">${Math.round(pct)}%</span>
+        </div>`;
+    }).join('');
+}
+
+function renderMfmWorkcatMaterialChart() {
+    const recs = mfmRecs(mfmSel());
+    const canvas = document.getElementById('mfm-wcm-chart');
+    const empty = document.getElementById('mfm-wcm-empty');
+    if (!canvas) return;
+    if (mfmWcmChart) { mfmWcmChart.destroy(); mfmWcmChart = null; }
+    if (!recs.length) { canvas.style.display = 'none'; empty.classList.remove('hidden'); return; }
+    canvas.style.display = ''; empty.classList.add('hidden');
+
+    const ALL_CATS = [...WORK_CATEGORIES, '未分類'];
+    const byCatMat = {}; const matSet = new Set();
+    ALL_CATS.forEach(c => { byCatMat[c] = {}; });
+    recs.forEach(h => {
+        const c = parseWorkCategory(h.note), m = h.material || '—';
+        byCatMat[c][m] = (byCatMat[c][m] || 0) + Math.abs(+h.ml || 0);
+        matSet.add(m);
+    });
+    const cats = ALL_CATS.filter(c => Object.keys(byCatMat[c]).length > 0);
+    const materials = [...matSet];
+    const ctx = canvas.getContext('2d');
+
+    if (mfmWcmType === 'pie') {
+        const catSel = document.getElementById('mfm-wcm-pie-cat');
+        const prev = catSel.value;
+        catSel.innerHTML = cats.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
+        const picked = cats.includes(prev) ? prev : cats[0];
+        catSel.value = picked;
+        const pe = Object.entries(byCatMat[picked] || {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+        if (!pe.length) { canvas.style.display = 'none'; empty.classList.remove('hidden'); return; }
+        const pdata = pe.map(([, v]) => +v.toFixed(1));
+        const ptotal = pdata.reduce((s, v) => s + v, 0);
+        mfmWcmChart = new Chart(ctx, {
+            type: 'pie',
+            data: { labels: pe.map(([m]) => m), datasets: [{ data: pdata, backgroundColor: pe.map((_, i) => PIE_COLORS[i % PIE_COLORS.length]), borderWidth: 2, borderColor: '#fff' }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: c => ` ${c.label}: ${fmtCc(c.parsed)} (${Math.round(c.parsed / ptotal * 100)}%)` } }
+                }
+            }
+        });
+        return;
+    }
+    const isH = mfmWcmType === 'barh';
+    const type = isH ? 'bar' : mfmWcmType;
+    const stacked = type === 'bar';
+    mfmWcmChart = new Chart(ctx, {
+        type,
+        data: {
+            labels: cats,
+            datasets: materials.map((m, i) => ({
+                label: m,
+                data: cats.map(c => +((byCatMat[c][m] || 0)).toFixed(1)),
+                backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                borderColor: PIE_COLORS[i % PIE_COLORS.length],
+                borderWidth: type === 'line' ? 2 : 1, fill: false, tension: 0.3,
+            })),
+        },
+        options: {
+            indexAxis: isH ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtCc(c.raw)}` } }
+            },
+            scales: {
+                x: { stacked, grid: { display: isH }, title: { display: isH, text: '消耗量 (cc)', color: '#6b7280' } },
+                y: { stacked, beginAtZero: true, grid: { display: !isH }, title: { display: !isH, text: '消耗量 (cc)', color: '#6b7280' } }
+            }
+        }
+    });
+}
+
+// 當月消耗紀錄：同一次列印被 30 分鐘一輪的同步切成好幾筆，先併回一列（mfHistoryMerged）再排序
+function renderMfmConsume(sel, recs) {
+    const title = document.getElementById('mfm-consume-title');
+    if (title) title.textContent = `${sel.y}年 ${sel.monthLabel} 消耗紀錄（依用量排序）${sel.printerLabel}`;
+    const body = document.getElementById('mfm-consume-body');
+    const empty = document.getElementById('mfm-consume-empty');
+    const sumEl = document.getElementById('mfm-consume-sum');
+    if (!body) return;
+    const rows = mfHistoryMerged(recs).sort((a, b) => (b.ml || 0) - (a.ml || 0));
+    const total = rows.reduce((s, h) => s + (h.ml || 0), 0);
+    if (!rows.length) { body.innerHTML = ''; empty.classList.remove('hidden'); if (sumEl) sumEl.textContent = ''; return; }
+    empty.classList.add('hidden');
+    if (sumEl) sumEl.textContent = rows.length === recs.length
+        ? `共 ${rows.length} 筆 · 合計 ${fmtCc(total)}`
+        : `共 ${rows.length} 筆（由 ${recs.length} 筆同步紀錄合併）· 合計 ${fmtCc(total)}`;
+    body.innerHTML = rows.map((h, i) => {
+        const pct = total > 0 ? (h.ml / total * 100) : 0;
+        const pctTxt = pct >= 1 ? Math.round(pct) : pct.toFixed(1);
+        const cat = MF_CATEGORY_LABEL[h.category];
         return `<tr class="hover:bg-[var(--bg-soft)]">
-            <td class="p-3 font-medium text-[var(--ink)]">${escHtml(m)}</td>
-            <td class="p-3 text-center"><span class="text-xs px-2 py-0.5 rounded-full ${a.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-3)]'}">${MF_CATEGORY_LABEL[a.category]||'—'}</span></td>
-            <td class="p-3 text-right font-medium text-[var(--ink)]">${a.cc.toFixed(1)}</td>
-            <td class="p-3 text-right text-[var(--ink-2)]">${a.n}</td>
-            <td class="p-3">
+            <td class="p-2 text-[var(--ink-5)]">${i + 1}</td>
+            <td class="p-2 text-[var(--ink-2)]">${escHtml(h.note) || '—'}${h.type === 'aborted' ? ' <span class="text-xs text-[var(--warn)]">(中止)</span>' : ''}</td>
+            <td class="p-2 text-[var(--ink-3)]">${escHtml(h.material) || '—'}${cat ? ` <span class="text-[10px] text-[var(--ink-5)]">${cat}</span>` : ''}</td>
+            <td class="p-2 text-[var(--ink-3)]">${escHtml(h.printer) || '—'}</td>
+            <td class="p-2 text-right font-medium text-[var(--ink)]">${fmtCc(h.ml)}</td>
+            <td class="p-2">
                 <div class="flex items-center gap-2">
-                    <div class="flex-1 h-2 rounded-full bg-[var(--line-soft)] overflow-hidden">
-                        <div class="h-full bg-[var(--accent)]" style="width:${pct.toFixed(1)}%"></div>
+                    <div class="flex-1 h-2 bg-[var(--bg-panel)] rounded-full overflow-hidden" style="min-width:60px">
+                        <div class="h-full bg-teal-500 rounded-full" style="width:${Math.max(2, Math.min(100, pct))}%"></div>
                     </div>
-                    <span class="text-xs text-[var(--ink-4)] w-12 text-right">${pct.toFixed(1)}%</span>
+                    <span class="text-xs text-[var(--ink-4)] w-9 text-right">${pctTxt}%</span>
                 </div>
             </td>
+            <td class="p-2 text-[var(--ink-5)] text-xs">${h.ts ? new Date(h.ts).toLocaleDateString('zh-TW') : '—'}</td>
         </tr>`;
     }).join('');
+}
+
+function renderMfmTrend() {
+    const sel = mfmSel();
+    const yearRecs = mfmRecs(sel, true);
+    const totals = Array.from({ length: 12 }, (_, i) =>
+        yearRecs.filter(h => new Date(h.ts).getMonth() === i).reduce((s, h) => s + Math.abs(+h.ml || 0), 0));
+    const yearTotal = totals.reduce((s, v) => s + v, 0);
+    document.getElementById('mfm-trend-title').textContent = `${sel.y}年 月度消耗趨勢${sel.printerLabel}（年計 ${fmtCc(yearTotal)}）`;
+    showYearPartialNote('mfm-trend-partial', sel.y);
+    const canvas = document.getElementById('mfm-trend');
+    const empty = document.getElementById('mfm-trend-empty');
+    if (mfmTrendChart) { mfmTrendChart.destroy(); mfmTrendChart = null; }
+    if (yearTotal === 0) { canvas.style.display = 'none'; empty.classList.remove('hidden'); return; }
+    canvas.style.display = ''; empty.classList.add('hidden');
+    mfmTrendChart = new Chart(canvas.getContext('2d'), {
+        type: mfmTrendType,
+        data: {
+            labels: Array.from({ length: 12 }, (_, i) => (i + 1) + '月'),
+            datasets: [{
+                label: '當月總消耗 (cc)', data: totals.map(v => +v.toFixed(1)),
+                borderColor: '#378ADD', backgroundColor: mfmTrendType === 'bar' ? '#85B7EB' : 'rgba(55,138,221,0.15)',
+                borderWidth: 2, pointRadius: 4, pointHoverRadius: 6, pointBackgroundColor: '#378ADD',
+                fill: mfmTrendType === 'line', tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmtCc(c.raw) } } },
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: '消耗量 (cc)', color: '#6b7280' }, ticks: { callback: v => v + ' cc' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
+
+// 詳細統計：當年每月各材料（cc）
+function renderMfmDetail(sel) {
+    const content = document.getElementById('mfm-detail-content');
+    if (!content) return;
+    const dt = document.getElementById('mfm-detail-title');
+    if (dt) dt.textContent = `詳細統計（${sel.y}年 每月各材料消耗，點此展開）`;
+    const yearRecs = mfmRecs(sel, true);
+    const byMat = {};
+    yearRecs.forEach(h => {
+        const m = h.material || '—';
+        if (!byMat[m]) byMat[m] = Array(12).fill(0);
+        byMat[m][new Date(h.ts).getMonth()] += Math.abs(+h.ml || 0);
+    });
+    const mats = Object.keys(byMat).sort((a, b) => byMat[b].reduce((s, v) => s + v, 0) - byMat[a].reduce((s, v) => s + v, 0));
+    if (!mats.length) { content.innerHTML = '<p class="text-center text-[var(--ink-5)] py-8">本年度沒有消耗紀錄</p>'; return; }
+    const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
+    content.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm border-collapse"><thead><tr class="bg-[var(--bg-panel)] text-[var(--ink-3)]">
+        <th class="p-3 border-b font-medium text-left">材料</th>
+        ${MONTHS.map(m => `<th class="p-3 border-b font-medium text-right">${m}月</th>`).join('')}
+        <th class="p-3 border-b font-medium text-right">年計 (cc)</th>
+    </tr></thead><tbody>${mats.map(m => {
+        const total = byMat[m].reduce((s, v) => s + v, 0);
+        return `<tr class="hover:bg-[var(--bg-soft)] border-b border-[var(--line-soft)]">
+            <td class="p-3 font-medium text-[var(--ink)]">${escHtml(m)}</td>
+            ${byMat[m].map(v => `<td class="p-3 text-right text-[var(--ink-3)]">${v > 0 ? v.toFixed(1) : '—'}</td>`).join('')}
+            <td class="p-3 text-right font-bold text-[var(--ink)]">${total.toFixed(1)}</td>
+        </tr>`;
+    }).join('')}</tbody></table></div>`;
 }
 
 function renderMfPanel() {
@@ -3668,19 +4017,18 @@ function renderMfPanel() {
     renderMfTable();
     renderMfConsumables();
     updateMfEditButtons();
-    // 提示分兩段：機台狀態已接上 API（階段 2/3），但庫存扣減仍是手動（階段 5 未做）。
-    // 不可因為「有機台資料」就把整個提示藏掉——那會讓人誤以為庫存也自動了。
+    // 提示：2026-08-25 起 Markforged 消耗已自動扣庫存（餘量下降才扣，換料／補料不動）。
+    // 沒收到機台資料（mfPrinters 空的）多半是同步出問題，提示文字要說得出來。
     const notice = document.getElementById('mf-api-notice');
     if (notice) {
         const connected = mfPrinters.length > 0;
         notice.querySelector('[data-mf-notice-title]').textContent = connected
-            ? '機台狀態已連接 Eiger API；庫存數字仍為手動維護'
-            : '尚未連接 Eiger API，目前為純手動維護';
+            ? '已連接 Eiger API：機台狀態與列印消耗自動同步'
+            : '尚未收到 Eiger API 的機台資料';
         notice.querySelector('[data-mf-notice-body]').textContent = connected
-            ? '上方「機台狀態」的掛載材料與餘量由 Eiger 每 30 分鐘自動同步。'
-              + '下方庫存數字尚未自動扣減，仍需人工維護與定期盤點。'
-            : '取得 Markforged API 金鑰後，機台掛載材料與列印消耗將自動同步。'
-              + '屆時本頁的庫存數字會由系統自動扣減，手動輸入僅作校正之用。';
+            ? '機台掛載材料、餘量與列印消耗由 Eiger 每 30 分鐘自動同步，消耗會自動扣減下方庫存'
+              + '（只有餘量下降才扣；換料、補料不動庫存）。手動輸入用於入庫與盤點校正。'
+            : '同步正常時，機台掛載材料、餘量與列印消耗每 30 分鐘自動更新，並自動扣減下方庫存。';
     }
     // 編輯權限的顯示/隱藏由 applyRoleUI() 在登入時統一處理（本頁按鈕帶 data-editor-only）
 }
@@ -6064,6 +6412,24 @@ function trendShiftYear(delta) {
 
 function trendPrevYear() { trendShiftYear(-1); }
 function trendNextYear() { trendShiftYear(1); }
+async function loadTrendYear() {
+    const y = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
+    await ensureYearLoaded(y);
+    renderMonthly();
+}
+// 這一年還沒整年載入時的提示文字（趨勢圖與年度表會少掉前面幾個月，看起來卻像真的沒用量）
+function yearPartialNote(year) {
+    const earliest = extraHistorySinceDate || historySinceDate;
+    if (!earliest || earliest <= new Date(year, 0, 1) || year > new Date().getFullYear()) return '';
+    return `目前只載入 ${earliest.toLocaleDateString('zh-TW')} 起的資料，更早的月份會是 0；按「載入整年」補齊。`;
+}
+function showYearPartialNote(elId, year) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const t = yearPartialNote(year);
+    el.textContent = t;
+    el.classList.toggle('hidden', !t);
+}
 
 function renderMonthlyTrend() {
     const curYear = parseInt(document.getElementById('monthly-year').value) || new Date().getFullYear();
@@ -6082,6 +6448,7 @@ function renderMonthlyTrend() {
     });
 
     const totalForYear = monthlyTotals.reduce((s,v)=>s+v, 0);
+    showYearPartialNote('trend-partial', curYear);
     const printerLabel = printerFilter ? ` · ${printerFilter}` : '';
     document.getElementById('trend-title').textContent = `${curYear}年 月度消耗趨勢${printerLabel}（年計 ${(totalForYear/1000).toFixed(1)} L）`;
 
@@ -7096,7 +7463,13 @@ window.exportMonthlyReport = exportMonthlyReport;
 window.renderReportAnalysis = renderReportAnalysis;
 window.renderMfHistory = renderMfHistory;
 window.renderMfMonthly = renderMfMonthly;
-window.mfMonthShift = mfMonthShift;
+window.onMfMonthlySelChange = onMfMonthlySelChange;
+window.mfmShiftYear = mfmShiftYear;
+window.loadMfTrendYear = loadMfTrendYear;
+window.loadTrendYear = loadTrendYear;
+window.setMfmTrendType = setMfmTrendType;
+window.setMfmWorkcatMatChartType = setMfmWorkcatMatChartType;
+window.renderMfmWorkcatMaterialChart = renderMfmWorkcatMaterialChart;
 window.applyMfHistoryDateRange = applyMfHistoryDateRange;
 window.resetMfHistoryFilters = resetMfHistoryFilters;
 window.startMfEdit = startMfEdit;

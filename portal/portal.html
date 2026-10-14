@@ -461,6 +461,7 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .preset-chip.p-mgr{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 .preset-chip.p-eng{border-color:var(--ok);color:var(--ok);background:var(--ok-soft)}
 .preset-chip.p-view{border-color:var(--ink-4);color:var(--ink-3);background:var(--bg-soft)}
+.preset-chip.p-mat{border-color:var(--purple);color:var(--purple);background:var(--purple-soft)}
 .u-tbl{width:100%;border-collapse:collapse}
 .u-tbl th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-4);text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid var(--line);background:var(--bg-soft);white-space:nowrap}
 .u-tbl td{padding:11px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle}
@@ -471,6 +472,7 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .role-chip.manager{background:var(--accent-soft);color:var(--accent)}
 .role-chip.operator{background:var(--ok-soft);color:var(--ok)}
 .role-chip.viewer{background:var(--bg-soft);color:var(--ink-3)}
+.role-chip.materials{background:var(--purple-soft);color:var(--purple)}
 .st-dot{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
 .st-dot.on{color:var(--ok)}.st-dot.off{color:var(--ink-4)}
 .seg{display:flex;gap:2px}
@@ -526,7 +528,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20261013a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261013d"></script>
+<script src="firebase-service.js?v=20261014a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1859,8 +1861,8 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }
               <label style={LBL}>角色快速套用</label>
               <div className="preset-row">
                 {(callerIsAdmin
-                  ? [['admin','p-admin','管理員'],['manager','p-mgr','主管'],['operator','p-eng','工程師'],['viewer','p-view','查閱']]
-                  : [['manager','p-mgr','主管'],['operator','p-eng','工程師'],['viewer','p-view','查閱']]
+                  ? [['admin','p-admin','管理員'],['manager','p-mgr','主管'],['operator','p-eng','工程師'],['materials','p-mat','資材'],['viewer','p-view','查閱']]
+                  : [['manager','p-mgr','主管'],['operator','p-eng','工程師'],['materials','p-mat','資材'],['viewer','p-view','查閱']]
                 ).map(([r,cls,l])=>(
                   <button key={r} className={`preset-chip ${cls}`} onClick={()=>applyPreset(r)}>{l}</button>
                 ))}
@@ -2307,10 +2309,12 @@ function AdminPanel({ user, isAdmin }) {
     if (p.includes('admin')) return 'admin';
     if (p.includes('delete_board') || p.includes('delete_issues')) return 'manager';
     if (p.includes('edit_board')) return 'operator';
+    // 資材：不能編輯工作看板、但能填採購工程庫存
+    if (p.includes('edit_purchase_stock')) return 'materials';
     return 'viewer';
   };
-  const ROLE_TIER_LABEL = { admin:'管理員', manager:'主管', operator:'工程師', viewer:'查閱' };
-  const ROLE_TIER_RANK  = { admin:0, manager:1, operator:2, viewer:3 };
+  const ROLE_TIER_LABEL = { admin:'管理員', manager:'主管', operator:'工程師', materials:'資材', viewer:'查閱' };
+  const ROLE_TIER_RANK  = { admin:0, manager:1, operator:2, materials:3, viewer:4 };
   // 使用者排序：依姓名/Email 字母（localeCompare）、依權限等級（管理員>主管>工程師>查閱）
   const roleRank = u => ROLE_TIER_RANK[roleTierOf(u)];
   const toggleSort = k => { if(sortKey===k) setSortDir(d=>d==='asc'?'desc':'asc'); else { setSortKey(k); setSortDir('asc'); } };
@@ -2630,8 +2634,8 @@ function AdminPanel({ user, isAdmin }) {
   // 角色分頁權限：切換某角色的某權限
   const TAB_PERMS = window.TAB_PERMS || [];
   const PERMS_MAP = window.PERMS_MAP || {};
-  const ROLE_LABELS = { manager:'主管 (manager)', operator:'工程師 (operator)', viewer:'查閱 (viewer)' };
-  const EDITABLE_ROLES = ['manager','operator','viewer'];  // admin 固定全權，不開放編輯
+  const ROLE_LABELS = { manager:'主管 (manager)', operator:'工程師 (operator)', materials:'資材 (materials)', viewer:'查閱 (viewer)' };
+  const EDITABLE_ROLES = ['manager','operator','materials','viewer'];  // admin 固定全權，不開放編輯
   const toggleRolePerm = (role, perm) => setRolePresets(rp => {
     const cur = rp[role] || [];
     const next = cur.includes(perm) ? cur.filter(p=>p!==perm) : [...cur, perm];
@@ -3029,6 +3033,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING', date:'2026-10-14', type:'feat',
+    text:'新增「資材」角色（後台套用角色時可選）：只看得到材料庫存管理（含北中南總覽），可以填寫「採購工程庫存」，其餘唯讀。材料庫存 Markforged 的「月度分析」改成與 Formlabs 相同的版面（材料佔比、工作類別、責任工程師、當月消耗紀錄、年度趨勢、詳細統計），可選年份、月份與機台；兩邊的「月度消耗趨勢」多了「載入整年」按鈕，還沒載入整年時會提示。Markforged 材料庫存頁的提示也更正為「消耗已自動扣庫存」。' },
   { hash:'8c3e07d', date:'2026-10-14', type:'tweak',
     text:'材料庫存 Markforged：「消耗記錄」新增材料、機台、責任工程師與日期篩選（匯出列印記錄也照篩選範圍），「月度分析」新增機台篩選。Formlabs 與 Markforged 的月度分析選了較早的年份或月份會自動載入那段資料，不用再先到消耗記錄按「載入更早一個月」。也更正了兩處過時的說明（Markforged 早已自動同步並扣庫存）。' },
   { hash:'00186ca', date:'2026-10-14', type:'fix',
@@ -3047,8 +3053,6 @@ const CHANGELOG = [
     text:'設備保養的排程表縮到頁面寬度，不用再左右捲動，文字不換行，放不下的會以「…」省略、滑鼠停留可看全文；維護到期總表的文字也一律橫排不換行。' },
   { hash:'53f0068', date:'2026-10-13', type:'fix',
     text:'修正：機台正在列印時，每一輪 Formlabs 同步的結果都會多出一筆錯誤訊息（NameError）。不影響消耗紀錄與庫存，只是同步紀錄裡有錯誤。' },
-  { hash:'9c26273', date:'2026-10-13', type:'feat',
-    text:'新增「公共事項」頁（左側選單）：全公司共用的看板，用來放週會紀錄與北中南共同事項。每篇文章可以標示地區（全公司／北部／中部／南部）並依地區篩選、搜尋。所有人都可以在文章下方留言、回覆某則留言、替文章或留言按讚，也可以編輯或刪除自己的留言（編輯過的會標示「已編輯」）。發文、編輯文章與刪除任何留言需要「公共事項看板」權限，預設給管理員與主管；文章編輯器可以設定粗體、螢光標記、清單、插入圖片，也可以直接從 SharePoint／Word 貼上。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
