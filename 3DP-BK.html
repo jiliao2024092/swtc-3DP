@@ -439,6 +439,10 @@
 <!-- 北中南分區定義（階段 1：只提供定義，尚未有任何顯示依它改變）-->
 <script src="regions.js?v=20260908d"></script>
 <script type="module">
+// ★ 插進 innerHTML／屬性的使用者輸入一律先跳脫（2026-10-14 資安檢查 S1）：
+//   預約的「用途」原本直接插進 HTML，有預約權限的人可以放一段程式碼，
+//   在 admin 打開預約頁時以 admin 身分執行（例如偷偷建管理員帳號）。
+const escHtml = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
 import {
     getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
@@ -1056,13 +1060,13 @@ window.renderTable = function() {
         const slotLabel = b.slot==='PM' ? '下午' : b.slot==='AM' ? '上午' : b.slot==='EV' ? '晚上' : b.slot==='ALL' ? '全天' : '—';
         const slotColor = isConflict ? 'bg-[var(--orange-soft)] text-[var(--orange)]' : (b.slot==='PM' ? 'bg-[var(--orange-soft)] text-[var(--orange)]' : b.slot==='EV' ? 'bg-[var(--indigo-soft)] text-[var(--indigo)]' : b.slot==='ALL' ? 'bg-[var(--violet-soft)] text-[var(--violet)]' : 'bg-[var(--sky-soft)] text-[var(--sky)]');
         const printerCell = isConflict
-            ? `<span class="text-[var(--orange)] font-medium">${b.printer}</span> <span class="text-xs bg-[var(--orange-soft)] text-[var(--orange)] px-1.5 py-0.5 rounded-full">衝突</span>`
-            : b.printer;
+            ? `<span class="text-[var(--orange)] font-medium">${escHtml(b.printer)}</span> <span class="text-xs bg-[var(--orange-soft)] text-[var(--orange)] px-1.5 py-0.5 rounded-full">衝突</span>`
+            : escHtml(b.printer);
 
         // 單號 / 備註：依 hasOrder 區分樣式（有單號 = 綠框 badge；無 = 灰色備註文字）
         const purposeCell = b.hasOrder
-            ? `<span class="bg-[var(--ok-soft)] text-[var(--ok)] border border-[var(--ok-border)] px-2 py-0.5 rounded text-xs font-medium">${b.purpose||'—'}</span>`
-            : `<span class="text-[var(--ink-4)] text-xs">${b.purpose||'—'}</span>`;
+            ? `<span class="bg-[var(--ok-soft)] text-[var(--ok)] border border-[var(--ok-border)] px-2 py-0.5 rounded text-xs font-medium">${escHtml(b.purpose||'—')}</span>`
+            : `<span class="text-[var(--ink-4)] text-xs">${escHtml(b.purpose||'—')}</span>`;
 
         const lastEdit = b.updatedAt ? fmtRelTime(b.updatedAt) : (b.createdAt ? fmtRelTime(b.createdAt) : '—');
         // 優先顯示姓名（updatedByName/createdByName）；舊資料沒有姓名欄位時才退回email帳號部分
@@ -1074,9 +1078,9 @@ window.renderTable = function() {
                 ${displayDate}${(b.endDate && b.endDate!==b.date) ? ` <span class="text-xs text-[var(--ink-5)]">~${new Date(b.endDate+'T00:00:00').toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})}</span>` : ''}${isOverdue?' <span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-1 rounded">逾期</span>':''}
             </td>
             <td class="p-3"><span class="${slotColor} px-2 py-0.5 rounded text-xs font-medium">${slotLabel}</span></td>
-            <td class="p-3"><span class="bg-[var(--purple-soft)] text-[var(--purple)] px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap">${salesDisplay(b.sales)}</span></td>
+            <td class="p-3"><span class="bg-[var(--purple-soft)] text-[var(--purple)] px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap">${escHtml(salesDisplay(b.sales))}</span></td>
             <td class="p-3">${printerCell}</td>
-            <td class="p-3"><span class="bg-[var(--indigo-soft)] text-[var(--indigo)] px-2 py-1 rounded-md text-xs font-medium border border-[var(--indigo-border)] whitespace-nowrap">${engDisplay(b.engineer)}</span></td>
+            <td class="p-3"><span class="bg-[var(--indigo-soft)] text-[var(--indigo)] px-2 py-1 rounded-md text-xs font-medium border border-[var(--indigo-border)] whitespace-nowrap">${escHtml(engDisplay(b.engineer))}</span></td>
             <td class="p-3">${purposeCell}</td>
             <td class="p-3">
                 <select ${canEdit&&canEditBooking(b)?'':'disabled'} onchange="updateStatus('${b.id}',this.value)"
@@ -1086,7 +1090,7 @@ window.renderTable = function() {
             </td>
             <td class="p-3 text-xs text-[var(--ink-5)]">
                 ${lastEdit}
-                ${lastByShort?`<div class="text-[var(--ink-5)]">by ${lastByShort}</div>`:''}
+                ${lastByShort?`<div class="text-[var(--ink-5)]">by ${escHtml(lastByShort)}</div>`:''}
             </td>
             ${canEdit && !canEditBooking(b) ? `
             <td class="p-3 text-center">
@@ -1267,7 +1271,7 @@ function renderGantt() {
             const color = ganttStatusColor(effectiveStatus(b));
             const catTxt = b.category==='其他' ? (b.categoryOther||'其他') : (b.category||'—');
             const allDayMark = b.slot==='ALL' ? ' 🌓' : '';
-            return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}" ${canEdit&&canEditBooking(b)?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
+            return `<div class="${color} rounded px-1 py-0.5 mb-0.5 cursor-pointer truncate" title="${escHtml(`${salesDisplay(b.sales)} · ${catTxt} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${effectiveStatus(b)}${b.slot==='ALL'?' · 全天':''}`)}" ${canEdit&&canEditBooking(b)?`onclick="event.stopPropagation();openEditModal('${b.id}')"`:''}>
                 ${catTxt}${allDayMark}
             </div>`;
         };
@@ -1386,7 +1390,7 @@ function renderGanttMonth() {
             const blocks = dayBookings.map(b=>{
                 const color   = ganttStatusColor(effectiveStatus(b));
                 const slotTxt = b.slot==='ALL'?'全天':b.slot==='PM'?'下午':b.slot==='EV'?'晚上':'上午';
-                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${salesDisplay(b.sales)} · ${b.purpose} · ${engDisplay(b.engineer)} · ${slotTxt} · ${effectiveStatus(b)}" ${canEdit&&canEditBooking(b)?`onclick="openEditModal('${b.id}')"`:''}></div>`;
+                return `<div class="${color} rounded-sm cursor-pointer" style="height:11px;margin-bottom:2px" title="${escHtml(`${salesDisplay(b.sales)} · ${b.purpose||''} · ${engDisplay(b.engineer)} · ${slotTxt} · ${effectiveStatus(b)}`)}" ${canEdit&&canEditBooking(b)?`onclick="openEditModal('${b.id}')"`:''}></div>`;
             }).join('');
             html += `<td class="p-0.5 border border-[var(--line)] align-top ${bg}${ring}">${blocks}</td>`;
         });

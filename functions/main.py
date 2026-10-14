@@ -871,7 +871,7 @@ def _mf_active_job(dev: dict) -> dict:
 def _mf_observe(db, entries: list, now_iso: str, machine_regions=None) -> int:
     """Markforged 材料餘量追蹤 —— **2026-08-25 起由觀測模式改為實際扣庫存**。
 
-    原本只寫 mf_material_log（`stock_deducted: False`）。現在同一筆消耗還會：
+    原本只寫 mf_material_log（`stock_deducted: False`）。現在同一筆消耗會：
       1. 寫進 inventory_history（source=markforged、unit=cc），與 Formlabs 同一個
          collection，前端「消耗記錄／月度分析」就看得到
       2. 依機台所屬區扣 inventory/markforged_{region}.stock[材料].total_cc
@@ -963,7 +963,7 @@ def _mf_observe(db, entries: list, now_iso: str, machine_regions=None) -> int:
                 region_ded.setdefault(rk, {})
                 region_ded[rk][mat] = region_ded[rk].get(mat, 0.0) + used
                 history.append({
-                    # ★ doc_id 與 mf_material_log 同一組，讓重寫是冪等的。
+                    # ★ doc_id 由機台、槽位、時間戳決定（原本與 mf_material_log 同一組），讓重寫是冪等的。
                     #   萬一寫入成功但基準沒更新（下一輪算出同一段差額），
                     #   同 id 覆寫不會變成兩筆。
                     "doc_id": "mfh_" + lg_doc_id_of(e, m, now_iso),
@@ -1000,7 +1000,8 @@ def _mf_observe(db, entries: list, now_iso: str, machine_regions=None) -> int:
     #   把基準更新綁進同一個 batch，就不會有這個窗口。
     batch = db.batch()
     for lg in logs:
-        batch.set(db.collection("mf_material_log").document(lg["doc_id"]), lg["data"])
+        # ★ 2026-10-14 起不再寫 mf_material_log：與 inventory_history 的 MF 消耗重複，
+        #   前端「材料餘量觀測」面板也一併移除。這裡只留 log 供除錯對帳。
         d = lg["data"]
         print(f"[eiger] {d['device']} {d['slot']} {d['material']} "
               f"{d['from_cc']} → {d['to_cc']} cc（{d['kind']}）")

@@ -67,13 +67,25 @@
     });
   }
 
-  async function fetchConsumptionForEF(efNo) {
+  // 2026-08-27 起 Cloud Function 才寫 ef_no。在這之前建立的工單，消耗紀錄才可能沒有 ef_no。
+  const EF_NO_SINCE = new Date(2026, 7, 27);
+  // 只有「這天之前建立的既有工單」才需要退回掃描（沒有 createdAt 的極舊資料也算）。
+  // ★ 2026-10-14 負載檢查 R2：原本只要精準查詢查不到就掃最近 1000 筆，而新工單
+  //   （還沒開始印）每次開啟都查不到 → 每開一次就是 1000 次讀取，是工作看板最大的讀取來源。
+  function needsLegacyScan(order) {
+    if (!order) return false;
+    const ca = order.createdAt;
+    if (!ca) return true;
+    const d = typeof ca.toDate === 'function' ? ca.toDate() : new Date(ca);
+    return isNaN(d) || d < EF_NO_SINCE;
+  }
+
+  async function fetchConsumptionForEF(efNo, allowScan) {
     if (!efNo || !window.fbDb) return null;
     try {
-      // 先走精準查詢；查不到再退回掃描最近 1000 筆。
+      // 先走精準查詢；查不到、且是 2026-08-27 之前建立的工單，才退回掃描最近 1000 筆。
       // ★ 退路不能拿掉：2026-08-27 之前同步的紀錄沒有 ef_no 欄位，只靠精準查詢
-      //   會讓那些工單的消耗量整個消失（比現況更糟）。admin 跑過一次
-      //   backfill_ef_no 之後，退路實際上就不會再被用到。
+      //   會讓那些工單的消耗量整個消失（比現況更糟）。
       let rows = [];
       try {
         rows = await queryByEfNo(efNo);
@@ -81,7 +93,7 @@
         console.warn('[fetchConsumptionForEF] ef_no 查詢失敗，改用備註掃描', e);
       }
       const precise = rows.length > 0;
-      if (!precise) rows = await loadRecentHistory();
+      if (!precise && allowScan) rows = await loadRecentHistory();
 
       const byMat = new Map();   // 材料顯示名稱 → { name, sum, count }
       let sum = 0, count = 0;
@@ -212,7 +224,7 @@
       let cancelled = false;
       setConsumeInfo(null);
       if (!form.id) return;
-      fetchConsumptionForEF(form.id).then(info => {
+      fetchConsumptionForEF(form.id, needsLegacyScan(order)).then(info => {
         if (cancelled || !info) return;
         setConsumeInfo(info);
         setForm(f => {
