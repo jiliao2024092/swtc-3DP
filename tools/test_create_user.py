@@ -9,8 +9,8 @@
 
 測的東西：
   1. 誰能呼叫（user_caps）：admin（permissions 或舊 role）、manage_users 主管；停用的不行
-  2. 寫進 users 文件的內容（new_user_doc）：portal 與 3DP-BK 兩種形狀、role 由伺服器推導、
-     主管不可建管理員、地區白名單
+  2. 寫進 users 文件的內容（new_user_doc）：只收 portal 的形狀、role 由伺服器推導、
+     主管不可建管理員、地區必填且在白名單內
   3. role_from_permissions 與前端 roleFromPermissions() 結果一致（實際用 node 執行前端那段）
   4. 前端不可再出現 createUserWithEmailAndPassword（開放註冊關掉後那條路會直接失敗）
 
@@ -60,7 +60,7 @@ def raises(fn, exc, why):
 
 
 # ── 從 main.py 抽出要測的頂層定義，實際執行（main.py 本身 import 了 firebase，測試環境不一定有）──
-WANT = {"REGION_CODES", "LEGACY_USER_ROLES", "role_from_permissions", "user_caps", "new_user_doc"}
+WANT = {"REGION_CODES", "role_from_permissions", "user_caps", "new_user_doc"}
 picked = []
 for node in TREE.body:
     if isinstance(node, ast.FunctionDef) and node.name in WANT:
@@ -128,23 +128,18 @@ raises(lambda: new_user_doc({**portal, "region": "偷改的區"}, True),
        ValueError, "★ 地區只收 north／central／south")
 raises(lambda: new_user_doc({**portal, "region": None}, True),
        ValueError, "地區送 null → 格式錯誤（不可靜默變中部）")
+raises(lambda: new_user_doc({k: v for k, v in portal.items() if k != "region"}, True),
+       ValueError, "★ 地區必填：沒送就拒絕（沒地區的帳號會被當成中部，畫面上沒有提示）")
 raises(lambda: new_user_doc({**portal, "email": "  "}, True), ValueError, "email 空白 → 錯誤")
 raises(lambda: new_user_doc({k: v for k, v in portal.items() if k != "email"}, True),
        ValueError, "沒送 email → 錯誤")
 
-print("── 3DP-BK 的形狀 ──")
-bk = {"email": "bk@swtc.com", "password": "secret1", "displayName": "bk", "role": "editor"}
-d = new_user_doc(bk, caller_is_admin=True)
-eq(sorted(d.keys()), sorted(["email", "displayName", "role"]),
-   "★ 3DP-BK 形狀維持原本的欄位（只有 role，不寫 permissions／active／region）")
-eq(d["role"], "editor", "3DP-BK 送的 role 照寫")
-eq(new_user_doc({**bk, "role": "admin"}, True)["role"], "admin", "admin 可以建立 role:'admin'")
-raises(lambda: new_user_doc({**bk, "role": "admin"}, False),
-       PermissionError, "★ 主管不可建立 role:'admin'（舊 role 欄位一樣會被 hasPerm 當成管理員）")
-raises(lambda: new_user_doc({**bk, "role": "superuser"}, True),
-       ValueError, "role 只收 viewer／editor／admin")
-eq(new_user_doc({k: v for k, v in bk.items() if k != "role"}, True)["role"], "viewer",
-   "沒送 role → viewer")
+print("── 只有 role 的舊寫法（原 3DP-BK 使用者管理，2026-10-14 移除）──")
+legacy = {"email": "bk@swtc.com", "password": "secret1", "displayName": "bk", "role": "admin", "region": "central"}
+raises(lambda: new_user_doc(legacy, False),
+       ValueError, "★ 主管只送 role:'admin'、沒有 permissions → 拒絕（不可靠舊 role 欄位建出管理員）")
+raises(lambda: new_user_doc(legacy, True),
+       ValueError, "admin 也一樣：沒有 permissions 一律拒絕，只收 portal 的形狀")
 
 # ── 3. 與前端 roleFromPermissions() 一致 ─────────────────────────────
 print("── role 推導：前後端一致 ──")

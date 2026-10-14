@@ -145,8 +145,8 @@ service cloud.firestore {
     match /users/{userId} {
       // 讀取收緊：原本任一登入者可讀「所有人」的 email / permissions，屬內部資訊揭露。
       // 現在只放行：自己、admin、有 manage_users 的主管（後台使用者管理需要列出全部）。
-      // ★ 已確認前端相依：只有 portal 的 AdminPanel 與 3DP-BK 的使用者管理 Modal
-      //   會列出全部使用者，兩者本來就限 admin/manage_users；其餘頁面
+      // ★ 已確認前端相依：只有 portal 的 AdminPanel 會列出全部使用者，本來就限 admin/manage_users
+      //   （3DP-BK 原本也有一個使用者管理 Modal，2026-10-14 已移除）；其餘頁面
       //   （quote-studio / quote-markforged / inventory / 3DP-BK 登入流程）都只讀自己那份。
       // ★ 規則內部的 get() 不受讀取規則限制，所以 hasPerm() 仍查得到別人的文件。
       allow read: if isLoggedIn() && (

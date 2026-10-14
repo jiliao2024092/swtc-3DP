@@ -81,7 +81,7 @@ const USERS = {
   mgrRole:    { uid: 'u_mgrR',  email: 'mgrr@swtc.com',  permissions: ['view_board','manage_users'] },
   roleTarget: { uid: 'u_tgtR',  email: 'tgtr@swtc.com',  permissions: ['view_board'] },
   roleTarget2:{ uid: 'u_tgtR2', email: 'tgtr2@swtc.com', permissions: ['view_board'] },
-  // 只有舊 role:'admin'、沒有 permissions（3DP-BK 使用者管理建出來的管理員就長這樣）
+  // 只有舊 role:'admin'、沒有 permissions（以前 3DP-BK 使用者管理建出來的管理員就長這樣，舊資料仍在）
   legacyAdm:  { uid: 'u_legAdm', email: 'legadm@swtc.com', role: 'admin' },
 };
 
@@ -240,7 +240,7 @@ async function main() {
       .set({ permissions: ['view_board','edit_board'], role: 'editor', active: true }, { merge: true }));
   await ok('主管仍可建立一般使用者文件',
     as(USERS.manager).doc('users/u_mgr_new').set({ email: 'mn@swtc.com', permissions: ['view_board'], role: 'viewer', active: true }));
-  await ok('admin 仍可把別人設成 role:admin（3DP-BK 使用者管理的角色下拉）',
+  await ok('admin 仍可把別人設成 role:admin（主管的限制不影響 admin）',
     as(USERS.admin).doc(`users/${USERS.roleTarget2.uid}`).set({ role: 'admin' }, { merge: true }));
 
   // ══ print_history：刪自己的、不能刪別人的 ═════════════════════════

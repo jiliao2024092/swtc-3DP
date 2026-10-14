@@ -2334,17 +2334,17 @@ def sync_eiger_manual(req: https_fn.CallableRequest) -> dict:
 
 # ════════════════════════════════════════════════════════════════
 # 後台「新增使用者」（2026-10-13）
-#   portal 的使用者管理（admin／有 manage_users 的主管）與 3DP-BK 的使用者管理（admin）
-#   原本都在前端用 secondary app 呼叫 createUserWithEmailAndPassword，所以 Firebase Auth
-#   的「開放註冊」必須開著 —— 任何拿到公開 API key 的人都能自行註冊、登入，讀到只檢查
-#   「有沒有登入」的資料。改由這支用 Admin SDK 建帳號並寫 users 文件，開放註冊才能關掉。
+#   portal 的使用者管理（admin／有 manage_users 的主管）原本在前端用 secondary app 呼叫
+#   createUserWithEmailAndPassword，所以 Firebase Auth 的「開放註冊」必須開著 —— 任何拿到
+#   公開 API key 的人都能自行註冊、登入，讀到只檢查「有沒有登入」的資料。改由這支用
+#   Admin SDK 建帳號並寫 users 文件之後，開放註冊已於 2026-10-14 關閉。
 #   ⚠ 前端不可改回 createUserWithEmailAndPassword：開放註冊關掉之後那條路會直接失敗。
+#   （3DP-BK 也曾有一套只寫 role 的使用者管理，2026-06-29 起就沒有入口，2026-10-14 移除）
 # ════════════════════════════════════════════════════════════════
-LEGACY_USER_ROLES = ("viewer", "editor", "admin")
 
 
 def role_from_permissions(perms) -> str:
-    """由 permissions 推導舊系統用的 role（3DP-BK / inventory 只看 role）。
+    """由 permissions 推導舊系統用的 role（3DP-BK 預約／inventory 只看 role）。
     ★ 與 portal/firebase-service.js 的 roleFromPermissions() 一致。"""
     p = perms or []
     if "admin" in p:
@@ -2368,11 +2368,9 @@ def user_caps(d) -> tuple:
 
 def new_user_doc(data: dict, caller_is_admin: bool) -> dict:
     """前端送來的資料 → 要寫進 users/{uid} 的內容（createdAt／createdBy 由呼叫端補）。
-    兩種形狀，各自維持原本前端寫入的欄位：
-      portal：permissions（＋active、region）；role 一律由 permissions 推導，不採用前端傳來的 role
-      3DP-BK：只有 role（viewer／editor／admin），沒有 permissions
-    非 admin（主管）不可建出管理員：permissions 含 admin 或 role == 'admin' 都擋，
-    與 firestore.rules 的 canCreateOtherUser() 同一條邊界。
+    只收 portal UserModal 的形狀：permissions、active、region（必填）。
+    role 一律由 permissions 推導，不採用前端傳來的 role（否則主管送 role:'admin' 就繞過了）。
+    非 admin（主管）不可建出管理員，與 firestore.rules 的 canCreateOtherUser() 同一條邊界。
     不合法 → ValueError；權限不足 → PermissionError（訊息會直接顯示給操作的人）。"""
     email = data.get("email")
     if not isinstance(email, str) or not email.strip():
@@ -2382,28 +2380,21 @@ def new_user_doc(data: dict, caller_is_admin: bool) -> dict:
         raise ValueError("顯示名稱格式錯誤")
     doc = {"email": email.strip(), "displayName": display_name.strip()}
 
-    if "permissions" in data:
-        perms = data["permissions"]
-        if not isinstance(perms, list) or not all(isinstance(p, str) and p for p in perms):
-            raise ValueError("權限格式錯誤")
-        active = data.get("active", True)
-        if not isinstance(active, bool):
-            raise ValueError("啟用狀態格式錯誤")
-        doc.update(permissions=perms, role=role_from_permissions(perms), active=active)
-    else:
-        role = data.get("role", "viewer")
-        if role not in LEGACY_USER_ROLES:
-            raise ValueError("角色格式錯誤")
-        doc["role"] = role
+    perms = data.get("permissions")
+    if not isinstance(perms, list) or not all(isinstance(p, str) and p for p in perms):
+        raise ValueError("權限格式錯誤")
+    active = data.get("active", True)
+    if not isinstance(active, bool):
+        raise ValueError("啟用狀態格式錯誤")
+    doc.update(permissions=perms, role=role_from_permissions(perms), active=active)
 
     if not caller_is_admin and doc["role"] == "admin":
         raise PermissionError("主管無法建立管理員帳號")
 
-    # 地區：portal 的 UserModal 一定會送（必選）；3DP-BK 沒有這個欄位 → 不寫，視為中部（與原本相同）
-    if "region" in data:
-        if data["region"] not in REGION_CODES:
-            raise ValueError("請選擇地區")
-        doc["region"] = data["region"]
+    # 地區必填（與 UserModal 一致）：沒寫地區的帳號會被當成中部，而且畫面上不會有任何提示
+    if data.get("region") not in REGION_CODES:
+        raise ValueError("請選擇地區")
+    doc["region"] = data["region"]
     return doc
 
 
