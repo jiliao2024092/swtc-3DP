@@ -1700,7 +1700,7 @@ window.DashboardView = DashboardView;
 <script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
 <script src="maintenance-logic.js?v=20261013a"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261013b"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261015a"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261013a"></script>
@@ -3033,6 +3033,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'待補', date:'2026-10-15', type:'tweak',
+    text:'設備保養的「維護到期總表」可以直接編輯：點任一列就會打開設備資料視窗（和保養排程點客戶名稱是同一個），改完按儲存即可；只有可編輯該地區的人點得開。另外拿掉「剩餘天數」欄，畫面與匯出的 Excel 都不再有這一欄。' },
   { hash:'bbf1440', date:'2026-10-14', type:'feat',
     text:'新增「資材」角色（後台套用角色時可選）：只看得到材料庫存管理（含北中南總覽），可以填寫「採購工程庫存」，其餘唯讀。材料庫存 Markforged 的「月度分析」改成與 Formlabs 相同的版面（材料佔比、工作類別、責任工程師、當月消耗紀錄、年度趨勢、詳細統計），可選年份、月份與機台；兩邊的「月度消耗趨勢」多了「載入整年」按鈕，還沒載入整年時會提示。Markforged 材料庫存頁的提示也更正為「消耗已自動扣庫存」。' },
   { hash:'8c3e07d', date:'2026-10-14', type:'tweak',
@@ -3051,8 +3053,6 @@ const CHANGELOG = [
     text:'北中南總覽的庫存改用「水位」顯示：低於安全庫存的格子依「庫存÷安全庫存」從左往右填色，0 以下整格深紅（缺貨）、不到 1 為紅色、其餘為橘色，達到安全庫存不填色；滑鼠停在格子上會顯示百分比。表格上方有顏色說明。' },
   { hash:'a25fa45', date:'2026-10-13', type:'tweak',
     text:'設備保養的排程表縮到頁面寬度，不用再左右捲動，文字不換行，放不下的會以「…」省略、滑鼠停留可看全文；維護到期總表的文字也一律橫排不換行。' },
-  { hash:'53f0068', date:'2026-10-13', type:'fix',
-    text:'修正：機台正在列印時，每一輪 Formlabs 同步的結果都會多出一筆錯誤訊息（NameError）。不影響消耗紀錄與庫存，只是同步紀錄裡有錯誤。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

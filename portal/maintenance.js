@@ -340,22 +340,25 @@
   }
 
   // ── 維護到期總表 ──────────────────────────────────────────────
-  function ExpiryTable({ rows, statusF }) {
+  // 2026-10-15 使用者要求：點一列開「設備資料」視窗編輯（與保養排程點客戶名稱同一個視窗）；拿掉「剩餘天數」欄
+  function ExpiryTable({ rows, statusF, canEditDev, onEditDev }) {
     const today = new Date();
     const list = rows
-      .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today), days: ML.daysUntil(d.expiryDate, today) }))
+      .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today) }))
       .filter(x => !statusF || x.st === statusF)
       .sort((a, b) => String(a.d.expiryDate || '9999').localeCompare(String(b.d.expiryDate || '9999')));
     if (!list.length) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-4)' }}>沒有符合條件的設備</div>;
     // ★ 一律不換行、文字橫向排（2026-10-13 使用者要求）：寬度不夠時整張表橫向捲動，而不是把客戶名稱折成好幾行
     return (
       <table className="kt" style={{ whiteSpace: 'nowrap' }}>
-        <thead><tr><th>狀態</th><th>維護到期</th><th>剩餘天數</th><th>客戶名稱</th><th>廠牌</th><th>機型</th><th>序號</th><th>地區</th><th>清單</th><th>責任業務</th><th>保養負責</th></tr></thead>
-        <tbody>{list.map(({ d, st, days }) => (
-          <tr key={d._id}>
+        <thead><tr><th>狀態</th><th>維護到期</th><th>客戶名稱</th><th>廠牌</th><th>機型</th><th>序號</th><th>地區</th><th>清單</th><th>責任業務</th><th>保養負責</th></tr></thead>
+        <tbody>{list.map(({ d, st }) => {
+          const editable = canEditDev(d);
+          return (
+          <tr key={d._id} onClick={editable ? () => onEditDev(d) : undefined}
+              style={{ cursor: editable ? 'pointer' : 'default' }} title={editable ? '點擊編輯設備資料' : ''}>
             <td><span style={{ fontSize: 11.5, fontWeight: 600, padding: '2px 8px', borderRadius: 999, color: STATUS[st].fg, background: STATUS[st].bg, whiteSpace: 'nowrap' }}>{STATUS[st].label}</span></td>
             <td style={{ whiteSpace: 'nowrap' }}>{d.expiryDate || '—'}</td>
-            <td style={{ textAlign: 'right' }}>{days === null ? '—' : days}</td>
             <td style={{ fontWeight: 600 }}>{d.customer}</td>
             <td>{d.brand}</td><td>{d.model}</td>
             <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{d.serial}</td>
@@ -363,7 +366,8 @@
             <td style={{ whiteSpace: 'nowrap' }}>{salesLabel(d.sales)}</td>
             <td style={{ whiteSpace: 'nowrap' }}>{engLabel(d.engineer)}</td>
           </tr>
-        ))}</tbody>
+          );
+        })}</tbody>
       </table>
     );
   }
@@ -489,11 +493,11 @@
       if (!window.XLSX) { toast('Excel 元件尚未載入', 'err'); return; }
       const today = new Date();
       const rows = filtered
-        .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today), days: ML.daysUntil(d.expiryDate, today) }))
+        .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today) }))
         .filter(x => !statusF || x.st === statusF)
         .sort((a, b) => String(a.d.expiryDate || '9999').localeCompare(String(b.d.expiryDate || '9999')))
-        .map(({ d, st, days }) => ({
-          '狀態': STATUS[st].label, '維護到期': d.expiryDate || '', '剩餘天數': days === null ? '' : days,
+        .map(({ d, st }) => ({
+          '狀態': STATUS[st].label, '維護到期': d.expiryDate || '',
           '客戶名稱': d.customer, '廠牌': d.brand, '機型': d.model, '序號': d.serial, '安裝時間': d.installDate || '',
           '地區': regionLabel(d.region), '清單': LIST_LABEL[d.list] || '維護中', '責任業務': salesLabel(d.sales), '保養負責人': engLabel(d.engineer),
         }));
@@ -551,7 +555,8 @@
           {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-4)' }}>載入中...</div> : <>
             {tab === 'schedule' && <ScheduleTable rows={scheduleRows} year={year} canEditDev={canEditDev}
               onEditDev={d => setModal({ kind: 'dev', dev: d })} onEditCell={(d, m) => setModal({ kind: 'cell', dev: d, month: m })} />}
-            {tab === 'expiry' && <ExpiryTable rows={filtered} statusF={statusF} />}
+            {tab === 'expiry' && <ExpiryTable rows={filtered} statusF={statusF} canEditDev={canEditDev}
+              onEditDev={d => setModal({ kind: 'dev', dev: d })} />}
             {tab === 'report' && <>
               <p style={{ fontSize: 12.5, color: 'var(--ink-4)', margin: '0 0 12px' }}>
                 只算「維護中」的設備。需保養數＝當月排定保養的設備數；已保養數＝完成日期落在當月的筆數（延期到下個月才完成，算在下個月）；「不需保養」不扣除。
