@@ -1637,7 +1637,6 @@ const DEFAULT_SAFETY = 1000;
 const DEFAULT_DISABLED_NAMES = [
     'Durable V2.1',
     'Tough 1500 V1.1', 'FLTO1501',
-    'Tough 2000 V1', 'Tough 2000 V1.1', 'FLTO2001',
     'Open Material V1',
     'Flexible 80A V1', 'FLFL8001',
     'Rigid 4000 V1',  // 已被 FLRG4001 取代
@@ -2167,6 +2166,7 @@ Object.entries(CODE_TO_NAME).forEach(([code,name])=>{ NAME_TO_CODE_FE[name]=code
 NAME_TO_CODE_FE['Flexible 80A']  = 'FLFL8002';
 NAME_TO_CODE_FE['Flexible']      = 'FLFL8002';
 NAME_TO_CODE_FE['Rigid 4000 V1'] = 'FLRG4001';
+NAME_TO_CODE_FE['Tough 2000 V1'] = 'FLTO2001';   // V1 與 V1.1 共用代碼（與 main.py 的 NAME_TO_CODE 一致）
 
 // ══ 代碼家族正規化：取前 6 碼當家族代碼，把同材料的不同版本統一 ══
 //    （Formlabs 代碼末 2 碼通常是版本：FLTO1001/FLTO1002 → FLTO10）
@@ -2179,6 +2179,7 @@ const FAMILY_TO_NAME = {
     'FLPRMD':'Precision Model','FLFRGR':'Flame Retardant','FLDU20':'Durable',
     'FLCEBL':'Ceramic',       'FLPUBK':'Polyurethane',   'FLOPEN':'Open Material',
     'FLFL8V':'Flexible 80A V1.1',   // 自編家族碼，見 FAMILY_REMAP
+    'FLTO2V':'Tough 2000 V1.1',     // 自編家族碼，見 FAMILY_REMAP
 };
 // 家族名稱 → 家族代碼（讓 'Tough 1000' 這類家族名也能解析、合併）
 Object.entries(FAMILY_TO_NAME).forEach(([fam,name])=>{ if(!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name]=fam; });
@@ -2197,6 +2198,10 @@ const FAMILY_REMAP = {
     //   消耗、月度分析，停用互不影響）。FLFL8V 是本專案自編的家族碼，不是 Formlabs 代碼。
     //   只能用完整 8 碼當 key —— 前 6 碼 FLFL80 是 V2 在用的。與 functions/main.py 必須一致。
     'FLFL8011': 'FLFL8V', // Flexible 80A V1.1 → 獨立材料（南部 Form4B 在用）
+    // ★ 2026-10-19 使用者決定：Tough 2000 V1.1 比照 80A 拆成獨立材料（V1 與 V1.1 共用代碼 FLTO2001）。
+    //   ⚠ 原本列在 DEFAULT_DISABLED_NAMES，拆出來後的家族顯示名稱就是「Tough 2000 V1.1」，
+    //     不從預設停用拿掉的話一出現就被藏起來。
+    'FLTO2001': 'FLTO2V', // Tough 2000 V1.1 → 獨立材料
 };
 // 取家族代碼（前 6 碼），統一版本
 function familyCode(code) {

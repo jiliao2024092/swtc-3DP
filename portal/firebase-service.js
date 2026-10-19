@@ -526,21 +526,24 @@
     'FLESD0':'ESD Resin','FLSI40':'Silicone 40A','FLFAMD':'Fast Model','FLPRMD':'Precision Model',
     'FLFRGR':'Flame Retardant','FLDU20':'Durable','FLCEBL':'Ceramic','FLPUBK':'Polyurethane',
     'FLFL8V':'Flexible 80A V1.1',
+    'FLTO2V':'Tough 2000 V1.1',
   };
   // ★ 三份（這裡／inventory.html／functions/main.py）必須一致。2026-10-06 補上漏掉的
   //   FLRGWH、FLELCL：少了它們，工作看板的材料下拉會把同一種材料列成兩個選項。
   const FAMILY_REMAP = { 'FLEXIB':'FLFL80', 'FLAMER':'FLFRGR',
     'FLRGWH':'FLRG40',      // 併入 Rigid 4000（使用者確認為同一材料）
     'FLELCL':'FLFLES',      // Elastic 50A：API 實際代碼 → 本專案既有家族 key
-    'FLFL8011':'FLFL8V' };  // 80A V1.1 拆成獨立材料（2026-09-18）
+    'FLFL8011':'FLFL8V',    // 80A V1.1 拆成獨立材料（2026-09-18）
+    'FLTO2001':'FLTO2V' };  // Tough 2000 V1.1 拆成獨立材料（2026-10-19）
   const NAME_TO_CODE_FE = {};
   Object.entries(CODE_TO_NAME).forEach(([code,name]) => { NAME_TO_CODE_FE[name] = code; });
   NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';
   NAME_TO_CODE_FE['Flexible']     = 'FLFL8002';
   NAME_TO_CODE_FE['Rigid 4000 V1']= 'FLRG4001';
+  NAME_TO_CODE_FE['Tough 2000 V1']= 'FLTO2001';
   Object.entries(FAMILY_TO_NAME).forEach(([fam,name]) => { if (!NAME_TO_CODE_FE[name]) NAME_TO_CODE_FE[name] = fam; });
   const DEFAULT_DISABLED_NAMES = [
-    'Durable V2.1','Tough 1500 V1.1','FLTO1501','Tough 2000 V1','Tough 2000 V1.1','FLTO2001',
+    'Durable V2.1','Tough 1500 V1.1','FLTO1501',
     'Open Material V1','Flexible 80A V1','FLFL8001','Rigid 4000 V1',
   ];
   function familyCode(code) {

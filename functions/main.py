@@ -289,6 +289,7 @@ FAMILY_TO_NAME = {
     "FLPRMD": "Precision Model","FLFRGR": "Flame Retardant","FLDU20": "Durable",
     "FLCEBL": "Ceramic",       "FLPUBK": "Polyurethane",  "FLOPEN": "Open Material",
     "FLFL8V": "Flexible 80A V1.1",   # 自編家族碼，見 FAMILY_REMAP 的說明
+    "FLTO2V": "Tough 2000 V1.1",     # 自編家族碼，見 FAMILY_REMAP 的說明
 }
 
 
@@ -330,6 +331,10 @@ FAMILY_REMAP = {
     #   ★ 已寫進去的舊紀錄由 _migrate_material_splits() 一次性改到新家族。
     #   inventory.html 與 portal/firebase-service.js 的同名表必須一致。
     "FLFL8011": "FLFL8V", # Flexible 80A V1.1 → 獨立材料（南部 Form4B 在用）
+    # ★ 2026-10-19 使用者決定：Tough 2000 V1.1 比照 Flexible 80A 拆成獨立材料。
+    #   原本備料只記 V2，但 2026-09-18 起舊版也扣庫存，V1.1 的列印就扣到 V2 的庫存上。
+    #   FLTO2001 是 V1 與 V1.1 共用的代碼（NAME_TO_CODE 兩個名稱都對到它）。
+    "FLTO2001": "FLTO2V", # Tough 2000 V1.1 → 獨立材料
 }
 
 

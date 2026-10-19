@@ -528,7 +528,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20261013a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261014a"></script>
+<script src="firebase-service.js?v=20261019a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -3033,6 +3033,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING', date:'2026-10-19', type:'tweak',
+    text:'材料庫存：Tough 2000 V1.1 比照 Flexible 80A 拆成獨立材料。V1.1 與 V2 各自有庫存、消耗紀錄與月度分析，V1.1 的列印改扣 V1.1 自己的庫存，不再扣到 V2。原本的「Tough 2000」庫存數字不會自動調整；手上若有 V1.1 備料，請先在 V1.1 入庫，否則會跳「消耗紀錄可能有誤」。' },
   { hash:'aea7384', date:'2026-10-15', type:'tweak',
     text:'設備保養的「維護到期總表」可以直接編輯：點任一列就會打開設備資料視窗（和保養排程點客戶名稱是同一個），改完按儲存即可；只有可編輯該地區的人點得開。另外拿掉「剩餘天數」欄，畫面與匯出的 Excel 都不再有這一欄。' },
   { hash:'bbf1440', date:'2026-10-14', type:'feat',
@@ -3051,8 +3053,6 @@ const CHANGELOG = [
     text:'工作看板與客戶異常改成預設只顯示未完成的案件，拿掉「顯示已完成」按鈕；要看已完成／已取消，請在狀態篩選選「已完成」「已取消」或「全部」。看板、時間軸、Dashboard 與異常分析頁上方也多了「只看未完成／含已完成」篩選，預設只看未完成。已完成的資料只有在篩選要用時才讀取，減少資料庫讀取量。' },
   { hash:'a25fa45', date:'2026-10-13', type:'tweak',
     text:'北中南總覽的庫存改用「水位」顯示：低於安全庫存的格子依「庫存÷安全庫存」從左往右填色，0 以下整格深紅（缺貨）、不到 1 為紅色、其餘為橘色，達到安全庫存不填色；滑鼠停在格子上會顯示百分比。表格上方有顏色說明。' },
-  { hash:'a25fa45', date:'2026-10-13', type:'tweak',
-    text:'設備保養的排程表縮到頁面寬度，不用再左右捲動，文字不換行，放不下的會以「…」省略、滑鼠停留可看全文；維護到期總表的文字也一律橫排不換行。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

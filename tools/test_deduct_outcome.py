@@ -263,6 +263,14 @@ check("★ 名稱沒有版本（Flexible 80A）→ 看不出新舊，照常扣�
 check("★ 沒見過的名稱 → 照常扣（不可因為看不懂就停扣）",
       _iov("某個沒見過的材料 V9", _latest), False)
 check("★ 名稱 V1.1 → 獨立家族 FLFL8V（不再併進 V2 的 FLFL80）", _cm("Flexible 80A V1.1"), "FLFL8V")
+# ★ 2026-10-19 Tough 2000 V1.1 比照拆分（V1 與 V1.1 共用代碼 FLTO2001）
+check("★ Tough 2000 FLTO2001 → 獨立家族 FLTO2V",     _cm("FLTO2001"),        "FLTO2V")
+check("★ 名稱 Tough 2000 V1.1 → FLTO2V",             _cm("Tough 2000 V1.1"), "FLTO2V")
+check("名稱 Tough 2000 V1 也是 FLTO2001 → FLTO2V",   _cm("Tough 2000 V1"),   "FLTO2V")
+check("★ Tough 2000 V2（FLTO2002）不可被拆分動到",   _cm("FLTO2002"),        "FLTO20")
+check("★ Tough 2000 V2 的另一組代碼 FLTO2011 仍在 V2", _cm("FLTO2011"),       "FLTO20")
+check("★ V1.1 是獨立材料，不會因為 V2 是最新版就被判成舊版",
+      _iov("FLTO2001", {"FLTO20": "FLTO2002"}), False)
 
 check("version_code_of：代碼原樣回傳",           _vc("flfl8002"),          "FLFL8002")
 check("version_code_of：名稱轉成完整代碼（V1.1 的真實代碼是 FLFL8011）", _vc("Flexible 80A V1.1"), "FLFL8011")
@@ -381,7 +389,7 @@ print("── ★ 材料拆分的舊資料更正（_migrate_material_splits）�
 # 拆分前南部 V1.1 的列印都存成 FLFL80（寫入當下就決定家族），不改的話月度分析會一直算成 V2。
 # ★ 這支會改正式資料，所以用假 db **實際執行**，不只比對原始碼字串。
 exec(_g(r"^def material_splits\(.*?(?=^def )"), _vns)
-check("拆分清單由 FAMILY_REMAP 推導：只有 FLFL8011", _vns["material_splits"](), {"FLFL8011": "FLFL8V"})
+check("拆分清單由 FAMILY_REMAP 推導：FLFL8011、FLTO2001", _vns["material_splits"](), {"FLFL8011": "FLFL8V", "FLTO2001": "FLTO2V"})
 check("FLEXIB／FLELCL 這種 6 碼修正不算拆分", "FLELCL" in _vns["material_splits"](), False)
 
 class _FakeField:  DELETE = "<DELETE_FIELD>"
@@ -408,22 +416,26 @@ _docs2 = [
     _Snap("v11_name", {"material_raw": "Flexible 80A V1.1", "material": "FLFL80"}),   # 名稱形式
     _Snap("v11_done", {"material_raw": "FLFL8011",          "material": "FLFL8V"}),   # 已經是對的
     _Snap("v2",       {"material_raw": "FLFL8002",          "material": "FLFL80"}),   # V2 不可被動到
+    # ★ 2026-10-19 Tough 2000 V1.1 也拆：FLTO2001（V1／V1.1 共用代碼）→ FLTO2V，V2 不動
+    _Snap("to11",     {"material_raw": "FLTO2001",          "material": "FLTO20"}),
+    _Snap("to2",      {"material_raw": "FLTO2002",          "material": "FLTO20"}),
 ]
 _db2, _ref2b = _DB2(_docs2), _InvRef2()
 _inv2 = {"family_latest_version": {"FLFL80": "FLFL8011", "FLTO20": "FLTO2002"}}
 _n2 = _msplit(_db2, _ref2b, _inv2)
-check("★ 只改拆分前的兩筆（代碼形式＋名稱形式）", _n2, 2)
-check("★ 寫進去的只有 material 一個欄位、改成 FLFL8V",
+check("★ 只改拆分前的三筆（80A 代碼形式＋名稱形式、Tough 2000 V1.1）", _n2, 3)
+check("★ 寫進去的只有 material 一個欄位、改成新家族",
       sorted(_db2.written), sorted([(("ref", "v11_code"), {"material": "FLFL8V"}),
-                                    (("ref", "v11_name"), {"material": "FLFL8V"})]))
-check("★ V2 的紀錄不可被動到", any(r == ("ref", "v2") for r, _ in _db2.written), False)
+                                    (("ref", "v11_name"), {"material": "FLFL8V"}),
+                                    (("ref", "to11"),     {"material": "FLTO2V"})]))
+check("★ V2 的紀錄不可被動到", any(r in (("ref", "v2"), ("ref", "to2")) for r, _ in _db2.written), False)
 check("★ 被拉歪的最新版（FLFL80＝FLFL8011）要送 DELETE_FIELD，不能只從 dict 移除",
       _ref2b.updates, [{"family_latest_version.FLFL80": _FakeField.DELETE}])
 check("正確的最新版不可被刪（FLTO20）", _inv2["family_latest_version"], {"FLTO20": "FLTO2002"})
-check("★ 完成後記下簽章", _ref2b.sets, [({"material_split_sig": "FLFL8011>FLFL8V"}, True)])
+check("★ 完成後記下簽章（新增拆分 → 簽章改變 → 部署後自動重跑一次）", _ref2b.sets, [({"material_split_sig": "FLFL8011>FLFL8V;FLTO2001>FLTO2V"}, True)])
 _db3, _ref3 = _DB2(_docs2), _InvRef2()
 check("★ 簽章相同 → 直接跳過（一次都不讀、不寫）",
-      _msplit(_db3, _ref3, {"material_split_sig": "FLFL8011>FLFL8V"}), 0)
+      _msplit(_db3, _ref3, {"material_split_sig": "FLFL8011>FLFL8V;FLTO2001>FLTO2V"}), 0)
 check("跳過時什麼都不寫", (_ref3.sets, _ref3.updates, _db3.written), ([], [], []))
 check("★ 更正失敗不可拖垮整輪同步（呼叫處有獨立 try/except）",
       bool(re.search(r"材料拆分更正失敗", src)), True)

@@ -75,6 +75,24 @@ eq(matCode('Flexible 80A V2'),   'FLFL80', 'V2 名稱仍是 FLFL80');
 eq(matCode('FLFL8001'),          'FLFL80', '只拆 V1.1，V1 仍在 FLFL80');
 eq(matCode('FLFL8V'),            'FLFL8V', '家族碼本身要穩定（再算一次不可變）');
 eq(isKnownMaterialInput('Flexible 80A V1.1'), true, '★ 入庫可以選 V1.1（否則沒辦法建立 V1.1 的庫存）');
+// ── ★ Tough 2000 V1.1 比照拆分（2026-10-19 使用者決定；V1 與 V1.1 共用代碼 FLTO2001）──
+eq(matCode('FLTO2001'),        'FLTO2V', '★ Tough 2000 V1.1 代碼 → 獨立家族 FLTO2V');
+eq(matCode('Tough 2000 V1.1'), 'FLTO2V', '★ Tough 2000 V1.1 名稱（入庫下拉）→ FLTO2V');
+eq(matCode('FLTO2002'),        'FLTO20', '★ Tough 2000 V2 不可被拆分動到');
+eq(matCode('FLTO2011'),        'FLTO20', 'Tough 2000 V2 的另一組代碼仍在 V2');
+eq(matCode('FLTO2V'),          'FLTO2V', '家族碼本身要穩定');
+eq(isKnownMaterialInput('Tough 2000 V1.1'), true, '★ 入庫可以選 Tough 2000 V1.1');
+// 原本 Tough 2000 V1／V1.1 在預設停用清單裡；拆出來的家族名稱就是「Tough 2000 V1.1」，
+// 沒從清單拿掉的話一出現就被藏起來（用頁面上真正的 DEFAULT_DISABLED_NAMES 驗）
+{
+  const dd = html.match(/const DEFAULT_DISABLED_NAMES = \[[\s\S]*?\];/)[0];
+  const f = new Function('inv', src + '\n' + dd + '\n'
+    + html.match(/function matName\(input\) \{[\s\S]*?\n\}/)[0] + '\n'
+    + html.match(/function isDisabled\(material\) \{[\s\S]*?\n\}/)[0] + '\nreturn isDisabled;');
+  const isDis = f({ stock:{}, family_latest_version:{ FLTO20:'FLTO2002', FLTO2V:'FLTO2001' }, disabled_materials:[], disabled_overrides:[] });
+  eq(isDis('FLTO2V'), false, '★ 拆出來的 Tough 2000 V1.1 預設不可被停用（否則庫存看不到）');
+  eq(isDis('FLTO20'), false, 'Tough 2000 V2 預設不停用');
+}
 // 顯示名稱：已停用清單、庫存總覽、月度分析都用 matName()
 {
   const mn = new Function('inv', src + '\n' + html.match(/function matName\(input\) \{[\s\S]*?\n\}/)[0] + '\nreturn matName;');

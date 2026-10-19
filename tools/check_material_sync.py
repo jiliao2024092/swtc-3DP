@@ -77,7 +77,7 @@ cmp_critical("FAMILY_REMAP（家族碼重導，決定哪些材料合併）", fe_
 cmp_critical("FAMILY_TO_NAME（家族碼 → 顯示名稱）", fe_fam2name, be_fam2name)
 
 # ── 名稱 → 家族碼 的解析結果（真正影響庫存合併的部分）──
-# 前端 NAME_TO_CODE_FE 的組成：CODE_TO_NAME 反轉 + FAMILY_TO_NAME 反轉 + 三個手動補充
+# 前端 NAME_TO_CODE_FE 的組成：CODE_TO_NAME 反轉 + FAMILY_TO_NAME 反轉 + 四個手動補充
 fe_name2code = {}
 for c, n in fe_code2name.items():
     fe_name2code.setdefault(n, c)
@@ -86,6 +86,7 @@ for fam, n in fe_fam2name.items():
 fe_name2code["Flexible 80A"] = "FLFL8002"
 fe_name2code["Flexible"] = "FLFL8002"
 fe_name2code["Rigid 4000 V1"] = "FLRG4001"
+fe_name2code["Tough 2000 V1"] = "FLTO2001"   # 2026-10-19：V1 與 V1.1 共用代碼，拆成 FLTO2V
 
 VER_SUFFIX = re.compile(r"\s*V\d+(\.\d+)?$", re.I)
 
