@@ -3033,7 +3033,7 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
-  { hash:'PENDING', date:'2026-10-19', type:'fix',
+  { hash:'aea7940', date:'2026-10-19', type:'fix',
     text:'Tough 2000：機台回報的另一組代碼（FLTO2011）也歸到「Tough 2000 V1.1」。原本被當成 V2，這種列印會扣到 V2 的庫存；以前的這類消耗紀錄會在下一輪同步自動改標成 V1.1（庫存數字不會自動調整）。' },
   { hash:'4e8d697', date:'2026-10-19', type:'tweak',
     text:'材料庫存：Tough 2000 V1.1 比照 Flexible 80A 拆成獨立材料。V1.1 與 V2 各自有庫存、消耗紀錄與月度分析，V1.1 的列印改扣 V1.1 自己的庫存，不再扣到 V2。原本的「Tough 2000」庫存數字不會自動調整；手上若有 V1.1 備料，請先在 V1.1 入庫，否則會跳「消耗紀錄可能有誤」。' },
