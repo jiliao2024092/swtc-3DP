@@ -79,7 +79,7 @@ eq(isKnownMaterialInput('Flexible 80A V1.1'), true, '★ 入庫可以選 V1.1（
 eq(matCode('FLTO2001'),        'FLTO2V', '★ Tough 2000 V1.1 代碼 → 獨立家族 FLTO2V');
 eq(matCode('Tough 2000 V1.1'), 'FLTO2V', '★ Tough 2000 V1.1 名稱（入庫下拉）→ FLTO2V');
 eq(matCode('FLTO2002'),        'FLTO20', '★ Tough 2000 V2 不可被拆分動到');
-eq(matCode('FLTO2011'),        'FLTO20', 'Tough 2000 V2 的另一組代碼仍在 V2');
+eq(matCode('FLTO2011'),        'FLTO2V', '★ FLTO2011 也是 V1.1 → FLTO2V（2026-10-19 使用者確認）');
 eq(matCode('FLTO2V'),          'FLTO2V', '家族碼本身要穩定');
 eq(isKnownMaterialInput('Tough 2000 V1.1'), true, '★ 入庫可以選 Tough 2000 V1.1');
 // 原本 Tough 2000 V1／V1.1 在預設停用清單裡；拆出來的家族名稱就是「Tough 2000 V1.1」，

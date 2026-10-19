@@ -542,7 +542,7 @@ console.log('── 工作看板材料下拉：分區與停用規則 ──');
   }
 
   // 家族重導三份要一致（少了會把同一種材料列成兩個選項）
-  ['FLRGWH', 'FLELCL', 'FLFL8011', 'FLTO2001'].forEach(k => {
+  ['FLRGWH', 'FLELCL', 'FLFL8011', 'FLTO2001', 'FLTO2011'].forEach(k => {
     eq(new RegExp(`'${k}':`).test(svc), true, `★ firebase-service.js 的 FAMILY_REMAP 要有 ${k}`);
   });
 }

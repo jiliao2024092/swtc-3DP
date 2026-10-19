@@ -335,6 +335,8 @@ FAMILY_REMAP = {
     #   原本備料只記 V2，但 2026-09-18 起舊版也扣庫存，V1.1 的列印就扣到 V2 的庫存上。
     #   FLTO2001 是 V1 與 V1.1 共用的代碼（NAME_TO_CODE 兩個名稱都對到它）。
     "FLTO2001": "FLTO2V", # Tough 2000 V1.1 → 獨立材料
+    # ★ 2026-10-19 使用者確認 FLTO2011 也是 V1.1（原本 08-17 推論成 V2，見 VERSION_ALIAS）
+    "FLTO2011": "FLTO2V", # Tough 2000 V1.1 的另一組代碼
 }
 
 
@@ -458,7 +460,7 @@ def canon_material(name_or_code: Optional[str]) -> Optional[str]:
 # 直接比會把 FLRG1002 判成舊版而不扣庫存 → 這裡把它拉平成跟 FLRG1002 同一個版本號。
 VERSION_ALIAS = {
     "FLRG1011": 2,   # = FLRG1002，同為 Rigid 10K V1.1
-    "FLTO2011": 2,   # = FLTO2002，同為 Tough 2000 V2
+    "FLTO2011": 1,   # = FLTO2001，同為 Tough 2000 V1.1（2026-10-19 使用者確認；原本推論成 V2）
     "FLFL8011": 1,   # = Flexible 80A V1.1，**比 V2（FLFL8002）舊**
 }
 # ★ 2026-09-18 起 FLFL8011 已經拆成獨立家族（FAMILY_REMAP → FLFL8V），不再與 V2 比新舊。
@@ -477,6 +479,10 @@ VERSION_ALIAS = {
 # 2026-08-17 追加 FLTO2011：使用者回報一筆 Tough 2000 被標成「未扣庫存」，但那次列印
 # 用的就是 V2。查 inventory/main.family_latest_version 得 FLTO20 = "FLTO2011"，末 2 碼 11
 # 直接壓過 FLTO2002 的 02 → FLTO2002 被誤判成舊版。與 Rigid 10K 完全同一個模式。
+# ⚠ 2026-10-19 更正：使用者確認 FLTO2011 其實是 **V1.1**（上面「同為 V2」是當時從
+#   「它不該比 V2 新」推出來的，從沒拿 FLTO2011 的列印核對過）。現在它與 FLTO2001 一起
+#   拆到獨立家族 FLTO2V（FAMILY_REMAP），版本號改 1 與 FLTO2001 同級。殘留的
+#   family_latest_version.FLTO20＝FLTO2011 會被 _migrate_material_splits() 清掉。
 # 判讀方式：消耗紀錄「未扣庫存」標籤的 tooltip 會列出 material_raw 與該家族已知最新版本，
 # 兩者若是同一個產品版本就加進這張表，不要去改比較邏輯。
 

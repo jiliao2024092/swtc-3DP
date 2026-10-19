@@ -134,9 +134,9 @@ st = {"FLTO20": {"total_ml": 500, "bottles": 1}}
 eq(apply(st, {"FLTO2002": 200}, "now"), {}, "正常扣減不產生差額")
 eq(st["FLTO20"]["total_ml"], 300, "扣完剩 300")
 
-st = {"FLTO20": {"total_ml": 100}}
-eq(apply(st, {"FLTO2011": 40}, "now"), {}, "同家族的另一組代碼也扣得到")
-eq(st["FLTO20"]["total_ml"], 60, "扣到同一個 key")
+st = {"FLTO2V": {"total_ml": 100}}
+eq(apply(st, {"FLTO2011": 40}, "now"), {}, "同家族的另一組代碼也扣得到（FLTO2001／FLTO2011 都是 Tough 2000 V1.1）")
+eq(st["FLTO2V"]["total_ml"], 60, "扣到同一個 key")
 
 st = {"FLTO20": {"total_ml": 50}}
 sf = apply(st, {"FLTO2002": 130}, "now")

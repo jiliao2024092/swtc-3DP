@@ -534,7 +534,8 @@
     'FLRGWH':'FLRG40',      // 併入 Rigid 4000（使用者確認為同一材料）
     'FLELCL':'FLFLES',      // Elastic 50A：API 實際代碼 → 本專案既有家族 key
     'FLFL8011':'FLFL8V',    // 80A V1.1 拆成獨立材料（2026-09-18）
-    'FLTO2001':'FLTO2V' };  // Tough 2000 V1.1 拆成獨立材料（2026-10-19）
+    'FLTO2001':'FLTO2V',    // Tough 2000 V1.1 拆成獨立材料（2026-10-19）
+    'FLTO2011':'FLTO2V' };  // Tough 2000 V1.1 的另一組代碼
   const NAME_TO_CODE_FE = {};
   Object.entries(CODE_TO_NAME).forEach(([code,name]) => { NAME_TO_CODE_FE[name] = code; });
   NAME_TO_CODE_FE['Flexible 80A'] = 'FLFL8002';
