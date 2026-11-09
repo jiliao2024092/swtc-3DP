@@ -13,12 +13,14 @@
   const S_INP = { width:'100%', padding:'8px 11px', border:'1.5px solid var(--line)', borderRadius:6, fontSize:13, fontFamily:'inherit', outline:'none', background:'var(--bg)', color:'var(--ink)' };
   const canPostOf = user => !!(window.hasPerm && window.hasPerm(user, 'manage_posts'));
 
-  // 頭像：沒有照片，用名字第一個字＋依名字固定的顏色
+  // 頭像：有上傳照片（user_profiles，依 uid 對照）就用照片；沒有的用名字第一個字＋依名字固定的顏色
   const AVATAR_COLORS = ['#2f6fdb', '#1f9d74', '#c2410c', '#7c3aed', '#be185d', '#0e7490', '#a16207'];
-  function Avatar({ name, size }) {
+  function Avatar({ name, uid, size }) {
+    const photos = window.FBProfiles.useAvatars();
     const s = String(name || '?');
     const color = AVATAR_COLORS[[...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length];
     const sz = size || 34;
+    if (uid && photos[uid]) return <img src={photos[uid]} alt="" style={{ width: sz, height: sz, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, display: 'block' }} />;
     return <div style={{ width: sz, height: sz, borderRadius: '50%', background: color, color: '#fff', flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: sz * 0.42 }}>{[...s.trim()][0] || '?'}</div>;
   }
@@ -131,7 +133,7 @@
     };
     return (
       <div style={{ display: 'flex', gap: 10, marginTop: small ? 10 : 16 }}>
-        <Avatar name={c.authorName} size={small ? 28 : 34} />
+        <Avatar name={c.authorName} uid={c.authorUid} size={small ? 28 : 34} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13 }}>
             <b style={{ color: 'var(--ink)' }}>{c.authorName || '（未具名）'}</b>
@@ -218,6 +220,7 @@
         </div>
         <div style={{ fontSize: 12, color: 'var(--ink-4)', margin: '8px 0 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <span className="pb-chip">{PL.REGION_LABEL[post.region] || '全公司'}</span>
+          <Avatar name={post.authorName} uid={post.authorUid} size={22} />
           <span>{post.authorName}</span>
           <span title={PL.fullTime(post.createdAt)}>{PL.relTime(post.createdAt)}</span>
           {post.updatedByName && <span title={PL.fullTime(post.updatedAt)}>・{post.updatedByName} 編輯於 {PL.relTime(post.updatedAt)}</span>}

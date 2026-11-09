@@ -621,6 +621,33 @@ async function main() {
   await nok('樣品清冊本身仍只有 admin 能新增',
     as(USERS.engS).collection('sample_items').add({ name: '自己加的', region: 'south', seq: 9 }));
 
+  // ══ user_profiles：使用者頭像（2026-11-09）══════════════════════════
+  // 全公司可讀（公共事項留言要顯示別人的頭像）；只有本人能寫自己那份、只能是壓縮過的 JPEG data URL
+  const AV = 'data:image/jpeg;base64,' + '/9j/4AAQ'.repeat(1000);   // 約 8 KB，與實際壓縮後的大小相當
+  const avDoc = extra => ({ avatar: AV, updatedAt: FV.serverTimestamp(), ...extra });
+  const myAv = u => as(u).doc(`user_profiles/${u.uid}`);
+  await ok('★ 本人可以設定自己的頭像', myAv(USERS.pureView).set(avDoc()));
+  await ok('本人可以更換自己的頭像', myAv(USERS.pureView).set(avDoc({ avatar: 'data:image/jpeg;base64,AAAA' })));
+  await ok('另一個人設定自己的頭像', myAv(USERS.engineer).set(avDoc()));
+  await nok('★ 不可設定別人的頭像', as(USERS.pureView).doc(`user_profiles/${USERS.engineer.uid}`).set(avDoc()));
+  await nok('★ admin 也不可替別人設定頭像（只能刪）', as(USERS.admin).doc(`user_profiles/${USERS.pureView.uid}`).set(avDoc()));
+  await nok('★ 超過 40000 字元不可', myAv(USERS.pureView).set(avDoc({ avatar: 'data:image/jpeg;base64,' + 'A'.repeat(40000) })));
+  await nok('★ 只收 JPEG（PNG data URL 不可）', myAv(USERS.pureView).set(avDoc({ avatar: 'data:image/png;base64,AAAA' })));
+  await nok('★ 不可放外部網址', myAv(USERS.pureView).set(avDoc({ avatar: 'https://example.com/a.jpg' })));
+  await nok('★ data URL 後面不可夾帶非 base64 字元', myAv(USERS.pureView).set(avDoc({ avatar: 'data:image/jpeg;base64,AAAA"><script>' })));
+  await nok('不可多帶其他欄位', myAv(USERS.pureView).set(avDoc({ displayName: '改名' })));
+  await nok('不可只寫 updatedAt 不寫 avatar', myAv(USERS.pureView).set({ updatedAt: FV.serverTimestamp() }));
+  await nok('updatedAt 必須是伺服器時間', myAv(USERS.pureView).set(avDoc({ updatedAt: new Date(2020, 0, 1) })));
+  await nok('★ 已停用的帳號不可設定頭像', myAv(USERS.disabled).set(avDoc()));
+  await nok('未登入者不可寫頭像', anon().doc('user_profiles/u_x').set(avDoc()));
+  await ok('★★ 啟用中的登入者可 list 全部頭像（portal 開頁時的查詢形狀）', as(USERS.engS).collection('user_profiles').get());
+  await ok('可讀別人的單一頭像', as(USERS.poster).doc(`user_profiles/${USERS.pureView.uid}`).get());
+  await nok('★ 已停用的帳號不可讀頭像', as(USERS.disabled).collection('user_profiles').get());
+  await nok('未登入者不可讀頭像', anon().collection('user_profiles').get());
+  await nok('★ 不可刪別人的頭像', as(USERS.pureView).doc(`user_profiles/${USERS.engineer.uid}`).delete());
+  await ok('本人可以移除自己的頭像', myAv(USERS.engineer).delete());
+  await ok('★ admin 可以刪任何人的頭像（不適當的照片）', as(USERS.admin).doc(`user_profiles/${USERS.pureView.uid}`).delete());
+
   await testEnv.cleanup();
 
   if (failures.length) {

@@ -120,7 +120,8 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 /* 左下角使用者區：頭像＋名字＋角色／地區，點開選單 */
 .user-btn{display:flex;align-items:center;gap:9px;width:100%;padding:6px;border:1px solid transparent;border-radius:8px;background:none;cursor:pointer;text-align:left;font-family:var(--font-ui);color:inherit}
 .user-btn:hover,.user-btn[aria-expanded="true"]{background:var(--bg);border-color:var(--line)}
-.user-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0}
+.user-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0;overflow:hidden}
+.av-img{width:100%;height:100%;object-fit:cover;display:block}
 .user-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .user-name{color:var(--ink-2);font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-sub{font-size:10.5px;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -479,7 +480,7 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .u-tbl th{padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-4);text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid var(--line);background:var(--bg-soft);white-space:nowrap}
 .u-tbl td{padding:11px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle}
 .u-tbl tr:hover td{background:var(--bg-soft)}
-.u-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:var(--accent);color:#fff;flex-shrink:0}
+.u-avatar{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:var(--accent);color:#fff;flex-shrink:0;overflow:hidden}
 .role-chip{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:700}
 .role-chip.admin{background:var(--warn-soft);color:var(--warn)}
 .role-chip.manager{background:var(--accent-soft);color:var(--accent)}
@@ -541,7 +542,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20261013a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261019b"></script>
+<script src="firebase-service.js?v=20261109a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1716,7 +1717,7 @@ window.DashboardView = DashboardView;
 <script type="text/babel" data-presets="react" src="maintenance.js?v=20261109a"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
-<script type="text/babel" data-presets="react" src="posts.js?v=20261013a"></script>
+<script type="text/babel" data-presets="react" src="posts.js?v=20261109a"></script>
 
 <!-- ⑦ 主 App -->
 <script type="text/babel" data-presets="react">
@@ -2189,6 +2190,7 @@ function AnnouncementPopup({ user }) {
 function AdminPanel({ user, isAdmin }) {
   const K = window.K;
   const {useState: useSt, useEffect: useEff} = React;
+  const photos = window.FBProfiles.useAvatars();   // 使用者清單顯示頭像照片（沒有照片的照舊顯示第一個字）
   // 兩種後台權限可各自獨立：只有 manage_announcements 的人進得來，但只看得到「公告欄」
   const canUsers    = isAdmin || window.hasPerm(user, 'manage_users');
   const canAnnounce = isAdmin || window.hasPerm(user, 'manage_announcements');
@@ -2702,7 +2704,7 @@ function AdminPanel({ user, isAdmin }) {
               <tbody>
                 {sortedUsers.map(u=>(
                   <tr key={u._id}>
-                    <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{(u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
+                    <td><div style={{display:'flex',alignItems:'center',gap:10}}><div className="u-avatar">{photos[u._id] ? <img className="av-img" src={photos[u._id]} alt=""/> : (u.displayName||'?').slice(0,1)}</div>{u.displayName}</div></td>
                     <td style={{color:'var(--ink-3)',fontSize:12}}>{u.email}</td>
                     <td><span className={`role-chip ${roleTierOf(u)}`}>{ROLE_TIER_LABEL[roleTierOf(u)]}</span></td>
                     <td>{window.hasExplicitRegion && window.hasExplicitRegion(u)
@@ -3046,6 +3048,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-09', type:'feat',
+    text:'可以上傳自己的頭像照片：點左下角的帳號區，選「上傳頭像」挑一張照片（JPG、PNG），會自動裁成正方形並縮小。照片會顯示在左下角、公共事項的文章與留言、後台的使用者清單；不想用了選「移除頭像」，就會改回名字的第一個字。' },
   { hash:'86fa78c', date:'2026-11-09', type:'tweak',
     text:'設備保養：維護到期日過了的設備，會自動列到「已過維」，不用再手動改清單；續約時把維護到期日往後改，就會自動回到「維護中」。達成率改成「到期當月以前照算、之後的月份不算」，過去月份的數字不會因為設備到期而改變。' },
   { hash:'d3bbb8b', date:'2026-11-09', type:'tweak',
@@ -3064,8 +3068,6 @@ const CHANGELOG = [
     text:'新增「資材」角色（後台套用角色時可選）：只看得到材料庫存管理（含北中南總覽），可以填寫「採購工程庫存」，其餘唯讀。材料庫存 Markforged 的「月度分析」改成與 Formlabs 相同的版面（材料佔比、工作類別、責任工程師、當月消耗紀錄、年度趨勢、詳細統計），可選年份、月份與機台；兩邊的「月度消耗趨勢」多了「載入整年」按鈕，還沒載入整年時會提示。Markforged 材料庫存頁的提示也更正為「消耗已自動扣庫存」。' },
   { hash:'8c3e07d', date:'2026-10-14', type:'tweak',
     text:'材料庫存 Markforged：「消耗記錄」新增材料、機台、責任工程師與日期篩選（匯出列印記錄也照篩選範圍），「月度分析」新增機台篩選。Formlabs 與 Markforged 的月度分析選了較早的年份或月份會自動載入那段資料，不用再先到消耗記錄按「載入更早一個月」。也更正了兩處過時的說明（Markforged 早已自動同步並扣庫存）。' },
-  { hash:'00186ca', date:'2026-10-14', type:'fix',
-    text:'安全性修正：機台預約的用途、公告內容、材料名稱裡如果夾帶程式碼，現在只會當成文字顯示，不會被執行。材料庫存 Markforged 分頁拿掉了「材料餘量觀測」區塊（內容與「Markforged 消耗記錄」重複，說明也已過時）。工作看板開啟新工單時不再額外讀取大量消耗紀錄，畫面與帶入結果不變。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
@@ -3162,9 +3164,58 @@ function ChangePasswordModal({ onClose }) {
 // 左下角使用者區：頭像＋名字＋角色／地區，點開選單（黑暗模式／變更密碼／登出）。
 // 頭像配色與公共事項看板（posts.js 的 Avatar）同一套算法，同一個人在兩處顏色相同。
 const USER_AV_COLORS = ['#2f6fdb', '#1f9d74', '#c2410c', '#7c3aed', '#be185d', '#0e7490', '#a16207'];
+
+// 頭像照片（2026-11-09）：選好的照片 → 置中裁成正方形、縮成 96×96 的 JPEG data URL（約 5～10 KB）。
+// ★ 格式與大小要和 firestore.rules 的 validAvatar() 一致（只收 JPEG、40000 字元以內），否則存不進去
+function makeAvatarDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const S = 96, w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+        const c = document.createElement('canvas');
+        c.width = c.height = S;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);   // 透明背景（PNG）轉成 JPEG 會變黑，先鋪白底
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, S, S);
+        let q = 0.85, out = c.toDataURL('image/jpeg', q);
+        while (out.length > 38000 && q > 0.4) { q -= 0.15; out = c.toDataURL('image/jpeg', q); }
+        resolve(out);
+      } catch (e) { reject(e); }
+      finally { URL.revokeObjectURL(url); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('無法讀取這張圖片，請改用 JPG 或 PNG')); };
+    img.src = url;
+  });
+}
+
 function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
   const [open, setOpen] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
   const boxRef = React.useRef(null);
+  const fileRef = React.useRef(null);
+  const photos = window.FBProfiles.useAvatars();
+  const photo = photos[user._id];
+  const toast = (m, t) => (window.showToast ? window.showToast(m, t) : alert(m));
+  const pickPhoto = async e => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';   // 同一張照片再選一次也要觸發
+    if (!f) return;
+    setBusy(true);
+    try {
+      await window.FBProfiles.setAvatar(user._id, await makeAvatarDataUrl(f));
+      toast('頭像已更新 ✓');
+    } catch (err) { toast('頭像更新失敗：' + (err.message || err), 'err'); }
+    finally { setBusy(false); }
+  };
+  const removePhoto = async () => {
+    setOpen(false);
+    if (!confirm('移除頭像照片，改回顯示名字的第一個字？')) return;
+    try { await window.FBProfiles.removeAvatar(user._id); toast('已移除頭像', 'inf'); }
+    catch (err) { toast('移除失敗：' + (err.message || err), 'err'); }
+  };
   React.useEffect(() => {
     if (!open) return;
     const onDown = e => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
@@ -3196,8 +3247,19 @@ function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
 
   return (
     <div ref={boxRef}>
+      {/* 檔案選擇器放在選單外面：開檔案視窗時 window 失焦會把選單收起來，放裡面會跟著被拆掉 */}
+      <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{display:'none'}} onChange={pickPhoto}/>
       {open && (
         <div className="user-menu" role="menu">
+          <button className="user-menu-item" role="menuitem" disabled={busy} onClick={()=>{ setOpen(false); fileRef.current && fileRef.current.click(); }}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="3.5" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><circle cx="8" cy="8.5" r="2.4" stroke="currentColor" strokeWidth="1.3"/><path d="M5.5 3.5l1-1.5h3l1 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+            {photo ? '更換頭像' : '上傳頭像'}
+          </button>
+          {photo && <button className="user-menu-item" role="menuitem" onClick={removePhoto}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            移除頭像
+          </button>}
+          <div className="user-menu-sep"/>
           <button className="user-menu-item" role="menuitem" onClick={onToggleDark}>
             {darkMode
               ? <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
@@ -3217,7 +3279,7 @@ function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
       )}
       <button className="user-btn" aria-haspopup="menu" aria-expanded={open} title="帳號選單"
         onClick={()=>setOpen(v=>!v)}>
-        <span className="user-av" style={{background:color}}>{initial}</span>
+        <span className="user-av" style={{background:color, opacity: busy ? 0.5 : 1}}>{photo ? <img className="av-img" src={photo} alt=""/> : initial}</span>
         <span className="user-txt">
           <span className="user-name">{name}</span>
           <span className="user-sub">{tier}{region ? ` · ${region}` : ''}</span>

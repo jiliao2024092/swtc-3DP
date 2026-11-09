@@ -466,6 +466,48 @@
     };
   })();
 
+  // ════════════════════════════════════════════════
+  // 使用者頭像（2026-11-09）→ user_profiles/{uid}：{ avatar: 'data:image/jpeg;base64,…', updatedAt }
+  //   不放進 users：users 只有本人／admin／manage_users 讀得到，公共事項留言要顯示別人的頭像。
+  //   整個 collection 一次訂閱（人數幾十），全頁共用一個監聽；最後一個使用者離開才關掉。
+  //   沒有照片的人沿用文字頭像，所以讀取失敗時只記 log、畫面退回文字頭像（不會被誤認成「沒資料」）。
+  // ════════════════════════════════════════════════
+  (function () {
+    const coll = () => db.collection('user_profiles');
+    // 與 firestore.rules 的 validAvatar() 同一個格式；顯示前再檢查一次，不是這個格式的一律不當圖片用
+    const AVATAR_RE = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/;
+    let photos = {}, unsub = null;
+    const subs = new Set();
+    const start = () => {
+      unsub = coll().onSnapshot(snap => {
+        const m = {};
+        snap.docs.forEach(d => { const a = d.data().avatar; if (typeof a === 'string' && AVATAR_RE.test(a)) m[d.id] = a; });
+        photos = m;
+        subs.forEach(cb => cb(photos));
+      }, err => console.error('[user_profiles] onSnapshot 失敗（頭像退回文字）:', err));
+    };
+    const FBProfiles = {
+      current: () => photos,
+      // 回傳取消函式
+      subscribe(cb) {
+        subs.add(cb);
+        if (!unsub) start(); else cb(photos);
+        return () => { subs.delete(cb); if (!subs.size && unsub) { unsub(); unsub = null; } };
+      },
+      // React hook：回傳 { uid: dataURL }，有人換頭像時自動重畫
+      useAvatars() {
+        const [m, setM] = React.useState(photos);
+        React.useEffect(() => FBProfiles.subscribe(setM), []);
+        return m;
+      },
+      setAvatar(uid, dataUrl) {
+        return coll().doc(uid).set({ avatar: dataUrl, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      },
+      removeAvatar(uid) { return coll().doc(uid).delete(); },
+    };
+    window.FBProfiles = FBProfiles;
+  })();
+
   // 角色分級（與後台使用者清單的「權限」欄一致）：公告跳顯的對象就用這四級
   window.roleTierOf = function (u) {
     const p = (u && u.permissions) || [];
