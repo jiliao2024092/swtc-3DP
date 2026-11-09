@@ -70,7 +70,10 @@
               <div className="m-field"><label style={LBL}>清單</label>
                 <select style={S_INP} value={form.list} onChange={e => set('list', e.target.value)}>
                   <option value="active">維護中</option><option value="expired">已過維</option>
-                </select></div>
+                </select>
+                {/* 到期日已過會自動列在已過維（ML.effectiveList），選「維護中」也一樣，先講清楚免得以為沒存到 */}
+                {form.list !== 'expired' && ML.expiryStatus(form.expiryDate) === 'expired' &&
+                  <div style={{ fontSize: 11, color: 'var(--warn)', marginTop: 4 }}>維護到期日已過，會列在「已過維」</div>}</div>
               {canPickRegion && <div className="m-field"><label style={LBL}>地區</label>
                 <select style={S_INP} value={form.region} onChange={e => set('region', e.target.value)}>
                   {(window.REGIONS || []).map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
@@ -305,13 +308,14 @@
             <tr><td colSpan={9 + 12} style={{ background: 'var(--bg-soft)', fontWeight: 700, color: 'var(--ink-2)' }}>{regionLabel(g.r)}（{g.items.length} 台）</td></tr>
             {g.items.map((d, idx) => {
               const st = ML.expiryStatus(d.expiryDate);
+              const isExpired = ML.effectiveList(d) === 'expired';
               const editable = canEditDev(d);
               return (
                 <tr key={d._id}>
                   <td style={{ ...TD, textAlign: 'center', color: 'var(--ink-4)' }}>{idx + 1}</td>
                   <td style={{ ...TD, fontWeight: 600, cursor: editable ? 'pointer' : 'default' }} onClick={editable ? () => onEditDev(d) : undefined}
-                      title={d.customer + (d.list === 'expired' ? '（已過維）' : '') + (editable ? '\n點擊編輯設備資料' : '')}>
-                    {d.customer}{d.list === 'expired' && <span style={{ marginLeft: 4, fontSize: 10.5, color: 'var(--ink-4)' }}>（已過維）</span>}
+                      title={d.customer + (isExpired ? '（已過維）' : '') + (editable ? '\n點擊編輯設備資料' : '')}>
+                    {d.customer}{isExpired && <span style={{ marginLeft: 4, fontSize: 10.5, color: 'var(--ink-4)' }}>（已過維）</span>}
                   </td>
                   <td style={TD} title={d.brand}>{d.brand}</td>
                   <td style={TD} title={d.model}>{d.model}</td>
@@ -362,7 +366,7 @@
             <td style={{ fontWeight: 600 }}>{d.customer}</td>
             <td>{d.brand}</td><td>{d.model}</td>
             <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{d.serial}</td>
-            <td>{regionLabel(d.region)}</td><td>{LIST_LABEL[d.list] || '維護中'}</td>
+            <td>{regionLabel(d.region)}</td><td>{LIST_LABEL[ML.effectiveList(d, today)]}</td>
             <td style={{ whiteSpace: 'nowrap' }}>{salesLabel(d.sales)}</td>
             <td style={{ whiteSpace: 'nowrap' }}>{engLabel(d.engineer)}</td>
           </tr>
@@ -464,7 +468,8 @@
     const filtered = devices
       .filter(d => matchRegion(d) && matchText(d) && (!engF || d.engineer === engF))
       .sort(byRegionThenSeq);
-    const scheduleRows = filtered.filter(d => !listF || (d.list || 'active') === listF);
+    // 清單依 ML.effectiveList：手動標已過維，或維護到期日已過（2026-11-09 起自動，不寫回資料庫）
+    const scheduleRows = filtered.filter(d => !listF || ML.effectiveList(d) === listF);
     const regionsShown = regionF ? [regionF] : regionKeys().filter(r => canCross || r === myRegion);
     const stats = useMemo(() => ML.maintStats(devices.filter(d => !engF || d.engineer === engF), year, regionKeys()), [devices, year, engF]);
 
@@ -499,7 +504,7 @@
         .map(({ d, st }) => ({
           '狀態': STATUS[st].label, '維護到期': d.expiryDate || '',
           '客戶名稱': d.customer, '廠牌': d.brand, '機型': d.model, '序號': d.serial, '安裝時間': d.installDate || '',
-          '地區': regionLabel(d.region), '清單': LIST_LABEL[d.list] || '維護中', '責任業務': salesLabel(d.sales), '保養負責人': engLabel(d.engineer),
+          '地區': regionLabel(d.region), '清單': LIST_LABEL[ML.effectiveList(d, today)], '責任業務': salesLabel(d.sales), '保養負責人': engLabel(d.engineer),
         }));
       const wb = window.XLSX.utils.book_new();
       window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(rows.length ? rows : [{ '狀態': '' }]), '維護到期總表');
@@ -559,7 +564,7 @@
               onEditDev={d => setModal({ kind: 'dev', dev: d })} />}
             {tab === 'report' && <>
               <p style={{ fontSize: 12.5, color: 'var(--ink-4)', margin: '0 0 12px' }}>
-                只算「維護中」的設備。需保養數＝當月排定保養的設備數；已保養數＝完成日期落在當月的筆數（延期到下個月才完成，算在下個月）；「不需保養」不扣除。
+                只算「維護中」的設備；維護到期的設備，到期當月以前照算、之後的月份不算。需保養數＝當月排定保養的設備數；已保養數＝完成日期落在當月的筆數（延期到下個月才完成，算在下個月）；「不需保養」不扣除。
               </p>
               {regionsShown.length > 1 && <RateCard title={`${year} 年 全部地區`}
                 need={ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].need[i], 0))}

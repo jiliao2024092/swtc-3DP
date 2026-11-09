@@ -14,6 +14,11 @@
 //   已保養數（某月）＝完成日期落在該月的筆數 —— 延期到下個月才做，算下個月（使用者決定）
 //   「客戶未使用、不需保養」不從需保養數扣掉（使用者決定）
 //   只算「維護中」的設備（原 Excel 的統計也只看總表，不含已過維）
+//
+// 已過維的判斷（2026-11-09 使用者決定）：手動標「已過維」，或維護到期日已過（effectiveList）。
+//   依日期自動判斷、不寫回資料庫 —— 續約把到期日往後改就自動回到維護中。
+//   達成率「到期月以前照算」：到期當月與之前的月份照樣計入，之後的月份不算（monthInContract），
+//   過去月份的數字才不會因為設備到期而改變。手動標「已過維」的維持整年不算（同原 Excel）。
 (function () {
   const MONTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
@@ -50,11 +55,11 @@
       MONTHS.forEach(m => {
         const c = sched[String(m)];
         if (!c) return;
-        if (c.plan) st.need[m - 1]++;
+        if (c.plan && monthInContract(dev, year, m)) st.need[m - 1]++;
         // ★ 已保養算在「完成日期的那個月」，不是記錄在哪一格：延期到下個月才做就算下個月
         if (c.done && /^\d{4}-\d{2}-\d{2}$/.test(c.done) && c.done.slice(0, 4) === y) {
           const dm = Number(c.done.slice(5, 7));
-          if (dm >= 1 && dm <= 12) st.done[dm - 1]++;
+          if (dm >= 1 && dm <= 12 && monthInContract(dev, year, dm)) st.done[dm - 1]++;
         }
       });
     });
@@ -72,6 +77,18 @@
     const [Y, M, D] = expiryDate.split('-').map(Number);
     const days = Math.round((new Date(Y, M - 1, D) - new Date(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
     return days <= EXPIRY_SOON_DAYS ? 'soon' : 'ok';
+  }
+  // 畫面上的清單：手動標「已過維」，或維護到期日已過（到期日當天仍算維護中）→ 'expired'
+  function effectiveList(dev, today) {
+    if (!dev) return 'active';
+    if (dev.list === 'expired') return 'expired';
+    return expiryStatus(dev.expiryDate, today) === 'expired' ? 'expired' : 'active';
+  }
+  // 該月份是否還在合約內（到期當月算在內）。沒填或格式不對的到期日 → 一律算（與先前相同）
+  function monthInContract(dev, year, m) {
+    const e = dev && dev.expiryDate;
+    if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return true;
+    return `${year}-${pad2(m)}` <= e.slice(0, 7);
   }
   function daysUntil(expiryDate, today) {
     if (!expiryDate || !/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) return null;
@@ -203,7 +220,7 @@
 
   window.MaintLogic = {
     MONTHS, REASONS, REASON_LABEL, BRANDS, EXPIRY_SOON_DAYS,
-    cellOf, maintStats, rate, expiryStatus, daysUntil,
+    cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, daysUntil,
     excelDate, normBrand, parseReason, parseMaintSheet, deviceKey,
   };
 })();

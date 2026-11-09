@@ -5,6 +5,7 @@
 //   - 需保養數＝該月規劃打勾的數量；「客戶未使用、不需保養」不扣掉
 //   - 已保養數算在「完成日期的那個月」：延期到下個月才做，算下個月
 //   - 只算維護中，已過維的不算
+//   - 2026-11-09：到期日已過自動算已過維（effectiveList）；達成率到期月以前照算（monthInContract）
 // 以及原 Excel 的格式：一台設備 3 列、地區標題列、C 的說明寫在下一格、完成日期格寫文字
 //
 // 執行：node tools/test_maintenance.js     （於 repo 根目錄）
@@ -87,6 +88,30 @@ eq(ML.expiryStatus('', today), 'none', '沒填 → none');
 eq(ML.expiryStatus('2026/12/31', today), 'none', '格式不對 → none（不可誤判成已過期）');
 eq(ML.daysUntil('2026-12-12', today), 60, 'daysUntil 天數');
 eq(ML.daysUntil('2026-10-03', today), -10, 'daysUntil 過期為負數');
+
+// ── 已過維自動判斷（2026-11-09 使用者決定：依日期、不寫回資料庫；達成率到期月以前照算）──
+eq(ML.effectiveList({ list: 'active', expiryDate: '2026-10-12' }, today), 'expired', '★ 維護中但到期日已過 → 自動算已過維');
+eq(ML.effectiveList({ list: 'active', expiryDate: '2026-10-13' }, today), 'active', '到期日當天仍算維護中');
+eq(ML.effectiveList({ list: 'active', expiryDate: '2027-03-31' }, today), 'active', '★ 續約把到期日往後改 → 自動回到維護中');
+eq(ML.effectiveList({ list: 'expired', expiryDate: '2027-03-31' }, today), 'expired', '手動標已過維 → 不管到期日都算已過維');
+eq(ML.effectiveList({ expiryDate: '' }, today), 'active', '沒填到期日、沒寫 list → 維護中（不可誤判成已過維）');
+eq(ML.effectiveList({ list: 'active', expiryDate: '2026/01/01' }, today), 'active', '到期日格式不對 → 維護中');
+eq(ML.effectiveList(null, today), 'active', 'null 不會出錯');
+
+const exp = { region: 'north', list: 'active', expiryDate: '2026-06-15', schedule: { 2026: {
+  3: { plan: true, done: '2026-03-10' },
+  6: { plan: true, done: '2026-07-02' },     // 6 月排程、到期後的 7 月才做
+  9: { plan: true },
+} } };
+const se = ML.maintStats([exp], 2026, ['north']).north;
+eq([se.need[2], se.need[5], se.need[8]], [1, 1, 0], '★ 年中到期：到期當月（6 月）以前照算需保養，之後的月份（9 月）不算');
+eq([se.done[2], se.done[6]], [1, 0], '★ 已保養以完成日期的月份判斷：到期後（7 月）才完成的不算');
+eq(ML.maintStats([exp], 2027, ['north']).north.need, zeros(), '到期日在前一年 → 整年都不算');
+eq(ML.maintStats([{ ...exp, expiryDate: '2027-01-31' }], 2026, ['north']).north.need[8], 1, '到期日在明年 → 今年每個月都算');
+eq(ML.maintStats([{ ...exp, expiryDate: '' }], 2026, ['north']).north.need[8], 1, '沒填到期日 → 照舊全年都算');
+eq(ML.maintStats([{ ...exp, list: 'expired' }], 2026, ['north']).north.need[2], 0, '手動標已過維 → 維持整年不算（同原 Excel）');
+eq(ML.monthInContract({ expiryDate: '2026-06-01' }, 2026, 6), true, '到期日是該月 1 號 → 那個月仍算');
+eq(ML.monthInContract({ expiryDate: '2026-06-30' }, 2026, 7), false, '到期隔月 → 不算');
 
 // ── Excel 欄位轉換 ───────────────────────────────────
 eq(ML.excelDate(serial(2026, 4, 2), parseDateCode), '2026-04-02', 'Excel 日期序號 → YYYY-MM-DD');

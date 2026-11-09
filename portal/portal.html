@@ -1712,8 +1712,8 @@ window.DashboardView = DashboardView;
 <script type="text/babel" data-presets="react" src="workboard.js?v=20261014a"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
-<script src="maintenance-logic.js?v=20261013a"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261015a"></script>
+<script src="maintenance-logic.js?v=20261109a"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261109a"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261013a"></script>
@@ -3046,6 +3046,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-09', type:'tweak',
+    text:'設備保養：維護到期日過了的設備，會自動列到「已過維」，不用再手動改清單；續約時把維護到期日往後改，就會自動回到「維護中」。達成率改成「到期當月以前照算、之後的月份不算」，過去月份的數字不會因為設備到期而改變。' },
   { hash:'d3bbb8b', date:'2026-11-09', type:'tweak',
     text:'左下角的帳號區改成「頭像＋名字＋角色／地區」，點一下會打開選單，黑暗模式、變更密碼、登出都在裡面。頭像的顏色與公共事項看板上的一致。另外修正資材帳號在左下角被顯示成「查閱」。' },
   { hash:'07a0503', date:'2026-11-09', type:'tweak',
@@ -3064,8 +3066,6 @@ const CHANGELOG = [
     text:'材料庫存 Markforged：「消耗記錄」新增材料、機台、責任工程師與日期篩選（匯出列印記錄也照篩選範圍），「月度分析」新增機台篩選。Formlabs 與 Markforged 的月度分析選了較早的年份或月份會自動載入那段資料，不用再先到消耗記錄按「載入更早一個月」。也更正了兩處過時的說明（Markforged 早已自動同步並扣庫存）。' },
   { hash:'00186ca', date:'2026-10-14', type:'fix',
     text:'安全性修正：機台預約的用途、公告內容、材料名稱裡如果夾帶程式碼，現在只會當成文字顯示，不會被執行。材料庫存 Markforged 分頁拿掉了「材料餘量觀測」區塊（內容與「Markforged 消耗記錄」重複，說明也已過時）。工作看板開啟新工單時不再額外讀取大量消耗紀錄，畫面與帶入結果不變。' },
-  { hash:'cb50b4d', date:'2026-10-14', type:'tweak',
-    text:'網站首頁（原本的「台中設備內網」）改成直接進入本系統。材料庫存頁右上角的「預約系統」連結拿掉了，機台預約請從左側選單的「機台預約」進入。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
