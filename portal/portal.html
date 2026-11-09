@@ -122,6 +122,21 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .user-btn:hover,.user-btn[aria-expanded="true"]{background:var(--bg);border-color:var(--line)}
 .user-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0;overflow:hidden}
 .av-img{width:100%;height:100%;object-fit:cover;display:block}
+/* 頭像「裁剪及旋轉」視窗：正方形裁切框＋圓形預覽（框外與圓外都變暗）、四角拖曳縮放 */
+.ac-stage-wrap{background:#141414;border-radius:8px;padding:24px 16px;display:flex;justify-content:center;align-items:center}
+.ac-stage{position:relative;touch-action:none;user-select:none;-webkit-user-select:none}
+.ac-stage canvas{display:block}
+/* 變暗的那層單獨裁在圖片範圍內；框與四角不裁，角才能凸出圖片邊緣 */
+.ac-dim{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.ac-dim>div{position:absolute;border-radius:50%;box-shadow:0 0 0 9999px rgba(0,0,0,.5)}
+.ac-crop{position:absolute;cursor:move;outline:1px solid rgba(255,255,255,.75)}
+.ac-h{position:absolute;width:22px;height:22px;border:0 solid #fff}
+.ac-h.nw{top:-4px;left:-4px;border-top-width:4px;border-left-width:4px;cursor:nwse-resize}
+.ac-h.ne{top:-4px;right:-4px;border-top-width:4px;border-right-width:4px;cursor:nesw-resize}
+.ac-h.sw{bottom:-4px;left:-4px;border-bottom-width:4px;border-left-width:4px;cursor:nesw-resize}
+.ac-h.se{bottom:-4px;right:-4px;border-bottom-width:4px;border-right-width:4px;cursor:nwse-resize}
+.ac-rot{display:flex;flex-direction:column;align-items:center;gap:4px;margin:14px auto 0;padding:10px 18px;border:1px solid var(--line);border-radius:8px;background:var(--bg-soft);color:var(--ink-2);font-size:12.5px;cursor:pointer;font-family:inherit}
+.ac-rot:hover{border-color:var(--accent);color:var(--accent)}
 .user-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .user-name{color:var(--ink-2);font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-sub{font-size:10.5px;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -3048,6 +3063,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-09', type:'tweak',
+    text:'上傳頭像多了「裁剪及旋轉」：選好照片後會先打開編輯視窗，拖曳框框選要的位置、拖四個角調整大小（圓形內就是頭像顯示的範圍），「旋轉」每按一次轉 90 度，按「儲存」才會換上。' },
   { hash:'881efba', date:'2026-11-09', type:'feat',
     text:'可以上傳自己的頭像照片：點左下角的帳號區，選「上傳頭像」挑一張照片（JPG、PNG），會自動裁成正方形並縮小。照片會顯示在左下角、公共事項的文章與留言、後台的使用者清單；不想用了選「移除頭像」，就會改回名字的第一個字。' },
   { hash:'86fa78c', date:'2026-11-09', type:'tweak',
@@ -3066,8 +3083,6 @@ const CHANGELOG = [
     text:'設備保養的「維護到期總表」可以直接編輯：點任一列就會打開設備資料視窗（和保養排程點客戶名稱是同一個），改完按儲存即可；只有可編輯該地區的人點得開。另外拿掉「剩餘天數」欄，畫面與匯出的 Excel 都不再有這一欄。' },
   { hash:'bbf1440', date:'2026-10-14', type:'feat',
     text:'新增「資材」角色（後台套用角色時可選）：只看得到材料庫存管理（含北中南總覽），可以填寫「採購工程庫存」，其餘唯讀。材料庫存 Markforged 的「月度分析」改成與 Formlabs 相同的版面（材料佔比、工作類別、責任工程師、當月消耗紀錄、年度趨勢、詳細統計），可選年份、月份與機台；兩邊的「月度消耗趨勢」多了「載入整年」按鈕，還沒載入整年時會提示。Markforged 材料庫存頁的提示也更正為「消耗已自動扣庫存」。' },
-  { hash:'8c3e07d', date:'2026-10-14', type:'tweak',
-    text:'材料庫存 Markforged：「消耗記錄」新增材料、機台、責任工程師與日期篩選（匯出列印記錄也照篩選範圍），「月度分析」新增機台篩選。Formlabs 與 Markforged 的月度分析選了較早的年份或月份會自動載入那段資料，不用再先到消耗記錄按「載入更早一個月」。也更正了兩處過時的說明（Markforged 早已自動同步並扣庫存）。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
@@ -3165,24 +3180,27 @@ function ChangePasswordModal({ onClose }) {
 // 頭像配色與公共事項看板（posts.js 的 Avatar）同一套算法，同一個人在兩處顏色相同。
 const USER_AV_COLORS = ['#2f6fdb', '#1f9d74', '#c2410c', '#7c3aed', '#be185d', '#0e7490', '#a16207'];
 
-// 頭像照片（2026-11-09）：選好的照片 → 置中裁成正方形、縮成 96×96 的 JPEG data URL（約 5～10 KB）。
-// ★ 格式與大小要和 firestore.rules 的 validAvatar() 一致（只收 JPEG、40000 字元以內），否則存不進去
-function makeAvatarDataUrl(file) {
+// 頭像照片（2026-11-09）：選好照片 → 「裁剪及旋轉」視窗（AvatarCropModal）→ 縮成 96×96 的 JPEG data URL。
+// ★ 輸出格式與大小要和 firestore.rules 的 validAvatar() 一致（只收 JPEG、40000 字元以內），否則存不進去
+
+// 讀檔成 canvas：長邊縮到 2048 以內（裁小範圍也夠清楚，又不會讓超大照片吃光記憶體）；
+// 透明背景（PNG）轉成 JPEG 會變黑，先鋪白底
+function loadAvatarSource(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.onload = () => {
       try {
-        const S = 96, w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) throw new Error('無法讀取這張圖片，請改用 JPG 或 PNG');
+        const k = Math.min(1, 2048 / Math.max(w, h));
         const c = document.createElement('canvas');
-        c.width = c.height = S;
+        c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
         const ctx = c.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);   // 透明背景（PNG）轉成 JPEG 會變黑，先鋪白底
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, (w - s) / 2, (h - s) / 2, s, s, 0, 0, S, S);
-        let q = 0.85, out = c.toDataURL('image/jpeg', q);
-        while (out.length > 38000 && q > 0.4) { q -= 0.15; out = c.toDataURL('image/jpeg', q); }
-        resolve(out);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c);
       } catch (e) { reject(e); }
       finally { URL.revokeObjectURL(url); }
     };
@@ -3190,10 +3208,128 @@ function makeAvatarDataUrl(file) {
     img.src = url;
   });
 }
+// 旋轉 deg（0／90／180／270，順時針）後的新 canvas
+function rotateCanvas(src, deg) {
+  if (!deg) return src;
+  const c = document.createElement('canvas');
+  const swap = deg % 180 !== 0;
+  c.width = swap ? src.height : src.width; c.height = swap ? src.width : src.height;
+  const ctx = c.getContext('2d');
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(src, -src.width / 2, -src.height / 2);
+  return c;
+}
+// 裁切框拖曳：mode＝'move' 或四個角（nw/ne/sw/se，拖角時對角固定、維持正方形）。
+// start＝按下時的 {x,y,size}，dx/dy＝滑鼠位移，W/H＝圖片顯示大小，MIN＝最小邊長。一律夾在圖片範圍內
+function avatarCropMove(mode, start, dx, dy, W, H, MIN) {
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  if (mode === 'move') {
+    return { size: start.size, x: clamp(start.x + dx, 0, W - start.size), y: clamp(start.y + dy, 0, H - start.size) };
+  }
+  const sx = mode.includes('e') ? 1 : -1, sy = mode.includes('s') ? 1 : -1;
+  const ax = sx > 0 ? start.x : start.x + start.size;   // 固定不動的對角
+  const ay = sy > 0 ? start.y : start.y + start.size;
+  const maxSize = Math.min(sx > 0 ? W - ax : ax, sy > 0 ? H - ay : ay);
+  const size = clamp(Math.max(start.size + sx * dx, start.size + sy * dy), Math.min(MIN, maxSize), maxSize);
+  return { size, x: sx > 0 ? ax : ax - size, y: sy > 0 ? ay : ay - size };
+}
+// 裁切範圍（src 的像素座標）→ 96×96 JPEG data URL
+function avatarDataUrlFrom(src, sx, sy, ss) {
+  const S = 96;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, sx, sy, ss, ss, 0, 0, S, S);
+  let q = 0.85, out = c.toDataURL('image/jpeg', q);
+  while (out.length > 38000 && q > 0.4) { q -= 0.15; out = c.toDataURL('image/jpeg', q); }
+  return out;
+}
+
+// 「裁剪及旋轉」視窗。★ 用 createPortal 掛到 body：UserMenu 在 sticky 的側欄裡，
+//   sticky 會建立堆疊脈絡，視窗放在裡面 z-index 再高也會被主畫面的表頭蓋掉（同 VersionPop 的理由）
+function AvatarCropModal({ source, onCancel, onSave }) {
+  const [rot, setRot] = React.useState(0);
+  const [crop, setCrop] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const canvasRef = React.useRef(null);
+  const drag = React.useRef(null);
+  const rotated = React.useMemo(() => rotateCanvas(source, rot), [source, rot]);
+  const STAGE = Math.max(200, Math.min(400, window.innerWidth - 112));
+  const scale = Math.min(STAGE / rotated.width, STAGE / rotated.height);
+  const dw = Math.max(1, Math.round(rotated.width * scale)), dh = Math.max(1, Math.round(rotated.height * scale));
+  const MIN = 40;
+  // 一開始與每次旋轉後：置中、取最大的正方形
+  React.useEffect(() => { const s = Math.min(dw, dh); setCrop({ x: (dw - s) / 2, y: (dh - s) / 2, size: s }); }, [rotated, dw, dh]);
+  React.useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.round(dw * dpr); c.height = Math.round(dh * dpr);
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(rotated, 0, 0, c.width, c.height);
+  }, [rotated, dw, dh]);
+  React.useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape' && !saving) onCancel(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, saving]);
+
+  const down = mode => e => {
+    if (!crop) return;
+    e.preventDefault(); e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+    drag.current = { mode, px: e.clientX, py: e.clientY, start: crop };
+  };
+  const move = e => {
+    const d = drag.current;
+    if (d) setCrop(avatarCropMove(d.mode, d.start, e.clientX - d.px, e.clientY - d.py, dw, dh, MIN));
+  };
+  const up = () => { drag.current = null; };
+  const save = async () => {
+    if (!crop || saving) return;
+    setSaving(true);
+    try { await onSave(avatarDataUrlFrom(rotated, crop.x / scale, crop.y / scale, crop.size / scale)); }
+    finally { setSaving(false); }
+  };
+
+  return ReactDOM.createPortal(
+    <div className="m-overlay">
+      <div className="m-box" style={{ width: 520 }}>
+        <div className="m-hd"><h3>裁剪及旋轉</h3><button className="m-close" onClick={onCancel} disabled={saving}>×</button></div>
+        <div className="m-body">
+          <div className="ac-stage-wrap">
+            <div className="ac-stage" style={{ width: dw, height: dh }} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+              <canvas ref={canvasRef} style={{ width: dw, height: dh }}/>
+              {crop && <div className="ac-dim"><div style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }}/></div>}
+              {crop && <div className="ac-crop" style={{ left: crop.x, top: crop.y, width: crop.size, height: crop.size }} onPointerDown={down('move')}>
+                {['nw', 'ne', 'sw', 'se'].map(k => <span key={k} className={'ac-h ' + k} onPointerDown={down(k)}/>)}
+              </div>}
+            </div>
+          </div>
+          <button className="ac-rot" onClick={() => setRot(r => (r + 270) % 360)} disabled={saving} title="逆時針旋轉 90°">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 6.5A6 6 0 1 1 3 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M4 2.5v4h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            旋轉
+          </button>
+          <div style={{ fontSize: 11.5, color: 'var(--ink-4)', textAlign: 'center', marginTop: 8 }}>拖曳框框移動位置，拖四個角調整大小；圓形內就是頭像顯示的範圍</div>
+        </div>
+        <div className="m-foot">
+          <button className="btn-cancel" onClick={onCancel} disabled={saving}>取消</button>
+          <button className="btn-save" onClick={save} disabled={!crop || saving}>{saving ? '儲存中…' : '儲存'}</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [cropSrc, setCropSrc] = React.useState(null);   // 選好的照片（canvas）→ 開「裁剪及旋轉」視窗
   const boxRef = React.useRef(null);
   const fileRef = React.useRef(null);
   const photos = window.FBProfiles.useAvatars();
@@ -3203,9 +3339,15 @@ function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
     const f = e.target.files && e.target.files[0];
     e.target.value = '';   // 同一張照片再選一次也要觸發
     if (!f) return;
+    try { setCropSrc(await loadAvatarSource(f)); }
+    catch (err) { toast('頭像更新失敗：' + (err.message || err), 'err'); }
+  };
+  // 存檔失敗時視窗留著，可以直接再按一次儲存
+  const saveCropped = async dataUrl => {
     setBusy(true);
     try {
-      await window.FBProfiles.setAvatar(user._id, await makeAvatarDataUrl(f));
+      await window.FBProfiles.setAvatar(user._id, dataUrl);
+      setCropSrc(null);
       toast('頭像已更新 ✓');
     } catch (err) { toast('頭像更新失敗：' + (err.message || err), 'err'); }
     finally { setBusy(false); }
@@ -3249,6 +3391,7 @@ function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
     <div ref={boxRef}>
       {/* 檔案選擇器放在選單外面：開檔案視窗時 window 失焦會把選單收起來，放裡面會跟著被拆掉 */}
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{display:'none'}} onChange={pickPhoto}/>
+      {cropSrc && <AvatarCropModal source={cropSrc} onCancel={()=>setCropSrc(null)} onSave={saveCropped}/>}
       {open && (
         <div className="user-menu" role="menu">
           <button className="user-menu-item" role="menuitem" disabled={busy} onClick={()=>{ setOpen(false); fileRef.current && fileRef.current.click(); }}>
