@@ -425,7 +425,7 @@
                 <p class="text-xs text-[var(--ink-4)] mb-2">以下材料的列印消耗量超過帳上庫存，庫存已扣至 0，超出的部分無法反映。常見原因：消耗紀錄重複、材料歸屬錯誤，或入庫時漏登記。</p>
                 <div id="shortfall-items" class="flex flex-wrap gap-2 mb-2"></div>
                 <div class="flex gap-2">
-                    <button onclick="switchTab('history')" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--bg)] text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors">→ 檢查消耗紀錄</button>
+                    <button onclick="switchTab('history')" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--bg)] text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors">→ 檢查出入料記錄</button>
                     <button data-admin-only onclick="clearStockShortfalls()" class="text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--bg-soft)] transition-colors">✓ 已確認，清除警示</button>
                 </div>
             </div>
@@ -438,13 +438,13 @@
             <!-- Formlabs 子分頁 -->
             <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5" id="subtabs-formlabs">
                 <button class="tab-btn active" id="tab-stock" onclick="switchTab('stock')">材料庫存</button>
-                <button class="tab-btn" id="tab-history" onclick="switchTab('history')">消耗記錄</button>
+                <button class="tab-btn" id="tab-history" onclick="switchTab('history')">出入料記錄</button>
                 <button class="tab-btn" id="tab-monthly" onclick="switchTab('monthly')">月度分析</button>
             </div>
             <!-- Markforged 子分頁 -->
             <div class="flex bg-[var(--bg-panel)] rounded-lg p-0.5 gap-0.5 hidden" id="subtabs-markforged">
                 <button class="tab-btn active" id="tab-mf" onclick="switchTab('mf')">材料庫存</button>
-                <button class="tab-btn" id="tab-mf-history" onclick="switchTab('mf-history')">消耗記錄</button>
+                <button class="tab-btn" id="tab-mf-history" onclick="switchTab('mf-history')">出入料記錄</button>
                 <button class="tab-btn" id="tab-mf-monthly" onclick="switchTab('mf-monthly')">月度分析</button>
             </div>
             <!-- 北中南總覽子分頁 -->
@@ -460,7 +460,7 @@
                 <button onclick="exportInventoryExcel()" title="庫存視角：庫存總覽 + 所有異動（入庫/調整/消耗）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--ok-soft)] hover:border-[var(--ok-border)] hover:text-[var(--ok)] transition-colors">
                     <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 匯出庫存
                 </button>
-                <button onclick="exportPrintLogExcel()" title="列印視角：每次列印一列，欄位對齊人工登記表。★ 匯出範圍以「消耗記錄」分頁目前的篩選為準（日期區間／材料／機台／工作類別）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                <button onclick="exportPrintLogExcel()" title="列印視角：每次列印一列，欄位對齊人工登記表。★ 匯出範圍以「出入料記錄」分頁目前的篩選為準（只匯出列印消耗）（日期區間／材料／機台／工作類別）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                     <i data-lucide="printer" class="w-3.5 h-3.5"></i> 匯出列印記錄
                 </button>
             </div>
@@ -613,7 +613,7 @@
                     </select>
                     <select id="history-filter-type" onchange="renderHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
                         <option value="">全部類型</option>
-                        <option value="consume" selected>列印消耗（含中止）</option>
+                        <option value="consume">列印消耗（含中止）</option>
                         <option value="stockin">備料入庫</option>
                         <option value="manual">手動調整</option>
                     </select>
@@ -908,21 +908,21 @@
             </details>
         </div>
 
-        <!-- Markforged 消耗記錄（來源 inventory_history 中 source=markforged 的紀錄）-->
+        <!-- Markforged 出入料記錄（來源 inventory_history 中 source=markforged 的紀錄：列印消耗＋入庫／調整）-->
         <div id="panel-mf-history" class="p-6 hidden">
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div class="flex items-center gap-2">
                     <i data-lucide="history" class="w-4 h-4 text-[var(--ink-4)]"></i>
                     <div>
-                        <h3 class="text-base font-semibold text-[var(--ink)]">Markforged 消耗記錄</h3>
-                        <p class="text-xs text-[var(--ink-4)]">列印工作的線材用量；一筆工作會拆成塑料與纖維兩列</p>
+                        <h3 class="text-base font-semibold text-[var(--ink)]">Markforged 出入料記錄</h3>
+                        <p class="text-xs text-[var(--ink-4)]">列印工作的線材用量（一筆工作會拆成塑料與纖維兩列），以及入庫、退料、手動調整</p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
                     <input type="text" id="mf-hist-filter" oninput="renderMfHistory()" placeholder="搜尋材料 / 機台 / 責任工程師 / 備註..."
                         class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)] w-52">
                     <span id="mf-hist-count" class="text-xs text-[var(--ink-4)]"></span>
-                    <button onclick="exportMfPrintLogExcel()" title="列印視角：每次列印一列，欄位與 Formlabs 的「匯出列印記錄」完全相同（塑料與纖維會併成一列）。★ 匯出範圍以目前的搜尋與篩選條件為準" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
+                    <button onclick="exportMfPrintLogExcel()" title="列印視角：每次列印一列，欄位與 Formlabs 的「匯出列印記錄」完全相同（塑料與纖維會併成一列）。★ 匯出範圍以目前的搜尋與篩選條件為準（只匯出列印消耗）" class="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--bg)] text-[var(--ink-3)] hover:bg-[var(--accent-soft)] hover:border-[var(--accent-border)] hover:text-[var(--accent)] transition-colors">
                         <i data-lucide="printer" class="w-3.5 h-3.5"></i> 匯出列印記錄
                     </button>
                 </div>
@@ -931,6 +931,12 @@
             <div class="mb-4">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="text-xs font-medium text-[var(--ink-4)] mr-1">篩選：</span>
+                    <select id="mf-hist-type" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]">
+                        <option value="">全部類型</option>
+                        <option value="consume">列印消耗（含中止）</option>
+                        <option value="stockin">入庫</option>
+                        <option value="manual">退料／手動調整</option>
+                    </select>
                     <select id="mf-hist-material" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]"><option value="">全部材料</option></select>
                     <select id="mf-hist-printer" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]"><option value="">全部機台</option></select>
                     <select id="mf-hist-operator" onchange="renderMfHistory()" class="text-xs border border-[var(--line-strong)] rounded-md px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none bg-[var(--bg)]" title="依實際執行列印的人篩選（2026-09-11 之前的紀錄沒有這個欄位）"><option value="">全部責任工程師</option></select>
@@ -951,7 +957,7 @@
                             <th class="whitespace-nowrap p-3 border-b font-medium w-36">日期</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium">材料</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium w-32">機台</th>
-                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">用量 (cc)</th>
+                            <th class="whitespace-nowrap p-3 border-b font-medium text-right w-28">數量</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium w-24">類型</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium w-28">責任工程師</th>
                             <th class="whitespace-nowrap p-3 border-b font-medium">列印 / 備註</th>
@@ -2499,6 +2505,15 @@ async function persistHistoryEntry(entry) {
             ml: entry.ml || 0,
             note: entry.note || '',
             print_guid: entry.print_guid || null,
+            // ★ 2026-11-09：寫入時帶上「目前檢視的那一區」。原本沒有 region，regionOfHistory()
+            //   會用 printer（'備料庫存'）推導、推不出來就算中部 —— 北部、南部的入庫與調整
+            //   全部跑到中部去，那兩區的人在自己的出入料記錄裡看不到。
+            //   這之前寫進去的舊紀錄沒有地區資料可以還原，維持算在中部。
+            region: entry.region || activeRegion,
+            // Markforged 的入庫／調整也寫進同一個 collection（2026-11-09），靠 source 分到 mfHistory
+            ...(entry.source   ? { source:   entry.source }   : {}),
+            ...(entry.unit     ? { unit:     entry.unit }     : {}),
+            ...(entry.category ? { category: entry.category } : {}),
             createdBy: currentUser.uid,
             createdByEmail: currentUser.email,
         });
@@ -3506,7 +3521,13 @@ function tagMfJobs(list) {
 //   匯出的 19 欄格式才要把塑料與纖維放同一列（見 printLogGroupKey）。
 function mfHistoryMerged(rows) {
     const map = new Map();
-    tagMfJobs(rows).forEach(h => {
+    // ★ 只有列印消耗要併（同一次列印被同步切成好幾筆）。入庫／退料／手動調整是人工操作，
+    //   一筆就是一筆，而且 ml 有正負號（入庫為正、退料為負），不可經過下面的 Math.abs。
+    //   不先分開的話，同一天備註相同的兩次入庫會被 tagMfJobs 的「名稱＋12 小時」併成一列。
+    const isPrint = h => h && (h.type === 'consume' || h.type === 'aborted');
+    const others = (rows || []).filter(h => h && !isPrint(h))
+        .map(h => ({ ...h, ml: Number(h.ml) || 0, _ids: [h.id], _n: 1, _firstTs: h.ts, _lastTs: h.ts }));
+    tagMfJobs((rows || []).filter(isPrint)).forEach(h => {
         const k = `${h._mfJob}|${h.category || ''}|${h.material || ''}`;
         const g = map.get(k);
         if (!g) {
@@ -3528,7 +3549,7 @@ function mfHistoryMerged(rows) {
         // 中止只要有一筆就整組算中止
         if (h.type === 'aborted') g.type = 'aborted';
     });
-    return [...map.values()].sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
+    return [...map.values(), ...others].sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
 }
 
 // ══ Markforged 消耗記錄 ══
@@ -3542,12 +3563,13 @@ function mfHistoryKeyword() {
 // 這一頁目前的搜尋＋篩選條件（表格與「匯出列印記錄」共用，理由同 applyHistoryFilters）
 function mfHistoryFilters() {
     const v = id => (document.getElementById(id)?.value || '').trim();
-    return { kw: mfHistoryKeyword(), material: v('mf-hist-material'), printer: v('mf-hist-printer'),
+    return { kw: mfHistoryKeyword(), type: v('mf-hist-type'), material: v('mf-hist-material'), printer: v('mf-hist-printer'),
              operator: v('mf-hist-operator'), from: v('mf-hist-from'), to: v('mf-hist-to') };
 }
 function mfFilterSummary(f) {
     const parts = [];
     if (f.kw) parts.push(`搜尋「${f.kw}」`);
+    if (f.type) parts.push(`類型 ${({consume:'列印消耗',stockin:'入庫',manual:'退料／手動調整'})[f.type] || f.type}`);
     if (f.from || f.to) parts.push(`日期 ${f.from || '最早'}～${f.to || '最新'}`);
     if (f.material) parts.push(`材料 ${f.material}`);
     if (f.printer)  parts.push(`機台 ${f.printer}`);
@@ -3558,6 +3580,9 @@ function mfHistoryRows(f) {
     f = f || mfHistoryFilters();
     const k = f.kw || '';
     return mfHistory.filter(h => {
+        // 「列印消耗」同時涵蓋 consume 與 aborted（同 applyHistoryFilters）
+        if (f.type === 'consume' && !(h.type === 'consume' || h.type === 'aborted')) return false;
+        else if (f.type && f.type !== 'consume' && h.type !== f.type) return false;
         if (f.material && h.material !== f.material) return false;
         if (f.printer  && h.printer  !== f.printer)  return false;
         // 比對原始值 operator（理由同 applyHistoryFilters）；'(未填)' 專挑沒有這個欄位的舊紀錄
@@ -3598,7 +3623,7 @@ async function applyMfHistoryDateRange() {
     renderMfHistory();
 }
 function resetMfHistoryFilters() {
-    ['mf-hist-filter','mf-hist-material','mf-hist-printer','mf-hist-operator','mf-hist-from','mf-hist-to']
+    ['mf-hist-filter','mf-hist-type','mf-hist-material','mf-hist-printer','mf-hist-operator','mf-hist-from','mf-hist-to']
         .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     renderMfHistory();
 }
@@ -3625,7 +3650,7 @@ function renderMfHistory() {
     if (!rows.length) {
         tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-[var(--ink-5)]">${
             mfHistory.length ? '沒有符合搜尋或篩選條件的紀錄'
-                             : `目前載入的範圍（${since || '最近 30 天'} 起）沒有 Markforged 消耗紀錄。機台離線或沒有列印時不會產生紀錄；要看更早的資料請選起始日期。`}</td></tr>`;
+                             : `目前載入的範圍（${since || '最近 30 天'} 起）沒有 Markforged 出入料紀錄。機台離線或沒有列印時不會產生消耗紀錄；要看更早的資料請選起始日期。`}</td></tr>`;
         return;
     }
     const fmtTs = t => { const d = t ? new Date(t) : null;
@@ -3646,10 +3671,8 @@ function renderMfHistory() {
                 ${h.category ? `<span class="ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${h.category==='fiber'?'bg-[var(--indigo-soft)] text-[var(--indigo)]':'bg-[var(--bg-panel)] text-[var(--ink-4)]'}">${MF_CATEGORY_LABEL[h.category]}</span>` : ''}
             </td>
             <td class="p-3 text-[var(--ink-2)]">${escHtml(h.printer || '—')}</td>
-            <td class="p-3 text-right font-medium text-[var(--ink)]">${(Number(h.ml)||0).toFixed(1)}</td>
-            <td class="p-3">${isAbort
-                ? '<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full">中止</span>'
-                : '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full">消耗</span>'}</td>
+            <td class="p-3 text-right font-medium text-[var(--ink)] whitespace-nowrap">${mfQtyCell(h)}</td>
+            <td class="p-3">${mfTypeBadge(h)}</td>
             <!-- 責任工程師＝實際執行列印的人，工作結案後由同步回填（Eiger 的 initiator）；
                  還沒結案、或 2026-09-11 之前的舊紀錄沒有 job_id，對不到就顯示 — -->
             <td class="p-3 text-xs text-[var(--ink-3)] whitespace-nowrap">${escHtml(operatorLabel(h)) || '—'}</td>
@@ -3664,6 +3687,22 @@ function renderMfHistory() {
     // ★ 這一段是 innerHTML 整個換掉，上面新增的鉛筆圖示要重新產生，
     //   否則按鈕會是一個看不見的空格（data-lucide 沒被展開）。
     lucide.createIcons();
+}
+
+// 出入料記錄的「數量」與「類型」欄。列印消耗顯示用量；入庫／退料／調整顯示正負號（+ 增加、− 減少）
+function mfQtyCell(h) {
+    const v = Number(h.ml) || 0;
+    const unit = h.unit === '個' ? '個' : 'cc';
+    const fmt = x => unit === '個' ? String(Math.round(x * 10) / 10) : x.toFixed(1);
+    if (h.type === 'consume' || h.type === 'aborted') return `${fmt(v)} ${unit}`;
+    const sign = v > 0 ? '+' : v < 0 ? '−' : '';
+    return `<span class="${v < 0 ? 'text-[var(--danger)]' : 'text-[var(--ok)]'}">${sign}${fmt(Math.abs(v))} ${unit}</span>`;
+}
+function mfTypeBadge(h) {
+    if (h.type === 'aborted') return '<span class="text-xs bg-[var(--danger-soft)] text-[var(--danger)] px-2 py-0.5 rounded-full">中止</span>';
+    if (h.type === 'consume') return '<span class="text-xs bg-[var(--ok-soft)] text-[var(--ok)] px-2 py-0.5 rounded-full">消耗</span>';
+    if (h.type === 'stockin') return '<span class="text-xs bg-[var(--accent-soft)] text-[var(--accent)] px-2 py-0.5 rounded-full">入庫</span>';
+    return '<span class="text-xs bg-[var(--bg-panel)] text-[var(--ink-3)] px-2 py-0.5 rounded-full">調整</span>';
 }
 
 // ══ Markforged 月度分析（版面與 Formlabs 的月度分析相同；單位 cc）══
@@ -5046,11 +5085,14 @@ async function saveMfEdits() {
     let changed = 0;
     const nowIso = new Date().toISOString();
     const stampBy = currentUser?.displayName || currentUser?.email || '';
+    const logs = [];   // 數量有變的才記（只改備註不記，與 Formlabs 相同）
     changes.forEach(c => {
         const cur = mfInv.stock[c.name] || {};
         const dirty = (Number(cur.total_cc)||0) !== c.total || (cur.note||'') !== c.note;
         if (!dirty) return;
         changed++;
+        const diff = c.total - (Number(cur.total_cc) || 0);
+        if (diff) logs.push(['manual', c.name, diff, `批次調整為 ${c.total} cc`, false]);
         mfInv.stock[c.name] = {
             ...cur,
             total_cc:   c.total,
@@ -5064,6 +5106,8 @@ async function saveMfEdits() {
         const dirty = (Number(cur.qty)||0) !== c.qty || (cur.note||'') !== c.note;
         if (!dirty) return;
         changed++;
+        const diff = c.qty - (Number(cur.qty) || 0);
+        if (diff) logs.push(['manual', c.name, diff, `批次調整為 ${c.qty} 個`, true]);
         mfInv.stock[c.name] = {
             ...cur,
             kind:       'consumable',
@@ -5075,7 +5119,7 @@ async function saveMfEdits() {
     });
 
     if (!changed) { showToast('沒有變更', 'info'); isMfEditMode = false; renderMfPanel(); return; }
-    await saveMfDoc(`手動調整 ${changed} 項 Markforged 線材／耗材`);
+    if (await saveMfDoc(`手動調整 ${changed} 項 Markforged 線材／耗材`)) logs.forEach(l => mfStockLog(...l));
     isMfEditMode = false;
     renderMfPanel();
 }
@@ -5105,10 +5149,25 @@ async function saveMfDoc(reason) {
         });
         setSyncStatus('ok');
         showToast('✓ 已儲存', 'success');
+        return true;
     } catch (err) {
         setSyncStatus('error');
         showToast('儲存失敗：' + err.message, 'error');
+        return false;
     }
+}
+
+// Markforged 的入庫／退料／手動調整寫進 inventory_history（2026-11-09）。
+// 原本只改庫存數字，事後查不到誰在什麼時候入了幾捲。月度分析、月報、匯出列印記錄
+// 都只算 consume／aborted，這些紀錄不會影響消耗數字。
+// 線材 ml＝cc 的增減；耗材 ml＝個數的增減（unit='個'）。正數＝增加、負數＝減少。
+function mfStockLog(type, name, diff, note, isCon) {
+    addHistory({
+        type, material: name, ml: Math.round((Number(diff) || 0) * 10) / 10, note,
+        printer: isCon ? '耗材庫存' : '備料庫存',
+        source: 'markforged', unit: isCon ? '個' : 'cc',
+        category: isCon ? undefined : (mfInv.stock[name]?.category || undefined),
+    });
 }
 
 // 線材與耗材共用同一支刪除流程（都存在 mfInv.stock），只有提示文字依類型不同
@@ -5118,9 +5177,18 @@ async function deleteMfMaterial(name) {
     let msg = `確定刪除${label}「${name}」？此操作不影響已產生的消耗紀錄。`;
     if (isMfEditMode) msg += `\n\n⚠️ 表格中其他尚未按「儲存全部」的修改會一併捨棄。`;
     if (!confirm(msg)) return;
+    const isCon = mfIsConsumable(name);
+    const before = mfCurrent(name);
+    const cat = mfInv.stock[name]?.category;
     delete mfInv.stock[name];
     delete mfInv.safety[name];
-    await saveMfDoc(`刪除 Markforged ${label} ${name}`);
+    if (await saveMfDoc(`刪除 Markforged ${label} ${name}`)) {
+        // 材料已刪掉，category 要事先取出來帶進紀錄
+        addHistory({ type: 'manual', material: name, ml: -before, source: 'markforged',
+                     unit: isCon ? '個' : 'cc', printer: isCon ? '耗材庫存' : '備料庫存',
+                     category: isCon ? undefined : (cat || undefined),
+                     note: `刪除${label}（原庫存 ${before} ${isCon ? '個' : 'cc'}）` });
+    }
     renderMfPanel();
 }
 
@@ -5179,7 +5247,9 @@ async function submitMfAdd() {
             ...stamp,
           };
     mfInv.safety[name] = 0;
-    await saveMfDoc(`新增 Markforged ${isCon ? '耗材' : '線材'} ${name}`);
+    if (await saveMfDoc(`新增 Markforged ${isCon ? '耗材' : '線材'} ${name}`) && qty > 0) {
+        mfStockLog('stockin', name, qty, `新增${isCon ? '耗材' : '線材'}（初始庫存）`, isCon);
+    }
     closeMfAddModal();
     renderMfPanel();
 }
@@ -5339,7 +5409,11 @@ async function submitMfStockIn() {
         updated_at: new Date().toISOString(),
         updated_by: currentUser?.displayName || currentUser?.email || '',
     };
-    await saveMfDoc(`${name} ${spools > 0 ? '入庫' : '退料'} ${Math.abs(spools)} 捲（${spools > 0 ? '+' : ''}${spools * per} cc）`);
+    if (await saveMfDoc(`${name} ${spools > 0 ? '入庫' : '退料'} ${Math.abs(spools)} 捲（${spools > 0 ? '+' : ''}${spools * per} cc）`)) {
+        // 退料時庫存不會扣到 0 以下（next 有 Math.max），紀錄的量以實際變動為準
+        mfStockLog(spools > 0 ? 'stockin' : 'manual', name, next - cur,
+                   `${spools > 0 ? '入庫' : '退料'} ${Math.abs(spools)} 捲${note ? `：${note}` : ''}`, false);
+    }
     closeMfStockInModal();
     renderMfPanel();
     showToast(`${name} ${spools > 0 ? '入庫' : '退料'} ${Math.abs(spools)} 捲 ✓`);
