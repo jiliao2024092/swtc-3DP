@@ -2510,6 +2510,10 @@ async function persistHistoryEntry(entry) {
             //   全部跑到中部去，那兩區的人在自己的出入料記錄裡看不到。
             //   這之前寫進去的舊紀錄沒有地區資料可以還原，維持算在中部。
             region: entry.region || activeRegion,
+            // 責任工程師欄＝這筆的操作者（2026-11-09 使用者要求）。網頁寫入的都是人工操作
+            // （入庫／調整／回補／換槽扣料），沒有這欄的話出入料記錄看不出是誰做的。
+            // ★ 只存名稱，不存 email（消耗紀錄全公司都讀得到，與列印的 operator 同一原則）
+            operator: entry.operator || currentUser.displayName || '',
             // Markforged 的入庫／調整也寫進同一個 collection（2026-11-09），靠 source 分到 mfHistory
             ...(entry.source   ? { source:   entry.source }   : {}),
             ...(entry.unit     ? { unit:     entry.unit }     : {}),
