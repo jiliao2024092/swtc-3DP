@@ -115,8 +115,21 @@ body::before{content:'';position:fixed;inset:0;background-image:radial-gradient(
 .sidebar-item-text{display:flex;flex-direction:column;gap:2px;min-width:0}
 .sidebar-item-label{font-size:13px;font-weight:600;letter-spacing:-0.005em;line-height:1.1}
 .sidebar-item-sub{font-size:9.5px;font-family:var(--font-mono);color:var(--ink-4);letter-spacing:0.08em}
-.sidebar-foot{padding:14px 16px;border-top:1px solid var(--line);font-family:var(--font-mono);font-size:10.5px;color:var(--ink-4);display:flex;flex-direction:column;gap:3px}
-.sidebar-foot-date{color:var(--ink-2);font-feature-settings:'tnum'}
+.sidebar-foot{padding:10px 10px 12px;border-top:1px solid var(--line);font-family:var(--font-mono);font-size:10.5px;color:var(--ink-4);display:flex;flex-direction:column;gap:3px;position:relative}
+.sidebar-foot-date{color:var(--ink-2);font-feature-settings:'tnum';padding:0 6px}
+/* 左下角使用者區：頭像＋名字＋角色／地區，點開選單 */
+.user-btn{display:flex;align-items:center;gap:9px;width:100%;padding:6px;border:1px solid transparent;border-radius:8px;background:none;cursor:pointer;text-align:left;font-family:var(--font-ui);color:inherit}
+.user-btn:hover,.user-btn[aria-expanded="true"]{background:var(--bg);border-color:var(--line)}
+.user-av{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:14px;flex-shrink:0}
+.user-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.user-name{color:var(--ink-2);font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-sub{font-size:10.5px;color:var(--ink-4);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-caret{color:var(--ink-4);font-size:9px;flex-shrink:0}
+.user-menu{position:absolute;left:10px;right:10px;bottom:calc(100% - 4px);z-index:5;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow-card-hover);padding:4px;display:flex;flex-direction:column;font-family:var(--font-ui)}
+.user-menu-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border:none;border-radius:6px;background:none;font-size:12.5px;color:var(--ink-2);cursor:pointer;text-align:left;font-family:inherit}
+.user-menu-item:hover{background:var(--bg-soft);color:var(--ink)}
+.user-menu-item svg{flex-shrink:0;color:var(--ink-3)}
+.user-menu-sep{height:1px;background:var(--line);margin:4px 2px}
 .sb-divider{height:1px;background:var(--line);margin:8px 12px}
 .sb-admin-lbl{font-size:9.5px;color:var(--ink-4);font-family:var(--font-mono);letter-spacing:.1em;text-transform:uppercase;padding:4px 12px 2px}
 
@@ -3033,6 +3046,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-09', type:'tweak',
+    text:'左下角的帳號區改成「頭像＋名字＋角色／地區」，點一下會打開選單，黑暗模式、變更密碼、登出都在裡面。頭像的顏色與公共事項看板上的一致。另外修正資材帳號在左下角被顯示成「查閱」。' },
   { hash:'07a0503', date:'2026-11-09', type:'tweak',
     text:'材料庫存的出入料記錄：入庫、退料、手動調整、刪除回補等人工操作，「責任工程師」欄會顯示操作者的名字（今天之後的紀錄才有）。' },
   { hash:'d69c24f', date:'2026-11-09', type:'feat',
@@ -3051,8 +3066,6 @@ const CHANGELOG = [
     text:'安全性修正：機台預約的用途、公告內容、材料名稱裡如果夾帶程式碼，現在只會當成文字顯示，不會被執行。材料庫存 Markforged 分頁拿掉了「材料餘量觀測」區塊（內容與「Markforged 消耗記錄」重複，說明也已過時）。工作看板開啟新工單時不再額外讀取大量消耗紀錄，畫面與帶入結果不變。' },
   { hash:'cb50b4d', date:'2026-10-14', type:'tweak',
     text:'網站首頁（原本的「台中設備內網」）改成直接進入本系統。材料庫存頁右上角的「預約系統」連結拿掉了，機台預約請從左側選單的「機台預約」進入。' },
-  { hash:'f6ad694', date:'2026-10-13', type:'fix',
-    text:'後台新增使用者時選的「地區」，現在會正確存進新帳號（原本一律被當成中部，列表上標紅，要再編輯一次才會改過來）。新增使用者改由伺服器建立帳號，操作方式不變。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
@@ -3142,6 +3155,75 @@ function ChangePasswordModal({ onClose }) {
           <button className="btn-save" onClick={submit} disabled={busy}>{busy?'更新中…':'更新密碼'}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// 左下角使用者區：頭像＋名字＋角色／地區，點開選單（黑暗模式／變更密碼／登出）。
+// 頭像配色與公共事項看板（posts.js 的 Avatar）同一套算法，同一個人在兩處顏色相同。
+const USER_AV_COLORS = ['#2f6fdb', '#1f9d74', '#c2410c', '#7c3aed', '#be185d', '#0e7490', '#a16207'];
+function UserMenu({ user, darkMode, onToggleDark, onChangePw, onLogout }) {
+  const [open, setOpen] = React.useState(false);
+  const boxRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDown = e => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    const onKey = e => { if (e.key === 'Escape') setOpen(false); };
+    // 點進 iframe（機台預約／材料庫存／估價）時父頁收不到 mousedown，改靠 window 失焦收合
+    const onBlur = () => setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [open]);
+
+  // 名字取法與公共事項的 authorName 相同（firebase-service.js 的 nameOf），頭像顏色才會一致
+  const name = user.displayName || String(user.email || '').split('@')[0] || '?';
+  const s = String(name);
+  const color = USER_AV_COLORS[[...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % USER_AV_COLORS.length];
+  const initial = [...s.trim()][0] || '?';
+  // 分級與後台使用者清單的 roleTierOf 相同（含資材）
+  const p = user.permissions || [];
+  const tier = p.includes('admin') ? '管理員'
+    : (p.includes('delete_board') || p.includes('delete_issues')) ? '主管'
+    : p.includes('edit_board') ? '工程師'
+    : p.includes('edit_purchase_stock') ? '資材' : '查閱';
+  const region = (window.regionLabel && window.regionOf) ? window.regionLabel(window.regionOf(user)) : '';
+
+  return (
+    <div ref={boxRef}>
+      {open && (
+        <div className="user-menu" role="menu">
+          <button className="user-menu-item" role="menuitem" onClick={onToggleDark}>
+            {darkMode
+              ? <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+              : <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M13 9.6A5.5 5.5 0 0 1 6.4 3 5.5 5.5 0 1 0 13 9.6Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>}
+            {darkMode ? '切換為亮色模式' : '切換為黑暗模式'}
+          </button>
+          <button className="user-menu-item" role="menuitem" onClick={()=>{ setOpen(false); onChangePw(); }}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="5" cy="8" r="2.6" stroke="currentColor" strokeWidth="1.3"/><path d="M7.6 8h6.4M12 8v2.2M14 8v1.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            變更密碼
+          </button>
+          <div className="user-menu-sep"/>
+          <button className="user-menu-item" role="menuitem" onClick={()=>{ setOpen(false); onLogout(); }}>
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M6 2.5H3.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1H6M10.5 5l3 3-3 3M13.5 8H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            登出
+          </button>
+        </div>
+      )}
+      <button className="user-btn" aria-haspopup="menu" aria-expanded={open} title="帳號選單"
+        onClick={()=>setOpen(v=>!v)}>
+        <span className="user-av" style={{background:color}}>{initial}</span>
+        <span className="user-txt">
+          <span className="user-name">{name}</span>
+          <span className="user-sub">{tier}{region ? ` · ${region}` : ''}</span>
+        </span>
+        <span className="user-caret">{open ? '▼' : '▲'}</span>
+      </button>
     </div>
   );
 }
@@ -3257,27 +3339,9 @@ function Shell({ user, onLogout }) {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}}>
-            <span style={{color:'var(--ink-2)',fontWeight:600}}>{user.displayName}</span>
-            <button onClick={()=>setDarkMode(v=>!v)} title={darkMode?'切換為亮色模式':'切換為黑暗模式'}
-              style={{flexShrink:0,width:24,height:24,border:'1px solid var(--line)',borderRadius:5,background:'var(--bg)',color:'var(--ink-3)',cursor:'pointer',fontSize:12,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <span style={{filter:'grayscale(1)'}}>{darkMode ? '☀' : '🌙'}</span>
-            </button>
-          </div>
+          <UserMenu user={user} darkMode={darkMode} onToggleDark={()=>setDarkMode(v=>!v)}
+            onChangePw={()=>setShowPwModal(true)} onLogout={onLogout}/>
           <span className="sidebar-foot-date">{dateStr}</span>
-          <span style={{fontSize:9,color:'var(--ink-4)'}}>
-            {(()=>{
-              const p = user.permissions || [];
-              if (p.includes('admin')) return '管理員';
-              if (p.includes('delete_board') || p.includes('delete_issues')) return '主管';
-              if (p.includes('edit_board')) return '工程師';
-              return '查閱';
-            })()}
-          </span>
-          <div style={{display:'flex',gap:6,marginTop:6}}>
-            <button onClick={()=>setShowPwModal(true)} style={{flex:1,background:'none',border:'1px solid var(--line)',borderRadius:5,padding:'4px 10px',fontSize:11,cursor:'pointer',color:'var(--ink-3)',fontFamily:'inherit'}}>變更密碼</button>
-            <button onClick={onLogout} style={{flex:1,background:'none',border:'1px solid var(--line)',borderRadius:5,padding:'4px 10px',fontSize:11,cursor:'pointer',color:'var(--ink-3)',fontFamily:'inherit'}}>登出</button>
-          </div>
         </div>
       </aside>
       {showPwModal && <ChangePasswordModal onClose={()=>setShowPwModal(false)}/>}
