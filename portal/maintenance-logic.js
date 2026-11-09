@@ -90,6 +90,14 @@
     if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return true;
     return `${year}-${pad2(m)}` <= e.slice(0, 7);
   }
+  // 保養排程選了某一年時，這台要不要列出：該年仍在維護期內＝到期日的年份 ≥ 該年
+  //（2026-11-09 使用者決定；原本年份選單只換月份欄的資料，列出哪些設備完全不變）。
+  // 沒填或格式不對的到期日 → 每年都列（判斷不出來，不可讓設備從畫面消失）
+  function activeInYear(dev, year) {
+    const e = dev && dev.expiryDate;
+    if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return true;
+    return Number(e.slice(0, 4)) >= Number(year);
+  }
   function daysUntil(expiryDate, today) {
     if (!expiryDate || !/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) return null;
     const t = today instanceof Date ? today : new Date();
@@ -220,7 +228,7 @@
 
   window.MaintLogic = {
     MONTHS, REASONS, REASON_LABEL, BRANDS, EXPIRY_SOON_DAYS,
-    cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, daysUntil,
+    cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, activeInYear, daysUntil,
     excelDate, normBrand, parseReason, parseMaintSheet, deviceKey,
   };
 })();

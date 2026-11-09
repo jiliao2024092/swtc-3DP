@@ -94,6 +94,16 @@ eq(ML.effectiveList({ list: 'active', expiryDate: '2026-10-12' }, today), 'expir
 eq(ML.effectiveList({ list: 'active', expiryDate: '2026-10-13' }, today), 'active', '到期日當天仍算維護中');
 eq(ML.effectiveList({ list: 'active', expiryDate: '2027-03-31' }, today), 'active', '★ 續約把到期日往後改 → 自動回到維護中');
 eq(ML.effectiveList({ list: 'expired', expiryDate: '2027-03-31' }, today), 'expired', '手動標已過維 → 不管到期日都算已過維');
+
+// ── 保養排程的年份篩選（2026-11-09）：該年仍在維護期內＝到期日年份 ≥ 選的年份 ──
+eq(ML.activeInYear({ expiryDate: '2026-03-31' }, 2026), true,  '★ 到期日在選的那一年 → 列出（那一年還有幾個月在維護期內）');
+eq(ML.activeInYear({ expiryDate: '2029-02-28' }, 2026), true,  '到期日在之後的年份 → 列出');
+eq(ML.activeInYear({ expiryDate: '2025-12-31' }, 2026), false, '★ 前一年底就到期 → 不列出');
+eq(ML.activeInYear({ expiryDate: '2022-07-31' }, 2025), false, '多年前到期 → 不列出');
+eq(ML.activeInYear({ expiryDate: '2022-07-31' }, 2022), true,  '切回到期那一年 → 看得到');
+eq(ML.activeInYear({ expiryDate: '' }, 2026), true,  '★ 沒填到期日 → 每年都列（判斷不出來不可讓設備消失）');
+eq(ML.activeInYear({ expiryDate: '改約' }, 2026), true, '到期日格式不對 → 照常列出');
+eq(ML.activeInYear({ expiryDate: '2026-03-31' }, '2026'), true, '年份是字串也要能比'); 
 eq(ML.effectiveList({ expiryDate: '' }, today), 'active', '沒填到期日、沒寫 list → 維護中（不可誤判成已過維）');
 eq(ML.effectiveList({ list: 'active', expiryDate: '2026/01/01' }, today), 'active', '到期日格式不對 → 維護中');
 eq(ML.effectiveList(null, today), 'active', 'null 不會出錯');

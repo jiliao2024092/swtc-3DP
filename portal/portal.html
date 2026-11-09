@@ -1728,8 +1728,8 @@ window.DashboardView = DashboardView;
 <script type="text/babel" data-presets="react" src="workboard.js?v=20261014a"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
-<script src="maintenance-logic.js?v=20261109a"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261109a"></script>
+<script src="maintenance-logic.js?v=20261109b"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261109b"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261109a"></script>
@@ -3063,6 +3063,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'PENDING', date:'2026-11-09', type:'fix',
+    text:'設備保養的保養排程：年份選單現在會篩選設備，只列出該年仍在維護期內的機台（維護到期日在該年或之後）；沒填到期日的每年都會列出。原本換年份只換月份欄的資料，設備清單完全不變。' },
   { hash:'63a5385', date:'2026-11-09', type:'tweak',
     text:'上傳頭像多了「裁剪及旋轉」：選好照片後會先打開編輯視窗，拖曳框框選要的位置、拖四個角調整大小（圓形內就是頭像顯示的範圍），「旋轉」每按一次轉 90 度，按「儲存」才會換上。' },
   { hash:'881efba', date:'2026-11-09', type:'feat',
@@ -3081,8 +3083,6 @@ const CHANGELOG = [
     text:'材料庫存：Tough 2000 V1.1 比照 Flexible 80A 拆成獨立材料。V1.1 與 V2 各自有庫存、消耗紀錄與月度分析，V1.1 的列印改扣 V1.1 自己的庫存，不再扣到 V2。原本的「Tough 2000」庫存數字不會自動調整；手上若有 V1.1 備料，請先在 V1.1 入庫，否則會跳「消耗紀錄可能有誤」。' },
   { hash:'aea7384', date:'2026-10-15', type:'tweak',
     text:'設備保養的「維護到期總表」可以直接編輯：點任一列就會打開設備資料視窗（和保養排程點客戶名稱是同一個），改完按儲存即可；只有可編輯該地區的人點得開。另外拿掉「剩餘天數」欄，畫面與匯出的 Excel 都不再有這一欄。' },
-  { hash:'bbf1440', date:'2026-10-14', type:'feat',
-    text:'新增「資材」角色（後台套用角色時可選）：只看得到材料庫存管理（含北中南總覽），可以填寫「採購工程庫存」，其餘唯讀。材料庫存 Markforged 的「月度分析」改成與 Formlabs 相同的版面（材料佔比、工作類別、責任工程師、當月消耗紀錄、年度趨勢、詳細統計），可選年份、月份與機台；兩邊的「月度消耗趨勢」多了「載入整年」按鈕，還沒載入整年時會提示。Markforged 材料庫存頁的提示也更正為「消耗已自動扣庫存」。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

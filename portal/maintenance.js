@@ -469,7 +469,8 @@
       .filter(d => matchRegion(d) && matchText(d) && (!engF || d.engineer === engF))
       .sort(byRegionThenSeq);
     // 清單依 ML.effectiveList：手動標已過維，或維護到期日已過（2026-11-09 起自動，不寫回資料庫）
-    const scheduleRows = filtered.filter(d => !listF || ML.effectiveList(d) === listF);
+    // 年份：只列該年仍在維護期內的設備（到期日年份 ≥ 選的年份；沒填到期日的每年都列）
+    const scheduleRows = filtered.filter(d => (!listF || ML.effectiveList(d) === listF) && ML.activeInYear(d, year));
     const regionsShown = regionF ? [regionF] : regionKeys().filter(r => canCross || r === myRegion);
     const stats = useMemo(() => ML.maintStats(devices.filter(d => !engF || d.engineer === engF), year, regionKeys()), [devices, year, engF]);
 
