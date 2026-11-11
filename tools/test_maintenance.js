@@ -9,6 +9,7 @@
 //   - 2026-11-11：年份選單（yearOptions）、到期總表的年份篩選（expiresInYear）、
 //     每 N 個月保養的自動排程（autoPlanMonths／autoSchedule：只排本月以後的空格、不動填過的）、
 //     匯出保養排程（buildMaintSheet）要能原樣再匯入
+//   - 2026-11-11：每月維護安排通知（noticeData／noticeHtml／noticeSheet），版面照使用者的 10 月信件截圖
 // 以及原 Excel 的格式：一台設備 3 列、地區標題列、C 的說明寫在下一格、完成日期格寫文字
 //
 // 執行：node tools/test_maintenance.js     （於 repo 根目錄）
@@ -310,6 +311,74 @@ eq([byName('另一家').seq, byName('另一家').brand, byName('另一家').sche
   '只有說明、沒有排程的月份也來回一致');
 eq(expDevs.map(d => ML.deviceKey(d)).sort(), back.devices.map(d => ML.deviceKey(d)).sort(), '★★ deviceKey 完全相同 → 再匯入是「更新」，不會多出重複的設備');
 eq(ML.parseReason('續簽 洽談中'), { reason: 'R', note: '洽談中' }, '續簽後面的文字留作說明');
+
+// ── 每月維護安排通知（2026-11-11）：照使用者給的 10 月信件截圖 ─────────────
+const nDev = (o) => ({ region: 'central', list: 'active', brand: 'Formlabs', model: '4L', sales: '', engineer: '', schedule: {}, ...o });
+const P10 = { 2026: { 10: { plan: true } } };
+const nDevs = [
+  nDev({ seq: 5, customer: '昇威機械股份有限公司', model: '4L', expiryDate: '2029-07-06', sales: 'Benny', engineer: 'Jaylen', schedule: P10 }),
+  nDev({ seq: 1, customer: '台灣口木工業股份有限公司', model: 'Fuse 1 / Fuse Sift', expiryDate: '2026-10-18', sales: 'Amber', engineer: 'Jimmy', schedule: P10 }),
+  nDev({ seq: 2, customer: '瑞士商弗克司股份有限公司台灣分公司', brand: 'Markforged', model: 'Two', expiryDate: '2029-02-28', sales: 'Jungle', engineer: 'Jaylen',
+         schedule: { 2026: { 10: { plan: true, done: '2026-10-27' } } } }),
+  nDev({ seq: 3, customer: '偉鵬科技有限公司', brand: 'Markforged', model: 'One', expiryDate: '2027-07-23', sales: 'Jungle', engineer: 'Jaylen', schedule: P10 }),
+  nDev({ seq: 4, customer: '偉鵬科技有限公司', brand: 'Markforged', model: 'One', expiryDate: '2027-07-23', sales: 'Jungle', engineer: 'Jaylen', schedule: P10 }),
+  nDev({ seq: 6, customer: '沒排 10 月', expiryDate: '2026-12-20', sales: 'Amber', schedule: { 2026: { 11: { plan: true } } } }),
+  nDev({ seq: 7, customer: '只有說明沒排', expiryDate: '2028-01-01', schedule: { 2026: { 10: { note: '客戶未使用' } } } }),
+  nDev({ seq: 8, customer: '手動已過維', list: 'expired', expiryDate: '2026-11-01', schedule: P10 }),
+  nDev({ seq: 9, customer: '9 月就到期', expiryDate: '2026-09-30', schedule: P10 }),
+  nDev({ seq: 10, customer: '已經過期', expiryDate: '2026-09-15' }),
+  nDev({ seq: 11, customer: '剛好第 90 天', expiryDate: '2026-12-30' }),
+  nDev({ seq: 12, customer: '第 91 天', expiryDate: '2026-12-31' }),
+  nDev({ region: 'south', seq: 1, customer: '南部客戶', expiryDate: '2026-10-05', schedule: P10 }),
+];
+const nd = ML.noticeData(nDevs, { year: 2026, month: 10, regions: ['central'], today: new Date(2026, 9, 1) });
+const sec = nd.sections[0];
+eq([sec.region, sec.label], ['central', '台中'], '一區一份，標題用原 Excel 的叫法（台中）');
+eq(sec.rows.map(r => r.customer), ['台灣口木工業股份有限公司', '瑞士商弗克司股份有限公司台灣分公司', '偉鵬科技有限公司', '昇威機械股份有限公司'],
+  '★ 當月清單＝10 月有排定保養的（含已完成的弗克），依序號排；沒排、只有說明、手動已過維、合約 9 月就結束的都不列');
+eq(sec.rows[2], { customer: '偉鵬科技有限公司', brand: 'Markforged', model: 'One', expiryDate: '2027-07-23', sales: 'Jungle', engineer: 'Jaylen', count: 2 },
+  '★ 同客戶、同機型、同到期日 → 併成一列，記 2 台（截圖：此客戶有2台設備）');
+eq([nd.from, nd.to], ['2026-10-01', '2026-12-30'], '到期提醒範圍＝產生當天起 90 天（含第 90 天）');
+eq(sec.soon.map(r => r.customer), ['台灣口木工業股份有限公司', '沒排 10 月', '剛好第 90 天'],
+  '★ 到期提醒：今天～90 天內到期、依到期日排；已經過期、第 91 天、手動已過維、別區的都不列');
+eq(ML.noticeData(nDevs, { year: 2026, month: 10, regions: ['north', 'central', 'south'], today: new Date(2026, 9, 1) }).sections.map(s => [s.label, s.rows.length, s.soon.length]),
+  [['台北', 0, 0], ['台中', 4, 3], ['南區', 1, 1]], '「所有地區」→ 三區各一段，各自有到期提醒（沒資料的區照樣有一段）');
+const txt10 = ML.noticeText(nd).split('\n');
+eq(txt10[0], '台中\t廠牌\t型號\t維護到期日\t責任業務\t保養負責人\t保養日期(請回填)', '表頭照截圖');
+eq(txt10[1], '台灣口木工業股份有限公司\tFormlabs\tFuse 1 / Fuse Sift\t2026/10/18\tAmber\tJimmy\t', '★ 日期寫 2026/10/18、業務與負責人寫代號（照截圖）');
+eq(txt10[3], '偉鵬科技有限公司(此客戶有2台設備)\tMarkforged\tOne\t2027/7/23\tJungle\tJaylen\t', '★ 合併的那列客戶名稱後面加註台數');
+eq(txt10[5], '以下為 設備三個月內即將 維護到期提醒', '橫幅文字照截圖');
+const htm = ML.noticeHtml(nd);
+eq(/Fuse 1<br>Fuse Sift/.test(htm), true, '型號「A / B」在信件裡換行（截圖 Fuse 1 與 Fuse Sift 分兩行）');
+eq((htm.match(/class=/g) || []).length, 0, '★ 信件 HTML 不用 class（貼進 Outlook 時 class 不會跟著過去，全部要 inline style）');
+eq(/color:#FF0000;font-weight:bold">2026\/10\/18/.test(htm), true, '到期提醒的日期是紅色粗體');
+eq((htm.match(/colspan="3"/g) || []).length, 1 + sec.soon.length, '到期提醒的「責任業務」跨 3 欄（表頭與每一列）');
+const evil = ML.noticeHtml(ML.noticeData([nDev({ customer: '<img src=x onerror=alert(1)>', model: 'A&B', schedule: P10, expiryDate: '2029-01-01' })],
+  { year: 2026, month: 10, regions: ['central'], today: new Date(2026, 9, 1) }));
+eq([/<img/.test(evil), /&lt;img src=x onerror=alert\(1\)&gt;/.test(evil), /A&amp;B/.test(evil)], [false, true, true], '★ 客戶名稱等資料一律跳脫（預覽用 innerHTML，不可被塞程式）');
+const emptyHtml = ML.noticeHtml(ML.noticeData([], { year: 2026, month: 10, regions: ['north'], today: new Date(2026, 9, 1) }));
+eq([/10 月沒有排定保養的設備/.test(emptyHtml), /三個月內沒有即將維護到期的設備/.test(emptyHtml)], [true, true], '沒有資料時兩段都寫提示，不是空表');
+
+const sh = ML.noticeSheet(nd);
+eq(sh.aoa.length, 1 + 4 + 1 + 1 + 3, '列數：表頭＋4 列＋橫幅＋第二表頭＋3 列');
+eq(sh.aoa.every(r => r.length === 7 && r.every(c => c !== null && c !== undefined)), true, '★ 每列 7 格、空白格寫空字串（null 不會產生儲存格，框線就補不上）');
+eq(sh.aoa[1][2], 'Fuse 1\nFuse Sift', 'Excel 的型號用換行');
+eq([sh.styles.A1, sh.styles.G1, sh.styles.A2, sh.styles.G2, sh.styles.A6, sh.styles.D8], ['head', 'fillHead', 'cust', 'fill', 'banner', 'red'],
+  '樣式：表頭灰、回填欄藍、客戶綠、橫幅橘、到期提醒日期紅');
+eq(sh.merges, [{ s: { r: 5, c: 0 }, e: { r: 5, c: 6 } }, { s: { r: 6, c: 4 }, e: { r: 6, c: 6 } },
+  { s: { r: 7, c: 4 }, e: { r: 7, c: 6 } }, { s: { r: 8, c: 4 }, e: { r: 8, c: 6 } }, { s: { r: 9, c: 4 }, e: { r: 9, c: 6 } }],
+  '合併儲存格：橫幅整列、到期提醒的責任業務跨 3 欄');
+eq(sh.rowHeights[1] > sh.rowHeights[2], true, '型號兩行的那列比較高');
+const sx = ML.noticeStylesXml();
+eq([(sx.match(/<xf /g) || []).length - 1, /cellXfs count="9"/.test(sx)], [9, true], 'styles.xml 的 cellXfs 數量正確（預設＋8 種）');
+eq(Math.max(...Object.values(ML.NOTICE_XF)) < 9, true, '每個樣式代號都對得到 cellXfs');
+const patched = ML.noticePatchSheetXml('<worksheet><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="H1" t="s"><v>2</v></c></row></sheetData></worksheet>', { A1: 'head', B1: 'red' });
+eq([/<c r="A1" s="1" t="s">/.test(patched), /<c r="B1" s="7" t="s">/.test(patched), /<c r="H1" t="s">/.test(patched)],
+  [true, true, true], '★ 補樣式：有代號的格子加 s，沒有的不動');
+eq(patched.includes('<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>'), true,
+  '★★ 關格線只加在 <sheetView> 上，外層 <sheetViews> 不可被改到（2026-11-11 實際寫出過 <sheetView showGridLines="0"s>，Excel 開不了）');
+eq(ML.noticePatchSheetXml('<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>', {}), '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews>',
+  '已經關了格線的不重複加');
 
 console.log(`\n${pass + fail} 項：${pass} PASS / ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

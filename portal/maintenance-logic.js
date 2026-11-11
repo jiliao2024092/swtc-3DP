@@ -363,10 +363,167 @@
     return rows;
   }
 
+  // ── 每月維護安排通知（2026-11-11 使用者要求：原本每月手動做的寄信表格，一鍵產出）────────
+  // 版面照使用者給的信件截圖：一區一份；上半段＝該月排定保養的設備，下半段＝「設備三個月內即將維護到期提醒」。
+  //   當月清單＝該月 schedule 有 plan（已完成的也列）、合約在那個月還有效（monthInContract）、不是手動標已過維
+  //     ——與達成率「需保養數」同一套判斷，信件上的台數才對得起報表
+  //   到期提醒＝維護到期日在「產生當天」～90 天內（使用者決定；已經過期的不列）
+  //   同一客戶、同廠牌、同機型、同到期日、同業務與負責人 → 併成一列，客戶名稱後加「(此客戶有N台設備)」（照截圖）
+  //   業務／保養負責人寫代號（Amber、Jaylen…），與截圖相同；日期寫成 2026/10/18
+  const slashDate = s => isYmd(s) ? `${+s.slice(0, 4)}/${+s.slice(5, 7)}/${+s.slice(8, 10)}` : txt(s);
+  function noticeGroups(list) {
+    const out = [], byKey = new Map();
+    list.forEach(d => {
+      const k = [txt(d.customer), txt(d.brand), txt(d.model), d.expiryDate || '', txt(d.sales), txt(d.engineer)].join('|');
+      const g = byKey.get(k);
+      if (g) { g.count++; return; }
+      const row = { customer: txt(d.customer), brand: txt(d.brand), model: txt(d.model), expiryDate: d.expiryDate || '',
+                    sales: txt(d.sales), engineer: txt(d.engineer), count: 1 };
+      byKey.set(k, row); out.push(row);
+    });
+    return out;
+  }
+  function noticeData(devices, opts) {
+    const year = Number(opts.year), month = Number(opts.month);
+    const t = opts.today instanceof Date ? opts.today : new Date();
+    const from = ymd(t.getFullYear(), t.getMonth() + 1, t.getDate());
+    const e90 = new Date(t.getFullYear(), t.getMonth(), t.getDate() + 90);
+    const to = ymd(e90.getFullYear(), e90.getMonth() + 1, e90.getDate());
+    const bySeq = (a, b) => (Number(a.seq) || 1e9) - (Number(b.seq) || 1e9) || String(a.customer || '').localeCompare(String(b.customer || ''), 'zh-Hant');
+    const sections = (opts.regions || []).map(r => {
+      const mine = (devices || []).filter(d => d && d.region === r && d.list !== 'expired');
+      const planned = mine.filter(d => { const c = cellOf(d, year, month); return c && c.plan && monthInContract(d, year, month); }).sort(bySeq);
+      const soon = mine.filter(d => isYmd(d.expiryDate) && d.expiryDate >= from && d.expiryDate <= to)
+        .sort((a, b) => a.expiryDate.localeCompare(b.expiryDate) || bySeq(a, b));
+      return { region: r, label: HEADER_OF_REGION[r] || r, rows: noticeGroups(planned), soon: noticeGroups(soon) };
+    });
+    return { year, month, from, to, sections };
+  }
+  const NOTICE_COLOR = { head: '#D9D9D9', fill: '#C5D9F1', cust: '#D8E4BC', banner: '#FFC000', red: '#FF0000', note: '#1F4E9A' };
+  const NOTICE_BANNER = '以下為 設備三個月內即將 維護到期提醒';
+  const custText = r => r.customer + (r.count > 1 ? `(此客戶有${r.count}台設備)` : '');
+  const modelLines = m => String(m || '').split(/\s*\/\s*/).filter(Boolean);
+  // 信件用的 HTML：全部寫 inline style（貼進 Outlook 時 class 不會跟著過去）。所有資料都要跳脫
+  const escH = s => String(s === null || s === undefined ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  function noticeHtml(data) {
+    const C = NOTICE_COLOR;
+    // nowrap：與截圖一樣一格一行（型號的 <br> 照樣換行）；Outlook 的版面寬，不會被擠
+    const td = (html, st) => `<td style="border:1px solid #000;padding:4px 10px;text-align:center;vertical-align:middle;white-space:nowrap;${st || ''}">${html}</td>`;
+    const th = (html, st) => td(html, `background:${C.head};font-weight:bold;${st || ''}`);
+    const model = m => modelLines(m).map(escH).join('<br>');
+    const cust = r => escH(r.customer) + (r.count > 1 ? `<span style="color:${C.note};font-weight:bold">(此客戶有${r.count}台設備)</span>` : '');
+    const tables = data.sections.map(s => {
+      const head = `<tr>${th(escH(s.label))}${th('廠牌')}${th('型號')}${th('維護到期日')}${th('責任業務')}${th('保養負責人')}${th('保養日期(請回填)', `background:${C.fill}`)}</tr>`;
+      const rows = s.rows.length ? s.rows.map(r => `<tr>${td(cust(r), `background:${C.cust};text-align:left`)}${td(escH(r.brand))}${td(model(r.model))}${td(escH(slashDate(r.expiryDate)))}${td(escH(r.sales))}${td(escH(r.engineer))}${td('', `background:${C.fill}`)}</tr>`).join('')
+        : `<tr>${td(`${data.month} 月沒有排定保養的設備`, 'color:#666')}${td('')}${td('')}${td('')}${td('')}${td('')}${td('', `background:${C.fill}`)}</tr>`;
+      const banner = `<tr><td colspan="7" style="border:1px solid #000;padding:6px 10px;text-align:center;background:${C.banner};font-weight:bold;font-size:16pt">${NOTICE_BANNER}</td></tr>`;
+      const head2 = `<tr>${th('客戶')}${th('廠牌')}${th('型號')}${th('維護到期日')}<td colspan="3" style="border:1px solid #000;padding:4px 10px;text-align:center;vertical-align:middle;background:${C.head};font-weight:bold">責任業務</td></tr>`;
+      const soon = s.soon.length ? s.soon.map(r => `<tr>${td(cust(r), `background:${C.cust};text-align:left`)}${td(escH(r.brand))}${td(model(r.model))}${td(escH(slashDate(r.expiryDate)), `color:${C.red};font-weight:bold`)}<td colspan="3" style="border:1px solid #000;padding:4px 10px;text-align:center;vertical-align:middle">${escH(r.sales)}</td></tr>`).join('')
+        : `<tr><td colspan="7" style="border:1px solid #000;padding:4px 10px;text-align:center;color:#666">三個月內沒有即將維護到期的設備</td></tr>`;
+      return `<table style="border-collapse:collapse;font-family:'Microsoft JhengHei',Calibri,sans-serif;font-size:11pt;margin-bottom:16px">${head}${rows}${banner}${head2}${soon}</table>`;
+    });
+    return tables.join('<br>');
+  }
+  // 純文字版（剪貼簿的 text/plain，貼到不吃 HTML 的地方時用）：一列一行、Tab 分隔
+  function noticeText(data) {
+    const lines = [];
+    data.sections.forEach((s, i) => {
+      if (i) lines.push('');
+      lines.push([s.label, '廠牌', '型號', '維護到期日', '責任業務', '保養負責人', '保養日期(請回填)'].join('\t'));
+      if (!s.rows.length) lines.push(`${data.month} 月沒有排定保養的設備`);
+      s.rows.forEach(r => lines.push([custText(r), r.brand, modelLines(r.model).join(' / '), slashDate(r.expiryDate), r.sales, r.engineer, ''].join('\t')));
+      lines.push(NOTICE_BANNER);
+      lines.push(['客戶', '廠牌', '型號', '維護到期日', '責任業務'].join('\t'));
+      if (!s.soon.length) lines.push('三個月內沒有即將維護到期的設備');
+      s.soon.forEach(r => lines.push([custText(r), r.brand, modelLines(r.model).join(' / '), slashDate(r.expiryDate), r.sales].join('\t')));
+    });
+    return lines.join('\n');
+  }
+  // Excel 版面：aoa＋合併儲存格＋每格的樣式代號＋列高。樣式由畫面那支用 JSZip 補進 xlsx（SheetJS 免費版不寫樣式）。
+  // ★ 有框線的空白格要寫 ''（不可 null）：null 不會產生儲存格，框線就補不上去
+  //   樣式代號：head 灰底粗體／fillHead 藍底粗體／cust 綠底靠左／cell 一般／fill 藍底（請回填）／banner 橘底大字／red 紅色粗體日期／empty 灰字
+  function noticeSheet(data) {
+    const aoa = [], styles = {}, merges = [], rowHeights = [];
+    const col = c => String.fromCharCode(65 + c);
+    const put = (cells, st, h) => {
+      const r = aoa.length;
+      aoa.push(cells.map(c => (c === null || c === undefined) ? '' : c));
+      cells.forEach((c, i) => { if (st[i]) styles[`${col(i)}${r + 1}`] = st[i]; });
+      rowHeights[r] = h || 20;
+      return r;
+    };
+    const ml = m => modelLines(m).join('\n');
+    const hOf = m => Math.max(20, modelLines(m).length * 16 + 4);
+    data.sections.forEach((s, si) => {
+      if (si) { aoa.push([]); rowHeights[aoa.length - 1] = 12; }
+      put([s.label, '廠牌', '型號', '維護到期日', '責任業務', '保養負責人', '保養日期(請回填)'], ['head', 'head', 'head', 'head', 'head', 'head', 'fillHead'], 22);
+      if (!s.rows.length) put([`${data.month} 月沒有排定保養的設備`, '', '', '', '', '', ''], ['empty', 'cell', 'cell', 'cell', 'cell', 'cell', 'fill']);
+      s.rows.forEach(r => put([custText(r), r.brand, ml(r.model), slashDate(r.expiryDate), r.sales, r.engineer, ''],
+        ['cust', 'cell', 'cell', 'cell', 'cell', 'cell', 'fill'], hOf(r.model)));
+      const b = put([NOTICE_BANNER, '', '', '', '', '', ''], ['banner', 'banner', 'banner', 'banner', 'banner', 'banner', 'banner'], 30);
+      merges.push({ s: { r: b, c: 0 }, e: { r: b, c: 6 } });
+      const h2 = put(['客戶', '廠牌', '型號', '維護到期日', '責任業務', '', ''], ['head', 'head', 'head', 'head', 'head', 'head', 'head'], 22);
+      merges.push({ s: { r: h2, c: 4 }, e: { r: h2, c: 6 } });
+      if (!s.soon.length) {
+        const e = put(['三個月內沒有即將維護到期的設備', '', '', '', '', '', ''], ['empty', 'cell', 'cell', 'cell', 'cell', 'cell', 'cell']);
+        merges.push({ s: { r: e, c: 0 }, e: { r: e, c: 6 } });
+      }
+      s.soon.forEach(r => {
+        const x = put([custText(r), r.brand, ml(r.model), slashDate(r.expiryDate), r.sales, '', ''],
+          ['cust', 'cell', 'cell', 'red', 'cell', 'cell', 'cell'], hOf(r.model));
+        merges.push({ s: { r: x, c: 4 }, e: { r: x, c: 6 } });
+      });
+    });
+    return { aoa, styles, merges, rowHeights, cols: [42, 14, 14, 13, 12, 12, 18] };
+  }
+  // 對應 noticeSheet 的樣式代號 → styles.xml 的 cellXfs 索引（0 是預設）
+  const NOTICE_XF = { head: 1, fillHead: 2, cust: 3, cell: 4, fill: 5, banner: 6, red: 7, empty: 8 };
+  function noticeStylesXml() {
+    const C = NOTICE_COLOR, rgb = h => 'FF' + h.slice(1).toUpperCase();
+    // 0 一般／1 粗體／2 粗體 16（橫幅）／3 紅色粗體（到期日）／4 灰字（沒有資料的提示）
+    const fonts = [
+      '<font><sz val="11"/><name val="Microsoft JhengHei"/><family val="2"/></font>',
+      '<font><b/><sz val="11"/><name val="Microsoft JhengHei"/><family val="2"/></font>',
+      '<font><b/><sz val="16"/><name val="Microsoft JhengHei"/><family val="2"/></font>',
+      `<font><b/><sz val="11"/><color rgb="${rgb(C.red)}"/><name val="Microsoft JhengHei"/><family val="2"/></font>`,
+      '<font><sz val="11"/><color rgb="FF666666"/><name val="Microsoft JhengHei"/><family val="2"/></font>',
+    ];
+    const solid = h => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb(h)}"/><bgColor indexed="64"/></patternFill></fill>`;
+    const fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>',
+                   solid(C.head), solid(C.fill), solid(C.cust), solid(C.banner)];
+    const thin = '<left style="thin"><color indexed="64"/></left><right style="thin"><color indexed="64"/></right><top style="thin"><color indexed="64"/></top><bottom style="thin"><color indexed="64"/></bottom><diagonal/>';
+    const borders = ['<border><left/><right/><top/><bottom/><diagonal/></border>', `<border>${thin}</border>`];
+    const xf = (fontId, fillId, h) => `<xf numFmtId="0" fontId="${fontId}" fillId="${fillId}" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${h || 'center'}" vertical="center" wrapText="1"/></xf>`;
+    const xfs = [
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>',
+      xf(1, 2), xf(1, 3), xf(0, 4, 'left'), xf(0, 0), xf(0, 3), xf(2, 5), xf(3, 0), xf(4, 0),
+    ];
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + `<fonts count="${fonts.length}">${fonts.join('')}</fonts>`
+      + `<fills count="${fills.length}">${fills.join('')}</fills>`
+      + `<borders count="${borders.length}">${borders.join('')}</borders>`
+      + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      + `<cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs>`
+      + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+      + '<dxfs count="0"/><tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleMedium4"/>'
+      + '</styleSheet>';
+  }
+  // 在 SheetJS 寫出的工作表 XML 裡，替每一格補上 s="樣式索引"，並關掉格線（看起來才像信件裡的表格）
+  function noticePatchSheetXml(xml, styles) {
+    const out = xml.replace(/<c r="([A-Z]+\d+)"( s="\d+")?/g, (m, ref) => {
+      const k = styles[ref];
+      return k && NOTICE_XF[k] ? `<c r="${ref}" s="${NOTICE_XF[k]}"` : m;
+    });
+    // ★ (?=[\s/>])：只認 <sheetView 本身，不可吃到外層的 <sheetViews>（會寫出 <sheetView showGridLines="0"s>，Excel 開不了）
+    return out.replace(/<sheetView(?=[\s/>])(?![^>]*showGridLines)/, '<sheetView showGridLines="0"');
+  }
+
   window.MaintLogic = {
     MONTHS, REASONS, REASON_LABEL, BRANDS, EXPIRY_SOON_DAYS,
     cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, activeInYear, daysUntil,
     listInYear, expiresInYear, yearOptions, autoPlanMonths, autoSchedule,
     excelDate, normBrand, parseReason, parseMaintSheet, buildMaintSheet, deviceKey,
+    noticeData, noticeHtml, noticeText, noticeSheet, noticeStylesXml, noticePatchSheetXml, NOTICE_XF,
   };
 })();

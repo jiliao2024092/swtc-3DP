@@ -178,6 +178,107 @@
     );
   }
 
+  // ── 每月維護安排通知（2026-11-11）：產生寄信用的表格，可複製貼進 Outlook，也可下載 Excel ──
+  // 版面與挑選規則在 maintenance-logic.js 的 noticeData／noticeHtml／noticeSheet
+  const JSZIP_URL = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';   // 與 inventory.html 月報同一版
+  function loadJSZip() {
+    if (window.JSZip) return Promise.resolve(window.JSZip);
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = JSZIP_URL;
+      s.onload = () => window.JSZip ? resolve(window.JSZip) : reject(new Error('JSZip 未載入'));
+      s.onerror = () => reject(new Error('JSZip 下載失敗'));
+      document.head.appendChild(s);
+    });
+  }
+  // 複製成「有格式的表格」：貼進 Outlook 會保留顏色與框線。新的 Clipboard API 不能用時（非 https、舊瀏覽器）退回選取＋execCommand
+  async function copyRichHtml(html, text) {
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })]);
+      return;
+    }
+    const box = document.createElement('div');
+    box.contentEditable = 'true';
+    box.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    box.innerHTML = html;
+    document.body.appendChild(box);
+    const range = document.createRange(); range.selectNodeContents(box);
+    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    const ok = document.execCommand('copy');
+    sel.removeAllRanges(); box.remove();
+    if (!ok) throw new Error('瀏覽器不允許複製');
+  }
+  function NoticeModal({ devices, regions, onClose }) {
+    const now = new Date();
+    const [ym, setYm] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    const [busy, setBusy] = useState(false);
+    const [y, m] = ym.split('-').map(Number);
+    const data = useMemo(() => ML.noticeData(devices, { year: y, month: m, regions, today: new Date() }), [devices, y, m, regions.join(',')]);
+    const html = useMemo(() => ML.noticeHtml(data), [data]);
+    const regionName = regions.length > 1 ? '全部地區' : (data.sections[0] ? data.sections[0].label : '');
+    const copy = async () => {
+      try { await copyRichHtml(html, ML.noticeText(data)); toast('已複製，可以直接貼到 Outlook 信件 ✓'); }
+      catch (e) { toast('複製失敗：' + (e.message || e), 'err'); }
+    };
+    const download = async () => {
+      if (!window.XLSX) { toast('Excel 元件尚未載入', 'err'); return; }
+      setBusy(true);
+      const sh = ML.noticeSheet(data);
+      const ws = window.XLSX.utils.aoa_to_sheet(sh.aoa);
+      ws['!merges'] = sh.merges;
+      ws['!cols'] = sh.cols.map(wch => ({ wch }));
+      ws['!rows'] = sh.rowHeights.map(h => ({ hpt: h || 20 }));
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, `${m}月維護安排`);
+      const name = `維護安排_${y}-${String(m).padStart(2, '0')}_${regionName}.xlsx`;
+      try {
+        // SheetJS 免費版不寫樣式：產生後用 JSZip 換掉 styles.xml、替每格補 s="…"（做法同 inventory.html 月報補圖表）
+        const JSZip = await loadJSZip();
+        const zip = await JSZip.loadAsync(window.XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+        const sheetPath = 'xl/worksheets/sheet1.xml';
+        zip.file('xl/styles.xml', ML.noticeStylesXml());
+        zip.file(sheetPath, ML.noticePatchSheetXml(await zip.file(sheetPath).async('string'), sh.styles));
+        const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      } catch (e) {
+        // 補樣式失敗時退回不含顏色框線的版本（內容一定要交得出去）
+        console.error('[維護通知] 補 Excel 樣式失敗，改下載純文字版：', e);
+        window.XLSX.writeFile(wb, name);
+        toast('Excel 已下載（沒有顏色與框線）', 'inf');
+      } finally { setBusy(false); }
+    };
+    const total = data.sections.reduce((s, x) => s + x.rows.reduce((t, r) => t + r.count, 0), 0);
+    const soonTotal = data.sections.reduce((s, x) => s + x.soon.reduce((t, r) => t + r.count, 0), 0);
+    return (
+      <div className="m-overlay">
+        <div className="m-box" style={{ width: 1060 }}>
+          <div className="m-hd"><h3>📧 維護通知</h3><button className="m-close" onClick={onClose}>×</button></div>
+          <div className="m-body">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12, fontSize: 13 }}>
+              <label style={{ ...LBL, margin: 0 }}>月份</label>
+              <input type="month" style={{ ...S_INP, width: 170 }} value={ym} onChange={e => e.target.value && setYm(e.target.value)} />
+              <span style={{ color: 'var(--ink-3)' }}>{regionName}・{m} 月排定保養 {total} 台・{data.from.replace(/-/g, '/')}～{data.to.replace(/-/g, '/')} 到期 {soonTotal} 台</span>
+            </div>
+            {/* 預覽固定白底：信件裡就是白底，黑暗模式下也要看到實際的樣子 */}
+            <div style={{ background: '#fff', color: '#000', border: '1px solid var(--line)', borderRadius: 8, padding: 14, overflow: 'auto', maxHeight: '55vh' }}
+                 dangerouslySetInnerHTML={{ __html: html }} />
+          </div>
+          <div className="m-foot">
+            <button className="btn-cancel" onClick={onClose}>關閉</button>
+            <button className="btn-cancel" onClick={download} disabled={busy}>{busy ? '產生中…' : '⬇ 下載 Excel'}</button>
+            <button className="btn-save" onClick={copy}>📋 複製表格（貼到 Outlook）</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── 匯入原本的 Excel（限管理員）──────────────────────────────────
   function ImportModal({ existing, onClose }) {
     const [parsed, setParsed] = useState(null);   // { year, devices, warnings, sheets }
@@ -637,6 +738,8 @@
           </select>}
           <button className="btn-cancel" style={{ padding: '0 12px', fontSize: 12 }} onClick={exportCurrent}
             title={tab === 'schedule' ? '匯出目前篩選的保養排程（與原本的追蹤表同格式，可再匯入）' : tab === 'expiry' ? '匯出目前篩選的維護到期總表' : '匯出目前的達成率報表'}>⬇ 匯出Excel</button>
+          {tab === 'schedule' && <button className="btn-cancel" style={{ padding: '0 12px', fontSize: 12 }} onClick={() => setModal({ kind: 'notice' })}
+            title="產生每月維護安排的寄信表格（當月排定保養＋三個月內即將到期），可複製貼到 Outlook 或下載 Excel">📧 維護通知</button>}
           {isAdmin && <button className="btn-cancel" style={{ padding: '0 12px', fontSize: 12 }} onClick={() => setModal({ kind: 'import' })} title="匯入原本的《RP 客戶定期保養追蹤表》Excel（限管理員）">📥 匯入 Excel</button>}
           {tab === 'schedule' && <span style={{ fontSize: 11.5, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>點月份格子填寫保養；點客戶名稱編輯設備</span>}
         </div>
@@ -661,6 +764,8 @@
         {modal && modal.kind === 'cell' && <CellModal dev={modal.dev} year={year} month={modal.month}
           onClose={() => setModal(null)} onSave={cell => saveCell(modal.dev, modal.month, cell)} />}
         {modal && modal.kind === 'import' && <ImportModal existing={devices} onClose={() => setModal(null)} />}
+        {/* 一區一份（2026-11-11 使用者決定）：依工具列的地區；可跨區的人選「所有地區」時三區各一段 */}
+        {modal && modal.kind === 'notice' && <NoticeModal devices={devices} regions={regionsShown} onClose={() => setModal(null)} />}
       </div>
     );
   }

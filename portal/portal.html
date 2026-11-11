@@ -1728,8 +1728,8 @@ window.DashboardView = DashboardView;
 <script type="text/babel" data-presets="react" src="workboard.js?v=20261014a"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
-<script src="maintenance-logic.js?v=20261111b"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261111b"></script>
+<script src="maintenance-logic.js?v=20261111c"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261111c"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261109a"></script>
@@ -3063,6 +3063,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-11', type:'feat',
+    text:'設備保養：保養排程上方多了「📧 維護通知」，一鍵產生每月寄給大家的維護安排表格（版面與原本手動做的信相同）：上半段是選定月份排定保養的設備（同一客戶同型號會合併成一列並註明台數），下半段是今天起 90 天內即將維護到期的提醒。按「複製表格」就能直接貼進 Outlook 信件，也可以下載 Excel。依工具列選的地區產生，選「所有地區」時三區各一段。' },
   { hash:'0fdbcce', date:'2026-11-11', type:'fix',
     text:'設備保養的保養排程：選了年份與「維護中／已過維」後，只會列出那一年需要保養的設備。原本選 2022 年＋維護中，連 2022 年之後才安裝的設備也會出現；現在那一年還沒安裝、或合約在那一年之前就結束的都不會列出。看過去的年份時，當年合約還有效的設備算「維護中」（即使現在已經到期）。' },
   { hash:'c9fbcac', date:'2026-11-11', type:'feat',
@@ -3081,8 +3083,6 @@ const CHANGELOG = [
     text:'材料庫存的出入料記錄：入庫、退料、手動調整、刪除回補等人工操作，「責任工程師」欄會顯示操作者的名字（今天之後的紀錄才有）。' },
   { hash:'d69c24f', date:'2026-11-09', type:'feat',
     text:'材料庫存：「消耗記錄」改名「出入料記錄」，預設顯示全部類型（列印消耗、入庫、手動調整）。Markforged 的入庫、退料、編輯調整、新增與刪除材料現在都會留下紀錄，可依類型篩選，誰在什麼時候入了幾捲都查得到。修正：北部、南部在網頁上做的入庫與調整原本會被歸到中部，現在會記在自己那一區（之前的舊紀錄仍算在中部）。' },
-  { hash:'aea7940', date:'2026-10-19', type:'fix',
-    text:'Tough 2000：機台回報的另一組代碼（FLTO2011）也歸到「Tough 2000 V1.1」。原本被當成 V2，這種列印會扣到 V2 的庫存；以前的這類消耗紀錄會在下一輪同步自動改標成 V1.1（庫存數字不會自動調整）。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
