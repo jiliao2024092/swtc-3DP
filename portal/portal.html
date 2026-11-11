@@ -1728,8 +1728,8 @@ window.DashboardView = DashboardView;
 <script type="text/babel" data-presets="react" src="workboard.js?v=20261014a"></script>
 <script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
-<script src="maintenance-logic.js?v=20261109b"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261109b"></script>
+<script src="maintenance-logic.js?v=20261111a"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261111a"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261109a"></script>
@@ -3063,6 +3063,8 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-11', type:'feat',
+    text:'設備保養：① 新增／編輯設備可以填「每幾個月保養」，存檔後會從安裝時間起自動排定保養到維護到期為止（只排本月以後、還是空白的月份，已完成或自己填過的不會動）。② 年份選單不再只有今年，會列出最早安裝年份到最晚維護到期年份；「維護到期總表」多了年份（那一年到期的）與清單篩選，「達成率報表」也會套用搜尋。③ 三個分頁都有「匯出Excel」：保養排程匯出的格式和原本的追蹤表相同，可以直接再匯入。' },
   { hash:'35552b6', date:'2026-11-09', type:'fix',
     text:'設備保養的保養排程：年份選單現在會篩選設備，只列出該年仍在維護期內的機台（維護到期日在該年或之後）；沒填到期日的每年都會列出。原本換年份只換月份欄的資料，設備清單完全不變。' },
   { hash:'63a5385', date:'2026-11-09', type:'tweak',
@@ -3081,8 +3083,6 @@ const CHANGELOG = [
     text:'Tough 2000：機台回報的另一組代碼（FLTO2011）也歸到「Tough 2000 V1.1」。原本被當成 V2，這種列印會扣到 V2 的庫存；以前的這類消耗紀錄會在下一輪同步自動改標成 V1.1（庫存數字不會自動調整）。' },
   { hash:'4e8d697', date:'2026-10-19', type:'tweak',
     text:'材料庫存：Tough 2000 V1.1 比照 Flexible 80A 拆成獨立材料。V1.1 與 V2 各自有庫存、消耗紀錄與月度分析，V1.1 的列印改扣 V1.1 自己的庫存，不再扣到 V2。原本的「Tough 2000」庫存數字不會自動調整；手上若有 V1.1 備料，請先在 V1.1 入庫，否則會跳「消耗紀錄可能有誤」。' },
-  { hash:'aea7384', date:'2026-10-15', type:'tweak',
-    text:'設備保養的「維護到期總表」可以直接編輯：點任一列就會打開設備資料視窗（和保養排程點客戶名稱是同一個），改完按儲存即可；只有可編輯該地區的人點得開。另外拿掉「剩餘天數」欄，畫面與匯出的 Excel 都不再有這一欄。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。

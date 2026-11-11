@@ -6,7 +6,8 @@
 // 資料形狀（collection: maint_devices，一台設備一份文件）：
 //   { region, list:'active'|'expired', seq, customer, brand, model, serial,
 //     installDate:'YYYY-MM-DD', expiryDate:'YYYY-MM-DD', sales, engineer, note,
-//     schedule: { 'YYYY': { '1'..'12': { plan:true, done:'YYYY-MM-DD', reason:'A'|'B'|'C'|'R', note } } } }
+//     intervalMonths: 每幾個月保養一次（0／沒有＝不自動排程，見 autoSchedule）,
+//     schedule: { 'YYYY': { '1'..'12': { plan:true, auto:true（自動排的才有）, done:'YYYY-MM-DD', reason:'A'|'B'|'C'|'R', note } } } }
 //   list：'active'＝維護中（原 Excel「2026 RP客戶服務總表」）、'expired'＝已過維（「RP已過維客戶服務總表」）
 //
 // 達成率規則（照原本 Excel 的公式，2026-10-13 使用者確認）：
@@ -105,6 +106,81 @@
     return Math.round((new Date(Y, M - 1, D) - new Date(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
   }
 
+  const isYmd = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const monthIdx = (y, m) => y * 12 + (m - 1);
+
+  // 維護到期總表的年份篩選（2026-11-11 使用者決定）：到期日落在那一年＝那一年要續約的。
+  // 沒填或格式不對的到期日不屬於任何一年（選「全部年份」才看得到）
+  function expiresInYear(dev, year) {
+    const e = dev && dev.expiryDate;
+    return isYmd(e) && Number(e.slice(0, 4)) === Number(year);
+  }
+
+  // 年份選單（2026-11-11 使用者決定）：最早的安裝／保養年份 ～ 最晚的維護到期年份，至少含去年到明年。
+  // 原本只列「有保養紀錄的年份」，資料只有一年時選單就只有一個選項。
+  // ±20 年以外的當成打錯（例：到期日 2209 年），不讓選單長出一百多個年份
+  function yearOptions(devices, thisYear) {
+    const ty = Number(thisYear);
+    let lo = ty - 1, hi = ty + 1;
+    const see = y => { if (y >= ty - 20 && y <= ty + 20) { if (y < lo) lo = y; if (y > hi) hi = y; } };
+    (devices || []).forEach(d => {
+      if (!d) return;
+      [d.installDate, d.expiryDate].forEach(s => { if (isYmd(s)) see(Number(s.slice(0, 4))); });
+      Object.keys(d.schedule || {}).forEach(y => { if (/^\d{4}$/.test(y)) see(Number(y)); });
+    });
+    const out = [];
+    for (let y = hi; y >= lo; y--) out.push(y);
+    return out;
+  }
+
+  // ── 每 N 個月保養（intervalMonths，2026-11-11 使用者決定）─────────────
+  // 從安裝月份起每 N 個月一次（安裝當月不算），排到維護到期那個月為止（含，與 monthInContract 一致）。
+  // ★ 只排「本月以後」：過去的月份自動打勾會憑空多出「未完成」，還會改到過去月份的達成率
+  // 沒填週期、安裝時間或維護到期 → 排不出來，回空陣列
+  function autoPlanMonths(dev, today) {
+    const n = Math.floor(Number(dev && dev.intervalMonths));
+    if (!(n >= 1) || !isYmd(dev.installDate) || !isYmd(dev.expiryDate)) return [];
+    const t = today instanceof Date ? today : new Date();
+    const now = monthIdx(t.getFullYear(), t.getMonth() + 1);
+    const end = monthIdx(+dev.expiryDate.slice(0, 4), +dev.expiryDate.slice(5, 7));
+    let k = monthIdx(+dev.installDate.slice(0, 4), +dev.installDate.slice(5, 7)) + n;
+    if (k < now) k += Math.ceil((now - k) / n) * n;
+    const out = [];
+    for (; k <= end && out.length < 600; k += n) out.push([Math.floor(k / 12), (k % 12) + 1]);
+    return out;
+  }
+  // 自動排的格子帶 auto:true。使用者一開格子存檔（CellModal）就不再帶這個旗標，之後重排不會動它
+  const isAutoOnly = c => !!(c && c.auto && c.plan && !c.done && !c.reason && !c.note);
+  // 依目前的週期重排，回傳新的 schedule（不改原物件）與增減數量。規則：
+  //   - 本月以後、該排的月份：格子是空的才補 {plan, auto}；已經有內容（手動排的、填過紀錄的）一律不動
+  //   - 本月以後、不該排的月份：只拿掉「純自動排、還沒填任何東西」的格子（改週期、縮短到期日、清掉週期時）
+  //   - 過去的月份完全不動
+  function autoSchedule(dev, today) {
+    const t = today instanceof Date ? today : new Date();
+    const now = monthIdx(t.getFullYear(), t.getMonth() + 1);
+    const want = autoPlanMonths(dev, t);
+    const wantSet = new Set(want.map(([y, m]) => `${y}-${m}`));
+    const schedule = {};
+    let added = 0, removed = 0;
+    Object.entries((dev && dev.schedule) || {}).forEach(([y, months]) => {
+      const out = {};
+      Object.entries(months || {}).forEach(([m, c]) => {
+        const future = /^\d{4}$/.test(y) && monthIdx(+y, +m) >= now;
+        if (future && isAutoOnly(c) && !wantSet.has(`${+y}-${+m}`)) { removed++; return; }
+        out[m] = c;
+      });
+      schedule[y] = out;
+    });
+    want.forEach(([y, m]) => {
+      const ys = String(y), ms = String(m);
+      const c = schedule[ys] && schedule[ys][ms];
+      if (c && Object.keys(c).length) return;
+      (schedule[ys] = schedule[ys] || {})[ms] = { plan: true, auto: true };
+      added++;
+    });
+    return { schedule, added, removed };
+  }
+
   // ── 原本 Excel 的解析（後台「匯入保養追蹤表」用）─────────────────────
   // 一台設備佔 3 列：第 1 列客戶資料＋各月「√」（規劃）；第 2 列各月的完成日期；
   // 第 3 列各月的原因（A／B／C 代碼或文字）。地區標題列：B 欄是 台北／台中／南區、C 欄空白。
@@ -147,7 +223,8 @@
   function parseReason(v) {
     const s = txt(v);
     if (!s) return null;
-    if (/^續簽/.test(s)) return { reason: 'R', note: '' };
+    // 「續簽」後面的文字留作說明（匯出的排程表寫成「續簽 說明」，再匯入才不會掉）
+    if (/^續簽/.test(s)) return { reason: 'R', note: s.replace(/^續簽\s*/, '') };
     const m = s.match(/^([ABC])\s*[:：]/i);
     if (m) {
       // 代碼後面的範本文字（「延期(客戶沒空)」「其他(請註明原因)」）不是說明，去掉
@@ -226,9 +303,53 @@
       .map(s => String(s).toLowerCase()).join('|');
   }
 
+  // ── 匯出「保養排程」（2026-11-11）：與原 Excel 同一個版面，匯出的檔案可以直接再匯入 ──
+  // 回傳 aoa（給 XLSX.utils.aoa_to_sheet）。一台 3 列：√／完成日期／原因；地區標題列 B 欄 台北／台中／南區。
+  // ★ 寫的每一格都要是 parseMaintSheet 讀得回來的形式（tools/test_maintenance.js 有來回測試）：
+  //   - 日期一律寫 'YYYY-MM-DD' 字串（excelDate 認得），不寫 Excel 日期序號，省掉時區問題
+  //   - 序號（A 欄）一定要是數字，否則那一列會被當成標題列跳過
+  //   - 業務／保養負責人寫資料庫存的值（代號），不是畫面上的「中文 (英文)」，再匯入才不會把代號蓋成顯示名稱
+  //   - 自動排程的 auto 旗標不寫（版面沒有位置），再匯入後那些格子等同手動排的
+  const HEADER_OF_REGION = { north: '台北', central: '台中', south: '南區' };
+  function reasonText(c) {
+    if (!c) return '';
+    const note = txt(c.note);
+    if (c.reason === 'R') return ['續簽', note].filter(Boolean).join(' ');
+    if (REASON_LABEL[c.reason]) return [REASON_LABEL[c.reason], note].filter(Boolean).join(' ');
+    return note;
+  }
+  function buildMaintSheet(devices, year, opts) {
+    const order = (opts && opts.regions) || ['north', 'central', 'south'];
+    const y = String(year);
+    const rows = [
+      [null, `${y} 年 RP 客戶定期保養追蹤表（每台 3 列：√＝排定保養／完成日期／未完成原因）`],
+      ['序號', '客戶名稱', '廠牌', '機型', '序號', '安裝時間', '維護到期', '責任業務', '保養負責人', ...MONTHS.map(m => `${m}月`)],
+    ];
+    order.forEach(r => {
+      const items = (devices || []).filter(d => d && d.region === r);
+      if (!items.length) return;
+      rows.push([null, HEADER_OF_REGION[r] || r]);
+      items.forEach((d, i) => {
+        const sched = (d.schedule && d.schedule[y]) || {};
+        const r1 = [Number(d.seq) > 0 ? Number(d.seq) : i + 1, d.customer || '', d.brand || '', d.model || '', d.serial || '',
+                    d.installDate || '', d.expiryDate || '', d.sales || '', d.engineer || ''];
+        const r2 = new Array(9).fill(null), r3 = new Array(9).fill(null);
+        MONTHS.forEach(m => {
+          const c = sched[String(m)];
+          r1.push(c && c.plan ? '√' : null);
+          r2.push(c && c.done ? c.done : null);
+          r3.push(reasonText(c) || null);
+        });
+        rows.push(r1, r2, r3);
+      });
+    });
+    return rows;
+  }
+
   window.MaintLogic = {
     MONTHS, REASONS, REASON_LABEL, BRANDS, EXPIRY_SOON_DAYS,
     cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, activeInYear, daysUntil,
-    excelDate, normBrand, parseReason, parseMaintSheet, deviceKey,
+    expiresInYear, yearOptions, autoPlanMonths, autoSchedule,
+    excelDate, normBrand, parseReason, parseMaintSheet, buildMaintSheet, deviceKey,
   };
 })();

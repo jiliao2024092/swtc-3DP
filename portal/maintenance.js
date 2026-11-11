@@ -41,7 +41,7 @@
   // ── 設備（新增／編輯）──────────────────────────────────────────
   function DeviceModal({ item, defaultRegion, canPickRegion, canDelete, onClose, onSave, onDelete }) {
     const empty = { region: defaultRegion, list: 'active', customer: '', brand: 'Formlabs', model: '', serial: '',
-                    installDate: '', expiryDate: '', sales: '', engineer: '', note: '' };
+                    installDate: '', expiryDate: '', intervalMonths: '', sales: '', engineer: '', note: '' };
     const [form, setForm] = useState(item ? { ...empty, ...item } : empty);
     const [busy, setBusy] = useState(false);
     const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -55,7 +55,9 @@
       setBusy(true);
       try {
         const { _id, createdAt, updatedAt, ...data } = form;
-        await onSave({ ...data, customer: data.customer.trim(), model: (data.model || '').trim(), serial: (data.serial || '').trim() });
+        // 保養週期：1～36 的整數，其他一律存 0（＝不自動排程；不可存 undefined，Firestore 會拒收）
+        const intervalMonths = Math.min(36, Math.max(0, Math.floor(Number(data.intervalMonths) || 0)));
+        await onSave({ ...data, intervalMonths, customer: data.customer.trim(), model: (data.model || '').trim(), serial: (data.serial || '').trim() });
         onClose();
       } catch (e) { toast(e.message || '儲存失敗', 'err'); }
       finally { setBusy(false); }
@@ -90,6 +92,18 @@
             <div className="m-row">
               <div className="m-field"><label style={LBL}>安裝時間</label><input style={S_INP} type="date" value={form.installDate || ''} onChange={e => set('installDate', e.target.value)} /></div>
               <div className="m-field"><label style={LBL}>維護到期時間</label><input style={S_INP} type="date" value={form.expiryDate || ''} onChange={e => set('expiryDate', e.target.value)} /></div>
+            </div>
+            {/* 每 N 個月保養（2026-11-11）：存檔時由 ML.autoSchedule 依安裝時間與到期日自動排定 */}
+            <div className="m-field"><label style={LBL}>保養週期</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--ink-2)' }}>
+                每<input style={{ ...S_INP, width: 80 }} type="number" min="1" max="36" step="1" placeholder="—"
+                  value={form.intervalMonths || ''} onChange={e => set('intervalMonths', e.target.value)} />個月保養
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 4, lineHeight: 1.5 }}>
+                有填就會從安裝時間起，每隔這麼多個月自動排定保養，排到維護到期那個月為止。只排本月以後、還是空白的月份；已完成或自己填過的格子不會動。留空＝不自動排。
+                {Number(form.intervalMonths) >= 1 && (!form.installDate || !form.expiryDate) &&
+                  <span style={{ color: 'var(--warn)' }}>（要先填安裝時間與維護到期時間才排得出來）</span>}
+              </div>
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>責任業務</label>
@@ -345,12 +359,9 @@
 
   // ── 維護到期總表 ──────────────────────────────────────────────
   // 2026-10-15 使用者要求：點一列開「設備資料」視窗編輯（與保養排程點客戶名稱同一個視窗）；拿掉「剩餘天數」欄
-  function ExpiryTable({ rows, statusF, canEditDev, onEditDev }) {
+  // list：[{ d, st }]，已篩選、排序好（MaintenanceApp 的 expiryList；畫面與匯出共用同一份，篩選才不會兩邊不一致）
+  function ExpiryTable({ list, canEditDev, onEditDev }) {
     const today = new Date();
-    const list = rows
-      .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today) }))
-      .filter(x => !statusF || x.st === statusF)
-      .sort((a, b) => String(a.d.expiryDate || '9999').localeCompare(String(b.d.expiryDate || '9999')));
     if (!list.length) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-4)' }}>沒有符合條件的設備</div>;
     // ★ 一律不換行、文字橫向排（2026-10-13 使用者要求）：寬度不夠時整張表橫向捲動，而不是把客戶名稱折成好幾行
     return (
@@ -425,6 +436,10 @@
     const [engF, setEngF] = useState('');
     const [listF, setListF] = useState('active');
     const [statusF, setStatusF] = useState('');
+    // 維護到期總表自己的年份／清單篩選（2026-11-11）。預設都是「全部」＝原本的畫面；
+    // 年份的意思也和另外兩頁不同（這裡是「那一年到期的」），所以不共用 year／listF
+    const [expYear, setExpYear] = useState('');
+    const [expListF, setExpListF] = useState('');
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null);   // { kind:'dev'|'cell'|'import', dev, month }
     const [, setLabelVer] = useState(0);
@@ -456,11 +471,8 @@
     const writeRegion = regionF || myRegion;
 
     const engineers = window._settings_engineers || (K && K.ENG_ORDER) || [];
-    const years = useMemo(() => {
-      const s = new Set([THIS_YEAR]);
-      devices.forEach(d => Object.keys(d.schedule || {}).forEach(y => { if (/^\d{4}$/.test(y)) s.add(Number(y)); }));
-      return [...s].sort((a, b) => b - a);
-    }, [devices]);
+    // 年份選單：最早的安裝／保養年份～最晚的維護到期年份（原本只列有保養紀錄的年份，常常只有今年一個）
+    const years = useMemo(() => ML.yearOptions(devices, THIS_YEAR), [devices]);
 
     const matchRegion = d => !regionF || (window.normRegion ? window.normRegion(d.region) : d.region) === regionF;
     const kw = search.trim().toLowerCase();
@@ -471,16 +483,43 @@
     // 清單依 ML.effectiveList：手動標已過維，或維護到期日已過（2026-11-09 起自動，不寫回資料庫）
     // 年份：只列該年仍在維護期內的設備（到期日年份 ≥ 選的年份；沒填到期日的每年都列）
     const scheduleRows = filtered.filter(d => (!listF || ML.effectiveList(d) === listF) && ML.activeInYear(d, year));
+    // 維護到期總表：年份（那一年到期的）、清單、狀態都篩完再排序。畫面與匯出共用這一份
+    const today = new Date();
+    const expiryList = filtered
+      .filter(d => (!expYear || ML.expiresInYear(d, expYear)) && (!expListF || ML.effectiveList(d, today) === expListF))
+      .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today) }))
+      .filter(x => !statusF || x.st === statusF)
+      .sort((a, b) => String(a.d.expiryDate || '9999').localeCompare(String(b.d.expiryDate || '9999')));
     const regionsShown = regionF ? [regionF] : regionKeys().filter(r => canCross || r === myRegion);
-    const stats = useMemo(() => ML.maintStats(devices.filter(d => !engF || d.engineer === engF), year, regionKeys()), [devices, year, engF]);
+    // 達成率：搜尋與保養負責人也算進去（搜尋框每一頁都在，原本在這一頁打字沒有任何作用）
+    const stats = useMemo(() => ML.maintStats(devices.filter(d => matchText(d) && (!engF || d.engineer === engF)), year, regionKeys()), [devices, year, engF, kw]);
+    // 達成率報表的每一張卡片（畫面與匯出共用）
+    const reportCards = [
+      ...(regionsShown.length > 1 ? [{ label: '全部地區',
+        need: ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].need[i], 0)),
+        done: ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].done[i], 0)) }] : []),
+      ...regionsShown.map(r => ({ label: regionLabel(r), need: stats[r].need, done: stats[r].done })),
+    ];
 
+    // 保養週期、安裝時間、維護到期任一個有改才重排（只改業務或備註時不可動到排程）
+    const schedKey = d => [Number(d && d.intervalMonths) || 0, (d && d.installDate) || '', (d && d.expiryDate) || ''].join('|');
     const saveDevice = async data => {
-      if (modal && modal.dev) await window.FBMaint.update(modal.dev._id, data);
-      else {
+      let auto = null;
+      if (modal && modal.dev) {
+        if (schedKey(modal.dev) !== schedKey(data)) {
+          // 以畫面上最新的排程為底（視窗開著的期間別人可能填了格子）
+          const cur = devices.find(d => d._id === modal.dev._id) || modal.dev;
+          auto = ML.autoSchedule({ ...data, schedule: cur.schedule || {} }, new Date());
+          data = { ...data, schedule: auto.schedule };
+        }
+        await window.FBMaint.update(modal.dev._id, data);
+      } else {
+        auto = ML.autoSchedule({ ...data, schedule: {} }, new Date());
         const maxSeq = devices.filter(d => d.region === data.region).reduce((m, d) => Math.max(m, Number(d.seq) || 0), 0);
-        await window.FBMaint.add({ ...data, seq: maxSeq + 1, schedule: {} });
+        await window.FBMaint.add({ ...data, seq: maxSeq + 1, schedule: auto.schedule });
       }
-      toast('已儲存 ✓');
+      const bits = auto ? [auto.added ? `自動排定 ${auto.added} 個月的保養` : '', auto.removed ? `取消 ${auto.removed} 個月的自動排程` : ''].filter(Boolean) : [];
+      toast('已儲存 ✓' + (bits.length ? `（${bits.join('、')}）` : ''));
     };
     const deleteDevice = async d => {
       if (!inMyRegion(d)) { toast('無法刪除其他地區的資料', 'err'); return; }
@@ -497,20 +536,58 @@
 
     const exportExpiry = () => {
       if (!window.XLSX) { toast('Excel 元件尚未載入', 'err'); return; }
-      const today = new Date();
-      const rows = filtered
-        .map(d => ({ d, st: ML.expiryStatus(d.expiryDate, today) }))
-        .filter(x => !statusF || x.st === statusF)
-        .sort((a, b) => String(a.d.expiryDate || '9999').localeCompare(String(b.d.expiryDate || '9999')))
-        .map(({ d, st }) => ({
-          '狀態': STATUS[st].label, '維護到期': d.expiryDate || '',
-          '客戶名稱': d.customer, '廠牌': d.brand, '機型': d.model, '序號': d.serial, '安裝時間': d.installDate || '',
-          '地區': regionLabel(d.region), '清單': LIST_LABEL[ML.effectiveList(d, today)], '責任業務': salesLabel(d.sales), '保養負責人': engLabel(d.engineer),
-        }));
+      const rows = expiryList.map(({ d, st }) => ({
+        '狀態': STATUS[st].label, '維護到期': d.expiryDate || '',
+        '客戶名稱': d.customer, '廠牌': d.brand, '機型': d.model, '序號': d.serial, '安裝時間': d.installDate || '',
+        '地區': regionLabel(d.region), '清單': LIST_LABEL[ML.effectiveList(d, today)], '責任業務': salesLabel(d.sales), '保養負責人': engLabel(d.engineer),
+      }));
       const wb = window.XLSX.utils.book_new();
       window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.json_to_sheet(rows.length ? rows : [{ '狀態': '' }]), '維護到期總表');
       window.XLSX.writeFile(wb, `維護到期總表_${new Date().toISOString().slice(0, 10)}.xlsx`);
     };
+    // 保養排程：與原本的追蹤表同一個版面（ML.buildMaintSheet），匯出的檔案可以直接用「匯入 Excel」讀回來
+    const exportSchedule = () => {
+      if (!window.XLSX) { toast('Excel 元件尚未載入', 'err'); return; }
+      if (!scheduleRows.length) { toast('沒有可匯出的設備', 'err'); return; }
+      const wb = window.XLSX.utils.book_new();
+      // ★ 工作表依「資料庫的清單欄位」分，不是畫面上依到期日自動判斷的（effectiveList）：
+      //   再匯入時是用 清單＋地區＋客戶＋機型＋序號＋到期日 認同一台（deviceKey），
+      //   把「到期日已過、清單還是維護中」的設備寫進已過維工作表，再匯入就會多出一台重複的
+      [['active', `${year} RP客戶服務總表`], ['expired', `${year} RP已過維客戶服務總表`]].forEach(([list, name]) => {
+        const items = scheduleRows.filter(d => (d.list || 'active') === list);
+        if (!items.length) return;
+        const ws = window.XLSX.utils.aoa_to_sheet(ML.buildMaintSheet(items, year, { regions: regionKeys() }));
+        ws['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 10 },
+                       ...ML.MONTHS.map(() => ({ wch: 11 }))];
+        window.XLSX.utils.book_append_sheet(wb, ws, name);
+      });
+      window.XLSX.writeFile(wb, `保養排程_${year}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+    const exportReport = () => {
+      if (!window.XLSX) { toast('Excel 元件尚未載入', 'err'); return; }
+      const sum = a => a.reduce((s, v) => s + v, 0);
+      const aoa = [['地區', '項目', ...ML.MONTHS.map(m => `${m}月`), '全年']];
+      reportCards.forEach(c => {
+        const ns = sum(c.need), ds = sum(c.done);
+        aoa.push([c.label, '需保養數', ...c.need, ns]);
+        aoa.push([c.label, '已保養數', ...c.done, ds]);
+        // 需保養數 0 → 達成率留空（與畫面的「—」同義，不可寫成 0% 或 100%）
+        aoa.push([c.label, '達成率', ...c.need.map((v, i) => ML.rate(c.done[i], v)), ML.rate(ds, ns)]);
+      });
+      const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+      aoa.forEach((row, r) => {
+        if (row[1] !== '達成率') return;
+        for (let c = 2; c < row.length; c++) {
+          const cell = ws[window.XLSX.utils.encode_cell({ r, c })];
+          if (cell && cell.t === 'n') cell.z = '0%';
+        }
+      });
+      ws['!cols'] = [{ wch: 10 }, { wch: 10 }, ...ML.MONTHS.map(() => ({ wch: 7 })), { wch: 8 }];
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, `${year} 達成率`);
+      window.XLSX.writeFile(wb, `保養達成率_${year}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+    const exportCurrent = tab === 'schedule' ? exportSchedule : tab === 'expiry' ? exportExpiry : exportReport;
 
     const TABS = [['schedule', '保養排程'], ['expiry', '維護到期總表'], ['report', '達成率報表']];
     return (
@@ -548,11 +625,19 @@
           {tab === 'schedule' && <select className="t-sel" value={listF} onChange={e => setListF(e.target.value)}>
             <option value="active">維護中</option><option value="expired">已過維</option><option value="">全部清單</option>
           </select>}
+          {tab === 'expiry' && <select className="t-sel" value={expYear} onChange={e => setExpYear(e.target.value)} title="只看維護到期日在這一年的設備">
+            <option value="">全部年份</option>
+            {years.map(y => <option key={y} value={y}>{y} 年到期</option>)}
+          </select>}
+          {tab === 'expiry' && <select className="t-sel" value={expListF} onChange={e => setExpListF(e.target.value)}>
+            <option value="">全部清單</option><option value="active">維護中</option><option value="expired">已過維</option>
+          </select>}
           {tab === 'expiry' && <select className="t-sel" value={statusF} onChange={e => setStatusF(e.target.value)}>
             <option value="">全部狀態</option>
             {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>}
-          {tab === 'expiry' && <button className="btn-cancel" style={{ padding: '0 12px', fontSize: 12 }} onClick={exportExpiry}>⬇ 匯出Excel</button>}
+          <button className="btn-cancel" style={{ padding: '0 12px', fontSize: 12 }} onClick={exportCurrent}
+            title={tab === 'schedule' ? '匯出目前篩選的保養排程（與原本的追蹤表同格式，可再匯入）' : tab === 'expiry' ? '匯出目前篩選的維護到期總表' : '匯出目前的達成率報表'}>⬇ 匯出Excel</button>
           {isAdmin && <button className="btn-cancel" style={{ padding: '0 12px', fontSize: 12 }} onClick={() => setModal({ kind: 'import' })} title="匯入原本的《RP 客戶定期保養追蹤表》Excel（限管理員）">📥 匯入 Excel</button>}
           {tab === 'schedule' && <span style={{ fontSize: 11.5, color: 'var(--ink-4)', whiteSpace: 'nowrap' }}>點月份格子填寫保養；點客戶名稱編輯設備</span>}
         </div>
@@ -561,16 +646,14 @@
           {loading ? <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-4)' }}>載入中...</div> : <>
             {tab === 'schedule' && <ScheduleTable rows={scheduleRows} year={year} canEditDev={canEditDev}
               onEditDev={d => setModal({ kind: 'dev', dev: d })} onEditCell={(d, m) => setModal({ kind: 'cell', dev: d, month: m })} />}
-            {tab === 'expiry' && <ExpiryTable rows={filtered} statusF={statusF} canEditDev={canEditDev}
+            {tab === 'expiry' && <ExpiryTable list={expiryList} canEditDev={canEditDev}
               onEditDev={d => setModal({ kind: 'dev', dev: d })} />}
             {tab === 'report' && <>
               <p style={{ fontSize: 12.5, color: 'var(--ink-4)', margin: '0 0 12px' }}>
                 只算「維護中」的設備；維護到期的設備，到期當月以前照算、之後的月份不算。需保養數＝當月排定保養的設備數；已保養數＝完成日期落在當月的筆數（延期到下個月才完成，算在下個月）；「不需保養」不扣除。
+                {(kw || engF) && <b style={{ color: 'var(--warn)' }}>　目前只統計符合上方搜尋／保養負責人篩選的設備。</b>}
               </p>
-              {regionsShown.length > 1 && <RateCard title={`${year} 年 全部地區`}
-                need={ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].need[i], 0))}
-                done={ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].done[i], 0))} />}
-              {regionsShown.map(r => <RateCard key={r} title={`${year} 年 ${regionLabel(r)}`} need={stats[r].need} done={stats[r].done} />)}
+              {reportCards.map(c => <RateCard key={c.label} title={`${year} 年 ${c.label}`} need={c.need} done={c.done} />)}
             </>}
           </>}
         </div>
