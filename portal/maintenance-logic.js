@@ -109,6 +109,23 @@
   const isYmd = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
   const monthIdx = (y, m) => y * 12 + (m - 1);
 
+  // 保養排程選了某一年時，這台設備在「那一年」算哪個清單（2026-11-11 使用者回報：選 2022 年＋維護中，
+  // 卻列出 2022 年以後才安裝的設備；要的是「那一年需要維護的設備」）。回傳 'active'｜'expired'｜null：
+  //   null     ＝不是那一年的設備：那一年還沒安裝，或合約在那一年之前就結束了（後者同 activeInYear）
+  //   'expired'＝手動標已過維的（哪一年都算，與達成率「手動標的整年不算」一致）；今年另加「到期日已過」
+  //   'active' ＝那一年需要維護。今年用今天判斷（到期日一過就移到已過維，2026-11-09 的決定）；
+  //             其他年份只要那一年合約有效過就算（回頭看 2022 年，年中才到期的那台當年也要保養）
+  // 沒填或格式不對的安裝／到期日 → 當成沒有那個界線（判斷不出來，不可讓設備從畫面消失）
+  function listInYear(dev, year, today) {
+    if (!dev) return null;
+    const y = Number(year);
+    if (isYmd(dev.installDate) && Number(dev.installDate.slice(0, 4)) > y) return null;
+    if (!activeInYear(dev, y)) return null;
+    if (dev.list === 'expired') return 'expired';
+    const t = today instanceof Date ? today : new Date();
+    return y === t.getFullYear() ? effectiveList(dev, t) : 'active';
+  }
+
   // 維護到期總表的年份篩選（2026-11-11 使用者決定）：到期日落在那一年＝那一年要續約的。
   // 沒填或格式不對的到期日不屬於任何一年（選「全部年份」才看得到）
   function expiresInYear(dev, year) {
@@ -349,7 +366,7 @@
   window.MaintLogic = {
     MONTHS, REASONS, REASON_LABEL, BRANDS, EXPIRY_SOON_DAYS,
     cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, activeInYear, daysUntil,
-    expiresInYear, yearOptions, autoPlanMonths, autoSchedule,
+    listInYear, expiresInYear, yearOptions, autoPlanMonths, autoSchedule,
     excelDate, normBrand, parseReason, parseMaintSheet, buildMaintSheet, deviceKey,
   };
 })();

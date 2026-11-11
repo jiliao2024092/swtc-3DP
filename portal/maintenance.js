@@ -320,7 +320,7 @@
             <tr><td colSpan={9 + 12} style={{ background: 'var(--bg-soft)', fontWeight: 700, color: 'var(--ink-2)' }}>{regionLabel(g.r)}（{g.items.length} 台）</td></tr>
             {g.items.map((d, idx) => {
               const st = ML.expiryStatus(d.expiryDate);
-              const isExpired = ML.effectiveList(d) === 'expired';
+              const isExpired = ML.listInYear(d, year) === 'expired';   // 與上方清單篩選同一個判斷（那一年的狀態）
               const editable = canEditDev(d);
               return (
                 <tr key={d._id}>
@@ -478,9 +478,10 @@
     const filtered = devices
       .filter(d => matchRegion(d) && matchText(d) && (!engF || d.engineer === engF))
       .sort(byRegionThenSeq);
-    // 清單依 ML.effectiveList：手動標已過維，或維護到期日已過（2026-11-09 起自動，不寫回資料庫）
-    // 年份：只列該年仍在維護期內的設備（到期日年份 ≥ 選的年份；沒填到期日的每年都列）
-    const scheduleRows = filtered.filter(d => (!listF || ML.effectiveList(d) === listF) && ML.activeInYear(d, year));
+    // 年份＋清單一起看 ML.listInYear：只列「那一年」的設備（那一年已安裝、合約還沒在那之前結束），
+    // 清單也是那一年的狀態（今年用今天判斷；其他年份合約有效過就算維護中）。
+    // ★ 不可分開寫成 effectiveList（今天的狀態）＋年份條件：選 2022 年＋維護中會列出後來才安裝的設備（2026-11-11 使用者回報）
+    const scheduleRows = filtered.filter(d => { const l = ML.listInYear(d, year); return !!l && (!listF || l === listF); });
     // 維護到期總表：年份（那一年到期的）、清單、狀態都篩完再排序。畫面與匯出共用這一份
     const today = new Date();
     const expiryList = filtered

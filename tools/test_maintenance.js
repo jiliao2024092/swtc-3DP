@@ -217,6 +217,23 @@ eq(ML.yearOptions([{ schedule: { 2021: { 1: { plan: true } } } }], 2026).slice(-
 eq(ML.yearOptions([{ installDate: '2026-01-01', expiryDate: '2209-01-01' }, { installDate: '1900-01-01' }], 2026), [2027, 2026, 2025],
   '★ 離今年 20 年以上的當成打錯，不讓選單長出上百個年份');
 eq(ML.yearOptions([{ installDate: '2026/01/01', expiryDate: '', schedule: { abc: {} } }, null], 2026), [2027, 2026, 2025], '格式不對的日期／年份、null 都忽略');
+// 保養排程的年份＋清單：那一年的設備、那一年的狀態（2026-11-11 使用者回報：選 2022＋維護中卻列出之後才安裝的）
+const tNow = new Date(2026, 10, 11);
+const LI = (d, y) => ML.listInYear(d, y, tNow);
+eq(LI({ installDate: '2026-07-24', expiryDate: '2027-07-23' }, 2022), null, '★ 那一年還沒安裝 → 不列（不管清單選什麼）');
+eq(LI({ installDate: '2022-02-21', expiryDate: '2029-02-28' }, 2022), 'active', '那一年安裝的 → 維護中');
+eq(LI({ installDate: '2021-08-31', expiryDate: '2022-06-30' }, 2022), 'active', '★ 回頭看 2022：年中才到期的那台，當年也要保養 → 維護中');
+eq(LI({ installDate: '2021-08-31', expiryDate: '2022-06-30' }, 2023), null, '合約在那一年之前就結束 → 不列');
+eq(LI({ installDate: '2021-08-31', expiryDate: '2026-11-10' }, 2026), 'expired', '今年：到期日已過 → 已過維（同 effectiveList）');
+eq(LI({ installDate: '2021-08-31', expiryDate: '2026-11-11' }, 2026), 'active', '今年：到期日當天仍算維護中');
+eq(LI({ installDate: '2021-08-31', expiryDate: '2026-11-10' }, 2025), 'active', '★ 同一台在 2025 年還是維護中');
+eq(LI({ list: 'expired', installDate: '2021-01-01', expiryDate: '2028-01-01' }, 2022), 'expired', '手動標已過維 → 哪一年都算已過維');
+eq(LI({ list: 'expired', installDate: '2024-01-01', expiryDate: '2028-01-01' }, 2022), null, '手動標已過維但那一年還沒安裝 → 不列');
+eq(LI({ installDate: '', expiryDate: '' }, 2022), 'active', '沒填安裝／到期 → 判斷不出來，照列（不可讓設備消失）');
+eq(LI({ installDate: '2022/01/01', expiryDate: '2029-01-01' }, 2020), 'active', '安裝日格式不對 → 當成沒有界線');
+eq(LI(null, 2022), null, 'null 不會出錯');
+eq(ML.listInYear({ installDate: '2021-01-01', expiryDate: '2026-11-10' }, new Date().getFullYear()) !== undefined, true, '不給 today 也能跑（用今天）');
+
 eq(ML.expiresInYear({ expiryDate: '2027-02-11' }, 2027), true, '到期日在那一年 → 列出');
 eq(ML.expiresInYear({ expiryDate: '2027-02-11' }, '2027'), true, '年份是字串（下拉選單的值）也可以');
 eq(ML.expiresInYear({ expiryDate: '2027-02-11' }, 2026), false, '★ 不是「還在維護期內」，是「那一年到期」');
