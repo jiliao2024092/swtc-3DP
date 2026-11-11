@@ -99,11 +99,9 @@
                 每<input style={{ ...S_INP, width: 80 }} type="number" min="1" max="36" step="1" placeholder="—"
                   value={form.intervalMonths || ''} onChange={e => set('intervalMonths', e.target.value)} />個月保養
               </div>
-              <div style={{ fontSize: 11.5, color: 'var(--ink-4)', marginTop: 4, lineHeight: 1.5 }}>
-                有填就會從安裝時間起，每隔這麼多個月自動排定保養，排到維護到期那個月為止。只排本月以後、還是空白的月份；已完成或自己填過的格子不會動。留空＝不自動排。
-                {Number(form.intervalMonths) >= 1 && (!form.installDate || !form.expiryDate) &&
-                  <span style={{ color: 'var(--warn)' }}>（要先填安裝時間與維護到期時間才排得出來）</span>}
-              </div>
+              {/* 說明文字 2026-11-11 使用者要求拿掉；只留「填了週期卻排不出來」時的提醒 */}
+              {Number(form.intervalMonths) >= 1 && (!form.installDate || !form.expiryDate) &&
+                <div style={{ fontSize: 11.5, color: 'var(--warn)', marginTop: 4 }}>要先填安裝時間與維護到期時間才排得出來</div>}
             </div>
             <div className="m-row">
               <div className="m-field"><label style={LBL}>責任業務</label>
@@ -649,10 +647,8 @@
             {tab === 'expiry' && <ExpiryTable list={expiryList} canEditDev={canEditDev}
               onEditDev={d => setModal({ kind: 'dev', dev: d })} />}
             {tab === 'report' && <>
-              <p style={{ fontSize: 12.5, color: 'var(--ink-4)', margin: '0 0 12px' }}>
-                只算「維護中」的設備；維護到期的設備，到期當月以前照算、之後的月份不算。需保養數＝當月排定保養的設備數；已保養數＝完成日期落在當月的筆數（延期到下個月才完成，算在下個月）；「不需保養」不扣除。
-                {(kw || engF) && <b style={{ color: 'var(--warn)' }}>　目前只統計符合上方搜尋／保養負責人篩選的設備。</b>}
-              </p>
+              {/* 計算規則的說明 2026-11-11 使用者要求拿掉（規則寫在使用手冊）；只留「數字被篩選縮小了」的提醒 */}
+              {(kw || engF) && <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--warn)', margin: '0 0 12px' }}>目前只統計符合上方搜尋／保養負責人篩選的設備。</p>}
               {reportCards.map(c => <RateCard key={c.label} title={`${year} 年 ${c.label}`} need={c.need} done={c.done} />)}
             </>}
           </>}
