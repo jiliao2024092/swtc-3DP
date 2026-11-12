@@ -6,7 +6,7 @@
 // 或「某一頁 App Check 過不了」，而且不會有明顯錯誤訊息。
 //
 // ★ 用 classic <script>（不是 ES module），因為兩種頁面都要能用：
-//     compat SDK（classic script）：portal / quote-studio / quote-markforged
+//     compat SDK（classic script）：portal
 //     modular SDK（<script type="module">）：3DP-BK / inventory
 //   `<script type="module">` 預設是 defer，一定在所有 classic script 之後才執行，
 //   所以兩邊都保證讀得到。這與 appcheck.js 是同一個模式。
@@ -14,12 +14,13 @@
 // ★ 對外只暴露 requireFirebaseConfig()，底層屬性刻意加雙底線：
 //   quote-studio / quote-markforged 的頂層有 `const FIREBASE_CONFIG = ...`，
 //   classic script 的頂層 const 會建立全域詞法繫結而遮蔽同名的 window 屬性，
-//   取名撞在一起遲早會有人被繞進去。
+//   取名撞在一起遲早會有人被繞進去。（這兩支估價頁已於 2026-11-11 移除）
 //
 // ★ apiKey 是公開的專案識別碼，不是密鑰（見 appcheck.js 開頭的說明）。
 //   保護資料的是 Security Rules，防機器人的是 App Check。
 //
-// ⚠ 改這裡等於同時改全部 5 個頁面，改完請把每一頁都開起來確認能登入。
+// ⚠ 改這裡等於同時改全部頁面（portal／3DP-BK／inventory；估價兩頁 2026-11-11 已移除），
+//   改完請把每一頁都開起來確認能登入。
 
 (function () {
   'use strict';

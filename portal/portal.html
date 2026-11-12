@@ -408,6 +408,13 @@ input[type=number]:focus::-webkit-inner-spin-button,input[type=number]:focus::-w
 .m-hd h3{font-size:15px;font-weight:700}
 .m-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink-4);padding:2px 6px;border-radius:4px}
 .m-close:hover{background:var(--line-soft)}
+.m-box.m-wide{width:980px}
+/* 分析頁「點擊看明細」（2026-11-11）：可以點的數字／長條／圖例，與明細清單視窗（DrillModal） */
+.drill{cursor:pointer;border-radius:6px;transition:background .15s}
+.drill:hover{background:var(--bg-soft)}
+.drill-hint{font-size:10.5px;color:var(--accent);font-weight:500;white-space:nowrap}
+.drill-tbl tbody tr.drill-row{cursor:pointer}
+.drill-tbl tbody tr.drill-row:hover td{background:var(--accent-soft)}
 .m-body{padding:0 24px}
 .m-foot{padding:16px 24px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--line);margin-top:16px}
 .m-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
@@ -557,7 +564,7 @@ try { if (localStorage.getItem('swtc_darkMode')==='1') document.documentElement.
 <script src="firebase-init.js?v=20261013a"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js"></script>
 <!-- Firebase 服務層 -->
-<script src="firebase-service.js?v=20261109a"></script>
+<script src="firebase-service.js?v=20261111a"></script>
 <!-- ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <!-- XLSX (SheetJS)：樣品出借清冊匯入/匯出 -->
@@ -1404,7 +1411,57 @@ window.GanttView = GanttView;
 
 <!-- ④ DashboardView -->
 <script type="text/babel" data-presets="react">
-function DashboardView({ data }) {
+// ── 分析頁「點擊看明細」共用的清單視窗（2026-11-11 使用者要求）──
+// 工作看板 Dashboard、異常與資源的分析、設備保養的達成率報表共用。
+//   columns：[{ label, get(row) → 字串或元素, nowrap, align }]
+//   onRow(row)：點一列要做什麼（開原本的編輯視窗）；canRow(row) 為 false 的列不能點（沒權限或別區的資料）
+// ★ 用 createPortal 掛到 body：分析頁本身在可捲動的容器裡，放裡面會被裁切或蓋住（同 VersionPop）
+function DrillModal({ title, note, columns, rows, onRow, canRow, onClose }) {
+  React.useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const clickable = r => !!onRow && (!canRow || canRow(r));
+  const anyClickable = rows.some(clickable);
+  return ReactDOM.createPortal(
+    <div className="m-overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="m-box m-wide">
+        <div className="m-hd">
+          <h3>{title}<span style={{marginLeft:8,fontSize:12,fontWeight:500,color:'var(--ink-4)'}}>共 {rows.length} 筆</span></h3>
+          <button className="m-close" onClick={onClose}>×</button>
+        </div>
+        <div className="m-body">
+          {(note || anyClickable) && (
+            <div style={{fontSize:12,color:'var(--ink-4)',margin:'-8px 0 10px',lineHeight:1.6}}>
+              {note}{note && anyClickable ? '　' : ''}{anyClickable && <span style={{color:'var(--accent)'}}>點一列開啟該筆資料</span>}
+            </div>
+          )}
+          {rows.length === 0
+            ? <div className="chart-empty">沒有資料</div>
+            : <div style={{overflowX:'auto'}}>
+                <table className="kt drill-tbl">
+                  <thead><tr>{columns.map(c => <th key={c.label} style={{textAlign:c.align||'left'}}>{c.label}</th>)}</tr></thead>
+                  <tbody>{rows.map((r, i) => {
+                    const ok = clickable(r);
+                    return (
+                      <tr key={r._id || r._key || i} className={ok ? 'drill-row' : ''} onClick={ok ? () => onRow(r) : undefined}>
+                        {columns.map(c => <td key={c.label} style={{textAlign:c.align||'left',whiteSpace:c.nowrap?'nowrap':undefined}}>{c.get(r)}</td>)}
+                      </tr>
+                    );
+                  })}</tbody>
+                </table>
+              </div>}
+        </div>
+        <div className="m-foot"><button className="btn-cancel" onClick={onClose}>關閉</button></div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+window.DrillModal = DrillModal;
+
+function DashboardView({ data, onOpen, canOpen }) {
   const K = window.K;
   const { useMemo, useState } = React;
 
@@ -1416,9 +1473,11 @@ function DashboardView({ data }) {
   const stats = useMemo(() => {
     const total    = data.length;
     const wip      = data.filter(d=>K.statusOf(d)==='progress').length;
-    const blocked  = data.filter(d=>K.statusOf(d)==='blocked').length;
+    const blockedList = data.filter(d=>K.statusOf(d)==='blocked');
+    const blocked  = blockedList.length;
     const done     = data.filter(d=>K.statusOf(d)==='done').length;
-    const due7     = data.filter(d=>{ const s=K.statusOf(d); if(s==='done'||s==='cancelled')return false; const v=K.daysUntil(d.dueDate); return v!==null&&v<=7&&v>=0; }).length;
+    const due7List = data.filter(d=>{ const s=K.statusOf(d); if(s==='done'||s==='cancelled')return false; const v=K.daysUntil(d.dueDate); return v!==null&&v<=7&&v>=0; });
+    const due7     = due7List.length;
     const statusDist = {
       todo:      data.filter(d=>K.statusOf(d)==='todo').length,
       blocked,
@@ -1455,7 +1514,8 @@ function DashboardView({ data }) {
     lateOrders.forEach(d=>{ if(d.engineer) byEngLate[d.engineer]=(byEngLate[d.engineer]||0)+1; });
     overOrders.forEach(d=>{ if(d.engineer) byEngOver[d.engineer]=(byEngOver[d.engineer]||0)+1; });
     return { total,wip,blocked,done,due7,statusDist,byEng,byMach,byProg,byMat,byCat,byResin,byCustomer,engineers,machines,
-             lateCount:lateOrders.length, overCount:overOrders.length, byEngLate, byEngOver };
+             lateCount:lateOrders.length, overCount:overOrders.length, byEngLate, byEngOver,
+             blockedList, due7List, lateOrders, overOrders };
   }, [data]);
 
   // ── 圖表元件 ──
@@ -1495,12 +1555,15 @@ function DashboardView({ data }) {
     );
   }
 
-  function HBarChart({ items, colorFn }) {
+  // onItemClick：有給才可以點（異常分析的工程師分布用，點了列出那位工程師的那幾筆）
+  function HBarChart({ items, colorFn, onItemClick }) {
     const max = Math.max(1,...items.map(i=>i.value));
     return (
-      <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',padding:'4px 0'}}>
+      <div style={{display:'flex',flexDirection:'column',gap:onItemClick?4:10,width:'100%',padding:'4px 0'}}>
         {items.filter(i=>i.value>0).map((item,idx)=>(
-          <div key={item.label} style={{display:'grid',gridTemplateColumns:'90px 1fr 28px',gap:10,alignItems:'center'}}>
+          <div key={item.label} className={onItemClick?'drill':undefined} onClick={onItemClick?()=>onItemClick(item):undefined}
+            title={onItemClick?'點擊查看明細':undefined}
+            style={{display:'grid',gridTemplateColumns:'90px 1fr 28px',gap:10,alignItems:'center',padding:onItemClick?'3px 4px':0}}>
             <span style={{fontSize:11.5,color:'var(--ink-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.label}</span>
             <div style={{height:14,background:'var(--bg-soft)',borderRadius:4,overflow:'hidden',position:'relative'}}>
               <div style={{position:'absolute',inset:'0 auto 0 0',borderRadius:4,transition:'width .3s',background:colorFn?colorFn(item,idx):'var(--accent)',width:`${Math.round(item.value/max*100)}%`}}/>
@@ -1615,24 +1678,66 @@ function DashboardView({ data }) {
   const CARD_TITLE = { fontSize:12.5, fontWeight:600, color:'var(--ink)' };
   const CARD_BADGE = { fontSize:10, fontFamily:'var(--font-mono)', color:'var(--ink-4)', letterSpacing:'0.06em', textTransform:'uppercase' };
 
+  // ── 點擊看明細（2026-11-11 使用者要求：只有異常／特殊項目可以點）──
+  //   等待材料、7 天內到期、逾期完工、消耗超標（含各自的工程師分布）。點清單的一列開原本的編輯視窗
+  const [drill, setDrill] = useState(null);   // { kind, title, rows }
+  const engName = k => K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k||'—';
+  const lateDays = d => Math.round((new Date(d.actualEndDate)-new Date(d.dueDate))/K.DAY);
+  const overBy = d => Math.ceil(+d.actUsage - +d.estUsage);
+  const BASE_COLS = [
+    { label:'EF 單號', get:d=>d.id||'—', nowrap:true },
+    { label:'客戶', get:d=>d.customer||'—' },
+    { label:'工程師', get:d=>engName(d.engineer), nowrap:true },
+    { label:'機台', get:d=>d.machine||'—', nowrap:true },
+    { label:'期望交期', get:d=>d.dueDate||'—', nowrap:true },
+    { label:'狀態', nowrap:true, get:d=>{ const st=K.statusOf(d), t=K.STATUS_TONE[st]||{}; return <span style={{color:t.fg}}>{t.label||st}・{K.PROGRESS_VALUES.includes(d.progress)?d.progress:0}%</span>; } },
+  ];
+  const DRILL = {
+    blocked: { title:'等待材料', cols:[...BASE_COLS, { label:'材料', get:d=>`${d.resin||'—'}（${d.material||'—'}）` }],
+               sort:(a,b)=>String(a.dueDate||'9999').localeCompare(String(b.dueDate||'9999')) },
+    due7:    { title:'7 天內到期', cols:[...BASE_COLS, { label:'剩餘', nowrap:true, align:'right', get:d=>{ const v=K.daysUntil(d.dueDate); return <span style={{color:'var(--danger)',fontWeight:600}}>{v===0?'今天到期':`${v} 天`}</span>; } }],
+               sort:(a,b)=>K.daysUntil(a.dueDate)-K.daysUntil(b.dueDate) },
+    late:    { title:'逾期完工', cols:[...BASE_COLS, { label:'實際完成日', get:d=>d.actualEndDate, nowrap:true },
+                 { label:'逾期', nowrap:true, align:'right', get:d=><span style={{color:'var(--danger)',fontWeight:600}}>{lateDays(d)} 天</span> }],
+               sort:(a,b)=>lateDays(b)-lateDays(a) },
+    over:    { title:'消耗超標', cols:[...BASE_COLS, { label:'預估 (mL)', get:d=>d.estUsage, nowrap:true, align:'right' }, { label:'實際 (mL)', get:d=>d.actUsage, nowrap:true, align:'right' },
+                 { label:'超出', nowrap:true, align:'right', get:d=><span style={{color:'var(--warn)',fontWeight:600}}>+{overBy(d)} mL</span> }],
+               sort:(a,b)=>overBy(b)-overBy(a) },
+  };
+  const LIST = { blocked:stats.blockedList, due7:stats.due7List, late:stats.lateOrders, over:stats.overOrders };
+  // eng：只看這位工程師的（工程師分布的長條）
+  const openDrill = (kind, eng) => {
+    const rows = LIST[kind].filter(d => !eng || d.engineer === eng).slice().sort(DRILL[kind].sort);
+    setDrill({ kind, title: DRILL[kind].title + (eng ? `・${engName(eng)}` : ''), rows });
+  };
+
   return (
     <div style={{flex:1,overflow:'auto',padding:'0 28px 32px',background:'var(--bg)'}}>
+      {drill && window.DrillModal && (
+        <window.DrillModal title={drill.title} columns={DRILL[drill.kind].cols} rows={drill.rows}
+          onRow={onOpen ? d => { setDrill(null); onOpen(d); } : null} canRow={canOpen}
+          onClose={() => setDrill(null)}/>
+      )}
 
       {/* KPI */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:0,borderBottom:'1px solid var(--line)',margin:'0 -28px 0',padding:'0 28px'}}>
         {[
           { label:'總訂單',    value:stats.total,  sub:'全部資料筆數',          color:'var(--ink)' },
           { label:'進行中',    value:stats.wip,    sub:'已開工未完成',          color:'var(--ink)' },
-          { label:'等待材料',  value:stats.blocked,sub:'需調撥 / 待備料',       color:'var(--warn)'    },
-          { label:'7 天內到期',value:stats.due7,   sub:'未完成且交期 ≤ 7 天',  color:'var(--danger)'    },
+          { label:'等待材料',  value:stats.blocked,sub:'需調撥 / 待備料',       color:'var(--warn)', drill:'blocked' },
+          { label:'7 天內到期',value:stats.due7,   sub:'未完成且交期 ≤ 7 天',  color:'var(--danger)', drill:'due7' },
           { label:'已完成',    value:stats.done,   sub:'100% / 完成',          color:'var(--ok)'    },
-        ].map((k,i)=>(
-          <div key={k.label} style={{padding:'18px 24px 20px',borderRight:i<4?'1px solid var(--line-soft)':'none'}}>
+        ].map((k,i)=>{
+          const can = k.drill && k.value > 0;
+          return (
+          <div key={k.label} className={can?'drill':undefined} onClick={can?()=>openDrill(k.drill):undefined} title={can?'點擊查看明細':undefined}
+            style={{padding:'18px 24px 20px',borderRight:i<4?'1px solid var(--line-soft)':'none',borderRadius:0}}>
             <div style={{fontSize:11,letterSpacing:'0.06em',textTransform:'uppercase',color:'var(--ink-4)',fontWeight:600,fontFamily:'var(--font-mono)'}}>{k.label}</div>
             <div style={{fontSize:32,fontWeight:700,fontFamily:'var(--font-mono)',letterSpacing:'-0.02em',color:k.color,marginTop:4,lineHeight:1.1}}>{k.value}</div>
-            <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4,fontFamily:'var(--font-mono)'}}>{k.sub}</div>
+            <div style={{fontSize:11,color:'var(--ink-4)',marginTop:4,fontFamily:'var(--font-mono)'}}>{k.sub}{can && <span className="drill-hint" style={{marginLeft:6}}>查看明細 ›</span>}</div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* 預設分析 */}
@@ -1683,23 +1788,25 @@ function DashboardView({ data }) {
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:16,marginBottom:32}}>
         {[
-          { title:'逾期完工', badge:'實際完成日晚於期望交期', count:stats.lateCount, color:'var(--danger)', by:stats.byEngLate },
-          { title:'消耗超標', badge:'實際消耗量大於預估消耗量', count:stats.overCount, color:'var(--warn)', by:stats.byEngOver },
+          { title:'逾期完工', badge:'實際完成日晚於期望交期', count:stats.lateCount, color:'var(--danger)', by:stats.byEngLate, drill:'late' },
+          { title:'消耗超標', badge:'實際消耗量大於預估消耗量', count:stats.overCount, color:'var(--warn)', by:stats.byEngOver, drill:'over' },
         ].map(a=>{
-          const items = stats.engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:a.by[k]||0, color:a.color }));
+          const items = stats.engineers.map((k,i)=>({ key:k, label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:a.by[k]||0, color:a.color }));
           return (
             <div key={a.title} style={CARD}>
               <div style={CARD_HEAD}>
                 <span style={CARD_TITLE}>{a.title}</span>
                 <span style={CARD_BADGE}>{a.badge}</span>
               </div>
-              <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+              <div className={a.count>0?'drill':undefined} onClick={a.count>0?()=>openDrill(a.drill):undefined} title={a.count>0?'點擊查看明細':undefined}
+                style={{display:'flex',alignItems:'baseline',gap:8,padding:'4px 6px',margin:'0 -6px 4px',alignSelf:'flex-start'}}>
                 <span style={{fontSize:32,fontWeight:700,fontFamily:'var(--font-mono)',letterSpacing:'-0.02em',color:a.count>0?a.color:'var(--ink-3)',lineHeight:1}}>{a.count}</span>
                 <span style={{fontSize:11,color:'var(--ink-4)',fontFamily:'var(--font-mono)'}}>筆異常</span>
+                {a.count>0 && <span className="drill-hint">查看明細 ›</span>}
               </div>
               <div style={{fontSize:11,color:'var(--ink-4)',marginBottom:2}}>負責工程師分布</div>
               {a.count>0
-                ? <HBarChart items={items} colorFn={()=>a.color}/>
+                ? <HBarChart items={items} colorFn={()=>a.color} onItemClick={it=>openDrill(a.drill, it.key)}/>
                 : <div className="chart-empty">目前無此類異常</div>}
             </div>
           );
@@ -1725,11 +1832,11 @@ window.DashboardView = DashboardView;
 <!-- ⑤ IssuesStats 已整合至 issues.js -->
 
 <!-- ⑥ workboard.js + issues.js -->
-<script type="text/babel" data-presets="react" src="workboard.js?v=20261014a"></script>
-<script type="text/babel" data-presets="react" src="issues.js?v=20261013a"></script>
+<script type="text/babel" data-presets="react" src="workboard.js?v=20261112a"></script>
+<script type="text/babel" data-presets="react" src="issues.js?v=20261112a"></script>
 <!-- 設備保養（工作包 4）：計算與 Excel 解析是一般 JS（測試直接執行），畫面是 JSX -->
-<script src="maintenance-logic.js?v=20261111c"></script>
-<script type="text/babel" data-presets="react" src="maintenance.js?v=20261111c"></script>
+<script src="maintenance-logic.js?v=20261112a"></script>
+<script type="text/babel" data-presets="react" src="maintenance.js?v=20261112a"></script>
 <!-- 公共事項看板（工作包 5）：同上，純函式與畫面分開 -->
 <script src="posts-logic.js?v=20261013a"></script>
 <script type="text/babel" data-presets="react" src="posts.js?v=20261109a"></script>
@@ -1813,7 +1920,7 @@ function UserModal({ item, onClose, onSaved, otherAdmins=0, callerIsAdmin=true }
   // ★ 決策 E 的防呆之一 —— 這裡是單選且不允許空值；沒設地區的人之後會什麼都看不到，
   //   所以寧可給一個預設值，也不要放行空白。
   const REGION_OPTS = window.REGIONS || [{key:'central',label:'中部'}];
-  const empty = { displayName:'', email:'', password:'', permissions:['view_board','view_issues','view_booking','view_inventory','view_quote'], active:true, region:'central' };
+  const empty = { displayName:'', email:'', password:'', permissions:['view_board','view_issues','view_booking','view_inventory'], active:true, region:'central' };
   // 既有帳號沒有 region 欄位 → 開啟編輯視窗時就補成中區，存檔後這個人就「明確」歸中區
   // （regions.js 的 hasExplicitRegion 會據此判斷要不要在列表標紅）
   const [form, setForm] = React.useState(item ? {...item, password:'', region:(window.normRegion ? window.normRegion(item.region) : (item.region||'central'))} : empty);
@@ -3063,6 +3170,10 @@ function AdminPanel({ user, isAdmin }) {
    新增一筆時放在陣列最前面並移除最後一筆（維持 10 筆）。
    type: feat=新功能 / fix=問題修正 / docs=文件 */
 const CHANGELOG = [
+  { hash:'', date:'2026-11-12', type:'feat',
+    text:'分析畫面的異常／特殊項目可以點開看明細：工作看板 Dashboard 的「等待材料」「7 天內到期」「逾期完工」「消耗超標」（含工程師分布的長條）；異常與資源分析的「異常總數」「處理中」、狀態分布、工程師分布、每月趨勢；設備保養達成率報表沒達標的月份與全年達成率；材料庫存月度分析的工作類別「未分類」、責任工程師「未填」，以及北中南月度分析的「沒設單價」「其他／未分類」。點一下列出是哪幾筆，再點其中一筆會開原本的編輯視窗（工單、客戶異常、那一格的保養紀錄；未分類的消耗紀錄可以直接改備註）。' },
+  { hash:'', date:'2026-11-12', type:'tweak',
+    text:'移除「3D列印估價（Beta）」頁面：左側選單不再有這一頁，後台的「使用 3D 列印估價」「設定估價材料與價格」兩個權限也一併拿掉。' },
   { hash:'655b6f6', date:'2026-11-11', type:'feat',
     text:'設備保養：保養排程上方多了「📧 維護通知」，一鍵產生每月寄給大家的維護安排表格（版面與原本手動做的信相同）：上半段是選定月份排定保養的設備（同一客戶同型號會合併成一列並註明台數），下半段是今天起 90 天內即將維護到期的提醒。按「複製表格」就能直接貼進 Outlook 信件，也可以下載 Excel。依工具列選的地區產生，選「所有地區」時三區各一段。' },
   { hash:'0fdbcce', date:'2026-11-11', type:'fix',
@@ -3079,10 +3190,6 @@ const CHANGELOG = [
     text:'設備保養：維護到期日過了的設備，會自動列到「已過維」，不用再手動改清單；續約時把維護到期日往後改，就會自動回到「維護中」。達成率改成「到期當月以前照算、之後的月份不算」，過去月份的數字不會因為設備到期而改變。' },
   { hash:'d3bbb8b', date:'2026-11-09', type:'tweak',
     text:'左下角的帳號區改成「頭像＋名字＋角色／地區」，點一下會打開選單，黑暗模式、變更密碼、登出都在裡面。頭像的顏色與公共事項看板上的一致。另外修正資材帳號在左下角被顯示成「查閱」。' },
-  { hash:'07a0503', date:'2026-11-09', type:'tweak',
-    text:'材料庫存的出入料記錄：入庫、退料、手動調整、刪除回補等人工操作，「責任工程師」欄會顯示操作者的名字（今天之後的紀錄才有）。' },
-  { hash:'d69c24f', date:'2026-11-09', type:'feat',
-    text:'材料庫存：「消耗記錄」改名「出入料記錄」，預設顯示全部類型（列印消耗、入庫、手動調整）。Markforged 的入庫、退料、編輯調整、新增與刪除材料現在都會留下紀錄，可依類型篩選，誰在什麼時候入了幾捲都查得到。修正：北部、南部在網頁上做的入庫與調整原本會被歸到中部，現在會記在自己那一區（之前的舊紀錄仍算在中部）。' },
 ];
 // 標籤分類。★ 標 feat 的門檻要守住：只有「使用者以前完全做不到的事」才算
 //   新功能；既有功能的欄位／行為／位置變更一律用 tweak（調整）。
@@ -3441,7 +3548,6 @@ function Shell({ user, onLogout }) {
   const [darkMode, setDarkMode] = React.useState(()=>{
     try { return localStorage.getItem('swtc_darkMode') === '1'; } catch(e){ return false; }
   });
-  const quoteIframeRef = React.useRef(null);
   const bookingIframeRef = React.useRef(null);
   const inventoryIframeRef = React.useRef(null);
   // 把黑暗模式狀態同步進各 iframe 頁面（同源，直接摸 contentDocument）；
@@ -3452,13 +3558,11 @@ function Shell({ user, onLogout }) {
       if (doc && doc.documentElement) doc.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
     } catch(e){}
   };
-  const applyThemeToQuoteIframe = () => applyThemeToIframe(quoteIframeRef);
   const applyThemeToBookingIframe = () => applyThemeToIframe(bookingIframeRef);
   const applyThemeToInventoryIframe = () => applyThemeToIframe(inventoryIframeRef);
   React.useEffect(()=>{
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light';
     try { localStorage.setItem('swtc_darkMode', darkMode ? '1' : '0'); } catch(e){}
-    applyThemeToQuoteIframe();
     applyThemeToBookingIframe();
     applyThemeToInventoryIframe();
   }, [darkMode]);
@@ -3471,7 +3575,6 @@ function Shell({ user, onLogout }) {
   const canIssues = window.hasPerm(user, 'view_issues');
   // 設備保養：帳號還沒有保養權限時沿用「異常與資源」的權限（見 firebase-service.js 的 hasMaintPerm）
   const canMaint = !!(window.hasMaintPerm && window.hasMaintPerm(user, 'view_maintenance'));
-  const canQuote = window.hasPerm(user, 'view_quote');
   const canBooking = window.canSeeTab(user, 'view_booking');
   const canInventory = window.canSeeTab(user, 'view_inventory');
 
@@ -3488,9 +3591,6 @@ function Shell({ user, onLogout }) {
     { key:'inventory', label:'材料庫存管理', sub:'INVENTORY',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="5" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M2.5 8.5h13M6.5 5V3.5h5V5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
       show: canInventory },
-    { key:'quote', label:'3D列印估價', sub:'QUOTE', beta:true,
-      icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="3.5" y="2" width="11" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><rect x="6" y="4.5" width="6" height="2.5" rx="0.5" stroke="currentColor" strokeWidth="1.2"/><circle cx="6.7" cy="10" r="0.8" fill="currentColor"/><circle cx="9" cy="10" r="0.8" fill="currentColor"/><circle cx="11.3" cy="10" r="0.8" fill="currentColor"/><circle cx="6.7" cy="12.8" r="0.8" fill="currentColor"/><circle cx="9" cy="12.8" r="0.8" fill="currentColor"/><circle cx="11.3" cy="12.8" r="0.8" fill="currentColor"/></svg>,
-      show: canQuote },
     { key:'issues', label:'異常與資源', sub:'ISSUES',
       icon:<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.4"/><line x1="9" y1="5.5" x2="9" y2="9.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><circle cx="9" cy="12" r="0.9" fill="currentColor"/></svg>,
       show: canIssues },
@@ -3563,7 +3663,6 @@ function Shell({ user, onLogout }) {
         {page==='admin'     && canAdminPage && <AdminPanel    user={user} isAdmin={isAdmin}/>}
         {page==='booking'   && canBooking && <iframe ref={bookingIframeRef} onLoad={applyThemeToBookingIframe} src="../3DP-BK.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="機台預約"/>}
         {page==='inventory' && canInventory && <iframe ref={inventoryIframeRef} onLoad={applyThemeToInventoryIframe} src="../inventory.html" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="材料庫存管理"/>}
-        {page==='quote'     && canQuote && <iframe ref={quoteIframeRef} onLoad={applyThemeToQuoteIframe} src="../quote-studio.html" allow="fullscreen" style={{flex:1,border:'none',width:'100%',height:'100%'}} title="3D列印估價（Beta）"/>}
       </main>
     </div>
   );

@@ -767,7 +767,8 @@
   }
 
   // ── 分析頁（預設 + 自由分析）──
-  function IssuesStats({ anomalies, ipa, tools }) {
+  // onOpen(異常)／canOpen(異常)：明細清單點一列時開原本的編輯視窗（2026-11-11 點擊看明細）
+  function IssuesStats({ anomalies, ipa, tools, onOpen, canOpen }) {
     const STATUS_COLORS_A = { '處理中':'var(--warn)', '已完成':'var(--ok)', '暫停':'var(--danger)' };
     const ENG_COLORS = ['var(--accent)','var(--purple)','var(--ok)','var(--warn)','var(--danger)'];
     const MACH_COLORS = ['var(--accent)','var(--ok)','var(--warn)','var(--purple)'];
@@ -784,7 +785,8 @@
     const toolByMethod = useMemo(()=>{ const m={}; tools.forEach(r=>{m[r.method]=(m[r.method]||0)+(Number(r.price||0)*Number(r.quantity||1));}); return m; },[tools]);
 
     // ── 圖表元件 ──
-    function DonutChart({ slices, centerLabel }) {
+    // onSliceClick：有給才可以點（異常狀態分布用）
+    function DonutChart({ slices, centerLabel, onSliceClick }) {
       const total=slices.reduce((s,x)=>s+x.value,0);
       if(!total) return <div className="chart-empty">無資料</div>;
       const R=65,cx=85,cy=85; let acc=0;
@@ -793,7 +795,12 @@
         const s0=acc*2*Math.PI-Math.PI/2; acc+=pct; const s1=acc*2*Math.PI-Math.PI/2;
         const large=pct>0.5?1:0;
         const x1=cx+R*Math.cos(s0),y1=cy+R*Math.sin(s0),x2=cx+R*Math.cos(s1),y2=cy+R*Math.sin(s1);
-        return <path key={sl.label} d={`M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`} fill={sl.color} stroke="var(--bg)" strokeWidth="2"/>;
+        // 只有一塊時弧線起訖點重合畫不出來，改畫整圈
+        const d = pct>=0.9999 ? `M${cx-R} ${cy} A${R} ${R} 0 1 1 ${cx+R} ${cy} A${R} ${R} 0 1 1 ${cx-R} ${cy}Z`
+                              : `M${cx} ${cy} L${x1} ${y1} A${R} ${R} 0 ${large} 1 ${x2} ${y2}Z`;
+        return <path key={sl.label} d={d} fill={sl.color} stroke="var(--bg)" strokeWidth="2"
+          style={onSliceClick?{cursor:'pointer'}:undefined} onClick={onSliceClick?()=>onSliceClick(sl):undefined}>
+          {onSliceClick && <title>{`${sl.label}：${sl.value}（點擊查看明細）`}</title>}</path>;
       });
       return (
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10,width:'100%'}}>
@@ -806,7 +813,9 @@
           </div>
           <div style={{display:'flex',flexWrap:'wrap',gap:'4px 10px',justifyContent:'center',fontSize:10.5,color:'var(--ink-2)',fontFamily:'var(--font-mono)'}}>
             {slices.filter(s=>s.value>0).map(s=>(
-              <span key={s.label} style={{display:'inline-flex',alignItems:'center',gap:4}}>
+              <span key={s.label} className={onSliceClick?'drill':undefined} onClick={onSliceClick?()=>onSliceClick(s):undefined}
+                title={onSliceClick?'點擊查看明細':undefined}
+                style={{display:'inline-flex',alignItems:'center',gap:4,padding:onSliceClick?'2px 5px':0}}>
                 <span style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>{s.label} · {s.value}
               </span>
             ))}
@@ -815,12 +824,14 @@
       );
     }
 
-    function HBarChart({ items, colorFn }) {
+    function HBarChart({ items, colorFn, onItemClick }) {
       const max=Math.max(1,...items.map(i=>i.value));
       return (
-        <div style={{display:'flex',flexDirection:'column',gap:10,width:'100%',padding:'4px 0'}}>
+        <div style={{display:'flex',flexDirection:'column',gap:onItemClick?4:10,width:'100%',padding:'4px 0'}}>
           {items.filter(i=>i.value>0).map((item,idx)=>(
-            <div key={item.label} style={{display:'grid',gridTemplateColumns:'90px 1fr 32px',gap:10,alignItems:'center'}}>
+            <div key={item.label} className={onItemClick?'drill':undefined} onClick={onItemClick?()=>onItemClick(item):undefined}
+              title={onItemClick?'點擊查看明細':undefined}
+              style={{display:'grid',gridTemplateColumns:'90px 1fr 32px',gap:10,alignItems:'center',padding:onItemClick?'3px 4px':0}}>
               <span style={{fontSize:11.5,color:'var(--ink-2)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.label}</span>
               <div style={{height:14,background:'var(--bg-soft)',borderRadius:4,overflow:'hidden',position:'relative'}}>
                 <div style={{position:'absolute',inset:'0 auto 0 0',borderRadius:4,background:colorFn?colorFn(item,idx):'var(--accent)',width:`${Math.round(item.value/max*100)}%`,transition:'width .3s'}}/>
@@ -833,7 +844,7 @@
       );
     }
 
-    function VBarChart({ items, colorFn }) {
+    function VBarChart({ items, colorFn, onItemClick }) {
       const max=Math.max(1,...items.map(i=>i.value));
       const H=130;
       return (
@@ -849,7 +860,11 @@
               const by=H-bh;
               const fill=colorFn?colorFn(item,idx):'var(--accent)';
               return (
-                <g key={item.label}>
+                <g key={item.label} style={onItemClick&&item.value>0?{cursor:'pointer'}:undefined}
+                   onClick={onItemClick&&item.value>0?()=>onItemClick(item):undefined}>
+                  {onItemClick && item.value>0 && <title>{`${item.label}：${item.value}（點擊查看明細）`}</title>}
+                  {/* 透明的整欄點擊區：長條很矮時也點得到 */}
+                  {onItemClick && item.value>0 && <rect x={bx-6} y={0} width={bw+12} height={H+18} fill="transparent"/>}
                   <rect x={bx} y={by} width={bw} height={bh} fill={fill} rx="3"/>
                   {item.value>0&&<text x={bx+bw/2} y={by-4} fontSize="9" fill="var(--ink-3)" textAnchor="middle">{item.value}</text>}
                   <text x={bx+bw/2} y={H+14} fontSize="9" fill="var(--ink-4)" textAnchor="middle" style={{overflow:'hidden'}}>{item.label.slice(0,6)}</text>
@@ -935,15 +950,42 @@
 
     // ── 預設圖表資料 ──
     const engineers = window._settings_is_engineers || window._settings_engineers || K.ENG_ORDER;
-    const statusSlices = Object.entries(byStatus).map(([k,v])=>({ label:k, value:v, color:STATUS_COLORS_A[k]||'var(--ink-4)' }));
-    const engItems     = engineers.map((k,i)=>({ label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
-    const monthItems   = Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v],i)=>({ label:k.slice(5), value:v, color:MACH_COLORS[i%MACH_COLORS.length] }));
+    const statusSlices = Object.entries(byStatus).map(([k,v])=>({ key:k, label:k, value:v, color:STATUS_COLORS_A[k]||'var(--ink-4)' }));
+    const engItems     = engineers.map((k,i)=>({ key:k, label:K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k, value:byEng[k]||0, color:ENG_COLORS[i%ENG_COLORS.length] }));
+    const monthItems   = Object.entries(byMonth).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([k,v],i)=>({ key:k, label:k.slice(5), value:v, color:MACH_COLORS[i%MACH_COLORS.length] }));
+
+    // ── 點擊看明細（2026-11-11 使用者要求：只有異常項目可以點）──
+    //   異常總數、處理中、異常狀態分布、工程師異常分布、每月異常趨勢。IPA／設備不是異常，不可點。
+    //   點清單的一列開原本的「編輯異常」視窗（只有能編輯那一筆的人點得開）
+    const [drill, setDrill] = useState(null);   // { title, rows }
+    const engName = k => K.ENG_FULLLABEL[k]||K.ENG_LABEL[k]||k||'—';
+    const latestProg = a => [...(a.progresses||[])].sort((x,y)=>(y.date||'').localeCompare(x.date||''))[0];
+    const DRILL_COLS = [
+      { label:'異常日期', get:a=>a.date||'—', nowrap:true },
+      { label:'客戶', get:a=>a.customer||'—' },
+      { label:'品名', get:a=>a.product||'—' },
+      { label:'工程師', get:a=>engName(a.engineer), nowrap:true },
+      { label:'狀態', get:a=><span style={{color:STATUS_COLORS_A[a.status]||'var(--ink-3)',fontWeight:600}}>{a.status||'—'}</span>, nowrap:true },
+      { label:'異常原因', get:a=>a.cause||'—' },
+      { label:'最新進度', get:a=>{ const p=latestProg(a); return p ? `${p.date||''} ${p.status||''}`.trim() : '—'; } },
+    ];
+    const openDrill = (title, pred) => {
+      const rows = anomalies.filter(pred).sort((x,y)=>String(y.date||'').localeCompare(String(x.date||'')));
+      setDrill({ title, rows });
+    };
+    const drillKpi = { '異常總數': () => openDrill('客戶異常（全部）', () => true),
+                       '處理中':   () => openDrill('處理中的客戶異常', a => a.status==='處理中') };
 
     const CARD = { border:'1px solid var(--line)', borderRadius:8, background:'var(--bg)', padding:'14px 16px 18px', display:'flex', flexDirection:'column', gap:12 };
     const BADGE_STYLE = { fontSize:10, fontFamily:'var(--font-mono)', color:'var(--ink-4)', letterSpacing:'0.06em', textTransform:'uppercase' };
 
     return (
       <div style={{flex:1,overflow:'auto',padding:'0 28px 32px'}}>
+        {drill && window.DrillModal && (
+          <window.DrillModal title={drill.title} columns={DRILL_COLS} rows={drill.rows}
+            onRow={onOpen ? a => { setDrill(null); onOpen(a); } : null} canRow={canOpen}
+            onClose={() => setDrill(null)}/>
+        )}
 
         {/* KPI */}
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,padding:'18px 0 24px'}}>
@@ -953,12 +995,17 @@
             { label:'IPA 合計',  value:`${totalIPA} 桶`,  color:'var(--ink)' },
             { label:'設備支出',  value:`NT$ ${totalSpend.toLocaleString()}`, color:'var(--ink)' },
             { label:'設備項目',  value:tools.length,      color:'var(--ink)' },
-          ].map(k=>(
-            <div key={k.label} style={{border:'1px solid var(--line)',borderRadius:8,padding:'14px 16px',background:'var(--bg)'}}>
+          ].map(k=>{
+            const can = drillKpi[k.label] && k.value > 0;
+            return (
+            <div key={k.label} className={can?'drill':undefined} onClick={can?drillKpi[k.label]:undefined} title={can?'點擊查看明細':undefined}
+              style={{border:'1px solid var(--line)',borderRadius:8,padding:'14px 16px',background:'var(--bg)'}}>
               <div style={{fontSize:10.5,fontFamily:'var(--font-mono)',color:'var(--ink-4)',fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase'}}>{k.label}</div>
               <div style={{fontSize:26,fontWeight:700,fontFamily:'var(--font-mono)',letterSpacing:'-0.02em',color:k.color,marginTop:4,lineHeight:1.1}}>{k.value}</div>
+              {can && <div className="drill-hint" style={{marginTop:4}}>查看明細 ›</div>}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* 預設分析 */}
@@ -973,7 +1020,7 @@
               <span style={BADGE_STYLE}>DONUT</span>
             </div>
             <div style={{display:'flex',justifyContent:'center',alignItems:'center',flex:1,minHeight:200}}>
-              <DonutChart slices={statusSlices} centerLabel="異常"/>
+              <DonutChart slices={statusSlices} centerLabel="異常" onSliceClick={sl=>openDrill(`${sl.key}的客戶異常`, a=>a.status===sl.key)}/>
             </div>
           </div>
           <div style={CARD}>
@@ -982,7 +1029,8 @@
               <span style={BADGE_STYLE}>HORIZONTAL BAR</span>
             </div>
             <div style={{display:'flex',alignItems:'center',flex:1,minHeight:200}}>
-              <HBarChart items={engItems} colorFn={(item,i)=>ENG_COLORS[i%ENG_COLORS.length]}/>
+              <HBarChart items={engItems} colorFn={(item,i)=>ENG_COLORS[i%ENG_COLORS.length]}
+                onItemClick={it=>openDrill(`客戶異常・${it.label}`, a=>a.engineer===it.key)}/>
             </div>
           </div>
           <div style={CARD}>
@@ -992,7 +1040,8 @@
             </div>
             <div style={{display:'flex',alignItems:'center',justifyContent:'center',flex:1,minHeight:200}}>
               {monthItems.length>0
-                ? <VBarChart items={monthItems} colorFn={(item,i)=>MACH_COLORS[i%MACH_COLORS.length]}/>
+                ? <VBarChart items={monthItems} colorFn={(item,i)=>MACH_COLORS[i%MACH_COLORS.length]}
+                    onItemClick={it=>openDrill(`${it.key} 的客戶異常`, a=>(a.date||'').slice(0,7)===it.key)}/>
                 : <div className="chart-empty">無資料</div>}
             </div>
           </div>
@@ -1740,7 +1789,8 @@
               <RangeInputs label="客戶異常期間" type="date" range={rangeA} setRange={setRangeA} clearable title="依「異常日期」；兩端都可留空"/>
               <ClosedNote range={rangeA} closedRange={closedRangeA} loaded={needClosedA}/>
             </div>
-            <IssuesStats anomalies={anomalies} ipa={ipa} tools={equipment}/>
+            <IssuesStats anomalies={anomalies} ipa={ipa} tools={equipment}
+              onOpen={canE ? it => { setEditItem(it); setModal('a'); } : null} canOpen={canERow}/>
           </>}
 
           {/* Modals */}

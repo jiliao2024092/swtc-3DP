@@ -38,8 +38,6 @@
     delete_issues: '刪除異常資源',
     view_booking:  '查看列印機預約',
     view_inventory:'查看材料庫存',
-    view_quote:    '使用 3D 列印估價',
-    manage_quote_pricing: '設定 3D列印估價 材料與價格',
     manage_inventory: '設定材料庫存（安全庫存／L樹脂槽標記）',
     // 北中南材料總覽（材料庫存頁的「北中南總覽」）。有 manage_inventory 的主管不必另外勾也看得到、改得到；
     // 這兩個是給「不是主管、但需要看或填採購工程庫存」的人（例：採購同仁）。
@@ -67,19 +65,18 @@
     { key:'workboard', label:'工作看板',     perm:'view_board' },
     { key:'booking',   label:'列印機預約',   perm:'view_booking' },
     { key:'inventory', label:'材料庫存',     perm:'view_inventory' },
-    { key:'quote',     label:'3D 列印估價',  perm:'view_quote' },
     { key:'issues',    label:'異常與資源',   perm:'view_issues' },
     { key:'maintenance', label:'設備保養',   perm:'view_maintenance' },
   ];
 
   // 角色預設（可被 settings/workspace.role_presets 覆蓋）；保留一份原廠預設供還原
   window.DEFAULT_ROLE_PRESETS = {
-    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions','admin'],
-    // 主管：比工程師多「刪除」權、「估價材料/價格設定」權、「材料庫存設定」權、「後台使用者管理」權、「公告欄」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
+    admin:    ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions','admin'],
+    // 主管：比工程師多「刪除」權、「材料庫存設定」權、「後台使用者管理」權、「公告欄」權，藉此與工程師區分（否則兩者權限完全相同、無法分辨）
     // 主管預設可跨區檢視「與編輯」（2026-08-21 決定：原本只給檢視，改成也能修改其他區）
-    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','view_quote','manage_quote_pricing','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions'],
-    operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_quote','view_maintenance','edit_maintenance'],
-    viewer:   ['view_board','view_issues','view_booking','view_inventory','view_quote','view_maintenance'],
+    manager:  ['view_board','edit_board','delete_board','view_issues','edit_issues','delete_issues','view_booking','view_inventory','manage_inventory','view_inventory_summary','edit_purchase_stock','view_maintenance','edit_maintenance','delete_maintenance','manage_users','manage_announcements','manage_posts','view_all_regions','edit_all_regions'],
+    operator: ['view_board','edit_board','view_issues','edit_issues','view_booking','view_inventory','view_maintenance','edit_maintenance'],
+    viewer:   ['view_board','view_issues','view_booking','view_inventory','view_maintenance'],
     // 資材（2026-10-14 使用者要求）：只看得到材料庫存（含北中南總覽），能填「採購工程庫存」。
     // 其他分頁一律看不到；材料庫存頁其餘部分是唯讀（role 推導為 viewer）。
     materials: ['view_inventory','view_inventory_summary','edit_purchase_stock'],

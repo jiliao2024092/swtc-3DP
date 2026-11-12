@@ -1166,6 +1166,27 @@
 </div>
 </div>
 
+<!-- ══ 月度分析「點擊看明細」的清單視窗（2026-11-11 使用者要求）══════════════════
+     未分類（備註不符格式）、責任工程師未填、北中南的沒設單價／其他未分類。內容由 openRecordDrill() 產生 -->
+<div id="drill-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeRecordDrill()">
+    <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-6 w-full max-w-5xl mx-4 flex flex-col" style="max-height:85vh">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-bold text-[var(--ink)]"><span id="drill-title"></span><span id="drill-count" class="ml-2 text-sm font-normal text-[var(--ink-4)]"></span></h2>
+            <button onclick="closeRecordDrill()" class="text-[var(--ink-4)] hover:text-[var(--ink)] text-2xl leading-none px-2">×</button>
+        </div>
+        <p id="drill-note" class="text-xs text-[var(--ink-4)] mb-3"></p>
+        <div class="overflow-auto border border-[var(--line-soft)] rounded-lg">
+            <table class="w-full text-sm border-collapse">
+                <thead id="drill-head" class="bg-[var(--bg-panel)] text-[var(--ink-3)] sticky top-0"></thead>
+                <tbody id="drill-body" class="divide-y divide-gray-100"></tbody>
+            </table>
+        </div>
+        <div class="flex justify-end mt-4">
+            <button onclick="closeRecordDrill()" class="px-4 py-2 text-sm border border-[var(--line-strong)] rounded-lg text-[var(--ink-2)] hover:bg-[var(--bg-soft)]">關閉</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══ Markforged 新增材料 Modal ══════════════════ -->
 <div id="mf-add-modal" class="modal-overlay hidden">
     <div class="bg-[var(--bg)] rounded-2xl shadow-xl p-6 w-full max-w-md">
@@ -3871,9 +3892,12 @@ function renderMfmWorkCategory(sel, recs) {
     recs.forEach(h => { const c = parseWorkCategory(h.note); byCat[c].cc += Math.abs(+h.ml || 0); byCat[c].count += 1; });
     const total = ALL_CATS.reduce((s, c) => s + byCat[c].cc, 0);
     const CAT_COLOR = { '評估': 'bg-sky-500', '代工': 'bg-teal-500', '工程測試': 'bg-purple-500', '行銷': 'bg-pink-500', '其他': 'bg-amber-500', '未分類': 'bg-gray-400' };
+    setDrill('mf:uncat', '工作類別未分類的消耗紀錄（備註不符格式）', recs.filter(h => parseWorkCategory(h.note) === '未分類'),
+        { mf: true, editNote: true, note: '備註格式：客戶簡稱-工作類別-EF單號，第 2 段是評估、代工、工程測試、行銷、其他之一才會歸類。' });
     box.innerHTML = ALL_CATS.filter(c => byCat[c].count > 0).map(c => {
         const pct = total > 0 ? (byCat[c].cc / total * 100) : 0;
-        return `<div class="flex items-center gap-2">
+        const un = c === '未分類';
+        return `<div class="flex items-center gap-2 ${un ? 'rounded hover:bg-[var(--bg-soft)]' : ''}"${un ? ` ${drillAttr('mf:uncat')} style="cursor:pointer"` : ''}>
             <span class="text-sm text-[var(--ink-2)] w-20 flex-shrink-0">${escHtml(c)}</span>
             <div class="flex-1 h-3 bg-[var(--bg-panel)] rounded-full overflow-hidden">
                 <div class="h-full ${CAT_COLOR[c] || 'bg-gray-400'} rounded-full" style="width:${Math.max(2, Math.min(100, pct))}%"></div>
@@ -3881,6 +3905,7 @@ function renderMfmWorkCategory(sel, recs) {
             <span class="text-xs text-[var(--ink-4)] w-16 text-right">${byCat[c].count} 筆</span>
             <span class="text-xs text-[var(--ink-2)] font-medium w-20 text-right">${fmtCc(byCat[c].cc)}</span>
             <span class="text-xs text-[var(--ink-5)] w-10 text-right">${Math.round(pct)}%</span>
+            ${un ? '<span class="text-xs text-[var(--accent)] whitespace-nowrap">查看 ›</span>' : ''}
         </div>`;
     }).join('');
 }
@@ -4953,8 +4978,15 @@ async function renderReportAnalysis() {
         if (!has) { document.getElementById('ra-c' + i).style.display = 'none'; document.getElementById('ra-e' + i).classList.remove('hidden'); return; }
         raChartObjs.push(new Chart(document.getElementById('ra-c' + i), raChartConfig(c)));
     });
-    const un = rep.unpriced.month ? `；其中 ${rep.unpriced.month} 筆材料沒有設定單價，金額未計入` : '';
-    status.textContent = `${Y} 年 ${M} 月：當月 ${rep.detail.length} 筆消耗紀錄${un}。當年累計＝${Y} 年 1～${M} 月。`;
+    // 沒設單價、其他／未分類這兩種可以點開看是哪幾筆（2026-11-11）。只列當月
+    const noPrice = rep.detail.filter(r => r.price === '' && r.qty > 0);
+    const other = rep.detail.filter(r => r.cat === '其他／未分類');
+    setDrill('ra:noprice', `${Y} 年 ${M} 月 沒有設定單價的消耗紀錄`, noPrice, { report: true, note: '金額未計入。單價在「安全庫存與單價設定」設定。' });
+    setDrill('ra:other', `${Y} 年 ${M} 月 其他／未分類的消耗紀錄`, other, { report: true, note: '工作類別是「其他」或備註不符格式（客戶簡稱-工作類別-EF單號）。' });
+    const link = (key, txt) => `<a href="javascript:void(0)" class="text-[var(--accent)] underline" ${drillAttr(key)}>${txt}</a>`;
+    const un = noPrice.length ? `；其中 ${link('ra:noprice', `${noPrice.length} 筆材料沒有設定單價`)}，金額未計入` : '';
+    const ot = other.length ? `；${link('ra:other', `其他／未分類 ${other.length} 筆`)}` : '';
+    status.innerHTML = `${Y} 年 ${M} 月：當月 ${rep.detail.length} 筆消耗紀錄${un}${ot}。當年累計＝${Y} 年 1～${M} 月。`;
     if (btn) btn.disabled = false;
 }
 
@@ -6651,6 +6683,60 @@ function renderMonthlyConsume() {
 // ★ 沒有這個欄位的紀錄歸「未填」而不是丟掉：2026-09-11 之前的紀錄全都沒有，
 //   丟掉的話佔比會以一個不完整的母數計算，看起來卻完全正常（百分比照樣加到 100%）。
 // ★ 單位由呼叫端給（樹脂是 mL/L、Markforged 是 cc），這支不自己猜。
+// ══ 月度分析「點擊看明細」（2026-11-11 使用者要求：只有異常／特殊項目可以點）══════
+// 可以點的：工作類別「未分類」（備註不符格式）、責任工程師「未填」（Formlabs 與 Markforged 各一），
+// 以及北中南月度分析的「沒設單價」與「其他／未分類」。
+// 畫面是 innerHTML 產生的，所以先把那幾筆存在 drillStore，點的時候用 key 取。
+//   recs：消耗紀錄；mf：Markforged（同一次列印先合併成一列，與消耗記錄相同）；
+//   editNote：點一列開「編輯備註」（未分類就是備註沒照格式，改備註才會歸對類別）
+const drillStore = {};
+function setDrill(key, title, recs, opt) { drillStore[key] = { title, recs, ...(opt || {}) }; }
+function drillAttr(key) { return `onclick="openRecordDrill(${escHtml(JSON.stringify(key))})" title="點擊查看明細"`; }
+function drillDate(ts) { return ts ? new Date(ts).toLocaleDateString('zh-TW') : '—'; }
+function openRecordDrill(key) {
+    const d = drillStore[key];
+    if (!d) return;
+    const esc = escHtml;
+    let rows, head, cells, note = d.note || '';
+    if (d.report) {
+        // 北中南月度分析：月報的明細列（buildMonthlyReport 的 detail）。跨區的總覽，不開編輯
+        rows = d.recs;
+        head = ['日期', '地區', '品牌', '備註', '材料', '機台', '用量'];
+        cells = r => [drillDate(r.ts), esc(window.regionLabel ? window.regionLabel(r.region) : r.region), esc(r.brand),
+            esc(r.note) || '—', esc(r.material) || '—', esc(r.brand === 'Markforged' ? r.printer : printerDisplay(r.printer)) || '—', `${r.qty} ${r.unit}`];
+    } else {
+        rows = d.mf ? mfHistoryMerged(d.recs) : d.recs.slice();
+        rows.sort((a, b) => String(b.ts || '').localeCompare(String(a.ts || '')));
+        head = ['日期', '備註', '材料', '機台', '用量', '責任工程師'];
+        const qty = h => d.mf ? fmtCc(Math.abs(+h.ml || 0))
+            : ((h.ml || 0) >= 1000 ? ((h.ml || 0) / 1000).toFixed(2) + ' L' : Math.round(h.ml || 0) + ' mL');
+        cells = h => [drillDate(h.ts),
+            (esc(h.note) || '<span class="text-[var(--ink-5)]">（沒有備註）</span>') + (h.type === 'aborted' ? ' <span class="text-xs text-[var(--warn)]">(中止)</span>' : ''),
+            esc(d.mf ? h.material : historyMaterialName(h)) || '—',
+            esc(d.mf ? h.printer : printerDisplay(h.printer)) || '—', qty(h),
+            h.operator ? esc(operatorLabel(h)) : '<span class="text-[var(--ink-5)]">未填</span>'];
+    }
+    const canEdit = d.editNote && isEditor;
+    if (d.mf && !d.report) note += (note ? '　' : '') + '同一次列印的多筆紀錄合併成一列。';
+    if (canEdit) note += (note ? '　' : '') + '點一列可修改備註。';
+    document.getElementById('drill-title').textContent = d.title;
+    document.getElementById('drill-count').textContent = `共 ${rows.length} 筆`;
+    document.getElementById('drill-note').textContent = note;
+    document.getElementById('drill-head').innerHTML = '<tr>' + head.map(h => `<th class="p-2 border-b font-medium text-left whitespace-nowrap">${h}</th>`).join('') + '</tr>';
+    document.getElementById('drill-body').innerHTML = rows.length ? rows.map(h => {
+        const id = h._ids ? h._ids.join(',') : h.id;
+        const click = canEdit && id ? ` class="cursor-pointer hover:bg-[var(--accent-soft)]" onclick="drillEditNote(${escHtml(JSON.stringify(id))})"` : ' class="hover:bg-[var(--bg-soft)]"';
+        return `<tr${click}>` + cells(h).map((c, i) => `<td class="p-2 ${i === 0 || i >= head.length - 2 ? 'whitespace-nowrap' : ''} text-[var(--ink-2)]">${c}</td>`).join('') + '</tr>';
+    }).join('') : `<tr><td colspan="${head.length}" class="p-6 text-center text-[var(--ink-5)]">沒有資料</td></tr>`;
+    document.getElementById('drill-modal').classList.remove('hidden');
+}
+function closeRecordDrill() { document.getElementById('drill-modal').classList.add('hidden'); }
+// 點一列 → 關掉清單、開原本的「編輯備註」（存檔後 editHistoryNote 會重畫月度分析）
+function drillEditNote(id) { closeRecordDrill(); editHistoryNote(id); }
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('drill-modal').classList.contains('hidden')) closeRecordDrill();
+});
+
 const OPERATOR_BAR_COLORS = ['bg-sky-500','bg-teal-500','bg-purple-500','bg-amber-500',
                              'bg-rose-500','bg-indigo-500','bg-lime-600','bg-cyan-600'];
 function renderOperatorBreakdown(boxId, emptyId, recs, fmtQty){
@@ -6679,12 +6765,17 @@ function renderOperatorBreakdown(boxId, emptyId, recs, fmtQty){
         if (b[0] === OPERATOR_NONE) return -1;
         return b[1].ml - a[1].ml;
     });
+    // 「未填」可以點開看是哪幾筆（Markforged 的方塊 id 是 mf- 開頭）
+    const isMf = boxId.startsWith('mf-');
+    setDrill(boxId + ':none', '責任工程師未填的消耗紀錄',
+        recs.filter(h => !(h.operator || '').trim()), { mf: isMf, note: '2026-09-11 之前的紀錄沒有這個欄位。' });
     box.innerHTML = rows.map(([key, g], i) => {
         const pct = total > 0 ? (g.ml / total * 100) : 0;
         const isNone = key === OPERATOR_NONE;
         const label = isNone ? '未填' : operatorLabel({ operator: key });
         const color = isNone ? 'bg-gray-400' : OPERATOR_BAR_COLORS[i % OPERATOR_BAR_COLORS.length];
-        return `<div class="flex items-center gap-2">
+        const click = isNone ? ` ${drillAttr(boxId + ':none')} style="cursor:pointer"` : '';
+        return `<div class="flex items-center gap-2 ${isNone ? 'rounded hover:bg-[var(--bg-soft)]' : ''}"${click}>
             <span class="text-sm ${isNone ? 'text-[var(--ink-5)]' : 'text-[var(--ink-2)]'} w-32 flex-shrink-0 truncate" title="${escHtml(label)}">${escHtml(label)}</span>
             <div class="flex-1 h-3 bg-[var(--bg-panel)] rounded-full overflow-hidden">
                 <div class="h-full ${color} rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
@@ -6692,6 +6783,7 @@ function renderOperatorBreakdown(boxId, emptyId, recs, fmtQty){
             <span class="text-xs text-[var(--ink-4)] w-16 text-right">${g.count} 筆</span>
             <span class="text-xs text-[var(--ink-2)] font-medium w-20 text-right">${fmtQty(g.ml)}</span>
             <span class="text-xs text-[var(--ink-5)] w-10 text-right">${Math.round(pct)}%</span>
+            ${isNone ? '<span class="text-xs text-[var(--accent)] whitespace-nowrap">查看 ›</span>' : ''}
         </div>`;
     }).join('');
 }
@@ -6737,12 +6829,16 @@ function renderMonthlyWorkCategory() {
     });
     const total = recs.reduce((s,h)=>s+(h.ml||0), 0);
     const CAT_COLOR = { '評估':'bg-sky-500', '代工':'bg-teal-500', '工程測試':'bg-purple-500', '行銷':'bg-pink-500', '其他':'bg-amber-500', '未分類':'bg-gray-400' };
+    // 「未分類」（備註不符格式）可以點開看是哪幾筆，點一列改備註
+    setDrill('fl:uncat', '工作類別未分類的消耗紀錄（備註不符格式）', recs.filter(h=>parseWorkCategory(h.note)==='未分類'),
+        { editNote: true, note: '備註格式：客戶簡稱-工作類別-EF單號，第 2 段是評估、代工、工程測試、行銷、其他之一才會歸類。' });
 
     box.innerHTML = ALL_CATS.filter(c=>byCat[c].count>0).map(c=>{
         const ml = byCat[c].ml;
         const pct = total>0 ? (ml/total*100) : 0;
         const qty = ml>=1000 ? (ml/1000).toFixed(2)+' L' : Math.round(ml)+' mL';
-        return `<div class="flex items-center gap-2">
+        const un = c==='未分類';
+        return `<div class="flex items-center gap-2 ${un?'rounded hover:bg-[var(--bg-soft)]':''}"${un?` ${drillAttr('fl:uncat')} style="cursor:pointer"`:''}>
             <span class="text-sm text-[var(--ink-2)] w-20 flex-shrink-0">${escHtml(c)}</span>
             <div class="flex-1 h-3 bg-[var(--bg-panel)] rounded-full overflow-hidden">
                 <div class="h-full ${CAT_COLOR[c]||'bg-gray-400'} rounded-full" style="width:${Math.max(2,Math.min(100,pct))}%"></div>
@@ -6750,6 +6846,7 @@ function renderMonthlyWorkCategory() {
             <span class="text-xs text-[var(--ink-4)] w-16 text-right">${byCat[c].count} 筆</span>
             <span class="text-xs text-[var(--ink-2)] font-medium w-16 text-right">${qty}</span>
             <span class="text-xs text-[var(--ink-5)] w-10 text-right">${Math.round(pct)}%</span>
+            ${un?'<span class="text-xs text-[var(--accent)] whitespace-nowrap">查看 ›</span>':''}
         </div>`;
     }).join('');
 }
@@ -7519,6 +7616,9 @@ async function editHistoryNote(id) {
 }
 
 // ══ 暴露給 HTML inline event handlers ══
+window.openRecordDrill = openRecordDrill;
+window.closeRecordDrill = closeRecordDrill;
+window.drillEditNote = drillEditNote;
 window.closeCartridgeModal = closeCartridgeModal;
 window.closeSafetyModal = closeSafetyModal;
 window.closeStockModal = closeStockModal;

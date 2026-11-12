@@ -171,7 +171,7 @@ if handler is not None:
 
 # ── 5. 前端不可再用 createUserWithEmailAndPassword ───────────────────
 print("── 前端不可改回 createUserWithEmailAndPassword ──")
-FRONT = ["3DP-BK.html", "inventory.html", "quote-studio.html", "quote-markforged.html", "index.html",
+FRONT = ["3DP-BK.html", "inventory.html", "index.html",
          os.path.join("portal", "portal.html")]
 FRONT += [os.path.join("portal", f) for f in os.listdir(os.path.join(ROOT, "portal")) if f.endswith(".js")]
 for f in FRONT:

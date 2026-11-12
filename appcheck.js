@@ -24,7 +24,7 @@
   // ★ 2026-08-27 起五頁統一 10.12.5（原本 compat 頁是 10.12.0）。compat 與 modular
   //   是兩個不同的建置產物、不是兩個版本，所以仍分成兩個常數；但版號要一致。
   const SDK_VERSION = '10.12.5';
-  const COMPAT_SDK_VERSION  = SDK_VERSION;   // portal / quote-studio / quote-markforged
+  const COMPAT_SDK_VERSION  = SDK_VERSION;   // portal
   const MODULAR_SDK_VERSION = SDK_VERSION;   // 3DP-BK / inventory
 
   const enabled = () => !!SITE_KEY;

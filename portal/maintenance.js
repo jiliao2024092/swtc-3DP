@@ -487,7 +487,8 @@
   }
 
   // ── 達成率報表（比照原 Excel 的圖：每區每月 需保養數／已保養數 長條＋達成率）──
-  function RateCard({ title, need, done }) {
+  // onPick(月份 1～12，或 'all'＝全年)：達成率未滿 100% 的格子可以點開明細（2026-11-11 使用者要求）
+  function RateCard({ title, need, done, onPick }) {
     const max = Math.max(1, ...need, ...done);
     const needSum = need.reduce((s, v) => s + v, 0), doneSum = done.reduce((s, v) => s + v, 0);
     const pct = v => v === null ? '—' : `${Math.round(v * 100)}%`;
@@ -516,8 +517,16 @@
             <tr><td style={{ fontWeight: 600 }}>已保養數</td>{done.map((v, i) => <td key={i} style={{ textAlign: 'center' }}>{v}</td>)}<td style={{ textAlign: 'center', fontWeight: 600 }}>{doneSum}</td></tr>
             <tr><td style={{ fontWeight: 600 }}>達成率</td>{need.map((v, i) => {
               const r = ML.rate(done[i], v);
-              return <td key={i} style={{ textAlign: 'center', fontWeight: 600, color: r === null ? 'var(--ink-4)' : r >= 1 ? 'var(--ok)' : r >= 0.5 ? 'var(--warn)' : 'var(--danger)' }}>{pct(r)}</td>;
-            })}<td style={{ textAlign: 'center', fontWeight: 700 }}>{pct(ML.rate(doneSum, needSum))}</td></tr>
+              const can = onPick && r !== null && r < 1;   // 只有沒達標的月份（異常）可以點
+              return <td key={i} className={can ? 'drill' : undefined} onClick={can ? () => onPick(i + 1) : undefined}
+                title={can ? '點擊查看這個月的保養明細' : undefined}
+                style={{ textAlign: 'center', fontWeight: 600, color: r === null ? 'var(--ink-4)' : r >= 1 ? 'var(--ok)' : r >= 0.5 ? 'var(--warn)' : 'var(--danger)', textDecoration: can ? 'underline dotted' : undefined }}>{pct(r)}</td>;
+            })}{(() => {
+              const r = ML.rate(doneSum, needSum), can = onPick && r !== null && r < 1;
+              return <td className={can ? 'drill' : undefined} onClick={can ? () => onPick('all') : undefined}
+                title={can ? '點擊查看全年的保養明細' : undefined}
+                style={{ textAlign: 'center', fontWeight: 700, textDecoration: can ? 'underline dotted' : undefined }}>{pct(r)}</td>;
+            })()}</tr>
           </tbody>
         </table>
       </div>
@@ -595,11 +604,37 @@
     const stats = useMemo(() => ML.maintStats(devices.filter(d => matchText(d) && (!engF || d.engineer === engF)), year, regionKeys()), [devices, year, engF, kw]);
     // 達成率報表的每一張卡片（畫面與匯出共用）
     const reportCards = [
-      ...(regionsShown.length > 1 ? [{ label: '全部地區',
+      ...(regionsShown.length > 1 ? [{ label: '全部地區', regions: regionsShown,
         need: ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].need[i], 0)),
         done: ML.MONTHS.map((m, i) => regionsShown.reduce((s, r) => s + stats[r].done[i], 0)) }] : []),
-      ...regionsShown.map(r => ({ label: regionLabel(r), need: stats[r].need, done: stats[r].done })),
+      ...regionsShown.map(r => ({ label: regionLabel(r), regions: [r], need: stats[r].need, done: stats[r].done })),
     ];
+    // ── 達成率報表「點擊看明細」（2026-11-11）：哪幾台構成了那個月的需保養／已保養。
+    //   資料與上面的 stats 同一份（含搜尋與保養負責人篩選），筆數由 ML.rateDetail 保證與報表一致
+    const [drill, setDrill] = useState(null);   // { title, rows }
+    const KIND_LABEL = {
+      pending: <span style={{ color: 'var(--danger)', fontWeight: 600 }}>未完成</span>,
+      late: null, done: <span style={{ color: 'var(--ok)', fontWeight: 600 }}>已完成</span>, doneOther: null,
+    };
+    const DRILL_COLS = [
+      { label: '狀態', nowrap: true, get: x => x.kind === 'late' ? <span style={{ color: 'var(--warn)', fontWeight: 600 }}>{x.doneMonth} 月才完成</span>
+          : x.kind === 'doneOther' ? <span style={{ color: 'var(--ok)', fontWeight: 600 }}>已完成（排在 {x.month} 月）</span> : KIND_LABEL[x.kind] },
+      { label: '排定月份', nowrap: true, align: 'center', get: x => `${x.month} 月` },
+      { label: '完成日期', nowrap: true, get: x => (x.cell.done && /^\d{4}-\d{2}-\d{2}$/.test(x.cell.done)) ? x.cell.done : '—' },
+      { label: '地區', nowrap: true, get: x => regionLabel(x.dev.region) },
+      { label: '客戶', get: x => x.dev.customer || '—' },
+      { label: '機型', get: x => [x.dev.brand, x.dev.model].filter(Boolean).join(' ') || '—' },
+      { label: '序號', nowrap: true, get: x => x.dev.serial || '—' },
+      { label: '保養負責人', nowrap: true, get: x => engLabel(x.dev.engineer) || '—' },
+      { label: '原因／說明', get: x => [x.cell.reason ? ML.REASON_LABEL[x.cell.reason] : '', x.cell.note || '',
+          (x.cell.done && !/^\d{4}-\d{2}-\d{2}$/.test(x.cell.done)) ? x.cell.done : ''].filter(Boolean).join('；') || '—' },
+    ];
+    const openRateDrill = (card, m) => {
+      const months = m === 'all' ? ML.MONTHS : [m];
+      const src = devices.filter(d => matchText(d) && (!engF || d.engineer === engF));
+      const rows = ML.rateDetail(src, year, card.regions, months).map((x, i) => ({ ...x, _key: `${x.dev._id}|${x.month}|${i}` }));
+      setDrill({ title: `${year} 年 ${card.label}・${m === 'all' ? '全年' : `${m} 月`}保養明細`, rows });
+    };
 
     // 保養週期、安裝時間、維護到期任一個有改才重排（只改業務或備註時不可動到排程）
     const schedKey = d => [Number(d && d.intervalMonths) || 0, (d && d.installDate) || '', (d && d.expiryDate) || ''].join('|');
@@ -753,7 +788,7 @@
             {tab === 'report' && <>
               {/* 計算規則的說明 2026-11-11 使用者要求拿掉（規則寫在使用手冊）；只留「數字被篩選縮小了」的提醒 */}
               {(kw || engF) && <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--warn)', margin: '0 0 12px' }}>目前只統計符合上方搜尋／保養負責人篩選的設備。</p>}
-              {reportCards.map(c => <RateCard key={c.label} title={`${year} 年 ${c.label}`} need={c.need} done={c.done} />)}
+              {reportCards.map(c => <RateCard key={c.label} title={`${year} 年 ${c.label}`} need={c.need} done={c.done} onPick={m => openRateDrill(c, m)} />)}
             </>}
           </>}
         </div>
@@ -761,6 +796,11 @@
         {modal && modal.kind === 'dev' && <DeviceModal item={modal.dev} defaultRegion={writeRegion}
           canPickRegion={regionKeys().every(r => !window.canEditInRegion || window.canEditInRegion(user, r))}
           canDelete={canDelete} onClose={() => setModal(null)} onSave={saveDevice} onDelete={deleteDevice} />}
+        {/* 明細的一列 → 開那一格原本的「保養紀錄」視窗（只有能編輯那台的人點得開） */}
+        {drill && window.DrillModal && <window.DrillModal title={drill.title} columns={DRILL_COLS} rows={drill.rows}
+          note="已保養算在完成日期的月份：排在這個月、其他月份才做完的不算這個月；排在其他月份、這個月做完的算這個月。"
+          onRow={canEdit ? x => { setDrill(null); setModal({ kind: 'cell', dev: devices.find(d => d._id === x.dev._id) || x.dev, month: x.month }); } : null}
+          canRow={x => canEditDev(x.dev)} onClose={() => setDrill(null)} />}
         {modal && modal.kind === 'cell' && <CellModal dev={modal.dev} year={year} month={modal.month}
           onClose={() => setModal(null)} onSave={cell => saveCell(modal.dev, modal.month, cell)} />}
         {modal && modal.kind === 'import' && <ImportModal existing={devices} onClose={() => setModal(null)} />}

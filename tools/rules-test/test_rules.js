@@ -243,21 +243,15 @@ async function main() {
   await ok('admin 仍可把別人設成 role:admin（主管的限制不影響 admin）',
     as(USERS.admin).doc(`users/${USERS.roleTarget2.uid}`).set({ role: 'admin' }, { merge: true }));
 
-  // ══ print_history：刪自己的、不能刪別人的 ═════════════════════════
-  await ok('登入者可建立自己的 print_history（uid 等於自己）',
-    as(USERS.engineer).doc('print_history/h_new')
-      .set({ act: '建立工單', uid: USERS.engineer.uid }));
-  await nok('★ 不可冒用他人 uid 建立 print_history（否則就能反過來刪別人的）',
-    as(USERS.engineer).doc('print_history/h_fake')
-      .set({ act: '偽造', uid: USERS.viewer.uid }));
-  await ok('可刪除自己的 print_history（建立工單後清除過程紀錄要用）',
-    as(USERS.engineer).doc('print_history/h_eng').delete());
-  await nok('★ 不可刪除別人的 print_history',
-    as(USERS.engineer).doc('print_history/h_other').delete());
-  await nok('★ 舊紀錄沒有 uid 欄位 → 一般使用者不可刪',
-    as(USERS.engineer).doc('print_history/h_legacy').delete());
-  await ok('admin 可刪除任何 print_history（含沒有 uid 的舊紀錄）',
-    as(USERS.admin).doc('print_history/h_legacy').delete());
+  // ══ 3D列印估價已移除（2026-11-11）：估價的資料一律讀寫不到 ══════════
+  await nok('★ 估價已移除：登入者讀不到 print_history',
+    as(USERS.engineer).doc('print_history/h_eng').get());
+  await nok('★ 估價已移除：不可再建立 print_history',
+    as(USERS.engineer).doc('print_history/h_new').set({ act: '建立工單', uid: USERS.engineer.uid }));
+  await nok('★ 估價已移除：admin 也讀不到 print_orders',
+    as(USERS.admin).doc('print_orders/o1').get());
+  await nok('★ 估價已移除：主管不可再寫 settings/quote_materials（只剩 settings 的 admin 規則）',
+    as(USERS.manager).doc('settings/quote_materials').set({ x: 1 }));
 
   // ══ bookings_audit：寫入後不可竄改 ════════════════════════════════
   await ok('編輯者可建立稽核紀錄',

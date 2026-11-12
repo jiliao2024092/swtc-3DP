@@ -10,6 +10,7 @@
 //     每 N 個月保養的自動排程（autoPlanMonths／autoSchedule：只排本月以後的空格、不動填過的）、
 //     匯出保養排程（buildMaintSheet）要能原樣再匯入
 //   - 2026-11-11：每月維護安排通知（noticeData／noticeHtml／noticeSheet），版面照使用者的 10 月信件截圖
+//   - 2026-11-11：達成率報表點擊看明細（rateDetail），列出的筆數必須等於報表數字
 // 以及原 Excel 的格式：一台設備 3 列、地區標題列、C 的說明寫在下一格、完成日期格寫文字
 //
 // 執行：node tools/test_maintenance.js     （於 repo 根目錄）
@@ -124,6 +125,33 @@ eq(ML.maintStats([exp], 2027, ['north']).north.need, zeros(), '到期日在前�
 eq(ML.maintStats([{ ...exp, expiryDate: '2027-01-31' }], 2026, ['north']).north.need[8], 1, '到期日在明年 → 今年每個月都算');
 eq(ML.maintStats([{ ...exp, expiryDate: '' }], 2026, ['north']).north.need[8], 1, '沒填到期日 → 照舊全年都算');
 eq(ML.maintStats([{ ...exp, list: 'expired' }], 2026, ['north']).north.need[2], 0, '手動標已過維 → 維持整年不算（同原 Excel）');
+
+// ── 達成率報表「點擊看明細」（rateDetail，2026-11-11）：列出來的筆數一定要等於報表上的數字 ──
+{
+  const all = [...devs, exp, { region: 'north', schedule: { 2026: { 8: { plan: true } } } }];
+  const ms = ML.maintStats(all, 2026, REGIONS);
+  const isNeed = r => r.kind !== 'doneOther', isDone = r => r.kind === 'done' || r.kind === 'doneOther';
+  let okNeed = true, okDone = true;
+  REGIONS.forEach(r => ML.MONTHS.forEach(m => {
+    const d = ML.rateDetail(all, 2026, [r], [m]);
+    if (d.filter(isNeed).length !== ms[r].need[m - 1]) okNeed = false;
+    if (d.filter(isDone).length !== ms[r].done[m - 1]) okDone = false;
+  }));
+  eq([okNeed, okDone], [true, true], '★ 每一區每一個月：明細的需保養／已保養筆數＝maintStats 的數字');
+  const yr = ML.rateDetail(all, 2026, REGIONS, ML.MONTHS);
+  const sum = k => REGIONS.reduce((s, r) => s + ms[r][k].reduce((a, v) => a + v, 0), 0);
+  eq([yr.filter(isNeed).length, yr.filter(isDone).length], [sum('need'), sum('done')], '★ 全年（12 個月一起）的筆數＝全年合計');
+  const mar = ML.rateDetail(devs, 2026, ['north'], [3]);
+  eq(mar.map(r => [r.month, r.kind, r.doneMonth]), [[3, 'late', 4]], '★ 3 月排程、4 月才做：3 月的明細標「延後完成」，記下完成月份');
+  const apr = ML.rateDetail(devs, 2026, ['north'], [4]);
+  eq(apr.map(r => [r.month, r.kind]).sort(), [[3, 'doneOther'], [4, 'done']], '★ 4 月的明細：4 月排定且完成＋3 月延到 4 月完成（只算已保養）');
+  const jun = ML.rateDetail(devs, 2026, ['north'], [6]);
+  eq(jun.map(r => [r.kind, r.cell.note]), [['pending', '客戶未使用、不需保養']], '6 月沒完成：未完成，帶出說明');
+  eq(ML.rateDetail(devs, 2026, ['south'], [5]).map(r => r.kind), ['pending'], '完成日期寫文字（改約6/2）→ 未完成');
+  eq(ML.rateDetail(devs, 2026, ['north'], [1]).map(r => r.kind), ['done'], '★ 已過維那台不列（1 月只有第一台）');
+  const order = ML.rateDetail(all, 2026, ['north'], ML.MONTHS).map(r => r.kind);
+  eq(order.indexOf('pending') < order.indexOf('done'), true, '未完成排在最前面');
+}
 eq(ML.monthInContract({ expiryDate: '2026-06-01' }, 2026, 6), true, '到期日是該月 1 號 → 那個月仍算');
 eq(ML.monthInContract({ expiryDate: '2026-06-30' }, 2026, 7), false, '到期隔月 → 不算');
 

@@ -647,7 +647,8 @@
           )}
           {tab==='kanban'    && <window.KanbanView    data={data} setData={()=>{}}/>}
           {tab==='gantt'     && <window.GanttView     data={data}/>}
-          {tab==='dashboard' && <window.DashboardView data={data}/>}
+          {/* Dashboard 的異常／特殊項目可以點開明細，明細的一列開原本的編輯視窗（只有能編輯那一筆的人點得開） */}
+          {tab==='dashboard' && <window.DashboardView data={data} onOpen={canEdit ? handleEdit : null} canOpen={canEditRow}/>}
         </div>
 
         {/* 新增/編輯 Modal */}

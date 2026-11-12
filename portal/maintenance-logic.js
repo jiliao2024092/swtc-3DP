@@ -69,6 +69,44 @@
   // 達成率：需保養數為 0 時回 null（畫面顯示「—」，不可算成 0% 或 100%）
   function rate(done, need) { return need > 0 ? done / need : null; }
 
+  // 達成率報表「點擊看明細」（2026-11-11）：哪幾台構成了那幾個月的需保養數／已保養數。
+  //   months：月份陣列（單月 [3]，全年 MONTHS）。判斷規則與 maintStats 完全相同（測試逐月比對筆數）：
+  //   每一列 { dev, month（格子的月份）, cell, kind, doneMonth }
+  //     kind 'pending'   排定在這幾個月、還沒完成          → 算需保養、不算已保養
+  //          'late'      排定在這幾個月、在其他月份才完成   → 算需保養、不算已保養（算在完成的那個月）
+  //          'done'      排定在這幾個月、也在這幾個月完成   → 兩邊都算
+  //          'doneOther' 排在其他月份（或沒排）、在這幾個月完成 → 只算已保養
+  //   排序：未完成在最前面（那才是要追的），再依地區、客戶
+  function rateDetail(devices, year, regions, months) {
+    const y = String(year);
+    const inSet = new Set(months.map(Number));
+    const okRegion = new Set(regions);
+    const rows = [];
+    (devices || []).forEach(dev => {
+      if (!dev || dev.list === 'expired' || !okRegion.has(dev.region)) return;
+      const sched = (dev.schedule && dev.schedule[y]) || {};
+      MONTHS.forEach(m => {
+        const c = sched[String(m)];
+        if (!c) return;
+        const need = !!c.plan && inSet.has(m) && monthInContract(dev, year, m);
+        let dm = null;
+        if (c.done && /^\d{4}-\d{2}-\d{2}$/.test(c.done) && c.done.slice(0, 4) === y) {
+          const n = Number(c.done.slice(5, 7));
+          if (n >= 1 && n <= 12 && monthInContract(dev, year, n)) dm = n;
+        }
+        const doneHere = dm !== null && inSet.has(dm);
+        if (!need && !doneHere) return;
+        const kind = need ? (doneHere ? 'done' : (dm !== null ? 'late' : 'pending')) : 'doneOther';
+        rows.push({ dev, month: m, cell: c, kind, doneMonth: dm });
+      });
+    });
+    const ORDER = { pending: 0, late: 1, done: 2, doneOther: 3 };
+    return rows.sort((a, b) => ORDER[a.kind] - ORDER[b.kind]
+      || String(a.dev.region || '').localeCompare(String(b.dev.region || ''))
+      || String(a.dev.customer || '').localeCompare(String(b.dev.customer || ''), 'zh-Hant')
+      || a.month - b.month);
+  }
+
   // 維護到期狀態：'expired' 已過期／'soon' 60 天內到期／'ok' 有效／'none' 沒填
   function expiryStatus(expiryDate, today) {
     if (!expiryDate || !/^\d{4}-\d{2}-\d{2}$/.test(expiryDate)) return 'none';
@@ -521,7 +559,7 @@
 
   window.MaintLogic = {
     MONTHS, REASONS, REASON_LABEL, BRANDS, EXPIRY_SOON_DAYS,
-    cellOf, maintStats, rate, expiryStatus, effectiveList, monthInContract, activeInYear, daysUntil,
+    cellOf, maintStats, rate, rateDetail, expiryStatus, effectiveList, monthInContract, activeInYear, daysUntil,
     listInYear, expiresInYear, yearOptions, autoPlanMonths, autoSchedule,
     excelDate, normBrand, parseReason, parseMaintSheet, buildMaintSheet, deviceKey,
     noticeData, noticeHtml, noticeText, noticeSheet, noticeStylesXml, noticePatchSheetXml, NOTICE_XF,
